@@ -6,6 +6,7 @@ import type { DocxStyle } from '../types'
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
 interface Props {
+  style: DocxStyle // from Settings
   getJSON: () => JSONContent | null
   getTitle: () => string
   onError: (msg: string) => void
@@ -16,10 +17,9 @@ function fileName(title: string): string {
   return `${safe || 'Draft'}.docx`
 }
 
-/** Word export: citations rendered in the chosen style, a reference list, and Word
- * comments on citations that didn't pass verification. */
-export function ExportControl({ getJSON, getTitle, onError }: Props) {
-  const [style, setStyle] = useState<DocxStyle>('apa')
+/** Word export: citations rendered in the Settings citation style, a reference list, and
+ * Word comments on citations that didn't pass verification. */
+export function ExportControl({ style, getJSON, getTitle, onError }: Props) {
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
 
@@ -58,11 +58,6 @@ export function ExportControl({ getJSON, getTitle, onError }: Props) {
           Saved {saved.split(/[\\/]/).pop()}
         </span>
       )}
-      <select value={style} onChange={(e) => setStyle(e.target.value as DocxStyle)} title="Citation style">
-        <option value="apa">APA 7</option>
-        <option value="mla">MLA 9</option>
-        <option value="ieee">IEEE</option>
-      </select>
       <button onClick={exportDocx} disabled={busy}>
         {busy ? 'Exporting…' : 'Export .docx'}
       </button>

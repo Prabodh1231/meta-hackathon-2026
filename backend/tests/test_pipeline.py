@@ -174,6 +174,17 @@ def test_drafts_roundtrip(client):
     assert client.get("/drafts/1").json()["title"] == "Ch. 2"
 
 
+def test_settings_defaults_persist_and_validate(client, lib):
+    assert client.get("/settings").json() == {"theme": "system", "citation_style": "apa"}
+    assert client.patch("/settings", json={"theme": "dark"}).json() == {"theme": "dark", "citation_style": "apa"}
+    assert client.patch("/settings", json={"citation_style": "ieee"}).json()["theme"] == "dark"
+    assert client.patch("/settings", json={"theme": "sepia"}).status_code == 400
+    assert client.patch("/settings", json={"font": "x"}).status_code == 400
+    # Survives a restart: a new Library on the same data dir reads it back.
+    again = Library(lib.settings, provider=MockProvider(), embedder=HashEmbedder())
+    assert again.get_settings() == {"theme": "dark", "citation_style": "ieee"}
+
+
 def test_token_is_required_when_configured(tmp_path):
     settings = Settings(data_dir=tmp_path / "d", api_token="secret")
     app = create_app(settings, Library(settings, provider=MockProvider(), embedder=HashEmbedder()))

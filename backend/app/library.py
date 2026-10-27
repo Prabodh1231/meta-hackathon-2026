@@ -18,6 +18,13 @@ from .topics import choose_k, jaccard, kmeans
 
 log = logging.getLogger(__name__)
 
+# Preferences set in the Settings panel: allowed values per key, first one is the default.
+USER_SETTINGS_CHOICES = {
+    "theme": ("system", "light", "dark"),
+    "citation_style": ("apa", "mla", "ieee"),
+}
+USER_SETTINGS_DEFAULTS = {k: v[0] for k, v in USER_SETTINGS_CHOICES.items()}
+
 
 class Library:
     def __init__(self, settings: Settings, provider: LLMProvider | None = None, embedder: Embedder | None = None):
@@ -437,6 +444,25 @@ class Library:
     def references(self, doc_ids: list[int], style: str) -> dict:
         docs = [self.get_document(d) for d in dict.fromkeys(doc_ids)]
         return {"style": style, "entries": format_references(docs, style)}
+
+    # ---------- user settings ----------
+
+    def get_settings(self) -> dict:
+        with self.lock:
+            stored = json.loads(db.get_meta(self.conn, "settings") or "{}")
+        return {**USER_SETTINGS_DEFAULTS, **{k: v for k, v in stored.items() if k in USER_SETTINGS_DEFAULTS}}
+
+    def update_settings(self, changes: dict) -> dict:
+        for key, value in changes.items():
+            allowed = USER_SETTINGS_CHOICES.get(key)
+            if allowed is None:
+                raise ValueError(f"Unknown setting {key!r}")
+            if value not in allowed:
+                raise ValueError(f"{key} must be one of {', '.join(allowed)}")
+        merged = {**self.get_settings(), **changes}
+        with self.lock, self.conn:
+            db.set_meta(self.conn, "settings", json.dumps(merged))
+        return merged
 
     # ---------- drafts ----------
 

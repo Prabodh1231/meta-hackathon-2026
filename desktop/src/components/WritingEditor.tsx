@@ -1,8 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
 import type { Editor, JSONContent } from '@tiptap/core'
 import { CitationNode } from '../editor/citation'
+import { FormatToolbar } from './FormatToolbar'
 import { api } from '../api'
 import type { Citation, DraftSentence } from '../types'
 
@@ -95,7 +97,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   clickRef.current = onCitationClick
 
   const editor = useEditor({
-    extensions: [StarterKit, CitationNode],
+    extensions: [StarterKit, TextStyle, FontFamily, FontSize, CitationNode],
     content: '',
     editorProps: {
       attributes: { class: 'prose', spellcheck: 'true' },
@@ -193,8 +195,11 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   )
 
   return (
-    <div className="editor-wrap">
-      <EditorContent editor={editor} />
-    </div>
+    <>
+      <FormatToolbar editor={editor} />
+      <div className="editor-wrap">
+        <EditorContent editor={editor} />
+      </div>
+    </>
   )
 })

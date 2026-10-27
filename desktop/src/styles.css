@@ -19,27 +19,26 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16181d;
-    --panel: #1d2026;
-    --text: #e6e6e6;
-    --muted: #9aa1ab;
-    --border: #2d3139;
-    --accent: #748ffc;
-    --accent-text: #0e1116;
-    --hover: #262a31;
-    --ok: #56d364;
-    --ok-bg: #12261a;
-    --warn: #e3b341;
-    --warn-bg: #2b2111;
-    --bad: #ff7b72;
-    --bad-bg: #2d1416;
-    --pending: #9aa1ab;
-    --pending-bg: #262a31;
-    --mark: #5c4d0f;
-    color-scheme: dark;
-  }
+/* theme.ts sets data-theme from Settings (System follows the OS). */
+:root[data-theme="dark"] {
+  --bg: #16181d;
+  --panel: #1d2026;
+  --text: #e6e6e6;
+  --muted: #9aa1ab;
+  --border: #2d3139;
+  --accent: #748ffc;
+  --accent-text: #0e1116;
+  --hover: #262a31;
+  --ok: #56d364;
+  --ok-bg: #12261a;
+  --warn: #e3b341;
+  --warn-bg: #2b2111;
+  --bad: #ff7b72;
+  --bad-bg: #2d1416;
+  --pending: #9aa1ab;
+  --pending-bg: #262a31;
+  --mark: #5c4d0f;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -123,8 +122,50 @@ textarea { width: 100%; resize: vertical; }
 .editor-wrap { flex: 1; overflow-y: auto; }
 .writing .panel-head { align-items: center; gap: 12px; }
 .writing .panel-head > div:first-child { display: flex; flex-direction: column; min-width: 0; }
-.export { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.head-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.export { display: flex; align-items: center; gap: 6px; }
 .export .saved { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px; color: var(--muted); }
+.icon-button:hover:not(:disabled) { color: var(--text); }
+
+/* Formatting toolbar */
+.format-toolbar {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  max-width: 760px; width: 100%; margin: 0 auto; padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.format-toolbar select { padding: 3px 6px; max-width: 160px; }
+.format-toolbar select.size { width: 68px; }
+.format-toolbar button { min-width: 30px; padding: 3px 8px; }
+.format-toolbar button.active { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: var(--accent); color: var(--text); }
+.format-toolbar .sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
+
+/* Settings dialog */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, #000 45%, transparent);
+}
+.modal {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px;
+  width: min(440px, calc(100vw - 32px)); padding: 16px 20px 20px; box-shadow: 0 16px 48px rgb(0 0 0 / 0.3);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.modal-head h2 { font-size: 16px; margin: 0; }
+.setting { margin-top: 16px; }
+.setting h3 { font-size: 13px; margin: 0 0 6px; }
+.setting p { margin: 0 0 8px; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.segmented button { border: none; border-radius: 0; padding: 5px 16px; background: var(--panel); }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button.active { background: var(--accent); color: var(--accent-text); }
+.choices { display: flex; flex-direction: column; gap: 6px; }
+.choice {
+  display: grid; grid-template-columns: auto 64px 1fr; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+}
+.choice.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.choice-label { font-weight: 600; }
+.choice-example { color: var(--muted); font-family: Georgia, serif; font-size: 13px; }
 .prose {
   max-width: 760px; margin: 0 auto; min-height: 100%;
   padding: 24px 0 120px; outline: none; font-size: 16px; line-height: 1.7;

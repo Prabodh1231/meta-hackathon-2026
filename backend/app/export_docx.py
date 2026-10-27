@@ -207,6 +207,33 @@ def _styled_run(para, text: str, marks: list[dict]) -> None:
         elif kind == "link":
             run.underline = True
             run.font.color.rgb = RGBColor(0x1F, 0x4E, 0xD8)
+        elif kind == "textStyle":  # font family / size from the editor toolbar
+            attrs = mark.get("attrs") or {}
+            if family := _font_name(attrs.get("fontFamily")):
+                run.font.name = family
+            if size := _points(attrs.get("fontSize")):
+                run.font.size = Pt(size)
+
+
+_GENERIC_FONTS = {"serif", "sans-serif", "monospace", "system-ui", "cursive", "fantasy"}
+
+
+def _font_name(css: str | None) -> str | None:
+    """First concrete family in a CSS font-family list: '"Times New Roman", serif' -> 'Times New Roman'."""
+    for name in (css or "").split(","):
+        name = name.strip().strip("\"'")
+        if name and name.lower() not in _GENERIC_FONTS:
+            return name
+    return None
+
+
+def _points(css: str | None) -> float | None:
+    """CSS font size to points: '14pt' -> 14, '16px' -> 12."""
+    m = re.fullmatch(r"\s*([\d.]+)\s*(pt|px)\s*", css or "")
+    if not m:
+        return None
+    value = float(m.group(1))
+    return value if m.group(2) == "pt" else value * 0.75
 
 
 def _locator(doc: dict, page: int, page_label: str | None) -> str | None:

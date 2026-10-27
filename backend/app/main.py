@@ -185,6 +185,14 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def references(body: ReferencesIn):
         return lib.references(body.doc_ids, body.style)
 
+    @app.get("/settings")
+    def get_settings():
+        return lib.get_settings()
+
+    @app.patch("/settings")
+    def update_settings(body: dict):
+        return lib.update_settings(body)
+
     @app.post("/export/docx")
     def export(body: ExportIn):
         data = export_docx(lib, body.content, body.style, body.title)

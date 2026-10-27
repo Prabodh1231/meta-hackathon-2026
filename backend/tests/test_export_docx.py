@@ -139,6 +139,20 @@ def test_unverified_and_missing_citations_get_word_comments(setup):
     assert all(c.author == "Research Companion" for c in d.comments)
 
 
+def test_toolbar_fonts_and_sizes_carry_into_word(setup):
+    client, _ = setup
+    styled = lambda t, **attrs: {"type": "text", "text": t, "marks": [{"type": "textStyle", "attrs": attrs}, {"type": "bold"}]}
+    content = {"type": "doc", "content": [{"type": "paragraph", "content": [
+        styled("Serif", fontFamily='"Times New Roman", serif', fontSize="14pt"),
+        styled(" pixels", fontSize="16px"),
+        styled(" generic", fontFamily="monospace"),
+    ]}]}
+    runs = export(client, content, "apa").paragraphs[0].runs
+    assert (runs[0].font.name, runs[0].font.size.pt, runs[0].bold) == ("Times New Roman", 14.0, True)
+    assert (runs[1].font.name, runs[1].font.size.pt) == (None, 12.0)
+    assert runs[2].font.name is None  # generic families have no Word equivalent: keep the default
+
+
 def test_bibtex_is_not_a_document_style(setup):
     client, ids = setup
     res = client.post("/export/docx", json={"content": draft(ids), "style": "bibtex"})

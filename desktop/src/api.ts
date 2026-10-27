@@ -8,6 +8,7 @@ import type {
   PageText,
   RefStyle,
   ResolvedCitation,
+  Settings,
   Topic,
 } from './types'
 
@@ -68,6 +69,9 @@ export const api = {
     request<(ResolvedCitation | null)[]>('POST', '/citations/resolve', { items }),
   references: (docIds: number[], style: RefStyle) =>
     request<{ style: RefStyle; entries: string[] }>('POST', '/references', { doc_ids: docIds, style }),
+
+  settings: () => request<Settings>('GET', '/settings'),
+  updateSettings: (changes: Partial<Settings>) => request<Settings>('PATCH', '/settings', changes),
 
   exportDocx: async (content: unknown, style: DocxStyle, title: string) =>
     (await send('POST', '/export/docx', { content, style, title })).arrayBuffer(),

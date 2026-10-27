@@ -91,6 +91,13 @@ export interface Health {
 
 export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
 export type DocxStyle = Exclude<RefStyle, 'bibtex'>
+export type ThemePref = 'system' | 'light' | 'dark'
+
+/** Preferences from the Settings panel, stored in the library database. */
+export interface Settings {
+  theme: ThemePref
+  citation_style: DocxStyle
+}
 
 declare global {
   interface Window {
