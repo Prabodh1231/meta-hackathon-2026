@@ -6,14 +6,21 @@ const { spawn } = require('node:child_process')
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const net = require('node:net')
+const os = require('node:os')
 const path = require('node:path')
 
 // Dev layout. Packaging (PyInstaller binary in extraResources) is still to do.
 const BACKEND_DIR = path.join(__dirname, '..', '..', 'backend')
 const SUPPORTED = ['pdf', 'docx', 'pptx', 'md', 'markdown', 'txt', 'html', 'htm', 'png', 'jpg', 'jpeg', 'webp']
+const DATA_DIR = process.env.RC_DATA_DIR || path.join(os.homedir(), '.research-companion')
+const LOG_PATH = path.join(DATA_DIR, 'logs', 'backend.log')
+const MAX_RESTARTS_PER_MINUTE = 3
 
 let backend = null
 let backendConfig = null
+let spawnArgs = null // { port, token }, reused on restart so the window's config stays valid
+let restartTimes = []
+let quitting = false
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -35,22 +42,59 @@ function pythonExecutable() {
   return fs.existsSync(venv) ? venv : process.platform === 'win32' ? 'python' : 'python3'
 }
 
+// Backend output goes to the terminal and to a log file, so a failure can be diagnosed
+// after the fact (the terminal may be closed or scrolled away).
+function log(text) {
+  process.stdout.write(text)
+  try {
+    fs.appendFileSync(LOG_PATH, text)
+  } catch {
+    /* logging must never take the app down */
+  }
+}
+
+function spawnBackend() {
+  const { port, token } = spawnArgs
+  fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true })
+  log(`\n=== backend starting ${new Date().toISOString()} on port ${port} ===\n`)
+  backend = spawn(
+    pythonExecutable(),
+    ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)],
+    {
+      cwd: BACKEND_DIR,
+      // RC_PARENT_PID: the backend exits by itself if this app dies without cleaning up.
+      env: { ...process.env, RC_API_TOKEN: token, RC_PARENT_PID: String(process.pid) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // Its own hidden console: a Ctrl+C or close in the terminal that launched the app
+      // used to kill the backend silently while the window stayed open.
+      detached: true,
+      windowsHide: true,
+    },
+  )
+  backend.stdout.on('data', (d) => log(d.toString()))
+  backend.stderr.on('data', (d) => log(d.toString()))
+  backend.on('exit', (code, signal) => {
+    backend = null
+    log(`=== backend exited (code ${code}, signal ${signal}) ===\n`)
+    if (quitting) return
+    const now = Date.now()
+    restartTimes = restartTimes.filter((t) => now - t < 60_000)
+    if (restartTimes.length >= MAX_RESTARTS_PER_MINUTE) {
+      log(`=== backend keeps exiting; not restarting again. Details above in ${LOG_PATH} ===\n`)
+      return
+    }
+    restartTimes.push(now)
+    setTimeout(() => !quitting && spawnBackend(), 1000)
+  })
+}
+
 async function startBackend() {
   if (process.env.RC_BACKEND_URL) {
     return { baseUrl: process.env.RC_BACKEND_URL.replace(/\/$/, ''), token: '' }
   }
-  const port = await freePort()
-  const token = crypto.randomBytes(24).toString('hex')
-  backend = spawn(
-    pythonExecutable(),
-    ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)],
-    { cwd: BACKEND_DIR, env: { ...process.env, RC_API_TOKEN: token }, stdio: 'inherit' },
-  )
-  backend.on('exit', (code) => {
-    backend = null
-    if (code) console.error(`[backend] exited with code ${code}`)
-  })
-  return { baseUrl: `http://127.0.0.1:${port}`, token }
+  spawnArgs = { port: await freePort(), token: crypto.randomBytes(24).toString('hex') }
+  spawnBackend()
+  return { baseUrl: `http://127.0.0.1:${spawnArgs.port}`, token: spawnArgs.token, logPath: LOG_PATH }
 }
 
 function createWindow() {
@@ -72,23 +116,35 @@ function createWindow() {
   if (process.env.RC_SMOKE_TEST) win.webContents.once('did-finish-load', smokeTest)
 }
 
-// `npm run smoke`: confirm the window loads and the spawned backend answers an
-// authenticated request, then quit.
+// `npm run smoke`: confirm the window loads, the spawned backend answers an authenticated
+// request and rejects an unauthenticated one, and comes back by itself after being killed.
 async function smokeTest() {
   const { baseUrl, token } = backendConfig
-  for (let i = 0; i < 120; i++) {
-    try {
-      const res = await fetch(`${baseUrl}/documents`, { headers: { 'x-rc-token': token } })
-      const noToken = await fetch(`${baseUrl}/documents`)
-      console.log(`[smoke] window loaded; backend ${res.status} with token, ${noToken.status} without`)
-      process.exitCode = res.ok && noToken.status === 401 ? 0 : 1
-      return app.quit()
-    } catch {
-      await new Promise((r) => setTimeout(r, 1000))
+  const authed = async () => {
+    for (let i = 0; i < 120; i++) {
+      try {
+        return await fetch(`${baseUrl}/documents`, { headers: { 'x-rc-token': token } })
+      } catch {
+        await new Promise((r) => setTimeout(r, 1000))
+      }
     }
+    return null
   }
-  console.log('[smoke] backend never became ready')
-  process.exitCode = 1
+  const first = await authed()
+  const noToken = first && (await fetch(`${baseUrl}/documents`))
+  console.log(`[smoke] window loaded; backend ${first?.status} with token, ${noToken?.status} without`)
+  let ok = !!first?.ok && noToken.status === 401
+  if (ok) {
+    const oldPid = backend.pid
+    backend.kill()
+    await new Promise((r) => setTimeout(r, 500))
+    const again = await authed()
+    const restarted = !!again?.ok && backend && backend.pid !== oldPid
+    console.log(`[smoke] backend killed and restarted on the same port: ${restarted}`)
+    ok = restarted
+  }
+  console.log(`[smoke] log file: ${LOG_PATH} (${fs.existsSync(LOG_PATH) ? 'written' : 'missing'})`)
+  process.exitCode = ok && fs.existsSync(LOG_PATH) ? 0 : 1
   app.quit()
 }
 
@@ -133,5 +189,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('will-quit', () => {
+  quitting = true
   if (backend) backend.kill()
 })

@@ -22,13 +22,25 @@ function config() {
   return configPromise
 }
 
+/** The backend didn't answer at all (not running, or restarting), as opposed to an error reply. */
+export class BackendUnreachable extends Error {
+  constructor() {
+    super("Can't reach the backend. It restarts automatically; try again in a few seconds.")
+  }
+}
+
 async function send(method: string, path: string, body?: unknown): Promise<Response> {
   const { baseUrl, token } = await config()
-  const res = await fetch(baseUrl + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', 'x-rc-token': token },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  let res: Response
+  try {
+    res = await fetch(baseUrl + path, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'x-rc-token': token },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch {
+    throw new BackendUnreachable() // the browser's own message is just "Failed to fetch"
+  }
   if (!res.ok) {
     let detail = res.statusText
     try {
@@ -43,6 +55,11 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   return (await send(method, path, body)).json() as Promise<T>
+}
+
+/** Where the desktop app writes backend output (empty outside Electron). */
+export async function backendLogPath(): Promise<string> {
+  return ((await config()) as { logPath?: string }).logPath ?? ''
 }
 
 export const api = {

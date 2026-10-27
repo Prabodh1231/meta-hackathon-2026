@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from .export_docx import export_docx
 from .library import Library
+from .parent_watch import exit_with_parent
 from .settings import Settings
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -93,6 +94,8 @@ class DraftDocIn(BaseModel):
 
 def create_app(settings: Settings | None = None, library: Library | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
+    if settings.parent_pid:
+        exit_with_parent(settings.parent_pid)
     lib = library or Library(settings)
     app = FastAPI(title="Research Companion")
     app.state.library = lib

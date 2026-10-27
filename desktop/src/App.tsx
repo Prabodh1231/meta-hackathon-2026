@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from './api'
+import { api, backendLogPath } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
 import { CitePanel, type CiteRequest } from './components/CitePanel'
 import { ExportControl } from './components/ExportControl'
@@ -77,6 +77,28 @@ export default function App() {
     }
   }, [refresh])
 
+  // Once running, keep an eye on the backend so an outage shows in the header instead of
+  // surfacing only as errors on the next click. The desktop app restarts it automatically.
+  const [offline, setOffline] = useState(false)
+  const [logPath, setLogPath] = useState('')
+  const started = health !== null
+  useEffect(() => {
+    if (!started) return
+    backendLogPath().then(setLogPath)
+    let wasOffline = false
+    const timer = window.setInterval(async () => {
+      try {
+        await api.health()
+        if (wasOffline) await refresh() // back after a restart: reload what may have changed
+        wasOffline = false
+      } catch {
+        wasOffline = true
+      }
+      setOffline(wasOffline)
+    }, 4000)
+    return () => window.clearInterval(timer)
+  }, [started, refresh])
+
   function openCitation(c: Citation) {
     setSource({
       cid: c.cid,
@@ -130,9 +152,15 @@ export default function App() {
         <header className="panel-head">
           <div>
             <h2>Draft</h2>
-            <span className="muted">
-              {health ? `model: ${health.provider} · embeddings: ${health.embedder}` : 'Starting backend…'}
-            </span>
+            {offline ? (
+              <span className="offline" title={logPath ? `Backend log: ${logPath}` : undefined}>
+                Backend offline, reconnecting…
+              </span>
+            ) : (
+              <span className="muted">
+                {health ? `model: ${health.provider} · embeddings: ${health.embedder}` : 'Starting backend…'}
+              </span>
+            )}
           </div>
           <div className="head-actions">
             <ExportControl

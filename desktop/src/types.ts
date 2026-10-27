@@ -105,7 +105,7 @@ export interface Settings {
 declare global {
   interface Window {
     rc?: {
-      config: () => Promise<{ baseUrl: string; token: string }>
+      config: () => Promise<{ baseUrl: string; token: string; logPath?: string }>
       pickFiles: () => Promise<string[]>
       pickFolder: () => Promise<string | null>
       saveFile: (defaultName: string, data: ArrayBuffer) => Promise<string | null>
