@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
+import { ExportControl } from './components/ExportControl'
 import { LibraryPanel } from './components/LibraryPanel'
 import { ReferencesPanel } from './components/ReferencesPanel'
 import { SourceViewer, type SourceTarget } from './components/SourceViewer'
@@ -99,10 +100,17 @@ export default function App() {
 
       <main className="writing">
         <header className="panel-head">
-          <h2>Draft</h2>
-          <span className="muted">
-            {health ? `model: ${health.provider} · embeddings: ${health.embedder}` : 'Starting backend…'}
-          </span>
+          <div>
+            <h2>Draft</h2>
+            <span className="muted">
+              {health ? `model: ${health.provider} · embeddings: ${health.embedder}` : 'Starting backend…'}
+            </span>
+          </div>
+          <ExportControl
+            getJSON={() => editor.current?.getJSON() ?? null}
+            getTitle={() => editor.current?.getTitle() ?? 'Untitled'}
+            onError={onError}
+          />
         </header>
         <WritingEditor ref={editor} onCitationClick={openChip} onError={onError} />
       </main>

@@ -70,7 +70,14 @@ export interface WritingEditorHandle {
   /** Bring one chip up to date with the library and return its current attributes. */
   resolveChip: (chip: ChipAttrs) => Promise<ChipAttrs>
   getText: () => string
+  getJSON: () => JSONContent | null
+  /** First non-empty line, used as the draft's title. */
+  getTitle: () => string
   citedDocIds: () => number[]
+}
+
+function titleOf(editor: Editor): string {
+  return (editor.getText().split('\n').find((l) => l.trim()) ?? 'Untitled').trim().slice(0, 80)
 }
 
 interface Props {
@@ -102,8 +109,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       if (!loaded.current) return
       window.clearTimeout(saveTimer.current)
       saveTimer.current = window.setTimeout(() => {
-        const first = editor.getText().split('\n').find((l) => l.trim()) ?? 'Untitled'
-        api.saveDraft(DRAFT_ID, first.slice(0, 80), JSON.stringify(editor.getJSON())).catch((e) => onError(String(e)))
+        api.saveDraft(DRAFT_ID, titleOf(editor), JSON.stringify(editor.getJSON())).catch((e) => onError(String(e)))
       }, 800)
     },
   })
@@ -172,6 +178,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       },
 
       getText: () => editor?.getText() ?? '',
+      getJSON: () => editor?.getJSON() ?? null,
+      getTitle: () => (editor ? titleOf(editor) : 'Untitled'),
 
       citedDocIds() {
         const ids: number[] = []

@@ -1,10 +1,11 @@
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from .export_docx import export_docx
 from .library import Library
 from .settings import Settings
 
@@ -68,6 +69,15 @@ class ResolveIn(BaseModel):
 class ReferencesIn(BaseModel):
     doc_ids: list[int]
     style: str = "apa"
+
+
+class ExportIn(BaseModel):
+    content: dict  # the editor's document JSON
+    style: str = "apa"
+    title: str = ""
+
+
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 class DraftDocIn(BaseModel):
@@ -174,6 +184,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/references")
     def references(body: ReferencesIn):
         return lib.references(body.doc_ids, body.style)
+
+    @app.post("/export/docx")
+    def export(body: ExportIn):
+        data = export_docx(lib, body.content, body.style, body.title)
+        return Response(data, media_type=DOCX_MIME, headers={"Content-Disposition": 'attachment; filename="draft.docx"'})
 
     @app.get("/drafts/{draft_id}")
     def get_draft(draft_id: int):

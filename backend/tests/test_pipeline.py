@@ -216,3 +216,5 @@ def test_reference_styles():
     assert format_references([doc], "mla")[0].startswith("Doe, Jane Q., et al. “A Study.” Nature, 2020.")
     assert format_references([doc], "ieee")[0].startswith("[1] J. Q. Doe, J. Smith, and L. Wei, “A Study,” Nature, 2020.")
     assert format_references([doc], "bibtex")[0].startswith("@article{doe2020study,")
+    undated = {**doc, "year": None, "doi": ""}
+    assert format_references([undated], "ieee")[0].endswith("Nature, n.d.")

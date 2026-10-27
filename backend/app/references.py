@@ -92,7 +92,7 @@ def ieee(doc: dict, n: int) -> str:
         parts.append(f"{doc['venue']},")
     if _pp(doc):
         parts.append(f"{_pp(doc)},")
-    parts.append(f"{doc.get('year') or 'n.d.'}.")
+    parts.append(f"{doc['year']}." if doc.get("year") else "n.d.")
     if doc.get("doi"):
         parts.append(f"doi: {doc['doi']}.")
     elif doc.get("url"):

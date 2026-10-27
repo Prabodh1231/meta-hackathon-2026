@@ -121,6 +121,10 @@ textarea { width: 100%; resize: vertical; }
 /* Editor */
 .writing { display: flex; flex-direction: column; min-width: 0; padding: 0 32px; }
 .editor-wrap { flex: 1; overflow-y: auto; }
+.writing .panel-head { align-items: center; gap: 12px; }
+.writing .panel-head > div:first-child { display: flex; flex-direction: column; min-width: 0; }
+.export { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.export .saved { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prose {
   max-width: 760px; margin: 0 auto; min-height: 100%;
   padding: 24px 0 120px; outline: none; font-size: 16px; line-height: 1.7;

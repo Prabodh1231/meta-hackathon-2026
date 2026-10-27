@@ -109,6 +109,17 @@ ipcMain.handle('rc:pick-folder', async (event) => {
   return res.canceled ? null : res.filePaths[0]
 })
 
+// The renderer can't touch the filesystem, so it hands exported bytes here to save.
+ipcMain.handle('rc:save-file', async (event, defaultName, data) => {
+  const res = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+    defaultPath: defaultName,
+    filters: [{ name: 'Word document', extensions: ['docx'] }],
+  })
+  if (res.canceled || !res.filePath) return null
+  await fs.promises.writeFile(res.filePath, Buffer.from(data))
+  return res.filePath
+})
+
 app.whenReady().then(async () => {
   backendConfig = await startBackend()
   createWindow()

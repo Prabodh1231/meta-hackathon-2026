@@ -90,6 +90,7 @@ export interface Health {
 }
 
 export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
+export type DocxStyle = Exclude<RefStyle, 'bibtex'>
 
 declare global {
   interface Window {
@@ -97,6 +98,7 @@ declare global {
       config: () => Promise<{ baseUrl: string; token: string }>
       pickFiles: () => Promise<string[]>
       pickFolder: () => Promise<string | null>
+      saveFile: (defaultName: string, data: ArrayBuffer) => Promise<string | null>
     }
   }
 }

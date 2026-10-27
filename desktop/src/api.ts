@@ -1,6 +1,7 @@
 import type {
   Citation,
   Doc,
+  DocxStyle,
   DraftResult,
   Health,
   IngestResult,
@@ -19,7 +20,7 @@ function config() {
   return configPromise
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function send(method: string, path: string, body?: unknown): Promise<Response> {
   const { baseUrl, token } = await config()
   const res = await fetch(baseUrl + path, {
     method,
@@ -35,7 +36,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     }
     throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
   }
-  return res.json() as Promise<T>
+  return res
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return (await send(method, path, body)).json() as Promise<T>
 }
 
 export const api = {
@@ -63,6 +68,9 @@ export const api = {
     request<(ResolvedCitation | null)[]>('POST', '/citations/resolve', { items }),
   references: (docIds: number[], style: RefStyle) =>
     request<{ style: RefStyle; entries: string[] }>('POST', '/references', { doc_ids: docIds, style }),
+
+  exportDocx: async (content: unknown, style: DocxStyle, title: string) =>
+    (await send('POST', '/export/docx', { content, style, title })).arrayBuffer(),
 
   getDraft: (id: number) => request<{ id: number; title: string; content: string }>('GET', `/drafts/${id}`),
   saveDraft: (id: number, title: string, content: string) => request('PUT', `/drafts/${id}`, { title, content }),
