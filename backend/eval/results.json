@@ -1,0 +1,273 @@
+{
+  "dense (before)": {
+    "overall": {
+      "R@1": 0.8181818181818182,
+      "R@3": 0.9318181818181818,
+      "MRR": 0.8852272727272728
+    },
+    "by_type": {
+      "keyword": {
+        "R@1": 0.9166666666666666,
+        "R@3": 0.9166666666666666,
+        "MRR": 0.9166666666666666
+      },
+      "paraphrase": {
+        "R@1": 0.75,
+        "R@3": 1.0,
+        "MRR": 0.875
+      },
+      "precision": {
+        "R@1": 0.75,
+        "R@3": 0.8333333333333334,
+        "MRR": 0.8291666666666666
+      },
+      "identifier": {
+        "R@1": 0.875,
+        "R@3": 1.0,
+        "MRR": 0.9375
+      }
+    },
+    "ms_per_query": 4.759656817027876,
+    "misses": [
+      "3-back accuracy after 36 hours awake",
+      "Does playing back learning-related noises while someone is in deep sleep help them remember?",
+      "Can people judge for themselves how likely they are to slip up when tired?",
+      "How fast do the microbes living on a coral change after a heat event?",
+      "Does cueing memories during REM sleep improve recall?",
+      "Has memory cueing during sleep been tested in people over 65?",
+      "Why is symbiont shuffling uncommon in deeper corals?",
+      "cohort B3"
+    ]
+  },
+  "keyword (BM25)": {
+    "overall": {
+      "R@1": 0.75,
+      "R@3": 0.8409090909090909,
+      "MRR": 0.8049242424242423
+    },
+    "by_type": {
+      "keyword": {
+        "R@1": 0.9166666666666666,
+        "R@3": 1.0,
+        "MRR": 0.9583333333333334
+      },
+      "paraphrase": {
+        "R@1": 0.3333333333333333,
+        "R@3": 0.4166666666666667,
+        "MRR": 0.40972222222222227
+      },
+      "precision": {
+        "R@1": 0.8333333333333334,
+        "R@3": 1.0,
+        "MRR": 0.9166666666666666
+      },
+      "identifier": {
+        "R@1": 1.0,
+        "R@3": 1.0,
+        "MRR": 1.0
+      }
+    },
+    "ms_per_query": 0.23992500196486205,
+    "misses": [
+      "3-back accuracy after 36 hours awake",
+      "Does playing back learning-related noises while someone is in deep sleep help them remember?",
+      "Can people judge for themselves how likely they are to slip up when tired?",
+      "Does a full night of rest afterwards undo the damage from staying up?",
+      "Did earlier warm-water exposure make reefs hardier later on?",
+      "Will reef whitening happen every year in the future?",
+      "How fast do the microbes living on a coral change after a heat event?",
+      "Was the experiment large enough statistically?",
+      "Where must we keep the recordings of volunteers?",
+      "Does cueing memories during REM sleep improve recall?",
+      "How do spindles relate to whether a cued memory is remembered?"
+    ]
+  },
+  "hybrid (RRF)": {
+    "overall": {
+      "R@1": 0.7727272727272727,
+      "R@3": 0.9090909090909091,
+      "MRR": 0.8556818181818181
+    },
+    "by_type": {
+      "keyword": {
+        "R@1": 0.9166666666666666,
+        "R@3": 0.9166666666666666,
+        "MRR": 0.9375
+      },
+      "paraphrase": {
+        "R@1": 0.4166666666666667,
+        "R@3": 0.75,
+        "MRR": 0.6166666666666667
+      },
+      "precision": {
+        "R@1": 0.8333333333333334,
+        "R@3": 1.0,
+        "MRR": 0.9166666666666666
+      },
+      "identifier": {
+        "R@1": 1.0,
+        "R@3": 1.0,
+        "MRR": 1.0
+      }
+    },
+    "ms_per_query": 4.888761365939651,
+    "misses": [
+      "3-back accuracy after 36 hours awake",
+      "Does playing back learning-related noises while someone is in deep sleep help them remember?",
+      "Can people judge for themselves how likely they are to slip up when tired?",
+      "Does a full night of rest afterwards undo the damage from staying up?",
+      "Did earlier warm-water exposure make reefs hardier later on?",
+      "How fast do the microbes living on a coral change after a heat event?",
+      "Was the experiment large enough statistically?",
+      "Where must we keep the recordings of volunteers?",
+      "Does cueing memories during REM sleep improve recall?",
+      "Has memory cueing during sleep been tested in people over 65?"
+    ]
+  },
+  "dense + ms-marco-MiniLM-L-6-v2": {
+    "overall": {
+      "R@1": 0.9090909090909091,
+      "R@3": 0.9772727272727273,
+      "MRR": 0.9401515151515152
+    },
+    "by_type": {
+      "keyword": {
+        "R@1": 0.9166666666666666,
+        "R@3": 1.0,
+        "MRR": 0.9583333333333334
+      },
+      "paraphrase": {
+        "R@1": 0.8333333333333334,
+        "R@3": 0.9166666666666666,
+        "MRR": 0.8777777777777778
+      },
+      "precision": {
+        "R@1": 0.9166666666666666,
+        "R@3": 1.0,
+        "MRR": 0.9444444444444445
+      },
+      "identifier": {
+        "R@1": 1.0,
+        "R@3": 1.0,
+        "MRR": 1.0
+      }
+    },
+    "ms_per_query": 476.9399909081668,
+    "misses": [
+      "3-back accuracy after 36 hours awake",
+      "Does playing back learning-related noises while someone is in deep sleep help them remember?",
+      "How fast do the microbes living on a coral change after a heat event?",
+      "Does cueing memories during REM sleep improve recall?"
+    ]
+  },
+  "hybrid + ms-marco-MiniLM-L-6-v2": {
+    "overall": {
+      "R@1": 0.9090909090909091,
+      "R@3": 0.9772727272727273,
+      "MRR": 0.9401515151515152
+    },
+    "by_type": {
+      "keyword": {
+        "R@1": 0.9166666666666666,
+        "R@3": 1.0,
+        "MRR": 0.9583333333333334
+      },
+      "paraphrase": {
+        "R@1": 0.8333333333333334,
+        "R@3": 0.9166666666666666,
+        "MRR": 0.8777777777777778
+      },
+      "precision": {
+        "R@1": 0.9166666666666666,
+        "R@3": 1.0,
+        "MRR": 0.9444444444444445
+      },
+      "identifier": {
+        "R@1": 1.0,
+        "R@3": 1.0,
+        "MRR": 1.0
+      }
+    },
+    "ms_per_query": 462.5959227262435,
+    "misses": [
+      "3-back accuracy after 36 hours awake",
+      "Does playing back learning-related noises while someone is in deep sleep help them remember?",
+      "How fast do the microbes living on a coral change after a heat event?",
+      "Does cueing memories during REM sleep improve recall?"
+    ]
+  },
+  "dense + ms-marco-MiniLM-L-12-v2": {
+    "overall": {
+      "R@1": 0.8863636363636364,
+      "R@3": 0.9545454545454546,
+      "MRR": 0.9318181818181818
+    },
+    "by_type": {
+      "keyword": {
+        "R@1": 0.9166666666666666,
+        "R@3": 1.0,
+        "MRR": 0.9583333333333334
+      },
+      "paraphrase": {
+        "R@1": 0.75,
+        "R@3": 0.8333333333333334,
+        "MRR": 0.8333333333333334
+      },
+      "precision": {
+        "R@1": 0.9166666666666666,
+        "R@3": 1.0,
+        "MRR": 0.9583333333333334
+      },
+      "identifier": {
+        "R@1": 1.0,
+        "R@3": 1.0,
+        "MRR": 1.0
+      }
+    },
+    "ms_per_query": 780.4118545444164,
+    "misses": [
+      "3-back accuracy after 36 hours awake",
+      "Does playing back learning-related noises while someone is in deep sleep help them remember?",
+      "Can people judge for themselves how likely they are to slip up when tired?",
+      "How fast do the microbes living on a coral change after a heat event?",
+      "Does cueing memories during REM sleep improve recall?"
+    ]
+  },
+  "hybrid + ms-marco-MiniLM-L-12-v2": {
+    "overall": {
+      "R@1": 0.8863636363636364,
+      "R@3": 0.9545454545454546,
+      "MRR": 0.9318181818181818
+    },
+    "by_type": {
+      "keyword": {
+        "R@1": 0.9166666666666666,
+        "R@3": 1.0,
+        "MRR": 0.9583333333333334
+      },
+      "paraphrase": {
+        "R@1": 0.75,
+        "R@3": 0.8333333333333334,
+        "MRR": 0.8333333333333334
+      },
+      "precision": {
+        "R@1": 0.9166666666666666,
+        "R@3": 1.0,
+        "MRR": 0.9583333333333334
+      },
+      "identifier": {
+        "R@1": 1.0,
+        "R@3": 1.0,
+        "MRR": 1.0
+      }
+    },
+    "ms_per_query": 738.9596863636556,
+    "misses": [
+      "3-back accuracy after 36 hours awake",
+      "Does playing back learning-related noises while someone is in deep sleep help them remember?",
+      "Can people judge for themselves how likely they are to slip up when tired?",
+      "How fast do the microbes living on a coral change after a heat event?",
+      "Does cueing memories during REM sleep improve recall?"
+    ]
+  }
+}

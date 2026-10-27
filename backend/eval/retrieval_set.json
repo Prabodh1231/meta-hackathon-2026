@@ -1,0 +1,110 @@
+{
+  "description": "Retrieval test set: a small, deliberately overlapping research library (sleep/memory, coral reefs, RAG notes, lab notebook, meeting minutes). Each passage is ingested as its own document so a hit is judged at passage level. Every query has exactly one gold passage, identified by a substring that appears nowhere else. Query types: keyword = exact identifiers, numbers or names; paraphrase = little or no word overlap with the answer; precision = several passages share the keywords, only one answers; identifier = the query is just a code or name with no context words (this group was added after the first run, which showed the keyword group always had semantic words around the identifier).",
+  "documents": {
+    "tmr_spindles_study": [
+      "We tested whether replaying sounds linked to learned word pairs during slow-wave sleep strengthens declarative memory. Sixty-two undergraduates learned 120 word pairs, each paired with a unique sound, before an overnight session in the sleep lab.",
+      "During slow-wave sleep, half of the sounds were replayed at low volume. Participants recalled cued pairs better than uncued pairs the next morning, with an average advantage of 11 percent.",
+      "The benefit depended on sleep spindles. Cues followed within two seconds by a spindle burst were remembered far more often than cues that produced no spindle.",
+      "Replaying the same sounds during REM sleep in a control group produced no measurable advantage for cued items.",
+      "Items that were weakly learned before sleep gained the most from reactivation, whereas strongly encoded pairs showed a ceiling effect."
+    ],
+    "aging_sleep_review": [
+      "Older adults spend markedly less time in slow-wave sleep than young adults, and the decline begins in middle age.",
+      "Spindle density falls by roughly a third between the third and seventh decades of life, which may explain part of the age-related loss in overnight memory retention.",
+      "Atrophy of the medial prefrontal cortex correlates with reduced slow-wave activity, linking structural brain changes to sleep quality in elderly participants.",
+      "Only two small studies have tried cueing memories during sleep in people over sixty-five, and neither found a reliable benefit.",
+      "Acoustic stimulation timed to slow oscillation up-states can boost slow waves in older listeners, but effects on memory remain inconsistent across labs."
+    ],
+    "sleep_deprivation_wm": [
+      "Forty adults stayed awake for 36 hours under supervision before completing an n-back task.",
+      "Accuracy on the 3-back condition dropped by 14 percent after deprivation, while the 1-back condition was largely unaffected.",
+      "Caffeine at 200 mg restored reaction times but did not restore accuracy on the hardest working memory load.",
+      "Recovery sleep of eight hours returned performance to baseline in most participants, although two individuals still showed deficits.",
+      "Self-rated sleepiness was a poor predictor of who would make the most errors."
+    ],
+    "coral_acclimation": [
+      "Marine heatwaves in 2016 and 2017 caused mass bleaching along the Great Barrier Reef.",
+      "Reefs exposed to moderate heat stress in 2016 lost 31 percent fewer corals when the 2017 heatwave arrived.",
+      "The protective effect vanished once heat stress exceeded eight degree heating weeks.",
+      "Branching Acropora colonies bleached first and died fastest, while massive Porites colonies mostly recovered.",
+      "Projections suggest severe bleaching will become an annual event on most reefs by 2050."
+    ],
+    "coral_symbionts": [
+      "Corals host single-celled algae of the family Symbiodiniaceae that supply most of their energy.",
+      "After bleaching, some colonies were recolonized by the heat-tolerant genus Durusdinium, which raised their thermal threshold by about one degree Celsius.",
+      "The tolerance came at a cost: colonies dominated by Durusdinium grew 38 percent more slowly than those hosting Cladocopium.",
+      "Shuffling was rare in colonies deeper than ten metres, where water stays cooler during heatwaves.",
+      "Microbiome sequencing found that bacterial communities shifted within days of bleaching, long before algal symbionts changed."
+    ],
+    "rag_notes": [
+      "Retrieval-augmented generation lets a language model answer from documents it was not trained on by fetching relevant passages at query time.",
+      "Dense retrievers embed queries and passages into the same vector space, but they often miss exact identifiers such as product codes or gene names.",
+      "BM25 keyword search handles rare terms well but cannot match paraphrases that share no words with the query.",
+      "Combining both with reciprocal rank fusion is a common, robust baseline.",
+      "A cross-encoder reranker reads each query and passage together and usually improves the ordering of the top results, at the price of extra latency."
+    ],
+    "lab_notebook": [
+      "Protocol P-17 replaced the old cueing script; volume is now fixed at 42 dB and cues stop if an arousal is detected.",
+      "Cohort B3 had to be excluded after the EEG amplifier logged corrupted files on nights four through six.",
+      "Participant S-208 reported hearing the cues, so their data were moved to the awareness-check analysis.",
+      "The Hypnodyne headband underestimated slow-wave sleep by about twenty minutes compared with lab polysomnography.",
+      "Ethics amendment EA-2024-031 was approved, allowing us to recruit adults up to age seventy-five."
+    ],
+    "meeting_notes": [
+      "We agreed that the next study should test whether boosting spindles with closed-loop audio can rescue memory reactivation in older adults.",
+      "Funding from the Wellcome pilot scheme ends in June, so data collection must finish by April.",
+      "Reviewer two asked for a power analysis; the current sample of sixty-two gives about eighty percent power for a medium effect.",
+      "The reef team will share their temperature logger pipeline so we can reuse it for ambient bedroom monitoring.",
+      "Everyone should move raw files to the encrypted lab drive; personal laptops are no longer allowed for participant data."
+    ]
+  },
+  "queries": [
+    {"type": "keyword", "q": "What changed in protocol P-17?", "answer": "Protocol P-17 replaced the old cueing script"},
+    {"type": "keyword", "q": "Why was cohort B3 excluded?", "answer": "Cohort B3 had to be excluded"},
+    {"type": "keyword", "q": "What happened with participant S-208?", "answer": "Participant S-208 reported hearing the cues"},
+    {"type": "keyword", "q": "What did ethics amendment EA-2024-031 allow?", "answer": "Ethics amendment EA-2024-031 was approved"},
+    {"type": "keyword", "q": "How accurate is the Hypnodyne headband?", "answer": "The Hypnodyne headband underestimated"},
+    {"type": "keyword", "q": "Durusdinium growth cost", "answer": "grew 38 percent more slowly"},
+    {"type": "keyword", "q": "Effect of 200 mg caffeine", "answer": "Caffeine at 200 mg restored reaction times"},
+    {"type": "keyword", "q": "3-back accuracy after 36 hours awake", "answer": "Accuracy on the 3-back condition dropped by 14 percent"},
+    {"type": "keyword", "q": "Wellcome pilot scheme deadline", "answer": "Funding from the Wellcome pilot scheme ends in June"},
+    {"type": "keyword", "q": "Acropora versus Porites", "answer": "Branching Acropora colonies bleached first"},
+    {"type": "keyword", "q": "What does BM25 struggle with?", "answer": "BM25 keyword search handles rare terms well"},
+    {"type": "keyword", "q": "medial prefrontal cortex atrophy", "answer": "Atrophy of the medial prefrontal cortex correlates"},
+
+    {"type": "paraphrase", "q": "Does playing back learning-related noises while someone is in deep sleep help them remember?", "answer": "with an average advantage of 11 percent"},
+    {"type": "paraphrase", "q": "Do elderly people get less deep sleep?", "answer": "Older adults spend markedly less time in slow-wave sleep"},
+    {"type": "paraphrase", "q": "Can people judge for themselves how likely they are to slip up when tired?", "answer": "Self-rated sleepiness was a poor predictor"},
+    {"type": "paraphrase", "q": "Does a full night of rest afterwards undo the damage from staying up?", "answer": "Recovery sleep of eight hours returned performance to baseline"},
+    {"type": "paraphrase", "q": "Did earlier warm-water exposure make reefs hardier later on?", "answer": "lost 31 percent fewer corals"},
+    {"type": "paraphrase", "q": "Is there a ceiling on how much heat that protection can handle?", "answer": "The protective effect vanished once heat stress exceeded"},
+    {"type": "paraphrase", "q": "Will reef whitening happen every year in the future?", "answer": "annual event on most reefs by 2050"},
+    {"type": "paraphrase", "q": "Where do corals get most of their food energy from?", "answer": "supply most of their energy"},
+    {"type": "paraphrase", "q": "How fast do the microbes living on a coral change after a heat event?", "answer": "bacterial communities shifted within days of bleaching"},
+    {"type": "paraphrase", "q": "How can a chatbot answer questions about files it never saw during training?", "answer": "lets a language model answer from documents it was not trained on"},
+    {"type": "paraphrase", "q": "Was the experiment large enough statistically?", "answer": "the current sample of sixty-two gives about eighty percent power"},
+    {"type": "paraphrase", "q": "Where must we keep the recordings of volunteers?", "answer": "move raw files to the encrypted lab drive"},
+
+    {"type": "precision", "q": "Does cueing memories during REM sleep improve recall?", "answer": "Replaying the same sounds during REM sleep in a control group"},
+    {"type": "precision", "q": "Has memory cueing during sleep been tested in people over 65?", "answer": "Only two small studies have tried cueing memories during sleep"},
+    {"type": "precision", "q": "Which items benefit most from reactivation during sleep?", "answer": "Items that were weakly learned before sleep gained the most"},
+    {"type": "precision", "q": "How do spindles relate to whether a cued memory is remembered?", "answer": "Cues followed within two seconds by a spindle burst"},
+    {"type": "precision", "q": "How much does spindle density decline with age?", "answer": "Spindle density falls by roughly a third"},
+    {"type": "precision", "q": "Does acoustic stimulation of slow waves help memory in older adults?", "answer": "Acoustic stimulation timed to slow oscillation up-states"},
+    {"type": "precision", "q": "What is the planned next study on spindles in older adults?", "answer": "boosting spindles with closed-loop audio can rescue memory reactivation"},
+    {"type": "precision", "q": "Why is symbiont shuffling uncommon in deeper corals?", "answer": "Shuffling was rare in colonies deeper than ten metres"},
+    {"type": "precision", "q": "How much does Durusdinium raise heat tolerance?", "answer": "raised their thermal threshold by about one degree Celsius"},
+    {"type": "precision", "q": "Which heatwaves caused mass bleaching on the Great Barrier Reef?", "answer": "Marine heatwaves in 2016 and 2017 caused mass bleaching"},
+    {"type": "precision", "q": "What do dense retrievers get wrong?", "answer": "they often miss exact identifiers"},
+    {"type": "precision", "q": "What is the downside of a cross-encoder reranker?", "answer": "at the price of extra latency"},
+
+    {"type": "identifier", "q": "S-208", "answer": "Participant S-208 reported hearing the cues"},
+    {"type": "identifier", "q": "EA-2024-031", "answer": "Ethics amendment EA-2024-031 was approved"},
+    {"type": "identifier", "q": "cohort B3", "answer": "Cohort B3 had to be excluded"},
+    {"type": "identifier", "q": "P-17", "answer": "Protocol P-17 replaced the old cueing script"},
+    {"type": "identifier", "q": "Hypnodyne", "answer": "The Hypnodyne headband underestimated"},
+    {"type": "identifier", "q": "Cladocopium", "answer": "grew 38 percent more slowly"},
+    {"type": "identifier", "q": "Symbiodiniaceae", "answer": "supply most of their energy"},
+    {"type": "identifier", "q": "Porites", "answer": "Branching Acropora colonies bleached first"}
+  ]
+}

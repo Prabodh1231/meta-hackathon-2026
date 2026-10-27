@@ -8,6 +8,9 @@ class Settings:
     data_dir: Path
     provider: str = "mock"  # mock | muse
     embedder: str = "auto"  # auto | fastembed | hash
+    # Cross-encoder reranker: auto | none | a fastembed model name. "none" by default here
+    # (tests, scripts); from_env() defaults to "auto" so the app uses it.
+    reranker: str = "none"
     api_token: str = ""  # set by Electron per launch; empty disables the check
     parent_pid: int = 0  # set by Electron; the backend exits when that process does
     muse_api_base: str = ""
@@ -25,6 +28,7 @@ class Settings:
             data_dir=Path(env("RC_DATA_DIR") or Path.home() / ".research-companion"),
             provider=env("RC_PROVIDER", "mock").lower(),
             embedder=env("RC_EMBEDDER", "auto").lower(),
+            reranker=env("RC_RERANKER", "auto"),
             api_token=env("RC_API_TOKEN", ""),
             parent_pid=int(env("RC_PARENT_PID") or 0),
             muse_api_base=env("MUSE_API_BASE", ""),

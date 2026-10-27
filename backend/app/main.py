@@ -126,7 +126,8 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.get("/health")
     def health():
-        return {"ok": True, "provider": lib.provider.name, "embedder": lib.embedder.id}
+        return {"ok": True, "provider": lib.provider.name, "embedder": lib.embedder.id,
+                "reranker": lib.reranker.id if lib.reranker else None}
 
     @app.post("/ingest/path")
     def ingest_path(body: IngestPathIn):

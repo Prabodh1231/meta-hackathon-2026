@@ -47,6 +47,21 @@ CREATE TABLE IF NOT EXISTS chunks (
   embedding BLOB
 );
 CREATE INDEX IF NOT EXISTS chunks_doc ON chunks(doc_id);
+-- Keyword index over chunk text (BM25), kept in sync with chunks by triggers. Porter
+-- stemming lets "bleached" match "bleaching"; identifiers like P-17 still match exactly.
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+  text, content='chunks', content_rowid='id', tokenize='porter unicode61'
+);
+CREATE TRIGGER IF NOT EXISTS chunks_fts_insert AFTER INSERT ON chunks BEGIN
+  INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS chunks_fts_delete AFTER DELETE ON chunks BEGIN
+  INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES ('delete', old.id, old.text);
+END;
+CREATE TRIGGER IF NOT EXISTS chunks_fts_update AFTER UPDATE OF text ON chunks BEGIN
+  INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES ('delete', old.id, old.text);
+  INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text);
+END;
 CREATE TABLE IF NOT EXISTS tags (
   doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   tag TEXT NOT NULL,
@@ -66,8 +81,12 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    had_fts = conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'chunks_fts'").fetchone()
     conn.executescript(SCHEMA)
     _migrate(conn)
+    if not had_fts:  # library from before keyword search: index the chunks it already has
+        conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')")
+        conn.commit()
     return conn
 
 

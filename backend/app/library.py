@@ -13,6 +13,7 @@ from .embeddings import Embedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
+from .retrieval import Reranker, fts_query, make_reranker, reciprocal_rank_fusion
 from .settings import Settings
 from .text_utils import sentence_spans
 from .topics import choose_k, jaccard, kmeans
@@ -27,14 +28,21 @@ USER_SETTINGS_CHOICES = {
 USER_SETTINGS_DEFAULTS = {k: v[0] for k, v in USER_SETTINGS_CHOICES.items()}
 
 
+_FROM_SETTINGS = object()
+
+
 class Library:
-    def __init__(self, settings: Settings, provider: LLMProvider | None = None, embedder: Embedder | None = None):
+    def __init__(self, settings: Settings, provider: LLMProvider | None = None, embedder: Embedder | None = None,
+                 reranker: "Reranker | None | object" = _FROM_SETTINGS):
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         self.settings = settings
         self.conn = db.connect(settings.db_path)
         self.lock = threading.RLock()
         self.provider = provider or make_provider(settings)
         self.embedder = embedder or make_embedder(settings.embedder, settings.data_dir / "models")
+        self.reranker = (
+            make_reranker(settings.reranker, settings.data_dir / "models") if reranker is _FROM_SETTINGS else reranker
+        )
         self._ids: np.ndarray | None = None  # in-memory vector index, rebuilt lazily
         self._docs: np.ndarray | None = None
         self._mat: np.ndarray | None = None
@@ -239,7 +247,49 @@ class Library:
         self._docs = np.array([r["doc_id"] for r in rows], dtype=np.int64)
         self._mat = np.stack([from_blob(r["embedding"]) for r in rows]) if rows else np.zeros((0, 1), np.float32)
 
-    def search(self, query: str, k: int = 8, doc_ids: list[int] | None = None) -> list[dict]:
+    def search(self, query: str, k: int = 8, doc_ids: list[int] | None = None,
+               mode: str = "auto", rerank: bool = True) -> list[dict]:
+        """Best chunks for a query.
+
+        Candidates come from embeddings ("dense"), BM25 ("keyword") or both merged by
+        reciprocal rank fusion ("hybrid"); the reranker, when loaded and `rerank` is set,
+        then reorders them. "auto" is hybrid + reranker, or plain dense without a reranker:
+        on the eval set (eval/), fusion alone ranked worse than embeddings alone because
+        keyword hits push paraphrase matches down; it only pays off with reranking."""
+        if mode == "auto":
+            mode = "hybrid" if self.reranker else "dense"
+        use_reranker = rerank and self.reranker is not None
+        pool = max(k * 3, 24) if use_reranker else k
+        if mode == "dense":
+            ranked = self._dense(query, pool, doc_ids)
+        elif mode == "keyword":
+            ranked = self._keyword(query, pool, doc_ids)
+        elif mode == "hybrid":
+            wide = max(pool, 40)
+            ranked = reciprocal_rank_fusion(
+                [cid for cid, _ in self._dense(query, wide, doc_ids)],
+                [cid for cid, _ in self._keyword(query, wide, doc_ids)],
+            )[:pool]
+        else:
+            raise ValueError(f"Unknown search mode {mode!r}")
+        if use_reranker and ranked:
+            ranked = self._rerank(query, ranked)
+        return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
+
+    def _rerank(self, query: str, ranked: list[tuple[int, float]]) -> list[tuple[int, float]]:
+        with self.lock:
+            texts = {
+                r["id"]: r["text"]
+                for r in self.conn.execute(
+                    f"SELECT id, text FROM chunks WHERE id IN ({','.join('?' * len(ranked))})",
+                    [cid for cid, _ in ranked],
+                )
+            }
+        ids = [cid for cid, _ in ranked if cid in texts]
+        scores = self.reranker.score(query, [texts[cid] for cid in ids])
+        return sorted(zip(ids, scores), key=lambda kv: -kv[1])
+
+    def _dense(self, query: str, n: int, doc_ids: list[int] | None) -> list[tuple[int, float]]:
         with self.lock:
             self._load_index()
             if not len(self._ids):
@@ -247,23 +297,38 @@ class Library:
             scores = self._mat @ self.embedder.embed([query])[0]
             if doc_ids:
                 scores = np.where(np.isin(self._docs, doc_ids), scores, -np.inf)
-            order = [i for i in np.argsort(-scores)[:k] if np.isfinite(scores[i])]
-            hits = []
-            for i in order:
-                row = self.conn.execute(
-                    "SELECT c.*, d.title, d.authors, d.year, d.kind, d.page_numbering, p.label AS page_label "
-                    "FROM chunks c JOIN documents d ON d.id = c.doc_id "
-                    "LEFT JOIN pages p ON p.doc_id = c.doc_id AND p.page = c.page WHERE c.id = ?",
-                    (int(self._ids[i]),),
-                ).fetchone()
-                hit = dict(row)
-                hit.pop("embedding")
-                hit["authors"] = json.loads(hit["authors"])
-                hit["score"] = float(scores[i])
-                # The model sees this label, so it cites printed page numbers too.
-                hit["label"] = short_label(hit, page=hit["page"], page_label=hit["page_label"])
-                hits.append(hit)
-            return hits
+            return [(int(self._ids[i]), float(scores[i])) for i in np.argsort(-scores)[:n] if np.isfinite(scores[i])]
+
+    def _keyword(self, query: str, n: int, doc_ids: list[int] | None) -> list[tuple[int, float]]:
+        match = fts_query(query)
+        if not match:
+            return []
+        scope = f" AND c.doc_id IN ({','.join('?' * len(doc_ids))})" if doc_ids else ""
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT c.id, bm25(chunks_fts) AS s FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                f"WHERE chunks_fts MATCH ?{scope} ORDER BY s LIMIT ?",
+                (match, *(doc_ids or []), n),
+            ).fetchall()
+        return [(r["id"], -r["s"]) for r in rows]  # FTS5's bm25() is lower-is-better
+
+    def _hit(self, chunk_id: int, score: float) -> dict | None:
+        with self.lock:
+            row = self.conn.execute(
+                "SELECT c.*, d.title, d.authors, d.year, d.kind, d.page_numbering, p.label AS page_label "
+                "FROM chunks c JOIN documents d ON d.id = c.doc_id "
+                "LEFT JOIN pages p ON p.doc_id = c.doc_id AND p.page = c.page WHERE c.id = ?",
+                (chunk_id,),
+            ).fetchone()
+        if not row:
+            return None
+        hit = dict(row)
+        hit.pop("embedding")
+        hit["authors"] = json.loads(hit["authors"])
+        hit["score"] = score
+        # The model sees this label, so it cites printed page numbers too.
+        hit["label"] = short_label(hit, page=hit["page"], page_label=hit["page_label"])
+        return hit
 
     # ---------- topics ----------
 
@@ -415,8 +480,11 @@ class Library:
         ]
         if not sentences:
             return []
-        vecs = self.embedder.embed([claim] + [q for _, q in sentences])
-        scores = vecs[1:] @ vecs[0]
+        if self.reranker:  # reads claim and sentence together: better at "which sentence says this"
+            scores = self.reranker.score(claim, [q for _, q in sentences])
+        else:
+            vecs = self.embedder.embed([claim] + [q for _, q in sentences])
+            scores = vecs[1:] @ vecs[0]
         best: dict[tuple[int, str], tuple[float, dict, str]] = {}  # one entry per (doc, quote)
         for (hit, quote), score in zip(sentences, scores):
             key = (hit["doc_id"], quote)

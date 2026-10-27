@@ -35,11 +35,14 @@ function freePort() {
 }
 
 function pythonExecutable() {
+  // Windows: pythonw, the console-less build. A venv's python.exe is only a launcher that
+  // starts the real interpreter as a child; started detached, that child got a console
+  // window of its own (a stray empty terminal), and closing it killed the backend.
   const venv =
     process.platform === 'win32'
-      ? path.join(BACKEND_DIR, '.venv', 'Scripts', 'python.exe')
+      ? path.join(BACKEND_DIR, '.venv', 'Scripts', 'pythonw.exe')
       : path.join(BACKEND_DIR, '.venv', 'bin', 'python')
-  return fs.existsSync(venv) ? venv : process.platform === 'win32' ? 'python' : 'python3'
+  return fs.existsSync(venv) ? venv : process.platform === 'win32' ? 'pythonw' : 'python3'
 }
 
 // Backend output goes to the terminal and to a log file, so a failure can be diagnosed
