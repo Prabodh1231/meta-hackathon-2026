@@ -9,6 +9,8 @@ from .base import LLMProvider, Passage
 _DOI = re.compile(r"\b10\.\d{4,9}/[^\s\"<>]+", re.I)
 _YEAR = re.compile(r"\b(19[5-9]\d|20[0-4]\d)\b")
 _NAME = re.compile(r"^[A-Z][a-zA-Z.\-']+(?: [A-Z][a-zA-Z.\-']+)+$")
+_VENUE = re.compile(r"^((?:[A-Z][\w&\-]*\s?)*\b(?:Journal|Proceedings|Conference|Review|Transactions|"
+                    r"Letters|Series|Annals|Bulletin)\b[^,.\d]*)")
 
 
 class MockProvider(LLMProvider):
@@ -35,11 +37,12 @@ class MockProvider(LLMProvider):
                     break
         doi = _DOI.search(text)
         year = _YEAR.search(text)
+        venue = next((m.group(1).strip() for ln in lines[1:8] if (m := _VENUE.match(ln))), "")
         return {
             "title": title,
             "authors": authors,
             "year": int(year.group()) if year else None,
-            "venue": "",
+            "venue": venue,
             "doi": doi.group().rstrip(".,;)") if doi else "",
         }
 
@@ -59,7 +62,7 @@ class MockProvider(LLMProvider):
 
     def draft(self, instruction: str, context: str, passages: list[Passage]) -> list[dict]:
         # No paraphrasing offline: pick each passage's most on-topic sentence and quote it.
-        query = set(tokenize(instruction + " " + context[-500:]))
+        query = set(tokenize(instruction))
         out = []
         for p in passages[:4]:
             candidates = [s for s in sentences(p.text) if len(s) >= 40]

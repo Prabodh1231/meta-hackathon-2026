@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS documents (
   url TEXT NOT NULL DEFAULT '',
   summary TEXT NOT NULL DEFAULT '',
   page_count INTEGER NOT NULL DEFAULT 1,
+  page_numbering TEXT NOT NULL DEFAULT 'index',
   topic_id INTEGER REFERENCES topics(id) ON DELETE SET NULL,
   added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS pages (
   doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   page INTEGER NOT NULL,
   text TEXT NOT NULL,
+  label TEXT, -- printed page number; NULL when unknown
   PRIMARY KEY (doc_id, page)
 );
 CREATE TABLE IF NOT EXISTS chunks (
@@ -64,7 +66,22 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+# Columns added after the first release: (table, column, definition).
+_ADDED_COLUMNS = [
+    ("documents", "page_numbering", "TEXT NOT NULL DEFAULT 'index'"),
+    ("pages", "label", "TEXT"),
+]
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, column, definition in _ADDED_COLUMNS:
+        if column not in {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    conn.commit()
 
 
 def get_meta(conn: sqlite3.Connection, key: str) -> str | None:

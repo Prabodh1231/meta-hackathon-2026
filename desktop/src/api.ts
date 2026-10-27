@@ -1,4 +1,4 @@
-import type { Citation, Doc, DraftResult, Health, IngestResult, RefStyle, Topic } from './types'
+import type { Citation, Doc, DraftResult, Health, IngestResult, PageText, RefStyle, Topic } from './types'
 
 // Outside Electron (plain `vite` in a browser) fall back to a backend started by hand.
 const FALLBACK = { baseUrl: 'http://127.0.0.1:8765', token: '' }
@@ -37,8 +37,7 @@ export const api = {
   documents: () => request<Doc[]>('GET', '/documents'),
   updateDocument: (id: number, patch: Partial<Doc>) => request<Doc>('PATCH', `/documents/${id}`, patch),
   deleteDocument: (id: number) => request<{ ok: boolean }>('DELETE', `/documents/${id}`),
-  page: (docId: number, page: number) =>
-    request<{ doc_id: number; page: number; text: string }>('GET', `/documents/${docId}/pages/${page}`),
+  page: (docId: number, page: number) => request<PageText>('GET', `/documents/${docId}/pages/${page}`),
 
   topics: () => request<Topic[]>('GET', '/topics'),
   rebuildTopics: () => request<Topic[]>('POST', '/topics/rebuild'),

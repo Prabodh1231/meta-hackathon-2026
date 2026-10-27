@@ -35,6 +35,14 @@ def _link(doc: dict) -> str:
     return doc.get("url") or ""
 
 
+def _pp(doc: dict) -> str:
+    """'pp. 341–355' from the printed page range; empty when only PDF indexes are known."""
+    rng = doc.get("page_range") or ""
+    if not rng:
+        return ""
+    return f"pp. {rng}" if "–" in rng else f"p. {rng}"
+
+
 def _title(doc: dict) -> str:
     return (doc.get("title") or "Untitled").rstrip(".")
 
@@ -49,7 +57,8 @@ def apa(doc: dict) -> str:
     year = doc.get("year") or "n.d."
     parts = [f"{who} ({year}).", f"{_title(doc)}." if authors else ""]
     if doc.get("venue"):
-        parts.append(f"{doc['venue']}.")
+        pages = f", {doc['page_range']}" if doc.get("page_range") else ""
+        parts.append(f"{doc['venue']}{pages}.")
     parts.append(_link(doc))
     return " ".join(p for p in parts if p)
 
@@ -65,7 +74,7 @@ def mla(doc: dict) -> str:
     else:
         who = f"{names[0][0]}, {names[0][1]}, et al."
     parts = [who, f"“{_title(doc)}.”"]
-    tail = ", ".join(str(x) for x in (doc.get("venue"), doc.get("year")) if x)
+    tail = ", ".join(str(x) for x in (doc.get("venue"), doc.get("year"), _pp(doc)) if x)
     if tail:
         parts.append(tail + ".")
     link = _link(doc)
@@ -81,6 +90,8 @@ def ieee(doc: dict, n: int) -> str:
     parts = [f"[{n}]", f"{who}," if who else "", f"“{_title(doc)},”"]
     if doc.get("venue"):
         parts.append(f"{doc['venue']},")
+    if _pp(doc):
+        parts.append(f"{_pp(doc)},")
     parts.append(f"{doc.get('year') or 'n.d.'}.")
     if doc.get("doi"):
         parts.append(f"doi: {doc['doi']}.")
@@ -103,6 +114,7 @@ def bibtex(doc: dict) -> str:
         "author": " and ".join(doc.get("authors") or []),
         "year": str(doc.get("year") or ""),
         "journal" if entry == "article" else "howpublished": doc.get("venue") or "",
+        "pages": (doc.get("page_range") or "").replace("–", "--"),
         "doi": doc.get("doi") or "",
         "url": doc.get("url") or "",
     }

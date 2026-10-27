@@ -10,9 +10,23 @@ export interface Doc {
   url: string
   summary: string
   page_count: number
+  page_numbering: PageNumbering
+  page_range: string // printed range like "341–355"; empty when unknown
   topic_id: number | null
   tags: string[]
   label: string
+}
+
+/** Where a document's page numbers come from: the PDF's own page labels, numbers printed
+ * in headers/footers, or just the PDF page index when neither was found. */
+export type PageNumbering = 'pdf_labels' | 'printed' | 'index'
+
+export interface PageText {
+  doc_id: number
+  page: number // PDF page index
+  text: string
+  label: string | null // printed page number
+  page_numbering: PageNumbering
 }
 
 export interface Topic {
@@ -30,6 +44,7 @@ export interface Citation {
   chunk_id: number
   doc_id: number
   page: number
+  page_label: string | null
   quote: string
   start: number | null
   end: number | null

@@ -2,6 +2,8 @@
 `pages` list is what citations point into (page numbers are 1-based indexes into it)."""
 
 import json
+import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -32,6 +34,10 @@ class ParsedDocument:
     kind: str
     pages: list[str]
     metadata: dict = field(default_factory=dict)  # title/authors/year/url found by the parser
+    # Printed page number per page (None where unknown) and where they came from:
+    # "pdf_labels", "printed" (header/footer numbers) or "index" (none found).
+    page_labels: list[str | None] | None = None
+    page_numbering: str = "index"
 
 
 def is_supported(path: Path) -> bool:
@@ -77,8 +83,49 @@ def _parse_pdf(path: Path, ocr: OCR) -> ParsedDocument:
                 text = ocr(page.get_pixmap(dpi=200).tobytes("png"), "image/png")
             pages.append(text)
         meta = doc.metadata or {}
+        labels, numbering = printed_page_labels(doc)
     authors = [a.strip() for a in (meta.get("author") or "").replace(";", ",").split(",") if a.strip()]
-    return ParsedDocument("pdf", pages, {"title": meta.get("title") or "", "authors": authors})
+    return ParsedDocument(
+        "pdf", pages, {"title": meta.get("title") or "", "authors": authors}, labels, numbering
+    )
+
+
+_PAGE_NUMBER = re.compile(r"\d{1,4}")
+
+
+def printed_page_labels(doc, band: float = 0.1) -> tuple[list[str | None], str]:
+    """Page numbers as printed on the pages, so citations match the published paper
+    (a journal article's 2nd PDF page may be p. 342).
+
+    1. PDF page labels, when the file defines them.
+    2. Numbers in the header/footer band of each page. A candidate only counts if it
+       implies the same offset from the PDF index as on most other numbered pages, which
+       rules out years, volume numbers and footnote markers. Needs 2+ agreeing pages.
+    Otherwise every label is None and callers fall back to the PDF page index.
+    """
+    n = doc.page_count
+    labels = [page.get_label() or None for page in doc]
+    # Some exporters write labels that just repeat the index; those say nothing printed.
+    if any(labels) and labels != [str(i + 1) for i in range(n)]:
+        return labels, "pdf_labels"
+
+    offsets_per_page = []
+    for i, page in enumerate(doc):
+        r = page.rect
+        top, bottom = r.y0 + r.height * band, r.y1 - r.height * band
+        offsets_per_page.append({
+            int(w[4]) - (i + 1)
+            for w in page.get_text("words")
+            if (w[3] <= top or w[1] >= bottom) and _PAGE_NUMBER.fullmatch(w[4])
+        })
+    votes = Counter(o for offs in offsets_per_page for o in offs)
+    numbered = sum(1 for offs in offsets_per_page if offs)
+    if votes:
+        offset, count = votes.most_common(1)[0]
+        if count >= 2 and count >= 0.5 * numbered:
+            # Pages before printed page 1 (covers, front matter) stay unlabeled.
+            return [str(i + 1 + offset) if i + 1 + offset >= 1 else None for i in range(n)], "printed"
+    return [None] * n, "index"
 
 
 def _parse_docx(path: Path) -> ParsedDocument:

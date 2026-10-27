@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import type { CitationStatus, Doc } from '../types'
+import type { CitationStatus, Doc, PageText } from '../types'
 import { StatusBadge } from './StatusBadge'
 
 export interface SourceTarget {
@@ -14,8 +14,18 @@ export interface SourceTarget {
   label: string
 }
 
+/** "p. 342 · PDF page 2 of 15", making clear which number is the printed one. */
+function pageCaption(doc: Doc, page: number, data: PageText | null): string {
+  if (doc.kind === 'pptx') return `Slide ${page} of ${doc.page_count}`
+  if (doc.kind !== 'pdf') return `Page ${page} of ${doc.page_count}`
+  const pdfPage = `PDF page ${page} of ${doc.page_count}`
+  if (data?.label) return `p. ${data.label} · ${pdfPage}`
+  if (doc.page_numbering === 'index') return `${pdfPage} · no printed page numbers found`
+  return `${pdfPage} · unnumbered page`
+}
+
 export function SourceViewer({ target, doc }: { target: SourceTarget | null; doc: Doc | undefined }) {
-  const [text, setText] = useState<string | null>(null)
+  const [pageData, setPageData] = useState<PageText | null>(null)
   const [page, setPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const markRef = useRef<HTMLElement>(null)
@@ -26,22 +36,23 @@ export function SourceViewer({ target, doc }: { target: SourceTarget | null; doc
 
   useEffect(() => {
     if (!target) return
-    setText(null)
+    setPageData(null)
     setError(null)
     api
       .page(target.docId, page)
-      .then((p) => setText(p.text))
+      .then(setPageData)
       .catch((e) => setError(String(e)))
   }, [target, page])
 
   useEffect(() => {
     markRef.current?.scrollIntoView({ block: 'center' })
-  }, [text])
+  }, [pageData])
 
   if (!target) {
     return <p className="empty">Click a citation in your document or in a draft to see the exact source passage.</p>
   }
 
+  const text = pageData?.text ?? null
   const highlight = page === target.page && target.start != null && target.end != null
   return (
     <div className="source-viewer">
@@ -56,12 +67,10 @@ export function SourceViewer({ target, doc }: { target: SourceTarget | null; doc
       {target.status === 'quote_not_found' && (
         <blockquote className="missing-quote">Claimed quote: “{target.quote}”</blockquote>
       )}
-      {doc && doc.page_count > 1 && (
+      {doc && (doc.page_count > 1 || doc.kind === 'pdf') && (
         <div className="pager">
           <button disabled={page <= 1} onClick={() => setPage(page - 1)}>‹</button>
-          <span>
-            {doc.kind === 'pptx' ? 'Slide' : 'Page'} {page} / {doc.page_count}
-          </span>
+          <span>{pageCaption(doc, page, pageData)}</span>
           <button disabled={page >= doc.page_count} onClick={() => setPage(page + 1)}>›</button>
         </div>
       )}

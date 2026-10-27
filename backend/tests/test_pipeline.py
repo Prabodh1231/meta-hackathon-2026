@@ -144,6 +144,15 @@ def test_draft_returns_located_citations_then_verifies(client, corpus):
     assert fabricated["status"] == "quote_not_found"
 
 
+def test_draft_retrieval_follows_instruction_not_existing_text(client, corpus):
+    client.post("/ingest/path", json={"path": str(corpus)})
+    context = "Sleep spindles and slow-wave sleep support memory consolidation in adults. " * 8
+    draft = client.post("/write/draft", json={"instruction": "coral bleaching heatwave", "context": context}).json()
+    titles = {d["id"]: d["title"] for d in client.get("/documents").json()}
+    cited = [titles[c["doc_id"]] for s in draft["sentences"] for c in s["citations"]]
+    assert cited and ("Coral" in cited[0] or "Reef" in cited[0])
+
+
 def test_draft_can_be_scoped_to_documents(client, corpus):
     client.post("/ingest/path", json={"path": str(corpus)})
     coral = next(d for d in client.get("/documents").json() if d["title"].startswith("Coral"))

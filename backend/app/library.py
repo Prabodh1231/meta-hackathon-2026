@@ -76,15 +76,16 @@ class Library:
         with self.lock, self.conn:
             self.conn.execute("DELETE FROM documents WHERE source = ?", (source,))  # re-ingest replaces
             cur = self.conn.execute(
-                "INSERT INTO documents (source, kind, title, authors, year, venue, doi, url, summary, page_count) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO documents (source, kind, title, authors, year, venue, doi, url, summary, page_count, "
+                "page_numbering) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (source, parsed.kind, title, json.dumps(meta["authors"]), meta["year"], meta["venue"],
-                 meta["doi"], meta["url"], summary, len(parsed.pages)),
+                 meta["doi"], meta["url"], summary, len(parsed.pages), parsed.page_numbering),
             )
             doc_id = cur.lastrowid
+            labels = parsed.page_labels or [None] * len(parsed.pages)
             self.conn.executemany(
-                "INSERT INTO pages (doc_id, page, text) VALUES (?, ?, ?)",
-                [(doc_id, i, t) for i, t in enumerate(parsed.pages, start=1)],
+                "INSERT INTO pages (doc_id, page, text, label) VALUES (?, ?, ?, ?)",
+                [(doc_id, i, t, lbl) for i, (t, lbl) in enumerate(zip(parsed.pages, labels), start=1)],
             )
             self.conn.executemany(
                 "INSERT INTO chunks (doc_id, page, start, end, text, embedding) VALUES (?, ?, ?, ?, ?, ?)",
@@ -116,7 +117,24 @@ class Library:
         d["authors"] = json.loads(d["authors"])
         d["tags"] = [r["tag"] for r in self.conn.execute("SELECT tag FROM tags WHERE doc_id = ? ORDER BY tag", (d["id"],))]
         d["label"] = short_label(d)
+        d["page_range"] = self._page_range(d["id"], d["page_numbering"])
         return d
+
+    def _page_range(self, doc_id: int, numbering: str) -> str:
+        """Printed page range, e.g. '341–355', for references. Empty when only the PDF
+        index is known: those numbers aren't the published pagination."""
+        if numbering == "index":
+            return ""
+        nums = [
+            r["label"]
+            for r in self.conn.execute(
+                "SELECT label FROM pages WHERE doc_id = ? AND label IS NOT NULL ORDER BY page", (doc_id,)
+            )
+            if r["label"].isdigit()
+        ]
+        if not nums:
+            return ""
+        return nums[0] if nums[0] == nums[-1] else f"{nums[0]}–{nums[-1]}"
 
     def list_documents(self) -> list[dict]:
         with self.lock:
@@ -154,10 +172,15 @@ class Library:
 
     def get_page(self, doc_id: int, page: int) -> dict:
         with self.lock:
-            row = self.conn.execute("SELECT text FROM pages WHERE doc_id = ? AND page = ?", (doc_id, page)).fetchone()
+            row = self.conn.execute(
+                "SELECT p.text, p.label, d.page_numbering FROM pages p JOIN documents d ON d.id = p.doc_id "
+                "WHERE p.doc_id = ? AND p.page = ?",
+                (doc_id, page),
+            ).fetchone()
         if not row:
             raise LookupError(f"Page {page} of document {doc_id} not found")
-        return {"doc_id": doc_id, "page": page, "text": row["text"]}
+        return {"doc_id": doc_id, "page": page, "text": row["text"], "label": row["label"],
+                "page_numbering": row["page_numbering"]}
 
     # ---------- search ----------
 
@@ -184,14 +207,17 @@ class Library:
             hits = []
             for i in order:
                 row = self.conn.execute(
-                    "SELECT c.*, d.title, d.authors, d.year, d.kind FROM chunks c JOIN documents d ON d.id = c.doc_id WHERE c.id = ?",
+                    "SELECT c.*, d.title, d.authors, d.year, d.kind, d.page_numbering, p.label AS page_label "
+                    "FROM chunks c JOIN documents d ON d.id = c.doc_id "
+                    "LEFT JOIN pages p ON p.doc_id = c.doc_id AND p.page = c.page WHERE c.id = ?",
                     (int(self._ids[i]),),
                 ).fetchone()
                 hit = dict(row)
                 hit.pop("embedding")
                 hit["authors"] = json.loads(hit["authors"])
                 hit["score"] = float(scores[i])
-                hit["label"] = short_label(hit, page=hit["page"])
+                # The model sees this label, so it cites printed page numbers too.
+                hit["label"] = short_label(hit, page=hit["page"], page_label=hit["page_label"])
                 hits.append(hit)
             return hits
 
@@ -275,7 +301,9 @@ class Library:
 
     def draft(self, instruction: str, context: str = "", doc_ids: list[int] | None = None,
               k: int = 8, verify: bool = False) -> dict:
-        hits = self.search(f"{instruction}\n{context[-500:]}", k=k, doc_ids=doc_ids)
+        # Retrieve on the instruction alone: the document so far is usually longer and would
+        # drown out the question. Context only reaches the model, for continuity and voice.
+        hits = self.search(instruction, k=k, doc_ids=doc_ids)
         passages = [Passage(f"P{i + 1}", h["id"], h["label"], h["text"]) for i, h in enumerate(hits)]
         if not passages:
             return {"sentences": [], "passages": []}
@@ -301,9 +329,10 @@ class Library:
             ch = self.conn.execute("SELECT * FROM chunks WHERE id = ?", (chunk_id,)).fetchone()
             if not ch:
                 raise LookupError(f"Chunk {chunk_id} not found")
-            page_text = self.conn.execute(
-                "SELECT text FROM pages WHERE doc_id = ? AND page = ?", (ch["doc_id"], ch["page"])
-            ).fetchone()["text"]
+            page_row = self.conn.execute(
+                "SELECT text, label FROM pages WHERE doc_id = ? AND page = ?", (ch["doc_id"], ch["page"])
+            ).fetchone()
+        page_text = page_row["text"]
         doc = self.get_document(ch["doc_id"])
 
         loc = locate_quote(quote, ch["text"])
@@ -314,9 +343,10 @@ class Library:
             start, end, ratio = loc if loc else (None, None, 0.0)
 
         result = {
-            "chunk_id": chunk_id, "doc_id": ch["doc_id"], "page": ch["page"], "quote": quote,
-            "start": start, "end": end, "match": round(ratio, 3),
-            "label": short_label(doc, page=ch["page"]), "status": "pending", "reason": "",
+            "chunk_id": chunk_id, "doc_id": ch["doc_id"], "page": ch["page"], "page_label": page_row["label"],
+            "quote": quote, "start": start, "end": end, "match": round(ratio, 3),
+            "label": short_label(doc, page=ch["page"], page_label=page_row["label"]),
+            "status": "pending", "reason": "",
         }
         if start is None:
             result.update(status="quote_not_found", reason="The quoted text does not appear in the cited source.")
@@ -351,8 +381,10 @@ class Library:
         return self.get_draft(draft_id)
 
 
-def short_label(doc: dict, page: int | None = None) -> str:
-    """'Smith et al. 2021, p. 4' style label for citation chips."""
+def short_label(doc: dict, page: int | None = None, page_label: str | None = None) -> str:
+    """'Smith et al. 2021, p. 342' style label for citation chips.
+
+    `page` is the PDF page index; `page_label` the printed page number, when known."""
     authors = doc.get("authors") or []
     if isinstance(authors, str):
         authors = json.loads(authors)
@@ -364,6 +396,17 @@ def short_label(doc: dict, page: int | None = None) -> str:
         who = title if len(title) <= 40 else title[:37] + "..."
     year = doc.get("year")
     label = f"{who} {year}" if year and str(year) not in who else who
-    if page is not None and doc.get("kind") in ("pdf", "pptx"):
-        label += f", {'slide' if doc['kind'] == 'pptx' else 'p.'} {page}"
+    if page is None:
+        return label
+    if doc.get("kind") == "pptx":
+        label += f", slide {page}"
+    elif doc.get("kind") == "pdf":
+        if page_label:
+            label += f", p. {page_label}"
+        elif doc.get("page_numbering", "index") == "index":
+            label += f", p. {page}"  # no printed numbers anywhere: the PDF index is the best we have
+        else:
+            # Unnumbered page (cover, front matter) in a printed-numbered document: say so,
+            # or it would collide with the real p. 1.
+            label += f", PDF p. {page}"
     return label

@@ -52,17 +52,28 @@ Branching Acropora colonies bleached first; massive Porites colonies were mostly
 """
 
 
-def pdf(path: Path, pages: list[str]) -> None:
+def pdf(path: Path, pages: list[str], header: str = "", first_printed: int | None = None,
+        first_label: int | None = None) -> None:
+    """`first_printed` prints page numbers in the footer; `first_label` sets PDF page labels
+    instead. The two exercise both ways the app detects published page numbers."""
     doc = fitz.open()
-    for text in pages:
-        doc.new_page().insert_textbox(fitz.Rect(56, 56, 540, 790), text, fontsize=10.5)
+    for i, text in enumerate(pages):
+        page = doc.new_page()
+        page.insert_textbox(fitz.Rect(56, 90, 540, 760), text, fontsize=10.5)
+        if header:
+            page.insert_text((56, 50), header, fontsize=8)
+        if first_printed is not None:
+            page.insert_text((290, 815), str(first_printed + i), fontsize=8)
+    if first_label is not None:
+        doc.set_page_labels([{"startpage": 0, "prefix": "", "style": "D", "firstpagenum": first_label}])
     doc.save(path)
 
 
 def main() -> None:
     OUT.mkdir(exist_ok=True)
-    for name, pages in PAPERS.items():
-        pdf(OUT / name, pages)
+    pdf(OUT / "chen2021_sleep_tmr.pdf", PAPERS["chen2021_sleep_tmr.pdf"],
+        header="Journal of Sleep Research 30 (2021)", first_printed=341)
+    pdf(OUT / "okafor2019_reef_acclimation.pdf", PAPERS["okafor2019_reef_acclimation.pdf"], first_label=1207)
     (OUT / "sleep_reading_notes.md").write_text(NOTES_MD, encoding="utf-8")
     (OUT / "heron_island_fieldwork.txt").write_text(FIELD_TXT, encoding="utf-8")
 
