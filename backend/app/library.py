@@ -73,27 +73,59 @@ class Library:
         ]
         vectors = self.embedder.embed([c[3] for c in chunks]) if chunks else np.zeros((0, 1))
 
+        fields = {
+            "kind": parsed.kind, "title": title, "authors": json.dumps(meta["authors"]), "year": meta["year"],
+            "venue": meta["venue"], "doi": meta["doi"], "url": meta["url"], "summary": summary,
+            "page_count": len(parsed.pages), "page_numbering": parsed.page_numbering,
+        }
         with self.lock, self.conn:
-            self.conn.execute("DELETE FROM documents WHERE source = ?", (source,))  # re-ingest replaces
-            cur = self.conn.execute(
-                "INSERT INTO documents (source, kind, title, authors, year, venue, doi, url, summary, page_count, "
-                "page_numbering) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (source, parsed.kind, title, json.dumps(meta["authors"]), meta["year"], meta["venue"],
-                 meta["doi"], meta["url"], summary, len(parsed.pages), parsed.page_numbering),
-            )
-            doc_id = cur.lastrowid
+            existing = self.conn.execute(
+                "SELECT id, edited_fields FROM documents WHERE source = ?", (source,)
+            ).fetchone()
+            if existing:
+                # Re-adding a file refreshes its content in place: the id (which citations in
+                # drafts point to), topic, tags and any metadata the user corrected all survive.
+                doc_id = existing["id"]
+                for key in json.loads(existing["edited_fields"]):
+                    fields.pop(key, None)
+                cols = ", ".join(f"{k} = ?" for k in fields)
+                self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*fields.values(), doc_id))
+                self.conn.execute("DELETE FROM pages WHERE doc_id = ?", (doc_id,))
+                self.conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+            else:
+                cols = ", ".join(fields)
+                [doc_id] = self._allocate_ids("documents", 1)
+                self.conn.execute(
+                    f"INSERT INTO documents (id, source, {cols}) VALUES (?, ?, {', '.join('?' * len(fields))})",
+                    (doc_id, source, *fields.values()),
+                )
+                self.conn.executemany(
+                    "INSERT OR IGNORE INTO tags (doc_id, tag) VALUES (?, ?)", [(doc_id, t) for t in tags]
+                )
             labels = parsed.page_labels or [None] * len(parsed.pages)
             self.conn.executemany(
                 "INSERT INTO pages (doc_id, page, text, label) VALUES (?, ?, ?, ?)",
                 [(doc_id, i, t, lbl) for i, (t, lbl) in enumerate(zip(parsed.pages, labels), start=1)],
             )
             self.conn.executemany(
-                "INSERT INTO chunks (doc_id, page, start, end, text, embedding) VALUES (?, ?, ?, ?, ?, ?)",
-                [(doc_id, pg, s, e, t, to_blob(v)) for (pg, s, e, t), v in zip(chunks, vectors)],
+                "INSERT INTO chunks (id, doc_id, page, start, end, text, embedding) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (cid, doc_id, pg, s, e, t, to_blob(v))
+                    for cid, (pg, s, e, t), v in zip(self._allocate_ids("chunks", len(chunks)), chunks, vectors)
+                ],
             )
-            self.conn.executemany("INSERT OR IGNORE INTO tags (doc_id, tag) VALUES (?, ?)", [(doc_id, t) for t in tags])
             self._invalidate_index()
         return self.get_document(doc_id)
+
+    def _allocate_ids(self, table: str, n: int) -> list[int]:
+        """Fresh ids that are never reused. SQLite hands a deleted max rowid to the next
+        insert, so a citation saved in a draft could silently point at a different document
+        or chunk. Call inside the inserting transaction."""
+        key = f"next_id:{table}"
+        highest = self.conn.execute(f"SELECT MAX(id) FROM {table}").fetchone()[0] or 0
+        start = max(int(db.get_meta(self.conn, key) or 1), highest + 1)
+        db.set_meta(self.conn, key, str(start + n))
+        return list(range(start, start + n))
 
     def _reembed_if_needed(self) -> None:
         with self.lock, self.conn:
@@ -115,6 +147,7 @@ class Library:
     def _doc_dict(self, row) -> dict:
         d = dict(row)
         d["authors"] = json.loads(d["authors"])
+        d["edited_fields"] = json.loads(d["edited_fields"])
         d["tags"] = [r["tag"] for r in self.conn.execute("SELECT tag FROM tags WHERE doc_id = ? ORDER BY tag", (d["id"],))]
         d["label"] = short_label(d)
         d["page_range"] = self._page_range(d["id"], d["page_numbering"])
@@ -149,9 +182,12 @@ class Library:
             return self._doc_dict(row)
 
     def update_document(self, doc_id: int, fields: dict) -> dict:
-        self.get_document(doc_id)
-        allowed = {"title", "authors", "year", "venue", "doi", "url", "topic_id"}
-        updates = {k: (json.dumps(v) if k == "authors" else v) for k, v in fields.items() if k in allowed}
+        doc = self.get_document(doc_id)
+        metadata = {"title", "authors", "year", "venue", "doi", "url"}
+        updates = {k: (json.dumps(v) if k == "authors" else v) for k, v in fields.items() if k in metadata | {"topic_id"}}
+        edited = set(doc["edited_fields"]) | (metadata & updates.keys())
+        if edited != set(doc["edited_fields"]):
+            updates["edited_fields"] = json.dumps(sorted(edited))
         with self.lock, self.conn:
             if updates:
                 cols = ", ".join(f"{k} = ?" for k in updates)
@@ -356,6 +392,47 @@ class Library:
             verdict = self.provider.judge_support(claim, window)
             result.update(status=VERDICT_STATUS[verdict["verdict"]], reason=verdict.get("reason", ""))
         return result
+
+    def resolve_citation(self, doc_id: int, page: int, quote: str) -> dict | None:
+        """Re-find a saved citation's quote in the library as it is now. Citations in drafts
+        store character offsets and a chunk id, which go stale when a file is re-added (new
+        extraction, new chunks) or was removed and added again (new document id).
+
+        Searches the cited page, then the rest of the same document. Only if that document
+        no longer exists does it look elsewhere, by exact or normalized match, so a citation
+        is never silently moved to a different source that happens to contain similar text.
+        Returns the citation's current location, or None if the quote can't be found."""
+        with self.lock:
+            doc_exists = self.conn.execute("SELECT 1 FROM documents WHERE id = ?", (doc_id,)).fetchone()
+            if doc_exists:
+                rows = self.conn.execute(
+                    "SELECT doc_id, page, text, label FROM pages WHERE doc_id = ? ORDER BY page != ?, page",
+                    (doc_id, page),
+                ).fetchall()
+                fuzzy = True
+            else:
+                rows = self.conn.execute("SELECT doc_id, page, text, label FROM pages ORDER BY doc_id, page").fetchall()
+                fuzzy = False
+        for row in rows:
+            loc = locate_quote(quote, row["text"], fuzzy=fuzzy)
+            if not loc:
+                continue
+            start, end, ratio = loc
+            with self.lock:
+                chunk = self.conn.execute(
+                    "SELECT id FROM chunks WHERE doc_id = ? AND page = ? AND start < ? AND end > ? "
+                    "ORDER BY (start <= ? AND end >= ?) DESC, min(end, ?) - max(start, ?) DESC LIMIT 1",
+                    (row["doc_id"], row["page"], end, start, start, end, end, start),
+                ).fetchone()
+            if not chunk:
+                continue
+            doc = self.get_document(row["doc_id"])
+            return {
+                "doc_id": row["doc_id"], "chunk_id": chunk["id"], "page": row["page"], "page_label": row["label"],
+                "start": start, "end": end, "match": round(ratio, 3),
+                "label": short_label(doc, page=row["page"], page_label=row["label"]),
+            }
+        return None
 
     def references(self, doc_ids: list[int], style: str) -> dict:
         docs = [self.get_document(d) for d in dict.fromkeys(doc_ids)]

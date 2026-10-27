@@ -30,8 +30,11 @@ def _normalize(text: str) -> tuple[str, list[int]]:
     return "".join(out), index
 
 
-def locate_quote(quote: str, text: str, min_ratio: float = 0.85) -> tuple[int, int, float] | None:
-    """Return (start, end, match_ratio) of `quote` within `text`, or None."""
+def locate_quote(
+    quote: str, text: str, min_ratio: float = 0.85, fuzzy: bool = True
+) -> tuple[int, int, float] | None:
+    """Return (start, end, match_ratio) of `quote` within `text`, or None.
+    `fuzzy=False` skips the slow approximate pass (for scanning many pages)."""
     q = quote.strip().strip("\"'“”").strip()
     if not q:
         return None
@@ -47,6 +50,8 @@ def locate_quote(quote: str, text: str, min_ratio: float = 0.85) -> tuple[int, i
     j = nt.find(nq)
     if j >= 0:
         return idx[j], idx[j + len(nq) - 1] + 1, 1.0
+    if not fuzzy:
+        return None
 
     blocks = [b for b in SequenceMatcher(None, nt, nq, autojunk=False).get_matching_blocks() if b.size >= 3]
     matched = sum(b.size for b in blocks)

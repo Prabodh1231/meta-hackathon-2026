@@ -63,9 +63,16 @@ export default function App() {
     setTab('source')
   }
 
-  function openChip(a: ChipAttrs) {
+  async function openChip(a: ChipAttrs) {
     setSource({ ...a })
     setTab('source')
+    // The file may have been re-added since this chip was written; jump to where the quote is now.
+    try {
+      const current = (await editor.current?.resolveChip(a)) ?? a
+      setSource((s) => (s?.cid === a.cid ? { ...current } : s))
+    } catch (e) {
+      onError(`Could not refresh citation: ${e instanceof Error ? e.message : e}`)
+    }
   }
 
   function onVerified(cid: string, v: Citation) {

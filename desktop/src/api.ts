@@ -1,4 +1,14 @@
-import type { Citation, Doc, DraftResult, Health, IngestResult, PageText, RefStyle, Topic } from './types'
+import type {
+  Citation,
+  Doc,
+  DraftResult,
+  Health,
+  IngestResult,
+  PageText,
+  RefStyle,
+  ResolvedCitation,
+  Topic,
+} from './types'
 
 // Outside Electron (plain `vite` in a browser) fall back to a backend started by hand.
 const FALLBACK = { baseUrl: 'http://127.0.0.1:8765', token: '' }
@@ -49,6 +59,8 @@ export const api = {
     request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds }),
   verify: (claim: string, chunkId: number, quote: string) =>
     request<Citation>('POST', '/citations/verify', { claim, chunk_id: chunkId, quote }),
+  resolveCitations: (items: { doc_id: number; page: number; quote: string }[]) =>
+    request<(ResolvedCitation | null)[]>('POST', '/citations/resolve', { items }),
   references: (docIds: number[], style: RefStyle) =>
     request<{ style: RefStyle; entries: string[] }>('POST', '/references', { doc_ids: docIds, style }),
 

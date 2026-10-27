@@ -1,12 +1,54 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import type { JSONContent } from '@tiptap/core'
+import type { Editor, JSONContent } from '@tiptap/core'
 import { CitationNode } from '../editor/citation'
 import { api } from '../api'
 import type { Citation, DraftSentence } from '../types'
 
 const DRAFT_ID = 1
+const MISSING_REASON = 'This passage is no longer in your library.'
+
+function patchChips(editor: Editor, patches: Map<string, Partial<ChipAttrs>>) {
+  const { state, view } = editor
+  let tr = state.tr
+  let changed = false
+  state.doc.descendants((node, pos) => {
+    const patch = node.type.name === 'citation' ? patches.get(node.attrs.cid) : undefined
+    if (!patch || Object.entries(patch).every(([k, v]) => node.attrs[k] === v)) return
+    tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...patch })
+    changed = true
+  })
+  if (changed) view.dispatch(tr)
+}
+
+/** Re-find chips' quotes in the library as it is now (files may have been re-added since
+ * the draft was written) and update their location, page label and chunk. Chips whose
+ * passage is gone are marked so the writer sees it. */
+async function repairChips(editor: Editor, only?: ChipAttrs[]): Promise<Map<string, Partial<ChipAttrs>>> {
+  let chips = only
+  if (!chips) {
+    const seen = new Map<string, ChipAttrs>()
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'citation' && node.attrs.cid) seen.set(node.attrs.cid, node.attrs as ChipAttrs)
+    })
+    chips = [...seen.values()]
+  }
+  const patches = new Map<string, Partial<ChipAttrs>>()
+  if (!chips.length) return patches
+  const resolved = await api.resolveCitations(chips.map((c) => ({ doc_id: c.docId, page: c.page, quote: c.quote })))
+  chips.forEach((c, i) => {
+    const r = resolved[i]
+    patches.set(
+      c.cid,
+      r
+        ? { docId: r.doc_id, chunkId: r.chunk_id, page: r.page, start: r.start, end: r.end, label: r.label }
+        : { status: 'quote_not_found', reason: MISSING_REASON },
+    )
+  })
+  patchChips(editor, patches)
+  return patches
+}
 
 export interface ChipAttrs {
   cid: string
@@ -25,6 +67,8 @@ export interface ChipAttrs {
 export interface WritingEditorHandle {
   insertDraft: (sentences: DraftSentence[]) => void
   updateCitation: (cid: string, patch: Partial<ChipAttrs>) => void
+  /** Bring one chip up to date with the library and return its current attributes. */
+  resolveChip: (chip: ChipAttrs) => Promise<ChipAttrs>
   getText: () => string
   citedDocIds: () => number[]
 }
@@ -66,17 +110,27 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
 
   useEffect(() => {
     if (!editor) return
-    api
-      .getDraft(DRAFT_ID)
-      .then((d) => {
-        if (d.content) editor.commands.setContent(JSON.parse(d.content))
-      })
-      .catch(() => {
-        /* backend may still be starting; an empty document is fine */
-      })
-      .finally(() => {
-        loaded.current = true
-      })
+    let cancelled = false
+    ;(async () => {
+      // Keep retrying while the backend starts. Autosave stays off until the stored draft
+      // has loaded, or the first keystroke into an empty editor would overwrite it.
+      while (!cancelled) {
+        try {
+          const d = await api.getDraft(DRAFT_ID)
+          if (cancelled) return
+          if (d.content) editor.commands.setContent(JSON.parse(d.content))
+          break
+        } catch {
+          await new Promise((r) => setTimeout(r, 700))
+        }
+      }
+      if (cancelled) return
+      loaded.current = true
+      await repairChips(editor)
+    })().catch((e) => onError(`Could not refresh citations: ${e instanceof Error ? e.message : e}`))
+    return () => {
+      cancelled = true
+    }
   }, [editor])
 
   useImperativeHandle(
@@ -108,17 +162,13 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       },
 
       updateCitation(cid, patch) {
-        if (!editor) return
-        const { state, view } = editor
-        let tr = state.tr
-        let changed = false
-        state.doc.descendants((node, pos) => {
-          if (node.type.name === 'citation' && node.attrs.cid === cid) {
-            tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...patch })
-            changed = true
-          }
-        })
-        if (changed) view.dispatch(tr)
+        if (editor) patchChips(editor, new Map([[cid, patch]]))
+      },
+
+      async resolveChip(chip) {
+        if (!editor) return chip
+        const patch = (await repairChips(editor, [chip])).get(chip.cid)
+        return { ...chip, ...patch }
       },
 
       getText: () => editor?.getText() ?? '',

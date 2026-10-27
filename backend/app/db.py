@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS documents (
   summary TEXT NOT NULL DEFAULT '',
   page_count INTEGER NOT NULL DEFAULT 1,
   page_numbering TEXT NOT NULL DEFAULT 'index',
+  edited_fields TEXT NOT NULL DEFAULT '[]', -- metadata the user corrected; re-ingest keeps these
   topic_id INTEGER REFERENCES topics(id) ON DELETE SET NULL,
   added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -74,6 +75,7 @@ def connect(path: Path) -> sqlite3.Connection:
 _ADDED_COLUMNS = [
     ("documents", "page_numbering", "TEXT NOT NULL DEFAULT 'index'"),
     ("pages", "label", "TEXT"),
+    ("documents", "edited_fields", "TEXT NOT NULL DEFAULT '[]'"),
 ]
 
 

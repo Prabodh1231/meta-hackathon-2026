@@ -55,6 +55,16 @@ class VerifyIn(BaseModel):
     quote: str
 
 
+class ResolveItem(BaseModel):
+    doc_id: int
+    page: int
+    quote: str
+
+
+class ResolveIn(BaseModel):
+    items: list[ResolveItem] = Field(max_length=500)
+
+
 class ReferencesIn(BaseModel):
     doc_ids: list[int]
     style: str = "apa"
@@ -155,6 +165,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/citations/verify")
     def verify(body: VerifyIn):
         return lib.verify_citation(body.claim, body.chunk_id, body.quote)
+
+    @app.post("/citations/resolve")
+    def resolve(body: ResolveIn):
+        """Current location of saved citations (null where the quote is gone), in input order."""
+        return [lib.resolve_citation(i.doc_id, i.page, i.quote) for i in body.items]
 
     @app.post("/references")
     def references(body: ReferencesIn):

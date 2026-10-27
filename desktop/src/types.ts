@@ -54,6 +54,18 @@ export interface Citation {
   reason: string
 }
 
+/** Where a saved citation's quote is now (it moves when a file is re-added). */
+export interface ResolvedCitation {
+  doc_id: number
+  chunk_id: number
+  page: number
+  page_label: string | null
+  start: number
+  end: number
+  match: number
+  label: string
+}
+
 export interface DraftSentence {
   text: string
   citations: Citation[]
