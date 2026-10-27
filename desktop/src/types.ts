@@ -54,6 +54,9 @@ export interface Citation {
   reason: string
 }
 
+/** A candidate source for a sentence the user wrote, already checked. */
+export type Suggestion = Citation & { score: number }
+
 /** Where a saved citation's quote is now (it moves when a file is re-added). */
 export interface ResolvedCitation {
   doc_id: number

@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
-import type { Editor, JSONContent } from '@tiptap/core'
+import { Extension, type Editor, type JSONContent } from '@tiptap/core'
 import { CitationNode } from '../editor/citation'
 import { FormatToolbar } from './FormatToolbar'
 import { api } from '../api'
@@ -76,28 +76,93 @@ export interface WritingEditorHandle {
   /** First non-empty line, used as the draft's title. */
   getTitle: () => string
   citedDocIds: () => number[]
+  /** Insert a chip for the sentence chosen with Cite. Returns false if that spot is gone. */
+  insertCitation: (c: Citation, claim: string) => boolean
 }
 
 function titleOf(editor: Editor): string {
   return (editor.getText().split('\n').find((l) => l.trim()) ?? 'Untitled').trim().slice(0, 80)
 }
 
+let nextCid = 0
+
+function chipFromCitation(c: Citation, claim: string): ChipAttrs {
+  return {
+    cid: c.cid ?? `c${Date.now()}-${nextCid++}`,
+    chunkId: c.chunk_id,
+    docId: c.doc_id,
+    page: c.page,
+    start: c.start,
+    end: c.end,
+    quote: c.quote,
+    claim,
+    label: c.label,
+    status: c.status,
+    reason: c.reason,
+  }
+}
+
+const LEAF = '￼' // stands in for a chip so text offsets line up with document positions
+
+/** The text to cite and where its chip goes: the selection, or else the sentence around
+ * the cursor. Null when there's no text there. */
+function citeTarget(editor: Editor): { claim: string; pos: number } | null {
+  const { doc, selection } = editor.state
+  const clean = (s: string) => s.split(LEAF).join('').replace(/\s+/g, ' ').trim()
+  if (!selection.empty) {
+    const claim = clean(doc.textBetween(selection.from, selection.to, ' ', LEAF))
+    return claim ? { claim, pos: selection.to } : null
+  }
+  const $pos = selection.$from
+  if (!$pos.parent.isTextblock) return null
+  const start = $pos.start()
+  const text = doc.textBetween(start, $pos.end(), ' ', LEAF)
+  const offset = $pos.parentOffset
+  for (const m of text.matchAll(/[^.!?]*(?:[.!?]+["')\]]*|$)/g)) {
+    const s = m.index ?? 0
+    const e = s + m[0].length
+    if (s <= offset && offset <= e && clean(m[0])) return { claim: clean(m[0]), pos: start + e }
+  }
+  return null
+}
+
 interface Props {
   onCitationClick: (chip: ChipAttrs) => void
+  /** Cite button / Ctrl+Shift+C: find sources for this text. */
+  onCiteRequest: (claim: string) => void
   onError: (msg: string) => void
 }
 
 export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function WritingEditor(
-  { onCitationClick, onError },
+  { onCitationClick, onCiteRequest, onError },
   ref,
 ) {
   const saveTimer = useRef<number | undefined>(undefined)
   const loaded = useRef(false)
   const clickRef = useRef(onCitationClick)
   clickRef.current = onCitationClick
+  // Where the chip for the pending Cite request goes, kept in step with later edits.
+  const citePos = useRef<number | null>(null)
+  const citeRef = useRef<() => void>(() => {})
 
   const editor = useEditor({
-    extensions: [StarterKit, TextStyle, FontFamily, FontSize, CitationNode],
+    extensions: [
+      StarterKit,
+      TextStyle,
+      FontFamily,
+      FontSize,
+      CitationNode,
+      Extension.create({
+        name: 'citeShortcut',
+        addKeyboardShortcuts: () => ({ 'Mod-Shift-c': () => (citeRef.current(), true) }),
+      }),
+    ],
+    onTransaction: ({ transaction }) => {
+      if (citePos.current != null && transaction.docChanged) {
+        const mapped = transaction.mapping.mapResult(citePos.current)
+        citePos.current = mapped.deleted ? null : mapped.pos
+      }
+    },
     content: '',
     editorProps: {
       attributes: { class: 'prose', spellcheck: 'true' },
@@ -141,6 +206,17 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     }
   }, [editor])
 
+  citeRef.current = () => {
+    if (!editor) return
+    const target = citeTarget(editor)
+    if (!target) {
+      onError('Put the cursor in a sentence, or select the text you want to cite.')
+      return
+    }
+    citePos.current = target.pos
+    onCiteRequest(target.claim)
+  }
+
   useImperativeHandle(
     ref,
     () => ({
@@ -150,20 +226,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         for (const s of sentences) {
           content.push({ type: 'text', text: s.text.trim() + ' ' })
           for (const c of s.citations) {
-            const attrs: ChipAttrs = {
-              cid: c.cid!,
-              chunkId: c.chunk_id,
-              docId: c.doc_id,
-              page: c.page,
-              start: c.start,
-              end: c.end,
-              quote: c.quote,
-              claim: s.text,
-              label: c.label,
-              status: c.status,
-              reason: c.reason,
-            }
-            content.push({ type: 'citation', attrs }, { type: 'text', text: ' ' })
+            content.push({ type: 'citation', attrs: chipFromCitation(c, s.text) }, { type: 'text', text: ' ' })
           }
         }
         editor.chain().focus().insertContent({ type: 'paragraph', content }).run()
@@ -177,6 +240,16 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         if (!editor) return chip
         const patch = (await repairChips(editor, [chip])).get(chip.cid)
         return { ...chip, ...patch }
+      },
+
+      insertCitation(c, claim) {
+        const pos = citePos.current
+        if (!editor || pos == null) return false
+        const before = pos > 0 ? editor.state.doc.textBetween(pos - 1, pos, ' ', LEAF) : ''
+        const content: JSONContent[] = [{ type: 'citation', attrs: chipFromCitation(c, claim) }]
+        if (before && !/\s/.test(before)) content.unshift({ type: 'text', text: ' ' })
+        editor.chain().focus().insertContentAt(pos, content).run()
+        return true
       },
 
       getText: () => editor?.getText() ?? '',
@@ -196,7 +269,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
 
   return (
     <>
-      <FormatToolbar editor={editor} />
+      <FormatToolbar editor={editor} onCite={() => citeRef.current()} />
       <div className="editor-wrap">
         <EditorContent editor={editor} />
       </div>

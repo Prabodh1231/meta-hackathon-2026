@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
+import { CitePanel, type CiteRequest } from './components/CitePanel'
 import { ExportControl } from './components/ExportControl'
 import { LibraryPanel } from './components/LibraryPanel'
 import { ReferencesPanel } from './components/ReferencesPanel'
@@ -10,7 +11,8 @@ import { SourceViewer, type SourceTarget } from './components/SourceViewer'
 import { WritingEditor, type ChipAttrs, type WritingEditorHandle } from './components/WritingEditor'
 import type { Citation, Doc, Health, Settings, Topic } from './types'
 
-type Tab = 'assistant' | 'source' | 'references'
+type Tab = 'assistant' | 'cite' | 'source' | 'references'
+const TAB_LABELS: Record<Tab, string> = { assistant: 'Assistant', cite: 'Cite', source: 'Source', references: 'References' }
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
@@ -22,6 +24,7 @@ export default function App() {
   const [errors, setErrors] = useState<string[]>([])
   const [settings, setSettings] = useState<Settings>({ theme: cachedTheme(), citation_style: 'apa' })
   const [showSettings, setShowSettings] = useState(false)
+  const [citeRequest, setCiteRequest] = useState<CiteRequest | null>(null)
   const editor = useRef<WritingEditorHandle>(null)
 
   const onError = useCallback((msg: string) => setErrors((e) => [...e.slice(-2), msg]), [])
@@ -148,14 +151,22 @@ export default function App() {
             </button>
           </div>
         </header>
-        <WritingEditor ref={editor} onCitationClick={openChip} onError={onError} />
+        <WritingEditor
+          ref={editor}
+          onCitationClick={openChip}
+          onCiteRequest={(claim) => {
+            setCiteRequest({ id: Date.now(), claim })
+            setTab('cite')
+          }}
+          onError={onError}
+        />
       </main>
 
       <aside className="panel sidebar">
         <nav className="tabs">
-          {(['assistant', 'source', 'references'] as Tab[]).map((t) => (
+          {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-              {t === 'assistant' ? 'Assistant' : t === 'source' ? 'Source' : 'References'}
+              {TAB_LABELS[t]}
             </button>
           ))}
         </nav>
@@ -171,6 +182,16 @@ export default function App() {
             />
           </div>
           {tab === 'source' && <SourceViewer target={source} doc={docs.find((d) => d.id === source?.docId)} />}
+          {/* Kept mounted (hidden) so results survive a look at the Source tab. */}
+          <div hidden={tab !== 'cite'}>
+            <CitePanel
+              request={citeRequest}
+              scope={[...selected]}
+              onInsert={(c, claim) => editor.current?.insertCitation(c, claim) ?? false}
+              onOpenSource={openCitation}
+              onError={onError}
+            />
+          </div>
           {tab === 'references' && (
             <ReferencesPanel
               style={settings.citation_style}

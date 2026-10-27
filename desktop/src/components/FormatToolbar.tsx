@@ -13,7 +13,7 @@ export const FONT_FAMILIES = [
 ]
 export const FONT_SIZES = ['10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '24pt', '32pt']
 
-export function FormatToolbar({ editor }: { editor: Editor | null }) {
+export function FormatToolbar({ editor, onCite }: { editor: Editor | null; onCite: () => void }) {
   // Re-render only when the formatting at the cursor changes.
   const state = useEditorState({
     editor,
@@ -81,6 +81,19 @@ export function FormatToolbar({ editor }: { editor: Editor | null }) {
         onClick={() => chain().toggleUnderline().run()}
       >
         <u>U</u>
+      </button>
+      <span className="sep" />
+      <button
+        className="cite-button"
+        title="Find a source for the selected text or the sentence at the cursor (Ctrl+Shift+C)"
+        // Keep the editor's selection: a normal mousedown would move focus out of it.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onCite}
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+          <path fill="currentColor" d="M7 7h4v4H8.5c0 1.4.9 2.5 2.5 2.9V16c-2.8-.4-4-2.4-4-5.2V7zm6 0h4v4h-2.5c0 1.4.9 2.5 2.5 2.9V16c-2.8-.4-4-2.4-4-5.2V7z" />
+        </svg>
+        Cite
       </button>
     </div>
   )

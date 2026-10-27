@@ -9,6 +9,7 @@ import type {
   RefStyle,
   ResolvedCitation,
   Settings,
+  Suggestion,
   Topic,
 } from './types'
 
@@ -65,6 +66,8 @@ export const api = {
     request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds }),
   verify: (claim: string, chunkId: number, quote: string) =>
     request<Citation>('POST', '/citations/verify', { claim, chunk_id: chunkId, quote }),
+  suggestCitations: (claim: string, docIds: number[] | null) =>
+    request<Suggestion[]>('POST', '/citations/suggest', { claim, doc_ids: docIds }),
   resolveCitations: (items: { doc_id: number; page: number; quote: string }[]) =>
     request<(ResolvedCitation | null)[]>('POST', '/citations/resolve', { items }),
   references: (docIds: number[], style: RefStyle) =>

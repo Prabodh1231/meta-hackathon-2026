@@ -140,6 +140,18 @@ textarea { width: 100%; resize: vertical; }
 .format-toolbar button.active { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: var(--accent); color: var(--text); }
 .format-toolbar .sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
 
+.format-toolbar .cite-button { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Cite panel */
+.cite-claim { margin: 0 0 6px; padding: 6px 10px; border-left: 3px solid var(--accent); font-style: italic; }
+.suggestion { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 10px; }
+.suggestion-verified { border-color: color-mix(in srgb, var(--ok) 50%, var(--border)); }
+.suggestion .row { margin: 0; justify-content: flex-start; }
+.suggestion .row:last-child { justify-content: flex-end; margin-top: 6px; }
+.suggestion-label { font-size: 12px; color: var(--muted); }
+.suggestion-quote { margin: 6px 0 2px; font: 13px/1.5 Georgia, serif; }
+.suggestion .reason { margin: 0; font-size: 12px; }
+
 /* Settings dialog */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;

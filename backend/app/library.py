@@ -14,6 +14,7 @@ from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
 from .settings import Settings
+from .text_utils import sentence_spans
 from .topics import choose_k, jaccard, kmeans
 
 log = logging.getLogger(__name__)
@@ -399,6 +400,37 @@ class Library:
             verdict = self.provider.judge_support(claim, window)
             result.update(status=VERDICT_STATUS[verdict["verdict"]], reason=verdict.get("reason", ""))
         return result
+
+    def suggest_citations(self, claim: str, doc_ids: list[int] | None = None, limit: int = 4) -> list[dict]:
+        """Sources for a sentence the user wrote. Finds the passages closest to the claim,
+        picks the best-matching sentence in each as the quote, then runs the same support
+        check as drafted citations. Supported sources come first; an empty or all-red
+        result means the library doesn't back this claim yet."""
+        claim = " ".join(claim.split())
+        if not claim:
+            raise ValueError("Select a sentence to cite")
+        hits = self.search(claim, k=limit * 2, doc_ids=doc_ids)
+        sentences = [
+            (h, h["text"][s:e]) for h in hits for s, e in sentence_spans(h["text"]) if e - s >= 25
+        ]
+        if not sentences:
+            return []
+        vecs = self.embedder.embed([claim] + [q for _, q in sentences])
+        scores = vecs[1:] @ vecs[0]
+        best: dict[tuple[int, str], tuple[float, dict, str]] = {}  # one entry per (doc, quote)
+        for (hit, quote), score in zip(sentences, scores):
+            key = (hit["doc_id"], quote)
+            if key not in best or score > best[key][0]:
+                best[key] = (float(score), hit, quote)
+        per_chunk: dict[int, tuple[float, dict, str]] = {}  # best sentence per chunk
+        for score, hit, quote in best.values():
+            if hit["id"] not in per_chunk or score > per_chunk[hit["id"]][0]:
+                per_chunk[hit["id"]] = (score, hit, quote)
+        top = sorted(per_chunk.values(), key=lambda c: -c[0])[:limit]
+        # Each check is a model call, so only the top few candidates are judged.
+        results = [{**self.verify_citation(claim, hit["id"], quote), "score": round(score, 4)} for score, hit, quote in top]
+        rank = {"verified": 0, "weak": 1, "unsupported": 2, "quote_not_found": 3}
+        return sorted(results, key=lambda r: (rank.get(r["status"], 4), -r["score"]))
 
     def resolve_citation(self, doc_id: int, page: int, quote: str) -> dict | None:
         """Re-find a saved citation's quote in the library as it is now. Citations in drafts

@@ -56,6 +56,12 @@ class VerifyIn(BaseModel):
     quote: str
 
 
+class SuggestIn(BaseModel):
+    claim: str
+    doc_ids: list[int] | None = None
+    limit: int = Field(4, ge=1, le=10)
+
+
 class ResolveItem(BaseModel):
     doc_id: int
     page: int
@@ -175,6 +181,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/citations/verify")
     def verify(body: VerifyIn):
         return lib.verify_citation(body.claim, body.chunk_id, body.quote)
+
+    @app.post("/citations/suggest")
+    def suggest(body: SuggestIn):
+        """Candidate sources for a sentence the user wrote, already checked, best first."""
+        return lib.suggest_citations(body.claim, body.doc_ids, body.limit)
 
     @app.post("/citations/resolve")
     def resolve(body: ResolveIn):
