@@ -7,7 +7,7 @@ from pathlib import Path
 class Settings:
     data_dir: Path
     provider: str = "mock"  # mock | muse
-    embedder: str = "auto"  # auto | fastembed | hash
+    embedder: str = "auto"  # auto (BGE-M3 on CUDA, else fastembed) | bge-m3 | fastembed | hash
     # Cross-encoder reranker: auto | none | a fastembed model name. "none" by default here
     # (tests, scripts); from_env() defaults to "auto" so the app uses it.
     reranker: str = "none"

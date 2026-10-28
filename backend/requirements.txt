@@ -9,4 +9,7 @@ python-pptx>=0.6.23
 trafilatura>=1.8
 # Local embeddings. Optional: without it the app falls back to a hashing embedder.
 fastembed>=0.3
+# Optional GPU embeddings (BGE-M3). Install a CUDA build of torch first, e.g.
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+sentence-transformers>=3.0
 pytest>=8.0
