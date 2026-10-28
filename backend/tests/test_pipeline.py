@@ -229,3 +229,18 @@ def test_reference_styles():
     assert format_references([doc], "bibtex")[0].startswith("@article{doe2020study,")
     undated = {**doc, "year": None, "doi": ""}
     assert format_references([undated], "ieee")[0].endswith("Nature, n.d.")
+
+
+def test_metadata_venue_regex_is_linear_on_all_caps_lines():
+    # An NBER cover page froze ingest: the venue pattern backtracked exponentially on
+    # all-caps lines. It must stay instant, and still find real venues.
+    import time
+
+    text = ("LIMITED ASSET MARKET PARTICIPATION AND THE ELASTICITY OF\nINTERTEMPORAL SUBSTITUTION\n"
+            "Annette Vissing-Jorgensen\nWorking Paper 8896\nNATIONAL BUREAU OF ECONOMIC RESEARCH\n"
+            "NATIONAL BUREAU OF ECONOMIC RESEARCH ANNUAL MEETING SESSION PAPERS AND PROCEEDINGSX\n")
+    start = time.perf_counter()
+    assert MockProvider().extract_metadata(text)["venue"] == ""
+    assert time.perf_counter() - start < 1
+    paper = "Household Finance Puzzles\nThe Review of Financial Studies, 2010\n"
+    assert MockProvider().extract_metadata(paper)["venue"] == "The Review of Financial Studies"

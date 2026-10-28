@@ -9,7 +9,9 @@ from .base import LLMProvider, Passage
 _DOI = re.compile(r"\b10\.\d{4,9}/[^\s\"<>]+", re.I)
 _YEAR = re.compile(r"\b(19[5-9]\d|20[0-4]\d)\b")
 _NAME = re.compile(r"^[A-Z][a-zA-Z.\-']+(?: [A-Z][a-zA-Z.\-']+)+$")
-_VENUE = re.compile(r"^((?:[A-Z][\w&\-]*\s?)*\b(?:Journal|Proceedings|Conference|Review|Transactions|"
+# Words must be whitespace-separated: with an optional separator, an all-caps line
+# ("NATIONAL BUREAU OF ECONOMIC RESEARCH") splits into words exponentially many ways.
+_VENUE = re.compile(r"^((?:[A-Z][\w&\-]*\s+)*\b(?:Journal|Proceedings|Conference|Review|Transactions|"
                     r"Letters|Series|Annals|Bulletin)\b[^,.\d]*)")
 
 
