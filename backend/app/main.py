@@ -127,6 +127,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.get("/health")
     def health():
         return {"ok": True, "provider": lib.provider.name, "embedder": lib.embedder.id,
+                "embedder_device": getattr(lib.embedder, "device", "cpu"),
                 "reranker": lib.reranker.id if lib.reranker else None}
 
     @app.post("/ingest/path")

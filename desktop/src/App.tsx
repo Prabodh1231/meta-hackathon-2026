@@ -16,6 +16,16 @@ import type { Citation, Doc, Health, Settings, Topic } from './types'
 type Tab = 'assistant' | 'cite' | 'source' | 'references'
 const TAB_LABELS: Record<Tab, string> = { assistant: 'Assistant', cite: 'Cite', source: 'Source', references: 'References' }
 
+const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mock' }
+
+/** "47 sources · Muse · BGE-M3 (GPU)": a short form of the backend's model ids. */
+function statusLine(count: number, h: Health): string {
+  const model = h.embedder.split(':').slice(1).join(':').split('/').pop() || h.embedder
+  const embedder = model.replace(/-en-v[\d.]+$/, '').replace(/^bge/, 'BGE').replace('-m3', '-M3')
+  const device = h.embedder_device === 'cuda' ? ' (GPU)' : ''
+  return `${count} source${count === 1 ? '' : 's'} · ${PROVIDER_NAMES[h.provider] ?? h.provider} · ${embedder}${device}`
+}
+
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [docs, setDocs] = useState<Doc[]>([])
@@ -288,8 +298,8 @@ export default function App() {
             Backend offline, reconnecting…
           </span>
         ) : (
-          <span className="status">
-            {health ? `${docs.length} in library · model: ${health.provider} · embeddings: ${health.embedder}` : 'Starting backend…'}
+          <span className="status" title={health ? `model: ${health.provider} · embeddings: ${health.embedder}` : undefined}>
+            {health ? statusLine(docs.length, health) : 'Starting backend…'}
           </span>
         )}
       </footer>

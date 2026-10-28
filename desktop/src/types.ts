@@ -90,6 +90,7 @@ export interface Health {
   ok: boolean
   provider: string
   embedder: string
+  embedder_device?: string // "cuda" or "cpu"; missing from older backends
 }
 
 export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
