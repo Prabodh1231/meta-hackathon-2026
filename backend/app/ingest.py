@@ -85,9 +85,23 @@ def _parse_pdf(path: Path, ocr: OCR) -> ParsedDocument:
         meta = doc.metadata or {}
         labels, numbering = printed_page_labels(doc)
     authors = [a.strip() for a in (meta.get("author") or "").replace(";", ",").split(",") if a.strip()]
+    title = (meta.get("title") or "").strip()
     return ParsedDocument(
-        "pdf", pages, {"title": meta.get("title") or "", "authors": authors}, labels, numbering
+        "pdf", pages, {"title": "" if is_junk_pdf_title(title) else title, "authors": authors}, labels, numbering
     )
+
+
+# PDF title fields are often typesetting leftovers rather than titles, and file metadata
+# overrides the model's reading of the first page, so these are dropped.
+_JUNK_PDF_TITLE = re.compile(
+    r"\.(dvi|docx?|rtf|tex|pdf|indd|qxp|eps|ps)\b|^microsoft (word|powerpoint)\b|^arxiv:|"
+    r"\d+\.\.\d+\s*$|^untitled\b|^\W*$",
+    re.I,
+)
+
+
+def is_junk_pdf_title(title: str) -> bool:
+    return len(title) < 6 or bool(_JUNK_PDF_TITLE.search(title))
 
 
 _PAGE_NUMBER = re.compile(r"\d{1,4}")

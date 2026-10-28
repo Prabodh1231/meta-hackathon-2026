@@ -139,3 +139,14 @@ def test_existing_library_is_migrated(tmp_path):
     conn = db.connect(path)
     assert conn.execute("SELECT page_numbering FROM documents").fetchone()[0] == "index"
     assert conn.execute("SELECT label FROM pages").fetchone()[0] is None
+
+
+def test_junk_pdf_titles_yield_to_the_model():
+    from app.ingest import is_junk_pdf_title
+
+    for junk in ["vissing_jpe_2002.dvi", "Microsoft Word - Corrected_Huirong_WS.docx", "DAP_2200023 1..17",
+                 "arXiv:2407.03498v2  [cs.CV]  13 Jul 2024", "Untitled", "", "   ", "x.pdf"]:
+        assert is_junk_pdf_title(junk), junk
+    for real in ["Stock Market Participation and the Internet", "Is financial inclusion good for bank stability?",
+                 "Entropy and Transfer Entropy: The Dow Jones and the build up to the 1997 Asian Crisis"]:
+        assert not is_junk_pdf_title(real), real
