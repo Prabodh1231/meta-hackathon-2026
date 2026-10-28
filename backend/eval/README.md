@@ -39,4 +39,58 @@ Per-type columns are R@1. Timings are on CPU, with the reranker scoring 24 candi
 - **The keyword index helps identifier-only lookups** on its own (0.88 → 1.00), but **with the reranker it adds nothing measurable here**. With only 40 passages, the reranker's 24 candidates already cover most of the library, so the gold passage is always among them. The keyword index matters in a large library, where a rare code like `S-208` can fall outside the embedding top-24; this set is too small to show that. It costs under a millisecond and is kept for that case.
 - **Caveats:** 44 questions is small (one question ≈ 2 points of R@1). The passages are short and each is its own chunk, whereas real chunks are ~900 characters. The identifier group was added after the first run showed the original keyword questions always had context words around the identifier. The Jina rerankers weren't compared because their downloads were too slow here; pass `--rerankers jinaai/jina-reranker-v1-tiny-en` to include one.
 
-`tests/test_retrieval_eval.py` re-runs this set with the cached models and fails if reranked hybrid stops beating embeddings alone, if any question type gets worse, or if the default mode starts using plain fusion.
+## At library scale
+
+The small set can't show what the keyword index is for, so `scripts/eval_large.py` repeats the
+comparison on a real-sized library: 93 PDFs, **14,099 chunks**. It has 54 of the researcher's own
+papers (financial inclusion, household finance, transfer entropy and connectedness) plus 39
+on-topic arXiv papers fetched by `scripts/fetch_arxiv_eval.py` as look-alike neighbours.
+There are 70 questions written from sampled passages before any retrieval run:
+
+| Question type | n | What it tests |
+|---|---|---|
+| identifier | 24 | a figure, code, package or author-year leads the question |
+| keyword | 22 | a normal question using the passage's own terms |
+| paraphrase | 24 | the answer's ideas in other words |
+
+A hit is any chunk containing the gold sentence. Overlapping chunks and four papers that sit in
+two folders mean some golds have more than one valid chunk. The papers, library and questions stay
+local (`eval/large/` is git-ignored). Only these aggregates are recorded here.
+
+| Configuration | R@1 | R@3 | R@10 | MRR | cand@24 | identifier | keyword | paraphrase | ms/query |
+|---|---|---|---|---|---|---|---|---|---|
+| dense: embeddings only (**before**) | 0.27 | 0.46 | 0.63 | 0.39 | 0.71 | 0.33 | 0.32 | 0.17 | 9 |
+| keyword: BM25 only | 0.51 | 0.64 | 0.71 | 0.59 | 0.79 | 0.88 | 0.59 | 0.08 | 22 |
+| hybrid: RRF of both, no reranker | 0.37 | 0.56 | 0.69 | 0.48 | 0.84 | 0.46 | 0.41 | 0.25 | 34 |
+| dense + MiniLM-L-6 reranker | 0.50 | 0.64 | 0.69 | 0.57 | 0.71 | 0.67 | 0.68 | 0.17 | 1065 |
+| **hybrid + MiniLM-L-6 reranker (default)** | **0.56** | **0.70** | **0.77** | **0.63** | **0.84** | 0.83 | 0.68 | 0.17 | 1093 |
+
+cand@24: share of questions whose gold is among the 24 candidates handed to the reranker. A gold
+missing there can never be ranked first. Per-type columns are R@1.
+
+- **Embeddings alone don't hold up at scale.** The right passage comes first 27% of the time
+  (82% on the 40-passage set) and is missing from the top 10 for 37% of questions. Among
+  14,000 chunks on the same few topics, many passages sound alike.
+- **This is where the keyword index earns its place.** It lifts the reranker's candidate recall
+  from 71% to 84%. Identifier questions go from 0.67 to 0.83 at R@1 and from 0.79 to 1.00 at R@10.
+  The default (hybrid + rerank) is the best configuration overall, at **2.1× the R@1 of the old
+  embeddings-only search** (0.27 → 0.56).
+- **Plain fusion beats embeddings alone here** (0.37 vs 0.27 R@1, 0.84 vs 0.71 cand@24), the
+  reverse of the small set. The fallback when the reranker can't load (`mode="auto"` → dense)
+  was chosen on the small set and should be revisited.
+- **Paraphrases are the weak spot.** Only half reach the top 10 in any configuration, and the
+  reranker doesn't move them. Part of this is the scoring: a reworded question about, say, fintech
+  lowering costs has several valid passages in a library this size, but only the one it was
+  written from counts. Part is the small embedding model. A larger embedder or a query
+  rewritten by Muse before search are the next things to measure.
+- **The reranker costs about 1.1 s per search** on full-length chunks (vs 0.46 s on the short
+  passages of the small set). Embeddings and BM25 together take about 35 ms.
+
+```bash
+python scripts/fetch_arxiv_eval.py                          # optional look-alike papers
+python scripts/eval_large.py build "path/to/papers" eval/large/arxiv
+python scripts/eval_large.py sample --n 70                  # passages to write questions from
+python scripts/eval_large.py run --json eval/large/results.json
+```
+
+`tests/test_retrieval_eval.py` re-runs the small set with the cached models and fails if reranked hybrid stops beating embeddings alone, if any question type gets worse, or if the default mode starts using plain fusion.

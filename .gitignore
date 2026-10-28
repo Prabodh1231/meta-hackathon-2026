@@ -7,3 +7,6 @@ desktop/dist/
 *.db-wal
 *.db-shm
 .env
+
+# Large retrieval eval: downloaded papers, the eval library and its questions stay local
+backend/eval/large/
