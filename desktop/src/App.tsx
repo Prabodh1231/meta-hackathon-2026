@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, backendLogPath } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
+import { CitationWire } from './components/CitationWire'
 import { CitePanel, type CiteRequest } from './components/CitePanel'
+import { CommandPalette, type PaletteItem } from './components/CommandPalette'
 import { ExportControl } from './components/ExportControl'
 import { LibraryPanel } from './components/LibraryPanel'
 import { ReferencesPanel } from './components/ReferencesPanel'
@@ -25,7 +27,29 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>({ theme: cachedTheme(), citation_style: 'apa' })
   const [showSettings, setShowSettings] = useState(false)
   const [citeRequest, setCiteRequest] = useState<CiteRequest | null>(null)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const editor = useRef<WritingEditorHandle>(null)
+
+  const showTab = useCallback((t: Tab) => {
+    setTab(t)
+    setDrawerOpen(true)
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((o) => !o)
+      } else if (e.key === 'Escape' && !paletteOpen) {
+        setLibraryOpen(false)
+        setDrawerOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [paletteOpen])
 
   const onError = useCallback((msg: string) => setErrors((e) => [...e.slice(-2), msg]), [])
 
@@ -111,12 +135,12 @@ export default function App() {
       reason: c.reason,
       label: c.label,
     })
-    setTab('source')
+    showTab('source')
   }
 
   async function openChip(a: ChipAttrs) {
     setSource({ ...a })
-    setTab('source')
+    showTab('source')
     // The file may have been re-added since this chip was written; jump to where the quote is now.
     try {
       const current = (await editor.current?.resolveChip(a)) ?? a
@@ -131,8 +155,28 @@ export default function App() {
     setSource((s) => (s?.cid === cid ? { ...s, status: v.status, reason: v.reason } : s))
   }
 
+  const paletteItems: PaletteItem[] = [
+    ...docs.map((d) => ({
+      group: d.kind.toUpperCase(),
+      name: d.title,
+      hint: [d.authors[0], d.year].filter(Boolean).join(' '),
+      run: () => setLibraryOpen(true),
+    })),
+    ...topics.map((t) => ({ group: 'TOPIC', name: t.label, hint: `${t.doc_count} docs`, run: () => setLibraryOpen(true) })),
+    { group: 'DO', name: 'Open library', hint: 'add and organize sources', run: () => setLibraryOpen(true) },
+    { group: 'DO', name: 'Ask the assistant', hint: 'draft with citations', run: () => showTab('assistant') },
+    { group: 'DO', name: 'Find a citation', hint: 'for the selected sentence', run: () => showTab('cite') },
+    { group: 'DO', name: 'Show references', hint: settings.citation_style.toUpperCase(), run: () => showTab('references') },
+    { group: 'DO', name: 'Settings', hint: 'theme, citation style', run: () => setShowSettings(true) },
+  ]
+
   return (
     <div className="app">
+      <div className="stage">
+      <div className={`drawer drawer-left${libraryOpen ? ' show' : ''}`} aria-hidden={!libraryOpen}>
+      <button className="drawer-close" onClick={() => setLibraryOpen(false)} aria-label="Close library">
+        ×
+      </button>
       <LibraryPanel
         docs={docs}
         topics={topics}
@@ -147,22 +191,17 @@ export default function App() {
         onChanged={refresh}
         onError={onError}
       />
+      </div>
 
       <main className="writing">
-        <header className="panel-head">
-          <div>
-            <h2>Draft</h2>
-            {offline ? (
-              <span className="offline" title={logPath ? `Backend log: ${logPath}` : undefined}>
-                Backend offline, reconnecting…
-              </span>
-            ) : (
-              <span className="muted">
-                {health ? `model: ${health.provider} · embeddings: ${health.embedder}` : 'Starting backend…'}
-              </span>
-            )}
-          </div>
+        <header className="top-bar">
+          <button onClick={() => setLibraryOpen((o) => !o)}>Library · {docs.length}</button>
+          <button className="kbd-hint" onClick={() => setPaletteOpen(true)}>
+            <span>Search sources, jump, run actions</span> <kbd>Ctrl K</kbd>
+          </button>
+          <div className="spacer" />
           <div className="head-actions">
+            <button onClick={() => showTab('assistant')}>Assistant</button>
             <ExportControl
               style={settings.citation_style}
               getJSON={() => editor.current?.getJSON() ?? null}
@@ -184,13 +223,16 @@ export default function App() {
           onCitationClick={openChip}
           onCiteRequest={(claim) => {
             setCiteRequest({ id: Date.now(), claim })
-            setTab('cite')
+            showTab('cite')
           }}
           onError={onError}
         />
       </main>
 
-      <aside className="panel sidebar">
+      <aside className={`drawer drawer-right panel sidebar${drawerOpen ? ' show' : ''}`} aria-hidden={!drawerOpen}>
+        <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close panel">
+          ×
+        </button>
         <nav className="tabs">
           {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
@@ -229,6 +271,30 @@ export default function App() {
           )}
         </div>
       </aside>
+
+      <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={drawerOpen && tab === 'source'} />
+      </div>
+
+      <footer className="dock">
+        <div className="grow">
+          {topics.slice(0, 4).map((t) => (
+            <span key={t.id} className="pill" title={`${t.doc_count} docs`}>
+              {t.label}
+            </span>
+          ))}
+        </div>
+        {offline ? (
+          <span className="offline status" title={logPath ? `Backend log: ${logPath}` : undefined}>
+            Backend offline, reconnecting…
+          </span>
+        ) : (
+          <span className="status">
+            {health ? `${docs.length} in library · model: ${health.provider} · embeddings: ${health.embedder}` : 'Starting backend…'}
+          </span>
+        )}
+      </footer>
+
+      {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
 
       {showSettings && (
         <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setShowSettings(false)} />

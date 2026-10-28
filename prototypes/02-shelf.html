@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bookshelf</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+:root {
+  --bg:#1f3a34; --stage:#f4f1ea; --paper:#fff; --ink:#1c2321; --muted:#667570; --line:#dcd8cc; --accent:#1f6f5c; --on-accent:#fff;
+  --ok:#2e8b57; --warn:#c98a1b; --bad:#c0392b; --pend:#98a39f; --mark:#ffe58a; --hover:rgba(30,80,60,.08);
+  --serif:"Source Serif Pro",Georgia,serif; --sans:"Trebuchet MS","Segoe UI",system-ui,sans-serif; --mono:Consolas,monospace;
+  --r:6px; --pw:680px; --fs:17px; --doc-font:Georgia,serif;
+}
+body { background:var(--bg); font-family:var(--sans); }
+.app { height:100vh; display:grid; grid-template-rows:auto 1fr; }
+.shelf { padding:14px 22px 0; background:linear-gradient(#17302a,#1f3a34); color:#e8efe9; }
+.top { display:flex; align-items:baseline; gap:16px; margin-bottom:6px; }
+.top h1 { margin:0; font:italic 600 20px Georgia,serif; }
+.top span { font-size:12px; opacity:.65; }
+.top input { margin-left:auto; background:#ffffff14; border:1px solid #ffffff2a; color:#fff; border-radius:999px; padding:5px 14px; font:13px var(--sans); width:220px; }
+.top input::placeholder { color:#cfe0d6aa; }
+.row { display:flex; align-items:flex-end; gap:3px; height:150px; padding:0 8px; overflow-x:auto; border-bottom:14px solid #6b4a2b; box-shadow:0 8px 0 -2px #4a3219; position:relative; }
+.gap { width:20px; flex:none; }
+.spine { flex:none; width:38px; border-radius:3px 3px 0 0; padding:10px 0; writing-mode:vertical-rl; text-orientation:mixed; font:600 12.5px var(--sans); color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; position:relative; transition:transform .2s; border-left:1px solid #fff3; border-right:1px solid #0003; }
+.spine::after { content:""; position:absolute; left:0; right:0; top:14px; height:3px; background:#fff5; box-shadow:0 5px 0 #fff4; }
+.spine:hover { transform:translateY(-12px); }
+.spine.on { transform:translateY(-22px); box-shadow:0 0 0 2px #ffe58a; }
+.spine.t1 { background:#7b3f61; } .spine.t2 { background:#2f6f8f; }
+.spine.web { background:#b5651d; } .spine.text { background:#8a8a3a; } .spine.image { background:#555a63; }
+.pull { height:0; overflow:hidden; background:#16292a; color:#dfece6; transition:height .25s; padding:0 22px; font-size:13px; display:flex; gap:24px; align-items:center; }
+.pull.show { height:64px; }
+.pull b { font:600 14px Georgia,serif; } .pull small { opacity:.7; }
+.work { display:grid; grid-template-columns:1fr 1fr; min-height:0; background:var(--stage); }
+.work > div { min-width:0; min-height:0; }
+.work #src { border-left:1px solid var(--line); overflow:auto; background:#faf8f3; }
+.empty { padding:60px 40px; color:var(--muted); font:italic 15px Georgia,serif; text-align:center; }
+@media (max-width:900px){ .work{grid-template-columns:1fr} #src{display:none} }
+</style></head><body>
+<div class="app">
+  <header class="shelf">
+    <div class="top"><h1>The Shelf</h1><span>7 sources · 2 topics, sorted by Muse</span><input placeholder="Search your library"></div>
+    <div class="row" id="row"></div>
+    <div class="pull" id="pull"></div>
+  </header>
+  <div class="work"><div id="doc"></div><div id="src"><div class="empty">Click a citation chip to pull the page off the shelf and see the exact quote.</div></div></div>
+</div>
+<script src="shared.js"></script>
+<script>
+const { docs, topics, esc } = RC;
+const row = document.getElementById('row'), pull = document.getElementById('pull');
+let html = '';
+topics.forEach((t, i) => {
+  if (i) html += '<div class="gap"></div>';
+  docs.filter(d => d.topic === t.id).forEach(d => {
+    const h = 80 + d.pages * 3;
+    html += `<div class="spine t${t.id} ${d.kind!=='pdf'?d.kind:''}" data-id="${d.id}" style="height:${h}px" title="${esc(d.title)}">${esc(d.short)} — ${esc(d.title)}</div>`;
+  });
+});
+row.innerHTML = html;
+function pick(id) {
+  row.querySelectorAll('.spine').forEach(s => s.classList.toggle('on', +s.dataset.id === id));
+  if (!id) { pull.classList.remove('show'); return; }
+  const d = RC.docById(id);
+  pull.innerHTML = `<b>${esc(d.title)}</b><small>${esc(d.authors)} · ${d.year} · ${esc(d.venue)} · ${d.pages} pp</small><small>${topics.find(t=>t.id===d.topic).tags.join(' · ')}</small>`;
+  pull.classList.add('show');
+}
+row.onclick = e => { const s = e.target.closest('.spine'); if (s) pick(s.classList.contains('on') ? 0 : +s.dataset.id); };
+const src = RC.mountSource(document.getElementById('src'));
+RC.mountDoc(document.getElementById('doc'), { onOpenSource: c => { src.show(c); pick(c.doc); } });
+</script></body></html>

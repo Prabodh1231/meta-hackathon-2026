@@ -31,11 +31,12 @@ export const CitationNode = Node.create({
   },
 
   renderHTML({ node, HTMLAttributes }) {
-    const { status, label, reason, quote } = node.attrs
+    const { status, label, reason, quote, cid } = node.attrs
     return [
       'span',
       mergeAttributes(HTMLAttributes, {
         'data-citation': '',
+        'data-cid': cid ?? '',
         class: `cite cite-${status}`,
         title: reason ? `${reason}\n\n“${quote}”` : `“${quote}”`,
       }),

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Evidence Board</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+:root {
+  --bg:#0c111b; --stage:#0f1523; --paper:#161d2e; --bar:#121828; --ink:#e6e9f2; --muted:#8a93a8; --line:#262f45; --accent:#f2a93b; --on-accent:#1a1204;
+  --ok:#4cc38a; --warn:#f2a93b; --bad:#ff6b6b; --pend:#6b7488; --mark:#f2a93b55; --hover:#ffffff12; --chip-bg:#1d2640;
+  --serif:Georgia,serif; --sans:"Segoe UI",system-ui,sans-serif; --mono:"Cascadia Code",Consolas,monospace;
+  --r:8px; --pw:640px; --fs:16.5px; --doc-font:"Segoe UI",system-ui,sans-serif; --ppad:56px 60px 72px;
+  --sheet:#e8e4d8; --pshadow:0 0 0 1px var(--line); --cshadow:0 0 0 1px #0004;
+}
+body { background:var(--bg); color:var(--ink); font-family:var(--sans); overflow:hidden; }
+.app { overflow:clip; display:grid; grid-template-columns:64px minmax(0,1fr) minmax(0,1fr); height:100vh; }
+.rail { background:#090d15; border-right:1px solid var(--line); display:flex; flex-direction:column; align-items:center; gap:10px; padding:14px 0; }
+.rail .logo { width:34px; height:34px; border-radius:10px; background:var(--accent); color:var(--on-accent); font:800 16px/34px var(--mono); text-align:center; margin-bottom:8px; }
+.rail button { width:40px; height:40px; border-radius:10px; color:var(--muted); font:600 11px var(--mono); position:relative; }
+.rail button:hover, .rail button.on { background:#ffffff12; color:var(--ink); }
+.rail .n { position:absolute; top:3px; right:2px; background:var(--accent); color:var(--on-accent); border-radius:9px; font-size:9px; padding:0 4px; }
+.lib { position:fixed; left:64px; top:0; bottom:0; width:320px; background:#0b101b; border-right:1px solid var(--line); z-index:50; transform:translateX(-125%); transition:transform .25s; padding:18px; overflow:auto; }
+.lib.show { transform:none; box-shadow:20px 0 40px #0008; }
+.lib h2 { margin:0 0 10px; font:600 11px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+.lib .it { padding:10px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.lib .it b { display:block; font-weight:600; } .lib .it span { color:var(--muted); font-size:12px; }
+.left { min-width:0; border-right:1px solid var(--line); }
+.right { position:relative; min-width:0; overflow:auto; background:#0b101b; }
+.right .hint { padding:80px 50px; color:var(--muted); font:13px/1.7 var(--mono); }
+.right .hint b { color:var(--accent); }
+.rc-src .s-sheet { --mark:#f2a93b88; box-shadow:0 0 0 1px var(--line); }
+.rc-src mark { color:#111; }
+svg#wire { position:fixed; inset:0; width:100vw; height:100vh; pointer-events:none; z-index:40; }
+svg#wire path { fill:none; stroke:var(--accent); stroke-width:1.8; stroke-dasharray:5 5; animation:dash 1s linear infinite; }
+svg#wire circle { fill:var(--accent); }
+@keyframes dash { to { stroke-dashoffset:-20; } }
+@media (max-width:900px){ .app{grid-template-columns:1fr} .rail,.right{display:none} }
+</style></head><body>
+<div class="app">
+  <nav class="rail">
+    <div class="logo">RC</div>
+    <button id="libbtn" title="Library">LIB<span class="n">7</span></button>
+    <button class="on" title="Draft">DOC</button>
+    <button title="Topics">TOP</button>
+    <button title="References">REF</button>
+  </nav>
+  <div class="left" id="doc"></div>
+  <div class="right" id="r"><div class="hint">// evidence view<br><br>Click any <b>citation chip</b> in the draft.<br>A wire is drawn from the claim to the exact highlighted quote on the source page, so you can see what it rests on.</div><div id="src"></div></div>
+</div>
+<aside class="lib" id="lib"></aside>
+<svg id="wire"></svg>
+<script src="shared.js"></script>
+<script>
+const { docs, topics, kindLabel, esc } = RC;
+const lib = document.getElementById('lib');
+lib.innerHTML = topics.map(t => `<h2>${esc(t.label)}</h2>` + docs.filter(d=>d.topic===t.id).map(d => `<div class="it"><b>${esc(d.title)}</b><span>${kindLabel[d.kind]} · ${esc(d.authors)} · ${d.year}</span></div>`).join('')).join('');
+document.getElementById('libbtn').onclick = () => lib.classList.toggle('show');
+const wire = document.getElementById('wire'); let active = null;
+function draw() {
+  if (!active) { wire.innerHTML = ''; return; }
+  const chip = document.querySelector(`.chip[data-c="${active.key}"]`), m = document.querySelector('#src mark');
+  if (!chip || !m || !m.getBoundingClientRect().width) { wire.innerHTML = ''; return; }
+  const a = chip.getBoundingClientRect(), b = m.getBoundingClientRect(), rr = document.getElementById('r').getBoundingClientRect();
+  if (b.top < rr.top || b.bottom > rr.bottom) { wire.innerHTML = ''; return; }
+  const x1 = a.right, y1 = a.top + a.height/2, x2 = b.left - 4, y2 = b.top + b.height/2, mx = (x1 + x2) / 2;
+  wire.innerHTML = `<path d="M${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}"/><circle cx="${x1}" cy="${y1}" r="3.5"/><circle cx="${x2}" cy="${y2}" r="3.5"/>`;
+}
+const src = RC.mountSource(document.getElementById('src'), { onShow: c => { active = c; document.querySelector('.hint').style.display='none'; setTimeout(draw, 30); }, onClose: () => { active = null; draw(); } });
+RC.mountDoc(document.getElementById('doc'), { onOpenSource: c => src.show(c) });
+addEventListener('resize', draw); document.addEventListener('scroll', draw, true);
+</script></body></html>

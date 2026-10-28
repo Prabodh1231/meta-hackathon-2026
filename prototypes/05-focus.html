@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Focus Palette</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+:root {
+  --bg:#e6ece4; --stage:#eef2ec; --paper:#fbfcfa; --ink:#18241c; --muted:#6a7a6f; --line:#d3dcd0; --accent:#2d5a3d; --on-accent:#fff;
+  --ok:#2d8a52; --warn:#b98318; --bad:#c2412d; --pend:#93a396; --mark:#ffe27a; --hover:rgba(45,90,61,.09);
+  --serif:Charter,"Bitstream Charter",Georgia,serif; --sans:"Segoe UI",system-ui,sans-serif; --mono:Consolas,monospace;
+  --r:10px; --pw:660px; --fs:18px; --doc-font:Charter,"Bitstream Charter",Georgia,serif; --pshadow:none; --ppad:70px 64px 90px;
+}
+body { background:var(--stage); font-family:var(--sans); color:var(--ink); }
+.app { height:100vh; display:grid; grid-template-rows:1fr auto; position:relative; overflow:hidden; }
+.rc-doc .d-bar { background:transparent; border-bottom:0; padding:10px 18px; }
+.rc-doc .d-scroll { background:var(--stage); }
+.hold { position:relative; min-height:0; }
+.kbd { position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:5; padding:6px 14px; border:1px solid var(--line); border-radius:999px; background:var(--paper); font:13px var(--sans); color:var(--muted); display:flex; gap:10px; align-items:center; cursor:pointer; }
+.kbd kbd { font:600 11px var(--mono); border:1px solid var(--line); border-radius:5px; padding:1px 6px; background:var(--stage); color:var(--ink); }
+.dock { display:flex; align-items:center; gap:8px; padding:9px 18px; border-top:1px solid var(--line); background:var(--paper); font-size:12.5px; color:var(--muted); }
+.dock .pill { padding:3px 11px; border-radius:999px; background:var(--hover); color:var(--accent); font-weight:600; }
+.dock .sp { flex:1; }
+.drawer { position:absolute; top:0; bottom:0; right:0; width:420px; max-width:90vw; background:var(--paper); border-left:1px solid var(--line); box-shadow:-24px 0 50px -20px #0003; transform:translateX(105%); transition:transform .3s cubic-bezier(.2,.8,.2,1); z-index:60; overflow:auto; }
+.drawer.show { transform:none; }
+/* the link from a citation to its quote */
+svg#wire { position:fixed; inset:0; width:100vw; height:100vh; pointer-events:none; z-index:70; }
+svg#wire path { fill:none; stroke-width:1.8; stroke-dasharray:5 5; animation:dash 1s linear infinite; }
+@keyframes dash { to { stroke-dashoffset:-20; } }
+.chip.active { background:var(--hover); border-color:var(--ink); box-shadow:0 0 0 3px var(--hover); }
+.scrim { position:absolute; inset:0; z-index:80; background:#18241c66; display:none; align-items:flex-start; justify-content:center; padding-top:12vh; }
+.scrim.show { display:flex; }
+.pal { width:min(560px,92vw); background:var(--paper); border-radius:14px; box-shadow:0 30px 80px #0006; overflow:hidden; }
+.pal input { width:100%; padding:18px 20px; border:0; border-bottom:1px solid var(--line); font:17px var(--sans); background:transparent; color:var(--ink); outline:none; }
+.pal ul { list-style:none; margin:0; padding:6px; max-height:340px; overflow:auto; }
+.pal li { padding:9px 14px; border-radius:8px; display:flex; gap:12px; align-items:center; font-size:14px; cursor:pointer; }
+.pal li.sel, .pal li:hover { background:var(--hover); }
+.pal li em { margin-left:auto; font:normal 11px var(--mono); color:var(--muted); }
+.pal li .g { font:700 10px var(--mono); letter-spacing:.08em; color:var(--accent); width:44px; }
+.pal .foot { padding:8px 16px; border-top:1px solid var(--line); font-size:11.5px; color:var(--muted); display:flex; gap:14px; }
+</style></head><body>
+<div class="app">
+  <div class="hold">
+    <div class="kbd" id="open">Search sources, jump, ask Muse <kbd>Ctrl K</kbd></div>
+    <div id="doc" style="height:100%"></div>
+    <aside class="drawer" id="drawer"><div id="src"></div></aside>
+  </div>
+  <footer class="dock"><span class="pill">Retrieval &amp; long context</span><span class="pill">RAG</span><span class="pill">position bias</span><span class="sp"></span><span>412 words · 4 sources cited · 7 in library</span></footer>
+  <svg id="wire"></svg>
+  <div class="scrim" id="scrim"><div class="pal"><input id="q" placeholder="Type to search, or try “cite”, “export”, “topics”"><ul id="list"></ul><div class="foot"><span>↑↓ move</span><span>↵ open</span><span>esc close</span></div></div></div>
+</div>
+<script src="shared.js"></script>
+<script>
+const { docs, topics, kindLabel, esc } = RC;
+const items = [
+  ...docs.map(d => ({ g: kindLabel[d.kind], t: d.title, e: d.short })),
+  ...topics.map(t => ({ g: 'TOPIC', t: t.label, e: t.tags.join(', ') })),
+  { g: 'DO', t: 'Verify all citations', e: 'claims vs sources' }, { g: 'DO', t: 'Insert a citation here', e: 'Muse picks passages' },
+  { g: 'DO', t: 'Export as .docx', e: 'APA 7' }, { g: 'DO', t: 'Copy BibTeX', e: '4 entries' },
+];
+const scrim = document.getElementById('scrim'), q = document.getElementById('q'), list = document.getElementById('list'); let sel = 0, shown = items;
+function render() {
+  const s = q.value.toLowerCase(); shown = items.filter(i => (i.t + i.e).toLowerCase().includes(s)); sel = Math.min(sel, Math.max(shown.length - 1, 0));
+  list.innerHTML = shown.map((i, n) => `<li class="${n===sel?'sel':''}"><span class="g">${i.g}</span>${esc(i.t)}<em>${esc(i.e)}</em></li>`).join('') || '<li>No match — ask Muse instead?</li>';
+}
+const openP = () => { scrim.classList.add('show'); q.value=''; sel=0; render(); q.focus(); }, closeP = () => scrim.classList.remove('show');
+document.getElementById('open').onclick = openP;
+scrim.onclick = e => { if (e.target === scrim) closeP(); };
+q.oninput = render;
+addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openP(); }
+  if (!scrim.classList.contains('show')) return;
+  if (e.key === 'Escape') closeP();
+  if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, shown.length - 1); render(); }
+  if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); render(); }
+  if (e.key === 'Enter') closeP();
+});
+list.onclick = closeP;
+
+const drawer = document.getElementById('drawer'), wire = document.getElementById('wire'); let active = null;
+const color = st => st === 'unsupported' ? 'var(--bad)' : st === 'weak' ? 'var(--warn)' : 'var(--accent)';
+function draw() {
+  document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
+  const chip = active && document.querySelector(`.chip[data-c="${active.key}"]`), m = document.querySelector('#src mark');
+  if (!chip || !m || !m.getBoundingClientRect().width) { wire.innerHTML = ''; return; }
+  chip.classList.add('active');
+  const a = chip.getBoundingClientRect(), b = m.getBoundingClientRect(), dr = drawer.getBoundingClientRect();
+  if (b.top < dr.top + 90 || b.bottom > dr.bottom || a.bottom < 60 || a.top > innerHeight - 50) { wire.innerHTML = ''; return; }
+  const x1 = a.right, y1 = a.top + a.height / 2, x2 = b.left - 4, y2 = b.top + b.height / 2, mx = (x1 + x2) / 2, c = color(active.status);
+  wire.innerHTML = `<path stroke="${c}" d="M${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}"/><circle cx="${x1}" cy="${y1}" r="3.5" fill="${c}"/><circle cx="${x2}" cy="${y2}" r="3.5" fill="${c}"/>`;
+}
+const src = RC.mountSource(document.getElementById('src'), {
+  onShow: c => { active = c; drawer.classList.add('show'); setTimeout(draw, 340); },
+  onClose: () => { active = null; drawer.classList.remove('show'); draw(); },
+});
+RC.mountDoc(document.getElementById('doc'), { onOpenSource: c => src.show(c) });
+drawer.addEventListener('transitionend', draw); addEventListener('resize', draw); document.addEventListener('scroll', draw, true);
+</script></body></html>
