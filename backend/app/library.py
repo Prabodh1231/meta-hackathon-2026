@@ -3,6 +3,7 @@
 import json
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +32,9 @@ USER_SETTINGS_DEFAULTS = {k: v[0] for k, v in USER_SETTINGS_CHOICES.items()}
 _FROM_SETTINGS = object()
 
 
+INGEST_WORKERS = 4
+
+
 class Library:
     def __init__(self, settings: Settings, provider: LLMProvider | None = None, embedder: Embedder | None = None,
                  reranker: "Reranker | None | object" = _FROM_SETTINGS):
@@ -38,6 +42,7 @@ class Library:
         self.settings = settings
         self.conn = db.connect(settings.db_path)
         self.lock = threading.RLock()
+        self._embed_lock = threading.Lock()  # one GPU/model call at a time while files ingest in parallel
         self.provider = provider or make_provider(settings)
         self.embedder = embedder or make_embedder(settings.embedder, settings.data_dir / "models")
         self.reranker = (
@@ -55,15 +60,19 @@ class Library:
         if not p.exists():
             raise LookupError(f"No such file or folder: {p}")
         files = [p] if p.is_file() else sorted(f for f in p.rglob("*") if f.is_file() and is_supported(f))
-        results = []
-        for f in files:
+
+        def ingest_one(f: Path) -> dict:
             try:
                 parsed = parse_file(f, self.provider.transcribe_image)
-                results.append({"source": str(f), "ok": True, "document": self._store(parsed, str(f.resolve()))})
+                return {"source": str(f), "ok": True, "document": self._store(parsed, str(f.resolve()))}
             except Exception as exc:
                 log.exception("Failed to ingest %s", f)
-                results.append({"source": str(f), "ok": False, "error": str(exc)})
-        return results
+                return {"source": str(f), "ok": False, "error": str(exc)}
+
+        # Each file spends most of its time waiting on Muse (about 3 s per call), so a few at once
+        # cut a folder's time by roughly the worker count. map() keeps the results in file order.
+        with ThreadPoolExecutor(max_workers=min(INGEST_WORKERS, max(len(files), 1))) as pool:
+            return list(pool.map(ingest_one, files))
 
     def ingest_url(self, url: str) -> dict:
         return self._store(parse_url(url), url)
@@ -79,15 +88,18 @@ class Library:
             log.exception("Metadata extraction failed for %s", source)
         meta.update({k: v for k, v in parsed.metadata.items() if v})  # file metadata wins when present
         title = meta["title"] or Path(source).stem
-        summary = self.provider.summarize(title, full_text)
-        tags = self.provider.tag_document(title, full_text)
+        with ThreadPoolExecutor(max_workers=2) as pool:  # independent of each other, so overlap the waits
+            summary_job = pool.submit(self.provider.summarize, title, full_text)
+            tags_job = pool.submit(self.provider.tag_document, title, full_text)
+            summary, tags = summary_job.result(), tags_job.result()
 
         chunks = [
             (page_no, s, e, text[s:e])
             for page_no, text in enumerate(parsed.pages, start=1)
             for s, e in chunk_page(text)
         ]
-        vectors = self.embedder.embed([c[3] for c in chunks]) if chunks else np.zeros((0, 1))
+        with self._embed_lock:
+            vectors = self.embedder.embed([c[3] for c in chunks]) if chunks else np.zeros((0, 1))
 
         fields = {
             "kind": parsed.kind, "title": title, "authors": json.dumps(meta["authors"]), "year": meta["year"],
