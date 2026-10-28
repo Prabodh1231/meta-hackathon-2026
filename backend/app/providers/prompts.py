@@ -44,6 +44,30 @@ TOPIC_SCHEMA = {
     "additionalProperties": False,
 }
 
+FOLDER_FIT_SYSTEM = (
+    "The user keeps virtual folders, each defined by a subject they typed. For each folder, "
+    "rate from 0 to 100 how well this document belongs in it, judging by what the document "
+    "is about and never by its file name or type. 0 = unrelated, 50 = the subject is a "
+    "meaningful part of the document, 100 = the subject is what the document is mainly about. "
+    "Return every folder exactly once, with its name copied as given."
+)
+FOLDER_FIT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "scores": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"folder": {"type": "string"}, "score": {"type": "integer"}},
+                "required": ["folder", "score"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["scores"],
+    "additionalProperties": False,
+}
+
 DRAFT_SYSTEM = (
     "You are a research writing assistant. Write in the researcher's voice using ONLY the "
     "numbered passages provided. Every sentence must cite at least one passage id (e.g. P2) "

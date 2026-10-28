@@ -67,6 +67,29 @@ CREATE TABLE IF NOT EXISTS tags (
   tag TEXT NOT NULL,
   PRIMARY KEY (doc_id, tag)
 );
+-- Virtual folders: subjects the user defines, which a document can match many of. A row in
+-- doc_folders points at the document, never copies it. `state` records who decided: the
+-- similarity score reaching the folder's threshold ('auto'), the user adding it ('user'),
+-- or the user removing a wrong match ('rejected', which keeps rescoring from putting it back).
+CREATE TABLE IF NOT EXISTS folders (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  similarity INTEGER NOT NULL DEFAULT 50 -- percent a document must match to be filed here
+);
+-- How well each document fits each folder, 0-100. Kept for every pair so moving a folder's
+-- threshold re-files instantly, without asking the model again.
+CREATE TABLE IF NOT EXISTS folder_scores (
+  doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+  score INTEGER NOT NULL,
+  PRIMARY KEY (doc_id, folder_id)
+);
+CREATE TABLE IF NOT EXISTS doc_folders (
+  doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+  state TEXT NOT NULL CHECK (state IN ('auto', 'user', 'rejected')),
+  PRIMARY KEY (doc_id, folder_id)
+);
 CREATE TABLE IF NOT EXISTS drafts (
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL DEFAULT 'Untitled',
@@ -95,6 +118,7 @@ _ADDED_COLUMNS = [
     ("documents", "page_numbering", "TEXT NOT NULL DEFAULT 'index'"),
     ("pages", "label", "TEXT"),
     ("documents", "edited_fields", "TEXT NOT NULL DEFAULT '[]'"),
+    ("folders", "similarity", "INTEGER NOT NULL DEFAULT 50"),
 ]
 
 

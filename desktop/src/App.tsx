@@ -11,7 +11,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { applyTheme, cacheTheme, cachedTheme, watchSystemTheme } from './theme'
 import { SourceViewer, type SourceTarget } from './components/SourceViewer'
 import { WritingEditor, type ChipAttrs, type WritingEditorHandle } from './components/WritingEditor'
-import type { Citation, Doc, Health, Settings, Topic } from './types'
+import type { Citation, Doc, Folder, Health, Settings } from './types'
 
 type Tab = 'assistant' | 'cite' | 'source' | 'references'
 const TAB_LABELS: Record<Tab, string> = { assistant: 'Assistant', cite: 'Cite', source: 'Source', references: 'References' }
@@ -29,7 +29,7 @@ function statusLine(count: number, h: Health): string {
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [docs, setDocs] = useState<Doc[]>([])
-  const [topics, setTopics] = useState<Topic[]>([])
+  const [folders, setFolders] = useState<Folder[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [tab, setTab] = useState<Tab>('assistant')
   const [source, setSource] = useState<(SourceTarget & { cid?: string }) | null>(null)
@@ -38,6 +38,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [citeRequest, setCiteRequest] = useState<CiteRequest | null>(null)
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [libraryWide, setLibraryWide] = useState(false) // library as a file manager
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const editor = useRef<WritingEditorHandle>(null)
@@ -81,9 +82,9 @@ export default function App() {
   }
 
   const refresh = useCallback(async () => {
-    const [d, t] = await Promise.all([api.documents(), api.topics()])
+    const [d, f] = await Promise.all([api.documents(), api.folders()])
     setDocs(d)
-    setTopics(t)
+    setFolders(f)
     setSelected((s) => new Set([...s].filter((id) => d.some((doc) => doc.id === id))))
   }, [])
 
@@ -172,7 +173,7 @@ export default function App() {
       hint: [d.authors[0], d.year].filter(Boolean).join(' '),
       run: () => setLibraryOpen(true),
     })),
-    ...topics.map((t) => ({ group: 'TOPIC', name: t.label, hint: `${t.doc_count} docs`, run: () => setLibraryOpen(true) })),
+    ...folders.map((f) => ({ group: 'FOLDER', name: f.name, hint: `${f.doc_count} docs`, run: () => setLibraryOpen(true) })),
     { group: 'DO', name: 'Open library', hint: 'add and organize sources', run: () => setLibraryOpen(true) },
     { group: 'DO', name: 'Ask the assistant', hint: 'draft with citations', run: () => showTab('assistant') },
     { group: 'DO', name: 'Find a citation', hint: 'for the selected sentence', run: () => showTab('cite') },
@@ -183,13 +184,15 @@ export default function App() {
   return (
     <div className="app">
       <div className="stage">
-      <div className={`drawer drawer-left${libraryOpen ? ' show' : ''}`} aria-hidden={!libraryOpen}>
+      <div className={`drawer drawer-left${libraryOpen ? ' show' : ''}${libraryWide ? ' wide' : ''}`} aria-hidden={!libraryOpen}>
       <button className="drawer-close" onClick={() => setLibraryOpen(false)} aria-label="Close library">
         ×
       </button>
       <LibraryPanel
         docs={docs}
-        topics={topics}
+        folders={folders}
+        wide={libraryWide}
+        onToggleWide={() => setLibraryWide((w) => !w)}
         selected={selected}
         onToggle={(id) =>
           setSelected((s) => {
@@ -287,9 +290,9 @@ export default function App() {
 
       <footer className="dock">
         <div className="grow">
-          {topics.slice(0, 4).map((t) => (
-            <span key={t.id} className="pill" title={`${t.doc_count} docs`}>
-              {t.label}
+          {folders.slice(0, 4).map((f) => (
+            <span key={f.id} className="pill" title={`${f.doc_count} docs`}>
+              {f.name}
             </span>
           ))}
         </div>

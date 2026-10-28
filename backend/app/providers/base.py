@@ -67,6 +67,18 @@ class LLMProvider(ABC):
         user = "\n\n---\n\n".join(s[:1500] for s in samples[:10])
         return self._json(prompts.TOPIC_SYSTEM, user, prompts.TOPIC_SCHEMA, max_tokens=200)
 
+    def score_folders(self, title: str, summary: str, text: str, folders: list[str]) -> dict[str, int]:
+        """How well a document fits each named folder, 0-100 (folder name -> score)."""
+        user = f"Folders: {json.dumps(folders)}\n\nTitle: {title}\nSummary: {summary}\n\n{text[:6000]}"
+        out = self._json(prompts.FOLDER_FIT_SYSTEM, user, prompts.FOLDER_FIT_SCHEMA, max_tokens=60 + 40 * len(folders))
+        by_name = {f.lower(): f for f in folders}
+        scores: dict[str, int] = {}
+        for item in out.get("scores", []):
+            name = by_name.get(str(item.get("folder", "")).strip().lower())
+            if name is not None and isinstance(item.get("score"), (int, float)):
+                scores[name] = max(0, min(100, int(item["score"])))
+        return scores
+
     def draft(self, instruction: str, context: str, passages: list[Passage]) -> list[dict]:
         user = (
             f"Task: {instruction}\n\n"

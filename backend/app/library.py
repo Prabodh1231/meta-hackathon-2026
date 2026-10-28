@@ -31,6 +31,12 @@ USER_SETTINGS_DEFAULTS = {k: v[0] for k, v in USER_SETTINGS_CHOICES.items()}
 
 _FROM_SETTINGS = object()
 
+# Filing a paper into a folder: below this many papers the library has no average to compare
+# against, so every paper is read by the model. Papers the embeddings rank under the library's
+# average for a folder are never sent to the model, and keep at most this score.
+MIN_DOCS_FOR_RELATIVE = 8
+UNCHECKED_CAP = 30
+
 
 INGEST_WORKERS = 4
 
@@ -51,6 +57,7 @@ class Library:
         self._ids: np.ndarray | None = None  # in-memory vector index, rebuilt lazily
         self._docs: np.ndarray | None = None
         self._mat: np.ndarray | None = None
+        self._name_vectors: dict[tuple[str, str], np.ndarray] = {}  # (embedder id, folder name) -> vector
         self._reembed_if_needed()
 
     # ---------- ingestion ----------
@@ -143,6 +150,10 @@ class Library:
                 ],
             )
             self._invalidate_index()
+        try:
+            self.classify_document(doc_id)
+        except Exception:  # the document is stored and searchable; folders can be filled in later
+            log.exception("Folder classification failed for %s", source)
         return self.get_document(doc_id)
 
     def _allocate_ids(self, table: str, n: int) -> list[int]:
@@ -177,6 +188,15 @@ class Library:
         d["authors"] = json.loads(d["authors"])
         d["edited_fields"] = json.loads(d["edited_fields"])
         d["tags"] = [r["tag"] for r in self.conn.execute("SELECT tag FROM tags WHERE doc_id = ? ORDER BY tag", (d["id"],))]
+        d["folders"] = [
+            dict(r)
+            for r in self.conn.execute(
+                "SELECT f.id, f.name, df.state, s.score FROM doc_folders df JOIN folders f ON f.id = df.folder_id "
+                "LEFT JOIN folder_scores s ON s.doc_id = df.doc_id AND s.folder_id = df.folder_id "
+                "WHERE df.doc_id = ? AND df.state != 'rejected' ORDER BY f.name COLLATE NOCASE",
+                (d["id"],),
+            )
+        ]
         d["label"] = short_label(d)
         d["page_range"] = self._page_range(d["id"], d["page_numbering"])
         return d
@@ -417,6 +437,221 @@ class Library:
                 self.conn.execute(f"UPDATE documents SET topic_id = ? WHERE topic_id IN ({marks})", (into_id, *sources))
                 self.conn.execute(f"DELETE FROM topics WHERE id IN ({marks})", sources)
         return self.list_topics()
+
+    # ---------- virtual folders ----------
+
+    def list_folders(self) -> list[dict]:
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT f.id, f.name, f.similarity, COUNT(df.doc_id) AS doc_count FROM folders f "
+                "LEFT JOIN doc_folders df ON df.folder_id = f.id AND df.state != 'rejected' "
+                "GROUP BY f.id ORDER BY f.name COLLATE NOCASE"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    @staticmethod
+    def _folder_name(name: str) -> str:
+        name = " ".join(str(name).split())[:40]
+        if not name:
+            raise ValueError("A folder needs a name")
+        return name
+
+    @staticmethod
+    def _similarity(value: int) -> int:
+        if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 100:
+            raise ValueError("Similarity must be a whole number from 0 to 100")
+        return value
+
+    def create_folder(self, name: str, similarity: int = 50) -> list[dict]:
+        """A folder the user defines by subject. Every document is scored against it and the
+        ones at or above `similarity` percent are filed in."""
+        name, similarity = self._folder_name(name), self._similarity(similarity)
+        with self.lock, self.conn:
+            if self.conn.execute("SELECT 1 FROM folders WHERE name = ?", (name,)).fetchone():
+                raise ValueError(f"A folder called {name!r} already exists")
+            folder_id = self.conn.execute(
+                "INSERT INTO folders (name, similarity) VALUES (?, ?)", (name, similarity)
+            ).lastrowid
+        self._score_folder(folder_id)
+        with self.lock, self.conn:
+            self._apply_scores()
+        return self.list_folders()
+
+    def update_folder(self, folder_id: int, name: str | None = None, similarity: int | None = None) -> list[dict]:
+        """Rename a folder and/or move its similarity threshold. A new name is a new subject, so
+        its documents are scored again; a new threshold only re-files from the scores kept."""
+        with self.lock:
+            row = self.conn.execute("SELECT name FROM folders WHERE id = ?", (folder_id,)).fetchone()
+        if not row:
+            raise LookupError(f"Folder {folder_id} not found")
+        name = self._folder_name(name) if name is not None else None
+        similarity = self._similarity(similarity) if similarity is not None else None
+        retitled = name is not None and name.lower() != row["name"].lower()
+        with self.lock, self.conn:
+            if name is not None:
+                clash = self.conn.execute("SELECT id FROM folders WHERE name = ?", (name,)).fetchone()
+                if clash and clash["id"] != folder_id:
+                    raise ValueError(f"A folder called {name!r} already exists")
+                self.conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))
+            if similarity is not None:
+                self.conn.execute("UPDATE folders SET similarity = ? WHERE id = ?", (similarity, folder_id))
+            if retitled:
+                self.conn.execute("DELETE FROM folder_scores WHERE folder_id = ?", (folder_id,))
+        self._score_folder(folder_id)  # scores the documents that have none yet
+        with self.lock, self.conn:
+            self._apply_scores()
+        return self.list_folders()
+
+    @staticmethod
+    def _blend(sims: np.ndarray) -> np.ndarray:
+        """(chunks, folders) cosines -> one cosine per folder: half the mean of the three closest
+        chunks, half the mean of all of them."""
+        return 0.5 * np.sort(sims, axis=0)[-3:].mean(axis=0) + 0.5 * sims.mean(axis=0)
+
+    def _folder_vectors(self, names: list[str]) -> np.ndarray:
+        """Embeddings of folder names, kept per embedder since the same few get scored against every paper."""
+        missing = [n for n in dict.fromkeys(names) if (self.embedder.id, n) not in self._name_vectors]
+        if missing:
+            with self._embed_lock:
+                vectors = self.embedder.embed(missing)
+            for name, vec in zip(missing, vectors):
+                self._name_vectors[(self.embedder.id, name)] = vec
+        return np.stack([self._name_vectors[(self.embedder.id, n)] for n in names])
+
+    def _relative_fit(self, names: list[str]) -> dict[int, np.ndarray]:
+        """First pass, from the chunk embeddings already stored: for each document, how far above
+        or below the library's average it sits for each folder, in standard deviations (z).
+        Raw cosines can't be read as percentages (a finance library scores every finance paper
+        high for every finance folder), but the ranking they give is reliable. Call under the lock."""
+        self._load_index()
+        if not len(self._ids):
+            return {}
+        sims = self._mat @ self._folder_vectors(names).T  # (chunks, folders)
+        order = np.argsort(self._docs, kind="stable")
+        groups = np.split(order, np.flatnonzero(np.diff(self._docs[order])) + 1)
+        cosine = np.stack([self._blend(sims[g]) for g in groups])
+        spread = cosine.std(axis=0)
+        z = (cosine - cosine.mean(axis=0)) / np.where(spread > 0, spread, 1.0)
+        return {int(self._docs[g[0]]): z[i] for i, g in enumerate(groups)}
+
+    def _ask_model(self, doc_id: int, names: list[str]) -> dict[str, int]:
+        with self.lock:
+            doc = self.get_document(doc_id)
+            text = "\n\n".join(r["text"] for r in self.conn.execute(
+                "SELECT text FROM pages WHERE doc_id = ? ORDER BY page LIMIT 4", (doc_id,)))
+        return self.provider.score_folders(doc["title"], doc["summary"], text, names)  # network call: no lock
+
+    def _score(self, doc_ids: list[int] | None = None, folder_ids: list[int] | None = None) -> None:
+        """Score documents (all by default) against folders (all by default) and keep the scores.
+
+        Two stages. Embeddings rank every document for every folder at no cost. Muse then judges
+        the pairs that could plausibly be a match (above the library's average for that folder),
+        which is where its reading of the content beats an embedding. The rest keep a low score
+        from the embedding alone, capped so an unchecked paper only joins at a very low threshold.
+        Small libraries skip the first stage: there is no average to speak of, and few papers to read."""
+        with self.lock:
+            folders = self.conn.execute("SELECT id, name FROM folders ORDER BY id").fetchall()
+            if folder_ids is not None:
+                folders = [f for f in folders if f["id"] in folder_ids]
+            known = [r["id"] for r in self.conn.execute("SELECT id FROM documents ORDER BY id")]
+            targets = known if doc_ids is None else [d for d in doc_ids if d in set(known)]
+            if not folders or not targets:
+                return
+            names = [f["name"] for f in folders]
+            fit = self._relative_fit(names) if len(known) >= MIN_DOCS_FOR_RELATIVE else {}
+
+        def one(doc_id: int) -> None:
+            z = fit.get(doc_id)
+            ask = [i for i in range(len(names)) if z is None or z[i] >= 0]
+            verdict: dict[str, int] = {}
+            if ask:
+                try:
+                    verdict = self._ask_model(doc_id, [names[i] for i in ask])
+                except Exception:  # fall back to the embedding ranking for this document
+                    log.exception("Folder scoring failed for document %s", doc_id)
+            rows = []
+            for i, f in enumerate(folders):
+                if names[i] in verdict:
+                    score = verdict[names[i]]
+                elif z is not None:
+                    score = int(round(min(max(50 + 25 * z[i], 0), 100)))
+                    if i not in ask:
+                        score = min(score, UNCHECKED_CAP)
+                else:
+                    continue
+                rows.append((doc_id, f["id"], score))
+            with self.lock, self.conn:
+                if self.conn.execute("SELECT 1 FROM documents WHERE id = ?", (doc_id,)).fetchone():
+                    self.conn.executemany(
+                        "INSERT OR REPLACE INTO folder_scores (doc_id, folder_id, score) VALUES (?, ?, ?)", rows
+                    )
+
+        with ThreadPoolExecutor(max_workers=min(INGEST_WORKERS, len(targets))) as pool:
+            list(pool.map(one, targets))
+
+    def _score_folder(self, folder_id: int) -> None:
+        """Score every document that has no score for this folder yet."""
+        with self.lock:
+            ids = [r["id"] for r in self.conn.execute(
+                "SELECT id FROM documents WHERE id NOT IN (SELECT doc_id FROM folder_scores WHERE folder_id = ?)",
+                (folder_id,),
+            )]
+        self._score(ids, [folder_id])
+
+    def _apply_scores(self) -> None:
+        """File each document in the folders whose threshold its score reaches. Only 'auto'
+        placements change: ones the user added or removed are left as they decided, and so is
+        a placement with no score yet (from before scores were kept) until it is scored."""
+        self.conn.execute(
+            "DELETE FROM doc_folders WHERE state = 'auto' AND EXISTS ("
+            "SELECT 1 FROM folder_scores s JOIN folders f ON f.id = s.folder_id "
+            "WHERE s.doc_id = doc_folders.doc_id AND s.folder_id = doc_folders.folder_id AND s.score < f.similarity)"
+        )
+        self.conn.execute(
+            "INSERT OR IGNORE INTO doc_folders (doc_id, folder_id, state) "
+            "SELECT s.doc_id, s.folder_id, 'auto' FROM folder_scores s JOIN folders f ON f.id = s.folder_id "
+            "WHERE s.score >= f.similarity"
+        )
+
+    def classify_document(self, doc_id: int) -> dict:
+        """(Re)score one document against every folder and file it where it clears the threshold."""
+        self._score([doc_id])
+        with self.lock, self.conn:
+            self._apply_scores()
+        return self.get_document(doc_id)
+
+    def classify_all(self) -> list[dict]:
+        self._score()
+        with self.lock, self.conn:
+            self._apply_scores()
+        return self.list_folders()
+
+    def set_folder_membership(self, doc_id: int, folder_id: int, member: bool) -> dict:
+        """The user's correction: put a document in a folder, or say it doesn't belong there."""
+        with self.lock, self.conn:
+            self.get_document(doc_id)
+            if not self.conn.execute("SELECT 1 FROM folders WHERE id = ?", (folder_id,)).fetchone():
+                raise LookupError(f"Folder {folder_id} not found")
+            self.conn.execute(  # 'rejected' stays put when scores change, so the match doesn't come back
+                "INSERT INTO doc_folders (doc_id, folder_id, state) VALUES (?, ?, ?) "
+                "ON CONFLICT(doc_id, folder_id) DO UPDATE SET state = excluded.state",
+                (doc_id, folder_id, "user" if member else "rejected"),
+            )
+        return self.get_document(doc_id)
+
+    def add_to_folder_named(self, doc_id: int, name: str) -> dict:
+        with self.lock:
+            row = self.conn.execute("SELECT id FROM folders WHERE name = ?", (self._folder_name(name),)).fetchone()
+        if not row:
+            raise LookupError(f"No folder called {name!r}. Create it first with New folder.")
+        return self.set_folder_membership(doc_id, row["id"], True)
+
+    def delete_folder(self, folder_id: int) -> list[dict]:
+        """Removes the folder only; its documents stay in the library."""
+        with self.lock, self.conn:
+            if not self.conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,)).rowcount:
+                raise LookupError(f"Folder {folder_id} not found")
+        return self.list_folders()
 
     # ---------- writing with citations ----------
 

@@ -38,6 +38,24 @@ class TopicPatch(BaseModel):
     description: str | None = None
 
 
+class FolderIn(BaseModel):
+    name: str = Field(min_length=1)
+    similarity: int = Field(50, ge=0, le=100)  # percent a document must match to be filed here
+
+
+class FolderPatch(BaseModel):
+    name: str | None = Field(None, min_length=1)
+    similarity: int | None = Field(None, ge=0, le=100)
+
+
+class DocFolderIn(BaseModel):
+    name: str = Field(min_length=1)
+
+
+class MembershipIn(BaseModel):
+    member: bool
+
+
 class MergeIn(BaseModel):
     source_ids: list[int]
     into_id: int
@@ -178,6 +196,38 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/topics/merge")
     def merge_topics(body: MergeIn):
         return lib.merge_topics(body.source_ids, body.into_id)
+
+    @app.get("/folders")
+    def list_folders():
+        return lib.list_folders()
+
+    @app.post("/folders")
+    def create_folder(body: FolderIn):
+        return lib.create_folder(body.name, body.similarity)
+
+    @app.post("/folders/classify")
+    def classify_all():
+        return lib.classify_all()
+
+    @app.patch("/folders/{folder_id}")
+    def update_folder(folder_id: int, body: FolderPatch):
+        return lib.update_folder(folder_id, body.name, body.similarity)
+
+    @app.delete("/folders/{folder_id}")
+    def delete_folder(folder_id: int):
+        return lib.delete_folder(folder_id)
+
+    @app.post("/documents/{doc_id}/classify")
+    def classify_document(doc_id: int):
+        return lib.classify_document(doc_id)
+
+    @app.post("/documents/{doc_id}/folders")
+    def add_to_folder(doc_id: int, body: DocFolderIn):
+        return lib.add_to_folder_named(doc_id, body.name)
+
+    @app.put("/documents/{doc_id}/folders/{folder_id}")
+    def set_membership(doc_id: int, folder_id: int, body: MembershipIn):
+        return lib.set_folder_membership(doc_id, folder_id, body.member)
 
     @app.post("/write/draft")
     def draft(body: DraftIn):

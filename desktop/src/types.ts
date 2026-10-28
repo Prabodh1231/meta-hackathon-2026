@@ -14,7 +14,23 @@ export interface Doc {
   page_range: string // printed range like "341–355"; empty when unknown
   topic_id: number | null
   tags: string[]
+  folders: DocFolder[]
   label: string
+}
+
+/** A virtual folder a document is filed under: 'auto' was the classifier's call, 'user' was added by hand. */
+export interface DocFolder {
+  id: number
+  name: string
+  state: 'auto' | 'user'
+  score: number | null // percent match; null if never scored
+}
+
+export interface Folder {
+  id: number
+  name: string
+  similarity: number // percent a document must match to be filed here
+  doc_count: number
 }
 
 /** Where a document's page numbers come from: the PDF's own page labels, numbers printed

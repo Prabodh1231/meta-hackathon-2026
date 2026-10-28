@@ -2,6 +2,7 @@
 (and can be demoed and tested) without API access."""
 
 import re
+from collections import Counter
 
 from ..text_utils import keywords, sentences, tokenize
 from .base import LLMProvider, Passage
@@ -61,6 +62,21 @@ class MockProvider(LLMProvider):
             "label": " · ".join(w.capitalize() for w in words[:2]),
             "description": f"Documents that discuss {', '.join(words)}.",
         }
+
+    def score_folders(self, title: str, summary: str, text: str, folders: list[str]) -> dict[str, int]:
+        # Offline stand-in: how fully the words of a folder's name show up in the document,
+        # matching word stems so "finances" counts for "finance".
+        counts = Counter(re.findall(r"[a-z]+", f"{title} {summary} {text[:8000]}".lower()))
+        scores = {}
+        for name in folders:
+            words = re.findall(r"[a-z]{2,}", name.lower())
+            coverage = []
+            for w in words:
+                stem = w if len(w) <= 3 else w[: max(4, len(w) - 2)]
+                hits = sum(n for tok, n in counts.items() if tok == w or (len(w) > 3 and tok.startswith(stem)))
+                coverage.append(0 if hits == 0 else 0.6 if hits == 1 else 0.8 if hits == 2 else 1.0)
+            scores[name] = round(100 * sum(coverage) / len(coverage)) if coverage else 0
+        return scores
 
     def draft(self, instruction: str, context: str, passages: list[Passage]) -> list[dict]:
         # No paraphrasing offline: pick each passage's most on-topic sentence and quote it.

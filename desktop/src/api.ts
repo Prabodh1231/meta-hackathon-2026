@@ -3,6 +3,7 @@ import type {
   Doc,
   DocxStyle,
   DraftResult,
+  Folder,
   Health,
   IngestResult,
   PageText,
@@ -78,6 +79,17 @@ export const api = {
   renameTopic: (id: number, label: string) => request<Topic>('PATCH', `/topics/${id}`, { label }),
   mergeTopics: (sourceIds: number[], intoId: number) =>
     request<Topic[]>('POST', '/topics/merge', { source_ids: sourceIds, into_id: intoId }),
+
+  folders: () => request<Folder[]>('GET', '/folders'),
+  classifyFolders: () => request<Folder[]>('POST', '/folders/classify'),
+  createFolder: (name: string, similarity: number) => request<Folder[]>('POST', '/folders', { name, similarity }),
+  updateFolder: (id: number, patch: { name?: string; similarity?: number }) =>
+    request<Folder[]>('PATCH', `/folders/${id}`, patch),
+  deleteFolder: (id: number) => request<Folder[]>('DELETE', `/folders/${id}`),
+  classifyDocument: (docId: number) => request<Doc>('POST', `/documents/${docId}/classify`),
+  addToFolder: (docId: number, name: string) => request<Doc>('POST', `/documents/${docId}/folders`, { name }),
+  setFolderMember: (docId: number, folderId: number, member: boolean) =>
+    request<Doc>('PUT', `/documents/${docId}/folders/${folderId}`, { member }),
 
   draft: (instruction: string, context: string, docIds: number[] | null) =>
     request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds }),
