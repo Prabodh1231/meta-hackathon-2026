@@ -253,11 +253,11 @@ class Library:
 
         Candidates come from embeddings ("dense"), BM25 ("keyword") or both merged by
         reciprocal rank fusion ("hybrid"); the reranker, when loaded and `rerank` is set,
-        then reorders them. "auto" is hybrid + reranker, or plain dense without a reranker:
-        on the eval set (eval/), fusion alone ranked worse than embeddings alone because
-        keyword hits push paraphrase matches down; it only pays off with reranking."""
+        then reorders them. "auto" is hybrid, reranked when a reranker is loaded: on the
+        14,000-chunk eval (eval/README.md) fusion beat embeddings alone even without one
+        (R@1 0.37 vs 0.27), though it trailed slightly on the 40-passage set."""
         if mode == "auto":
-            mode = "hybrid" if self.reranker else "dense"
+            mode = "hybrid"
         use_reranker = rerank and self.reranker is not None
         pool = max(k * 3, 24) if use_reranker else k
         if mode == "dense":

@@ -64,9 +64,8 @@ def test_identifier_lookups_found(results):
     assert results["hybrid_rerank"]["by_type"]["identifier"]["R@1"] == 1.0
 
 
-def test_default_mode_is_reranked_hybrid_or_plain_embeddings(results):
-    # Fusion without a reranker measured worse than embeddings alone, so "auto" must
-    # never use it: with a reranker it's hybrid+rerank, without one it's plain dense.
+def test_default_mode_is_hybrid_with_or_without_reranker(results):
+    # Plain fusion trails embeddings slightly on this 40-passage set but clearly beats them
+    # on the 14,000-chunk library (eval/README.md), so "auto" stays hybrid without a reranker.
     assert results["auto"]["overall"] == results["hybrid_rerank"]["overall"]
-    assert results["auto_without_reranker"]["overall"] == results["dense"]["overall"]
-    assert results["hybrid_norerank"]["overall"]["R@1"] < results["dense"]["overall"]["R@1"]
+    assert results["auto_without_reranker"]["overall"] == results["hybrid_norerank"]["overall"]

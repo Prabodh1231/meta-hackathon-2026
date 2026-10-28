@@ -35,7 +35,7 @@ Per-type columns are R@1. Timings are on CPU, with the reranker scoring 24 candi
 ## What this shows, and what it doesn't
 
 - **The reranker is the win.** Right passage first goes from 82% to 91%, top-3 from 93% to 98%. Paraphrase and look-alike questions gain the most, and no question type gets worse. The smaller L-6 model beats L-12 and is faster, so it's the default. Cost: about 0.45 s per search.
-- **Fusion without a reranker is worse than embeddings alone** (R@1 0.82 → 0.77): keyword hits push good paraphrase matches down. So the app never uses plain fusion. With a reranker it uses hybrid + rerank; if the reranker can't load, it falls back to embeddings only (`mode="auto"`).
+- **Fusion without a reranker is worse than embeddings alone** (R@1 0.82 → 0.77): keyword hits push good paraphrase matches down. On the large library below the reverse holds, so when the reranker can't load the app uses plain hybrid (`mode="auto"`). It used embeddings only until that measurement.
 - **The keyword index helps identifier-only lookups** on its own (0.88 → 1.00), but **with the reranker it adds nothing measurable here**. With only 40 passages, the reranker's 24 candidates already cover most of the library, so the gold passage is always among them. The keyword index matters in a large library, where a rare code like `S-208` can fall outside the embedding top-24; this set is too small to show that. It costs under a millisecond and is kept for that case.
 - **Caveats:** 44 questions is small (one question ≈ 2 points of R@1). The passages are short and each is its own chunk, whereas real chunks are ~900 characters. The identifier group was added after the first run showed the original keyword questions always had context words around the identifier. The Jina rerankers weren't compared because their downloads were too slow here; pass `--rerankers jinaai/jina-reranker-v1-tiny-en` to include one.
 
@@ -76,8 +76,8 @@ missing there can never be ranked first. Per-type columns are R@1.
   The default (hybrid + rerank) is the best configuration overall, at **2.1× the R@1 of the old
   embeddings-only search** (0.27 → 0.56).
 - **Plain fusion beats embeddings alone here** (0.37 vs 0.27 R@1, 0.84 vs 0.71 cand@24), the
-  reverse of the small set. The fallback when the reranker can't load (`mode="auto"` → dense)
-  was chosen on the small set and should be revisited.
+  reverse of the small set. So when the reranker can't load, `mode="auto"` now falls back to
+  plain hybrid instead of embeddings only.
 - **Paraphrases are the weak spot.** Only half reach the top 10 in any configuration, and the
   reranker doesn't move them. Part of this is the scoring: a reworded question about, say, fintech
   lowering costs has several valid passages in a library this size, but only the one it was
