@@ -2,13 +2,13 @@
 
 A personal AI research companion. It turns one researcher's scattered documents (papers, notes, slides, scans, web pages) into an organized local knowledge base, then helps them write from it with citations that are checked against the source.
 
-**Status:** the app is fully runnable offline against a **mock model**. The real model is Meta's **Muse** via the Meta Model API, which plugs in behind one interface once there's API access (see [Switching to Muse](#switching-to-muse)).
+**Status:** the app runs on Meta's **Muse** (`muse-spark-1.3`, Meta Model API) once a key is in place. Without one it falls back to an offline **mock model** (see [Using Muse](#using-muse)).
 
 ## Layout
 
 ```
 backend/   Python FastAPI service: parsing, local index, topics, cited drafting, verification
-  app/providers/   LLMProvider interface + MockProvider (offline) + MuseProvider (stub)
+  app/providers/   LLMProvider interface + MockProvider (offline) + MuseProvider (Meta Model API)
   tests/           pytest suite: full pipeline on a generated corpus
   scripts/         make_samples.py builds a demo corpus in ../samples
 desktop/   Electron shell + React/Tiptap UI
@@ -53,17 +53,22 @@ Drafts are saved as the editor's own JSON in SQLite, not as .md files, because c
 
 Security: the backend can read any local path, so it binds to 127.0.0.1 only, and Electron passes it a random token each launch that every request must carry.
 
-## Switching to Muse
+## Using Muse
 
-```bash
-RC_PROVIDER=muse MUSE_API_BASE=<endpoint> MUSE_API_KEY=<key> MUSE_MODEL=<model id> npm run dev
+Put the key in `~/.research-companion/.env`, the app's data folder, outside the repository:
+
+```
+RC_PROVIDER=muse
+MUSE_API_KEY=<your Meta Model API key>
 ```
 
-`backend/app/providers/muse.py` **assumes an OpenAI-style chat-completions shape**. That hasn't been checked against Meta's docs because there's no access yet. When access arrives, confirm the endpoint path, auth header, structured-output parameter, image input format and model ID. Only `chat()` and `transcribe_image()` should need changes; every prompt lives in `providers/prompts.py` and is shared.
+Restart the app. The backend reads that file on start; real environment variables override it. Defaults: `MUSE_API_BASE=https://api.meta.ai/v1`, `MUSE_MODEL=muse-spark-1.3`, `MUSE_REASONING_EFFORT=low`. Without the file, or with `RC_PROVIDER=mock`, everything runs offline on the mock.
+
+`backend/app/providers/muse.py` uses Meta's OpenAI-compatible Chat Completions with strict JSON schemas. Muse's hidden reasoning counts against the output limit (a one-line verdict used ~500 tokens), so every call gets 4,096 tokens of headroom. A reply that's still cut off raises an error rather than returning half a JSON object. Rate limits and gateway timeouts are retried with backoff. Only text chunks, and images that need OCR, are sent to the API.
 
 ## Known gaps / next steps
 
-- **Mock limits:** the mock can't paraphrase, so drafts are extracted source sentences, sometimes title blocks. It does no OCR and finds no journal names. Muse covers all of these.
+- **Documents imported on the mock** keep its rough metadata, summaries and tags until they're re-imported with Muse on.
 - **Packaging:** the Python backend still needs bundling with PyInstaller and shipping as an Electron `extraResources` binary. Today `main.cjs` runs `backend/.venv`.
 - **Ingestion speed:** large folders are ingested synchronously. Add a background job with progress reporting.
 - **Source viewer:** shows extracted page text. Rendering the PDF page itself with pdf.js would make highlights match the original layout.

@@ -1,47 +1,85 @@
-"""Meta Muse (Meta Model API) provider.
+"""Meta Muse provider (Meta Model API, OpenAI-compatible Chat Completions).
 
-ASSUMPTION: the request/response shape below is OpenAI-style chat completions. It has not
-been checked against Meta's Model API docs (no access yet). When access lands, confirm the
-endpoint path, auth header, JSON-schema parameter, image input format and model id; only
-`chat` and `transcribe_image` should need to change.
+Checked against https://dev.meta.ai/docs/protocols/chat-completions and live calls to
+muse-spark-1.3: Bearer auth, POST {base}/chat/completions, `response_format` json_schema,
+text at choices[0].message.content.
+
+Muse reasons before it answers, and those tokens count against `max_completion_tokens`:
+a one-line JSON verdict used ~500 of them. Each call therefore gets the caller's answer
+budget plus REASONING_HEADROOM, and a reply cut off by the limit raises instead of
+returning half a JSON object.
 """
 
 import base64
+import random
+import time
 
 import httpx
 
-from .base import LLMProvider
 from . import prompts
+from .base import LLMProvider
+
+REASONING_HEADROOM = 4096
+RETRY_STATUS = {429, 500, 502, 503, 504}
+
+
+class MuseError(RuntimeError):
+    pass
 
 
 class MuseProvider(LLMProvider):
     name = "muse"
 
-    def __init__(self, api_base: str, api_key: str, model: str, timeout: float = 120.0):
+    def __init__(self, api_base: str, api_key: str, model: str, reasoning_effort: str = "low",
+                 timeout: float = 180.0, retries: int = 3, transport: httpx.BaseTransport | None = None):
         if not api_base or not api_key:
             raise ValueError("MUSE_API_BASE and MUSE_API_KEY must be set to use the Muse provider")
         self.model = model
+        self.reasoning_effort = reasoning_effort
+        self.retries = retries
         self.client = httpx.Client(
             base_url=api_base.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=timeout,
+            transport=transport,
         )
 
     def chat(self, messages, *, schema=None, max_tokens=1024, temperature=0.2) -> str:
+        # temperature is not sent: Meta's docs say Muse Spark does best at its default.
         payload: dict = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
+            "max_completion_tokens": max_tokens + REASONING_HEADROOM,
         }
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
         if schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",
-                "json_schema": {"name": "result", "schema": schema},
+                "json_schema": {"name": "result", "schema": schema, "strict": True},
             }
-        resp = self.client.post("/chat/completions", json=payload)
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        choice = self._post(payload)["choices"][0]
+        content = choice["message"].get("content") or ""
+        if choice.get("finish_reason") == "length":
+            raise MuseError("Muse hit its output limit before finishing the answer")
+        if not content.strip():
+            raise MuseError(choice["message"].get("refusal") or "Muse returned an empty answer")
+        return content
+
+    def _post(self, payload: dict) -> dict:
+        for attempt in range(self.retries + 1):
+            try:
+                resp = self.client.post("/chat/completions", json=payload)
+            except httpx.TransportError:
+                if attempt == self.retries:
+                    raise
+            else:
+                if resp.status_code not in RETRY_STATUS or attempt == self.retries:
+                    if resp.is_error:
+                        raise MuseError(f"Muse API error {resp.status_code}: {resp.text[:300]}")
+                    return resp.json()
+            time.sleep(min(2 ** attempt, 8) + random.random())  # backoff with jitter
+        raise AssertionError("unreachable")
 
     def transcribe_image(self, data: bytes, mime: str) -> str:
         url = f"data:{mime};base64,{base64.b64encode(data).decode()}"

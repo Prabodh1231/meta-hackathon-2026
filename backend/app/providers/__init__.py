@@ -11,5 +11,6 @@ def make_provider(settings: Settings) -> LLMProvider:
     if settings.provider == "muse":
         from .muse import MuseProvider
 
-        return MuseProvider(settings.muse_api_base, settings.muse_api_key, settings.muse_model)
+        return MuseProvider(settings.muse_api_base, settings.muse_api_key, settings.muse_model,
+                            reasoning_effort=settings.muse_reasoning_effort)
     raise ValueError(f"Unknown RC_PROVIDER {settings.provider!r} (expected 'mock' or 'muse')")

@@ -14,6 +14,7 @@ METADATA_SCHEMA = {
         "doi": {"type": "string"},
     },
     "required": ["title", "authors", "year", "venue", "doi"],
+    "additionalProperties": False,
 }
 
 SUMMARY_SYSTEM = (
@@ -29,6 +30,7 @@ TAGS_SCHEMA = {
     "type": "object",
     "properties": {"tags": {"type": "array", "items": {"type": "string"}}},
     "required": ["tags"],
+    "additionalProperties": False,
 }
 
 TOPIC_SYSTEM = (
@@ -39,13 +41,16 @@ TOPIC_SCHEMA = {
     "type": "object",
     "properties": {"label": {"type": "string"}, "description": {"type": "string"}},
     "required": ["label", "description"],
+    "additionalProperties": False,
 }
 
 DRAFT_SYSTEM = (
     "You are a research writing assistant. Write in the researcher's voice using ONLY the "
     "numbered passages provided. Every sentence must cite at least one passage id (e.g. P2) "
     "and include a quote copied verbatim from that passage, at most 40 words, that supports "
-    "the sentence. If the passages cannot support a point, leave it out."
+    "the sentence. Write each sentence in your own words as finished prose: the quote goes "
+    "only in the citation, never into the sentence, and the sentence does not mention "
+    "passages, ids or quotes. If the passages cannot support a point, leave it out."
 )
 DRAFT_SCHEMA = {
     "type": "object",
@@ -65,14 +70,17 @@ DRAFT_SCHEMA = {
                                 "quote": {"type": "string"},
                             },
                             "required": ["passage", "quote"],
+                            "additionalProperties": False,
                         },
                     },
                 },
                 "required": ["text", "citations"],
+                "additionalProperties": False,
             },
         }
     },
     "required": ["sentences"],
+    "additionalProperties": False,
 }
 
 JUDGE_SYSTEM = (
@@ -88,6 +96,7 @@ JUDGE_SCHEMA = {
         "reason": {"type": "string"},
     },
     "required": ["verdict", "reason"],
+    "additionalProperties": False,
 }
 
 OCR_PROMPT = (
