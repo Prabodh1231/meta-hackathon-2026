@@ -229,6 +229,10 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def set_membership(doc_id: int, folder_id: int, body: MembershipIn):
         return lib.set_folder_membership(doc_id, folder_id, body.member)
 
+    @app.get("/graph")
+    def citation_graph():
+        return lib.citation_graph()
+
     @app.post("/write/draft")
     def draft(body: DraftIn):
         return lib.draft(body.instruction, body.context, body.doc_ids, body.k, body.verify)

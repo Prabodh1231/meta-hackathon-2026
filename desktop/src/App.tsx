@@ -6,6 +6,7 @@ import { CitePanel, type CiteRequest } from './components/CitePanel'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
 import { ExportControl } from './components/ExportControl'
 import { LibraryPanel } from './components/LibraryPanel'
+import { NetworkView } from './components/NetworkView'
 import { ReferencesPanel } from './components/ReferencesPanel'
 import { SettingsDialog } from './components/SettingsDialog'
 import { applyTheme, cacheTheme, cachedTheme, watchSystemTheme } from './theme'
@@ -41,6 +42,7 @@ export default function App() {
   const [libraryWide, setLibraryWide] = useState(false) // library as a file manager
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [networkOpen, setNetworkOpen] = useState(false)
   const editor = useRef<WritingEditorHandle>(null)
 
   const showTab = useCallback((t: Tab) => {
@@ -174,6 +176,7 @@ export default function App() {
       run: () => setLibraryOpen(true),
     })),
     ...folders.map((f) => ({ group: 'FOLDER', name: f.name, hint: `${f.doc_count} docs`, run: () => setLibraryOpen(true) })),
+    { group: 'DO', name: 'Show citation network', hint: 'who cites whom, shared references', run: () => setNetworkOpen(true) },
     { group: 'DO', name: 'Open library', hint: 'add and organize sources', run: () => setLibraryOpen(true) },
     { group: 'DO', name: 'Ask the assistant', hint: 'draft with citations', run: () => showTab('assistant') },
     { group: 'DO', name: 'Find a citation', hint: 'for the selected sentence', run: () => showTab('cite') },
@@ -209,6 +212,7 @@ export default function App() {
       <main className="writing">
         <header className="top-bar">
           <button onClick={() => setLibraryOpen((o) => !o)}>Library · {docs.length}</button>
+          <button onClick={() => setNetworkOpen(true)}>Network</button>
           <button className="kbd-hint" onClick={() => setPaletteOpen(true)}>
             <span>Search sources, jump, run actions</span> <kbd>Ctrl K</kbd>
           </button>
@@ -284,6 +288,14 @@ export default function App() {
           )}
         </div>
       </aside>
+
+      {networkOpen && (
+        <NetworkView
+          onClose={() => setNetworkOpen(false)}
+          onOpenPaper={(id) => { setNetworkOpen(false); setLibraryOpen(true); setSelected(new Set([id])) }}
+          onError={onError}
+        />
+      )}
 
       <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={drawerOpen && tab === 'source'} />
       </div>

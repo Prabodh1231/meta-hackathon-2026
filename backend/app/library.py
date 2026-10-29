@@ -3,6 +3,7 @@
 import json
 import logging
 import threading
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -10,6 +11,8 @@ import numpy as np
 
 from . import db, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
+from .citegraph import build_graph
+from .refparse import Reference, parse_references
 from .embeddings import Embedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
@@ -136,6 +139,8 @@ class Library:
                 self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*fields.values(), doc_id))
                 self.conn.execute("DELETE FROM pages WHERE doc_id = ?", (doc_id,))
                 self.conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+                self.conn.execute("DELETE FROM doc_refs WHERE doc_id = ?", (doc_id,))
+                self.conn.execute("UPDATE documents SET refs_parsed = 0 WHERE id = ?", (doc_id,))
             else:
                 cols = ", ".join(fields)
                 [doc_id] = self._allocate_ids("documents", 1)
@@ -204,6 +209,34 @@ class Library:
                     (json.dumps(keywords), json.dumps(jel_codes), row["id"]),
                 )
             db.set_meta(self.conn, "keywords_backfill", "1")
+
+    # ---------- citation network ----------
+
+    def _parse_references(self) -> None:
+        """Read the reference list of every paper not yet read (local, no model call)."""
+        with self.lock, self.conn:
+            for row in self.conn.execute("SELECT id FROM documents WHERE refs_parsed = 0").fetchall():
+                text = "\n".join(r["text"] for r in self.conn.execute(
+                    "SELECT text FROM pages WHERE doc_id = ? ORDER BY page", (row["id"],)))
+                refs = parse_references(text)
+                self.conn.executemany(
+                    "INSERT OR REPLACE INTO doc_refs (doc_id, idx, raw, number, year, doi, title, first_author) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [(row["id"], i, r.raw, r.number, r.year, r.doi, r.title, r.first_author) for i, r in enumerate(refs)],
+                )
+                self.conn.execute("UPDATE documents SET refs_parsed = 1 WHERE id = ?", (row["id"],))
+
+    def citation_graph(self) -> dict:
+        with self.lock:
+            self._parse_references()
+            docs = [
+                {"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
+                for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents ORDER BY id")
+            ]
+            refs: dict[int, list[Reference]] = defaultdict(list)
+            for r in self.conn.execute("SELECT * FROM doc_refs ORDER BY doc_id, idx"):
+                refs[r["doc_id"]].append(Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"]))
+        return build_graph(docs, refs)
 
     # ---------- documents ----------
 

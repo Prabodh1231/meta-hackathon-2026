@@ -104,6 +104,26 @@ export interface IngestResult {
   document?: Doc
 }
 
+export interface GraphNode {
+  id: string
+  kind: 'paper' | 'missing' // missing: cited by library papers but not in the library
+  doc_id?: number
+  title: string
+  authors: string[]
+  year: number | null
+  cites: number
+  cited_by: number
+  parsed?: boolean // false when no reference list could be read from the paper
+}
+
+export interface CitationGraph {
+  nodes: GraphNode[]
+  citations: { source: string; target: string; kind: 'cites'; how: string }[]
+  coupling: { source: string; target: string; kind: 'coupled'; weight: number }[]
+  missing: GraphNode[]
+  isolated: number[]
+}
+
 export interface Health {
   ok: boolean
   provider: string

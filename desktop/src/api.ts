@@ -1,5 +1,6 @@
 import type {
   Citation,
+  CitationGraph,
   Doc,
   DocxStyle,
   DraftResult,
@@ -90,6 +91,8 @@ export const api = {
   addToFolder: (docId: number, name: string) => request<Doc>('POST', `/documents/${docId}/folders`, { name }),
   setFolderMember: (docId: number, folderId: number, member: boolean) =>
     request<Doc>('PUT', `/documents/${docId}/folders/${folderId}`, { member }),
+
+  graph: () => request<CitationGraph>('GET', '/graph'),
 
   draft: (instruction: string, context: string, docIds: number[] | null) =>
     request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds }),
