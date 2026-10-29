@@ -12,6 +12,7 @@ export interface SourceTarget {
   status: CitationStatus
   reason: string
   label: string
+  badge?: string // badge text instead of the citation status (e.g. for a duplication match)
 }
 
 /** "p. 342 · PDF page 2 of 15", making clear which number is the printed one. */
@@ -61,7 +62,7 @@ export function SourceViewer({ target, doc }: { target: SourceTarget | null; doc
           <div className="doc-title">{doc?.title ?? 'Source'}</div>
           <div className="muted">{target.label}</div>
         </div>
-        <StatusBadge status={target.status} />
+        <StatusBadge status={target.status} text={target.badge} />
       </div>
       {target.reason && <p className="reason">{target.reason}</p>}
       {target.status === 'quote_not_found' && (

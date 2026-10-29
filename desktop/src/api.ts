@@ -4,6 +4,9 @@ import type {
   Doc,
   DocxStyle,
   DraftResult,
+  DraftVersion,
+  DuplicateReport,
+  Comparison,
   Folder,
   Health,
   IngestResult,
@@ -13,6 +16,7 @@ import type {
   Settings,
   Suggestion,
   Topic,
+  VersionList,
 } from './types'
 
 // Outside Electron (plain `vite` in a browser) fall back to a backend started by hand.
@@ -113,4 +117,16 @@ export const api = {
 
   getDraft: (id: number) => request<{ id: number; title: string; content: string }>('GET', `/drafts/${id}`),
   saveDraft: (id: number, title: string, content: string) => request('PUT', `/drafts/${id}`, { title, content }),
+
+  versions: (draftId: number) => request<VersionList>('GET', `/drafts/${draftId}/versions`),
+  saveVersion: (draftId: number, label: string, title: string, content: string) =>
+    request<DraftVersion>('POST', `/drafts/${draftId}/versions`, { label, title, content }),
+  renameVersion: (draftId: number, id: number, label: string) =>
+    request<DraftVersion>('PATCH', `/drafts/${draftId}/versions/${id}`, { label }),
+  deleteVersion: (draftId: number, id: number) => request('DELETE', `/drafts/${draftId}/versions/${id}`),
+  compareVersion: (draftId: number, id: number, to: { content?: unknown; against?: number }) =>
+    request<Comparison>('POST', `/drafts/${draftId}/versions/${id}/compare`, to),
+  restoreVersion: (draftId: number, id: number) =>
+    request<{ id: number; title: string; content: string }>('POST', `/drafts/${draftId}/versions/${id}/restore`),
+  checkDuplicates: (content: unknown) => request<DuplicateReport>('POST', '/drafts/check-duplicates', { content }),
 }

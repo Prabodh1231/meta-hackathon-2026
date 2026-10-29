@@ -111,6 +111,22 @@ CREATE TABLE IF NOT EXISTS drafts (
   content TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- Snapshots of a draft. 'milestone' versions are saved and named by the user; 'auto' ones are
+-- taken while writing (every so often, and before a large edit or a restore) and the oldest
+-- are pruned. `text` and `change` (percent changed since the version before) make listing cheap.
+CREATE TABLE IF NOT EXISTS draft_versions (
+  id INTEGER PRIMARY KEY,
+  draft_id INTEGER NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('milestone', 'auto')),
+  label TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL,
+  text TEXT NOT NULL DEFAULT '',
+  words INTEGER NOT NULL DEFAULT 0,
+  change INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS draft_versions_draft ON draft_versions(draft_id, id);
 """
 
 

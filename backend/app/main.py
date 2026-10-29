@@ -110,6 +110,25 @@ class DraftDocIn(BaseModel):
     content: str = ""
 
 
+class VersionIn(BaseModel):
+    label: str = ""
+    title: str = "Untitled"
+    content: str
+
+
+class VersionPatch(BaseModel):
+    label: str = Field(min_length=1)
+
+
+class CompareIn(BaseModel):
+    content: dict | None = None  # the editor's document; the saved draft when missing
+    against: int | None = None  # another version instead
+
+
+class DuplicatesIn(BaseModel):
+    content: dict  # the editor's document JSON
+
+
 def create_app(settings: Settings | None = None, library: Library | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     if settings.parent_pid:
@@ -275,6 +294,41 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.put("/drafts/{draft_id}")
     def save_draft(draft_id: int, body: DraftDocIn):
         return lib.save_draft(draft_id, body.title, body.content)
+
+    @app.post("/drafts/check-duplicates")
+    def check_duplicates(body: DuplicatesIn):
+        """Repeated passages in the draft and passages matching library text closely."""
+        return lib.check_duplicates(body.content)
+
+    @app.get("/drafts/{draft_id}/versions")
+    def list_versions(draft_id: int):
+        return lib.list_versions(draft_id)
+
+    @app.post("/drafts/{draft_id}/versions")
+    def create_version(draft_id: int, body: VersionIn):
+        return lib.create_version(draft_id, body.label, body.title, body.content)
+
+    @app.get("/drafts/{draft_id}/versions/{version_id}")
+    def get_version(draft_id: int, version_id: int):
+        return lib.get_version(draft_id, version_id)
+
+    @app.patch("/drafts/{draft_id}/versions/{version_id}")
+    def rename_version(draft_id: int, version_id: int, body: VersionPatch):
+        return lib.rename_version(draft_id, version_id, body.label)
+
+    @app.delete("/drafts/{draft_id}/versions/{version_id}")
+    def delete_version(draft_id: int, version_id: int):
+        lib.delete_version(draft_id, version_id)
+        return {"ok": True}
+
+    @app.post("/drafts/{draft_id}/versions/{version_id}/compare")
+    def compare_version(draft_id: int, version_id: int, body: CompareIn):
+        """Changes from the version to the current draft (or another version), per document, section and paragraph."""
+        return lib.compare_version(draft_id, version_id, body.content, body.against)
+
+    @app.post("/drafts/{draft_id}/versions/{version_id}/restore")
+    def restore_version(draft_id: int, version_id: int):
+        return lib.restore_version(draft_id, version_id)
 
     return app
 

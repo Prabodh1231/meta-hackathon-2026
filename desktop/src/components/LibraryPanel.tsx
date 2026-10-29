@@ -11,6 +11,8 @@ interface Props {
   onToggle: (id: number) => void
   onChanged: () => Promise<void>
   onError: (msg: string) => void
+  /** A paper to bring into view and open (from the network view or the palette); `n` changes per request. */
+  focus?: { id: number; n: number } | null
 }
 
 const KIND_LABEL: Record<Doc['kind'], string> = {
@@ -22,8 +24,9 @@ const KIND_LABEL: Record<Doc['kind'], string> = {
   image: 'Scan',
 }
 const FILTERS: { id: 'all' | Doc['kind']; label: string }[] = [
-  { id: 'all', label: 'All' },
+  { id: 'all', label: 'All types' },
   { id: 'pdf', label: 'PDF' },
+  { id: 'docx', label: 'Docs' },
   { id: 'text', label: 'Notes' },
   { id: 'web', label: 'Web' },
   { id: 'pptx', label: 'Slides' },
@@ -36,9 +39,12 @@ function byline(d: Doc): string {
 }
 
 type Run = (label: string, fn: () => Promise<unknown>) => Promise<void>
+type SortKey = 'name' | 'type' | 'year' | 'pages' | 'match'
+type Scope = 'all' | 'none' | number // every file, files with no folder, or one folder
 
 /** The folders a document is filed under. Editable: take it out of one, or add it to another. */
 function FolderChips({ doc: d, editable, run }: { doc: Doc; editable: boolean; run: Run }) {
+  if (!editable && d.folders.length === 0) return null
   return (
     <div className="tags folder-chips">
       {d.folders.map((f) => (
@@ -83,15 +89,7 @@ function FolderChips({ doc: d, editable, run }: { doc: Doc; editable: boolean; r
   )
 }
 
-function SimilaritySlider({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: number
-  onChange: (v: number) => void
-  disabled?: boolean
-}) {
+function SimilaritySlider({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled?: boolean }) {
   return (
     <label className="sim">
       <span>Similarity</span>
@@ -122,6 +120,7 @@ function NewFolderForm({ onCreate, onCancel }: { onCreate: (name: string, simila
         if (name.trim()) onCreate(name.trim(), similarity)
       }}
     >
+      <div className="newfolder-title">New subject folder</div>
       <input
         autoFocus
         value={name}
@@ -146,9 +145,12 @@ function NewFolderForm({ onCreate, onCancel }: { onCreate: (name: string, simila
   )
 }
 
-/** Shown inside an opened folder: how closely a paper has to match to be filed here. */
+/** Shown for an opened folder: its name, how closely a paper has to match to be filed here,
+ * and renaming or deleting it. */
 function FolderBar({ folder, run }: { folder: Folder; run: Run }) {
   const [value, setValue] = useState(folder.similarity)
+  const [renaming, setRenaming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const pending = useRef<number | undefined>(undefined)
   const latest = useRef({ folder, run, value })
   latest.current = { folder, run, value }
@@ -167,6 +169,10 @@ function FolderBar({ folder, run }: { folder: Folder; run: Run }) {
   useEffect(() => {
     if (pending.current === undefined) setValue(folder.similarity)
   }, [folder.similarity])
+  useEffect(() => {
+    setRenaming(false)
+    setDeleting(false)
+  }, [folder.id])
   useEffect(
     () => () => {
       if (pending.current !== undefined) {
@@ -177,11 +183,47 @@ function FolderBar({ folder, run }: { folder: Folder; run: Run }) {
     [], // eslint-disable-line react-hooks/exhaustive-deps
   )
   return (
-    <div className="fm-folderbar">
+    <div className="lib-folderbar">
+      <div className="lib-folderbar-top">
+        {renaming ? (
+          <input
+            autoFocus
+            defaultValue={folder.name}
+            aria-label="Folder name"
+            onBlur={() => setRenaming(false)}
+            onKeyDown={(e) => {
+              const name = e.currentTarget.value.trim()
+              if (e.key === 'Escape') setRenaming(false)
+              if (e.key === 'Enter' && name) {
+                setRenaming(false)
+                run('Renaming…', () => api.updateFolder(folder.id, { name }))
+              }
+            }}
+          />
+        ) : (
+          <b className="lib-folderbar-name" onDoubleClick={() => setRenaming(true)} title="Double-click to rename">
+            {folder.name}
+          </b>
+        )}
+        <span className="spacer" />
+        {deleting ? (
+          <>
+            <button className="danger" onClick={() => run('Deleting folder…', () => api.deleteFolder(folder.id))}>
+              Delete folder
+            </button>
+            <button onClick={() => setDeleting(false)}>Keep</button>
+          </>
+        ) : (
+          <>
+            <button className="link" onClick={() => setRenaming(true)}>Rename</button>
+            <button className="link danger-link" onClick={() => setDeleting(true)} title="The sources stay in your library">
+              Delete
+            </button>
+          </>
+        )}
+      </div>
       <SimilaritySlider value={value} onChange={change} />
-      <span className="muted">
-        Papers matching {value}% or more are filed here. What you add or remove by hand is kept.
-      </span>
+      <span className="muted">Papers matching {value}% or more are filed here. What you add or remove by hand is kept.</span>
     </div>
   )
 }
@@ -201,21 +243,91 @@ function JelChips({ doc }: { doc: Doc }) {
   )
 }
 
-type SortKey = 'name' | 'type' | 'year' | 'pages'
-type Scope = 'all' | 'none' | number // every file, files with no folder, or one folder
+/** One source: what it is, who wrote it, its folders. Opens in place for the summary and edits. */
+function DocCard({
+  doc: d,
+  on,
+  isOpen,
+  folder,
+  onToggle,
+  onOpen,
+  run,
+}: {
+  doc: Doc
+  on: boolean
+  isOpen: boolean
+  folder: Folder | undefined // the folder being browsed, to show how well the paper fits it
+  onToggle: () => void
+  onOpen: () => void
+  run: Run
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const fit = folder && d.folders.find((x) => x.id === folder.id)
+  return (
+    <li
+      id={`lib-doc-${d.id}`}
+      className={`lib-doc${on ? ' on' : ''}${isOpen ? ' open' : ''}`}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', String(d.id))
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
+    >
+      <label className="pick" title={on ? 'Used for drafting' : 'Use this source for drafting'}>
+        <input type="checkbox" checked={on} onChange={onToggle} />
+      </label>
+      <div className="lib-doc-body" onClick={onOpen}>
+        <div className="lib-doc-meta">
+          <span className={`kind kind-${d.kind}`}>{KIND_LABEL[d.kind]}</span>
+          {d.page_count > 1 && <span>{d.page_count} {d.kind === 'pptx' ? 'slides' : 'pp'}</span>}
+          {fit && <span className="fit">{fit.state === 'user' ? 'added by you' : fit.score != null ? `${fit.score}% match` : ''}</span>}
+        </div>
+        <div className="lib-doc-title">{d.title}</div>
+        {byline(d) && <div className="lib-doc-by">{byline(d)}</div>}
+        {!isOpen && <FolderChips doc={d} editable={false} run={run} />}
+        {isOpen && (
+          <div className="lib-doc-more" onClick={(e) => e.stopPropagation()}>
+            {d.summary && <p className="lib-doc-summary">{d.summary}</p>}
+            <div className="lib-doc-label">Folders</div>
+            <FolderChips doc={d} editable run={run} />
+            <JelChips doc={d} />
+            {d.tags.length > 0 && (
+              <div className="tags">
+                {d.tags.map((t) => (
+                  <span key={t} className="tag">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="lib-doc-actions">
+              {confirming ? (
+                <>
+                  <button className="danger" onClick={() => run('Removing…', () => api.deleteDocument(d.id))}>
+                    Remove from library
+                  </button>
+                  <button onClick={() => setConfirming(false)}>Keep</button>
+                </>
+              ) : (
+                <button className="link danger-link" onClick={() => setConfirming(true)}>
+                  Remove from library
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </li>
+  )
+}
 
-export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError }: Props) {
+export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [source, setSource] = useState('')
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<'all' | Doc['kind']>('all')
-  const [renaming, setRenaming] = useState<number | null>(null)
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
-  const [open, setOpen] = useState<number | null>(null) // doc whose summary is showing
-  const [confirming, setConfirming] = useState<number | null>(null)
-  const [deletingFolder, setDeletingFolder] = useState<number | null>(null)
-  const [scope, setScope] = useState<Scope>('all') // the folder that is open
-  const [picked, setPicked] = useState<Scope | null>(null) // the folder tile that is highlighted
+  const [open, setOpen] = useState<number | null>(null) // doc whose details are showing
+  const [scope, setScope] = useState<Scope>('all') // the folder being browsed
   const [creating, setCreating] = useState(false)
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
   const [dropOn, setDropOn] = useState<Scope | null>(null)
@@ -243,7 +355,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
       for (const f of files) reportFailures((await api.ingestPath(f)).results)
     })
 
-  const addFolder = () =>
+  const addDiskFolder = () =>
     run('Reading folder…', async () => {
       const folder = await window.rc?.pickFolder()
       if (folder) reportFailures((await api.ingestPath(folder)).results)
@@ -261,66 +373,93 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
     })
   }
 
-  const needle = query.trim().toLowerCase()
-  const visible = useMemo(
-    () =>
-      docs.filter(
-        (d) =>
-          (kind === 'all' || d.kind === kind) &&
-          (!needle || `${d.title} ${d.authors.join(' ')} ${d.venue} ${d.tags.join(' ')} ${d.keywords.join(' ')} ${d.jel_codes.map((j) => j.code).join(' ')} ${d.summary}`.toLowerCase().includes(needle)),
-      ),
-    [docs, kind, needle],
-  )
+  // Bring a requested paper into view: show everything, open its card, scroll to it.
+  useEffect(() => {
+    if (!focus) return
+    setScope('all')
+    setQuery('')
+    setKind('all')
+    setOpen(focus.id)
+    const t = window.setTimeout(() => document.getElementById(`lib-doc-${focus.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350)
+    return () => window.clearTimeout(t)
+  }, [focus?.n])
+
   useEffect(() => {
     if (typeof scope === 'number' && !folders.some((f) => f.id === scope)) setScope('all') // the open folder was deleted
   }, [folders, scope])
+
+  const needle = query.trim().toLowerCase()
   const openFolder = typeof scope === 'number' ? folders.find((f) => f.id === scope) : undefined
-  const filtering = kind !== 'all' || needle !== ''
-
-  // A document sits in every folder it was filed under; the rest go to Unfiled.
-  const groups: { folder: Folder | null; docs: Doc[] }[] = [
-    ...folders.map((f) => ({ folder: f, docs: visible.filter((d) => d.folders.some((x) => x.id === f.id)) })),
-    { folder: null, docs: visible.filter((d) => d.folders.length === 0) },
-  ].filter((g) => g.docs.length > 0 || (g.folder && !filtering))
-
-  // File-manager view: the files of the folder picked in the sidebar, sorted by a column.
   const rows = useMemo(() => {
-    const inScope = visible.filter((d) =>
-      scope === 'all' ? true : scope === 'none' ? d.folders.length === 0 : d.folders.some((f) => f.id === scope),
+    const shown = docs.filter(
+      (d) =>
+        (kind === 'all' || d.kind === kind) &&
+        (scope === 'all' ? true : scope === 'none' ? d.folders.length === 0 : d.folders.some((f) => f.id === scope)) &&
+        (!needle ||
+          `${d.title} ${d.authors.join(' ')} ${d.venue} ${d.tags.join(' ')} ${d.keywords.join(' ')} ${d.jel_codes.map((j) => j.code).join(' ')} ${d.summary}`
+            .toLowerCase()
+            .includes(needle)),
     )
+    const fit = (d: Doc) => d.folders.find((f) => f.id === scope)?.score ?? (d.folders.some((f) => f.id === scope) ? 101 : -1)
     const value = (d: Doc) =>
-      sort.key === 'name' ? d.title.toLowerCase() : sort.key === 'type' ? d.kind : sort.key === 'year' ? (d.year ?? 0) : d.page_count
-    return [...inScope].sort((a, b) => (value(a) > value(b) ? 1 : value(a) < value(b) ? -1 : 0) * sort.dir)
-  }, [visible, scope, sort])
+      sort.key === 'name' ? d.title.toLowerCase()
+        : sort.key === 'type' ? d.kind
+        : sort.key === 'year' ? (d.year ?? 0)
+        : sort.key === 'match' ? fit(d)
+        : d.page_count
+    return shown.sort((a, b) => (value(a) > value(b) ? 1 : value(a) < value(b) ? -1 : 0) * sort.dir)
+  }, [docs, kind, needle, scope, sort])
+
   const unfiled = docs.filter((d) => d.folders.length === 0).length
-  const scopeName = scope === 'all' ? 'All files' : scope === 'none' ? 'Unfiled' : (folders.find((f) => f.id === scope)?.name ?? 'All files')
+  const kinds = FILTERS.filter((f) => f.id === 'all' || docs.some((d) => d.kind === f.id))
+  const filtering = kind !== 'all' || needle !== ''
+  const allShownOn = rows.length > 0 && rows.every((d) => selected.has(d.id))
 
   const toggleMany = (members: Doc[]) => {
     const allOn = members.every((d) => selected.has(d.id))
     for (const d of members) if (allOn === selected.has(d.id)) onToggle(d.id)
   }
 
+  const navItem = (id: Scope, name: string, count: number, hint?: string) => {
+    const folder = typeof id === 'number' ? folders.find((f) => f.id === id) : undefined
+    return (
+      <button
+        key={String(id)}
+        className={`lib-nav-item${scope === id ? ' on' : ''}${dropOn === id ? ' drop' : ''}`}
+        onClick={() => setScope(id)}
+        title={folder ? `${folder.similarity}% similarity · drop a paper here to file it` : undefined}
+        onDragOver={(e) => {
+          if (!folder) return
+          e.preventDefault()
+          setDropOn(id)
+        }}
+        onDragLeave={() => setDropOn(null)}
+        onDrop={(e) => {
+          setDropOn(null)
+          const docId = Number(e.dataTransfer.getData('text/plain'))
+          if (folder && docId) run('Filing…', () => api.setFolderMember(docId, folder.id, true))
+        }}
+      >
+        <span className="lib-nav-ico" aria-hidden="true">
+          {id === 'all' ? '◫' : id === 'none' ? '◌' : '▣'}
+        </span>
+        <span className="lib-nav-name">{name}</span>
+        {hint && <span className="lib-nav-hint">{hint}</span>}
+        <span className="lib-nav-count">{count}</span>
+      </button>
+    )
+  }
+
   return (
     <aside className={`panel library${wide ? ' wide' : ''}`}>
       <header className="lib-head">
-        <div>
+        <div className="lib-title">
           <h2>Library</h2>
           <span className="muted">
             {docs.length} source{docs.length === 1 ? '' : 's'}
             {folders.length > 0 && ` · ${folders.length} folder${folders.length === 1 ? '' : 's'}`}
           </span>
         </div>
-        <button
-          className="ghost"
-          onClick={onToggleWide}
-          title={wide ? 'Back to the compact list' : 'Open as a file manager'}
-          aria-label={wide ? 'Collapse library' : 'Expand library'}
-        >
-          {wide ? '⤡' : '⤢'}
-        </button>
-        <button className="ghost" onClick={() => setCreating((c) => !c)} title="Make a folder for a subject you choose">
-          + Folder
-        </button>
         {folders.length > 0 && (
           <button
             className="ghost"
@@ -331,489 +470,187 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
             Re-sort
           </button>
         )}
+        <button
+          className="ghost"
+          onClick={onToggleWide}
+          title={wide ? 'Back to the compact panel' : 'Expand into a full library view'}
+          aria-label={wide ? 'Collapse library' : 'Expand library'}
+        >
+          {wide ? '⤡ Compact' : '⤢ Expand'}
+        </button>
       </header>
 
-      <form className="lib-add" onSubmit={(e) => (e.preventDefault(), addSource())}>
-        <input
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-          placeholder="Paste a web link or file path…"
-          aria-label="Add a web page or local path"
-        />
-        <button className="primary" disabled={!!busy || !source.trim()}>
-          Add
-        </button>
-      </form>
-      {window.rc && (
-        <div className="lib-pick">
-          <button onClick={addFiles} disabled={!!busy}>
-            + Files
-          </button>
-          <button onClick={addFolder} disabled={!!busy}>
-            + Folder
-          </button>
-        </div>
-      )}
-      {busy && (
-        <div className="lib-busy" role="status">
-          <span className="bar" />
-          {busy}
-        </div>
-      )}
-
-      {creating && (
-        <NewFolderForm
-          onCancel={() => setCreating(false)}
-          onCreate={(name, similarity) => {
-            setCreating(false)
-            run('Creating folder…', () => api.createFolder(name, similarity))
-          }}
-        />
-      )}
-
-      {docs.length > 0 && (
-        <>
+      <section className="lib-add-box" aria-label="Add sources">
+        <form className="lib-add" onSubmit={(e) => (e.preventDefault(), addSource())}>
           <input
-            className="lib-search"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter by title, author, keyword, JEL code…"
-            aria-label="Filter library"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            placeholder="Paste a web link or a file path…"
+            aria-label="Add a web page or local path"
           />
-          <div className="lib-filters" role="group" aria-label="Filter by type">
-            {FILTERS.filter((f) => f.id === 'all' || docs.some((d) => d.kind === f.id)).map((f) => (
-              <button key={f.id} className={kind === f.id ? 'chipbtn on' : 'chipbtn'} onClick={() => setKind(f.id)}>
-                {f.label}
-              </button>
-            ))}
+          <button className="primary" disabled={!!busy || !source.trim()}>
+            Add
+          </button>
+        </form>
+        {window.rc && (
+          <div className="lib-pick">
+            <span className="muted">or</span>
+            <button className="ghost" onClick={addFiles} disabled={!!busy}>
+              Choose files…
+            </button>
+            <button className="ghost" onClick={addDiskFolder} disabled={!!busy}>
+              Import a folder…
+            </button>
           </div>
-          <div className="lib-scope">
-            {selected.size === 0 ? (
-              <span>Drafting from all sources</span>
-            ) : (
-              <>
-                <span>
-                  Drafting from <b>{selected.size}</b> of {docs.length}
-                </span>
-                <button className="link" onClick={() => toggleMany(docs.filter((d) => selected.has(d.id)))}>
-                  Clear
-                </button>
-              </>
-            )}
+        )}
+        {busy && (
+          <div className="lib-busy" role="status">
+            <span className="bar" />
+            {busy}
           </div>
-        </>
-      )}
+        )}
+      </section>
 
       <datalist id="folder-names">
         {folders.map((f) => (
           <option key={f.id} value={f.name} />
         ))}
       </datalist>
-      {wide ? (
-        <div className="fm">
-          <div className="fm-crumb">
-            <button className="link" onClick={() => setScope('all')} disabled={scope === 'all'}>
-              Library
-            </button>
-            {scope !== 'all' && (
-              <>
-                <span className="muted">›</span>
-                <b>{scopeName}</b>
-              </>
-            )}
-            <span className="muted">
-              {rows.length} file{rows.length === 1 ? '' : 's'}
-            </span>
-            <span className="spacer" />
-            {rows.length > 0 && (
-              <button className="link" onClick={() => toggleMany(rows)} title="Use every file shown as the draft scope">
-                {rows.every((d) => selected.has(d.id)) ? 'Deselect all' : 'Select all'}
-              </button>
-            )}
-            <label className="fm-sort">
-              Sort
-              <select
-                value={`${sort.key}:${sort.dir}`}
-                onChange={(e) => {
-                  const [key, dir] = e.target.value.split(':')
-                  setSort({ key: key as SortKey, dir: Number(dir) as 1 | -1 })
-                }}
-              >
-                <option value="name:1">Name A–Z</option>
-                <option value="name:-1">Name Z–A</option>
-                <option value="year:-1">Newest first</option>
-                <option value="year:1">Oldest first</option>
-                <option value="type:1">Type</option>
-                <option value="pages:-1">Longest first</option>
-              </select>
-            </label>
-          </div>
 
-          <div className="fm-scroll">
-            {openFolder && <FolderBar folder={openFolder} run={run} />}
-            {scope === 'all' && (
-              <>
-            <div className="fm-tiles" aria-label="Folders">
-              {(
-                [
-                  ...folders.map((f) => [f.id, f.name, f.doc_count] as [Scope, string, number]),
-                  ...(unfiled > 0 ? [['none', 'Unfiled', unfiled] as [Scope, string, number]] : []),
-                ] as [Scope, string, number][]
-              ).map(([id, name, count]) => {
-                const folder = typeof id === 'number' ? folders.find((f) => f.id === id) : undefined
-                const members = docs.filter((d) => (folder ? d.folders.some((x) => x.id === folder.id) : d.folders.length === 0))
-                return (
-                  <div
-                    key={id}
-                    className={`fm-tile${picked === id ? ' on' : ''}${dropOn === id ? ' drop' : ''}`}
-                    tabIndex={0}
-                    title="Double-click to open"
-                    onClick={() => setPicked(id)}
-                    onDoubleClick={() => setScope(id)}
-                    onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && setScope(id)}
-                    onDragOver={(e) => {
-                      if (!folder) return
-                      e.preventDefault()
-                      setDropOn(id)
-                    }}
-                    onDragLeave={() => setDropOn(null)}
-                    onDrop={(e) => {
-                      setDropOn(null)
-                      const docId = Number(e.dataTransfer.getData('text/plain'))
-                      if (folder && docId) run('Filing…', () => api.setFolderMember(docId, folder.id, true))
-                    }}
-                  >
-                    <div className="fm-tile-top">
-                      <span className="fm-ico" aria-hidden>
-                        {picked === id ? '📂' : '📁'}
-                      </span>
-                      <span className="count">{count}</span>
-                      {folder && (
-                        <button
-                          className="icon folder-delete"
-                          title="Rename this folder"
-                          aria-label={`Rename folder ${folder.name}`}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setRenaming(folder.id)
-                          }}
-                        >
-                          ✎
-                        </button>
-                      )}
-                      {folder &&
-                        (deletingFolder === folder.id ? (
-                          <span className="lib-confirm-inline" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              className="danger"
-                              onClick={() => {
-                                setDeletingFolder(null)
-                                run('Deleting folder…', () => api.deleteFolder(folder.id))
-                              }}
-                            >
-                              Delete
-                            </button>
-                            <button onClick={() => setDeletingFolder(null)}>Keep</button>
-                          </span>
-                        ) : (
-                          <button
-                            className="icon folder-delete"
-                            title="Delete this folder (the sources stay in your library)"
-                            aria-label={`Delete folder ${folder.name}`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setDeletingFolder(folder.id)
-                            }}
-                          >
-                            ×
-                          </button>
-                        ))}
-                    </div>
-                    {folder && renaming === folder.id ? (
-                      <input
-                        autoFocus
-                        defaultValue={folder.name}
-                        onClick={(e) => e.stopPropagation()}
-                        onBlur={() => setRenaming(null)}
-                        onKeyDown={(e) => {
-                          const value = e.currentTarget.value.trim()
-                          if (e.key === 'Escape') setRenaming(null)
-                          if (e.key === 'Enter' && value) {
-                            setRenaming(null)
-                            run('Renaming…', () => api.updateFolder(folder.id, { name: value }))
-                          }
-                        }}
-                      />
-                    ) : (
-                      <div className="fm-tile-name">{name}</div>
-                    )}
-                    <div className="fm-tile-peek">
-                      {folder ? `${folder.similarity}% similarity` : ''}
-                      {members.length > 0 && ` · ${members[0].title}`}
-                    </div>
-                  </div>
-                )
-              })}
-              <button className="fm-tile fm-new" onClick={() => setCreating(true)}>
-                + New folder
-              </button>
-            </div>
-            <p className="fm-hint">
-              {folders.length > 0
-                ? 'Double-click a folder to open it. Drag a file onto a folder to file it there; it stays in its other folders too.'
-                : 'Make a folder for a subject you work on, like Digital finance. Papers that match it are filed in automatically.'}
-            </p>
-              </>
-            )}
+      <div className="lib-body">
+        <nav className="lib-nav" aria-label="Folders">
+          {wide && <div className="lib-nav-label">Browse</div>}
+          {navItem('all', 'All sources', docs.length)}
+          {unfiled > 0 && navItem('none', 'Unfiled', unfiled)}
+          {wide && folders.length > 0 && <div className="lib-nav-label">Subject folders</div>}
+          {folders.map((f) => navItem(f.id, f.name, f.doc_count, wide ? `${f.similarity}%` : undefined))}
+          <button className="lib-nav-item lib-nav-new" onClick={() => setCreating((c) => !c)} title="Make a folder for a subject you choose">
+            <span className="lib-nav-ico" aria-hidden="true">+</span>
+            <span className="lib-nav-name">New folder</span>
+          </button>
+        </nav>
 
-            <div className="fm-grid">
-              {rows.map((d) => {
-                const on = selected.has(d.id)
-                const isOpen = open === d.id
-                return (
-                  <div
-                    key={d.id}
-                    className={`fm-card${on ? ' on' : ''}${isOpen ? ' open' : ''}`}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('text/plain', String(d.id))
-                      e.dataTransfer.effectAllowed = 'copy'
-                    }}
-                    onClick={() => setOpen(isOpen ? null : d.id)}
-                  >
-                    <div className="fm-card-top">
-                      <span className={`kind kind-${d.kind}`}>{KIND_LABEL[d.kind]}</span>
-                      {d.page_count > 1 && <span className="muted">{d.page_count} pp</span>}
-                      {openFolder && (
-                        <span className="muted">
-                          {(() => {
-                            const f = d.folders.find((x) => x.id === openFolder.id)
-                            return f?.state === 'user' ? 'added by you' : f?.score != null ? `${f.score}% match` : ''
-                          })()}
-                        </span>
-                      )}
-                      <span className="spacer" />
-                      <label className="pick" title="Use this source for drafting" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" checked={on} onChange={() => onToggle(d.id)} />
-                      </label>
-                    </div>
-                    <div className="fm-card-title">{d.title}</div>
-                    {byline(d) && <div className="lib-card-by">{byline(d)}</div>}
-                    {isOpen ? (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        {d.summary && <p className="lib-card-summary">{d.summary}</p>}
-                        <FolderChips doc={d} editable run={run} />
-                        <JelChips doc={d} />
-                        {d.tags.length > 0 && (
-                          <div className="tags">
-                            {d.tags.map((t) => (
-                              <span key={t} className="tag">
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <div className="fm-actions">
-                          {confirming === d.id ? (
-                            <>
-                              <button
-                                className="danger"
-                                onClick={() => {
-                                  setConfirming(null)
-                                  run('Removing…', () => api.deleteDocument(d.id))
-                                }}
-                              >
-                                Remove from library
-                              </button>
-                              <button onClick={() => setConfirming(null)}>Keep</button>
-                            </>
-                          ) : (
-                            <button className="link" onClick={() => setConfirming(d.id)}>
-                              Remove from library
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <FolderChips doc={d} editable={false} run={run} />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-            {docs.length > 0 && rows.length === 0 && <div className="lib-empty">Nothing here. Try another folder or clear the filters.</div>}
-            {docs.length === 0 && <div className="lib-empty">Your library is empty. Add files, a folder or a web link above.</div>}
-          </div>
-        </div>
-      ) : (
-      <div className="lib-list">
-        {groups.map(({ folder, docs: members }) => {
-          const key = folder?.id ?? -1
-          const isCollapsed = collapsed.has(key) && !filtering
-          const picked = members.filter((d) => selected.has(d.id)).length
-          return (
-            <section key={key} className="lib-group">
-              <div className="lib-group-head">
-                <button
-                  className="twisty"
-                  aria-label={isCollapsed ? 'Expand folder' : 'Collapse folder'}
-                  onClick={() =>
-                    setCollapsed((s) => {
-                      const n = new Set(s)
-                      n.has(key) ? n.delete(key) : n.add(key)
-                      return n
-                    })
-                  }
+        <div className="lib-main">
+          {creating && (
+            <NewFolderForm
+              onCancel={() => setCreating(false)}
+              onCreate={(name, similarity) => {
+                setCreating(false)
+                run('Creating folder…', () => api.createFolder(name, similarity))
+              }}
+            />
+          )}
+          {openFolder && <FolderBar folder={openFolder} run={run} />}
+
+          {docs.length > 0 && (
+            <div className="lib-tools">
+              <div className="lib-search-row">
+                <input
+                  className="lib-search"
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Filter by title, author, keyword, JEL code…"
+                  aria-label="Filter library"
+                />
+                <select
+                  className="lib-sort"
+                  aria-label="Sort"
+                  value={`${sort.key}:${sort.dir}`}
+                  onChange={(e) => {
+                    const [key, dir] = e.target.value.split(':')
+                    setSort({ key: key as SortKey, dir: Number(dir) as 1 | -1 })
+                  }}
                 >
-                  {isCollapsed ? '▸' : '▾'}
-                </button>
-                {folder && renaming === folder.id ? (
-                  <input
-                    autoFocus
-                    defaultValue={folder.name}
-                    onBlur={() => setRenaming(null)}
-                    onKeyDown={(e) => {
-                      const value = e.currentTarget.value.trim()
-                      if (e.key === 'Escape') setRenaming(null)
-                      if (e.key === 'Enter' && value) {
-                        setRenaming(null)
-                        run('Renaming…', () => api.updateFolder(folder.id, { name: value }))
-                      }
-                    }}
-                  />
-                ) : (
-                  <span
-                    className="lib-group-label"
-                    title={folder ? 'Double-click to rename' : 'Not in a folder yet'}
-                    onDoubleClick={() => folder && setRenaming(folder.id)}
-                  >
-                    {folder?.name ?? 'Unfiled'}
-                  </span>
-                )}
-                <span className="count">{members.length}</span>
-                {members.length > 0 && (
-                  <button
-                    className="link"
-                    onClick={() => toggleMany(members)}
-                    title="Use every source in this folder as the draft scope"
-                  >
-                    {picked === members.length ? 'Deselect' : 'Select all'}
-                  </button>
-                )}
-                {folder &&
-                  (deletingFolder === folder.id ? (
-                    <span className="lib-confirm-inline">
-                      <button
-                        className="danger"
-                        onClick={() => {
-                          setDeletingFolder(null)
-                          run('Deleting folder…', () => api.deleteFolder(folder.id))
-                        }}
-                      >
-                        Delete folder
-                      </button>
-                      <button onClick={() => setDeletingFolder(null)}>Keep</button>
-                    </span>
-                  ) : (
-                    <button
-                      className="icon folder-delete"
-                      title="Delete this folder (the sources stay in your library)"
-                      aria-label={`Delete folder ${folder.name}`}
-                      onClick={() => setDeletingFolder(folder.id)}
-                    >
-                      ×
+                  <option value="name:1">Name A–Z</option>
+                  <option value="name:-1">Name Z–A</option>
+                  <option value="year:-1">Newest</option>
+                  <option value="year:1">Oldest</option>
+                  <option value="type:1">Type</option>
+                  <option value="pages:-1">Longest</option>
+                  {openFolder && <option value="match:-1">Best match</option>}
+                </select>
+              </div>
+              {kinds.length > 2 && (
+                <div className="lib-filters" role="group" aria-label="Filter by type">
+                  {kinds.map((f) => (
+                    <button key={f.id} className={kind === f.id ? 'chipbtn on' : 'chipbtn'} onClick={() => setKind(f.id)}>
+                      {f.label}
                     </button>
                   ))}
-              </div>
-              {!isCollapsed && (
-                <ul>
-                  {members.map((d) => {
-                    const on = selected.has(d.id)
-                    return (
-                      <li key={d.id} className={`lib-card${on ? ' on' : ''}`}>
-                        <label className="pick" title="Use this source for drafting">
-                          <input type="checkbox" checked={on} onChange={() => onToggle(d.id)} />
-                        </label>
-                        <div className="lib-card-body" onClick={() => setOpen(open === d.id ? null : d.id)}>
-                          <div className="lib-card-top">
-                            <span className={`kind kind-${d.kind}`}>{KIND_LABEL[d.kind]}</span>
-                            {d.page_count > 1 && <span className="muted">{d.page_count} pp</span>}
-                          </div>
-                          <div className="lib-card-title">{d.title}</div>
-                          {byline(d) && <div className="lib-card-by">{byline(d)}</div>}
-                          <FolderChips doc={d} editable={open === d.id} run={run} />
-                          {open === d.id && <JelChips doc={d} />}
-                          {open === d.id && d.tags.length > 0 && (
-                            <div className="tags">
-                              {d.tags.map((t) => (
-                                <span key={t} className="tag">
-                                  {t}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {open === d.id && d.summary && <p className="lib-card-summary">{d.summary}</p>}
-                        </div>
-                        {confirming === d.id ? (
-                          <div className="lib-confirm">
-                            <button
-                              className="danger"
-                              onClick={() => {
-                                setConfirming(null)
-                                run('Removing…', () => api.deleteDocument(d.id))
-                              }}
-                            >
-                              Remove
-                            </button>
-                            <button onClick={() => setConfirming(null)}>Keep</button>
-                          </div>
-                        ) : (
-                          <button
-                            className="icon lib-remove"
-                            title="Remove from library"
-                            aria-label={`Remove ${d.title}`}
-                            onClick={() => setConfirming(d.id)}
-                          >
-                            ×
-                          </button>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
+                </div>
               )}
-            </section>
-          )
-        })}
+              <div className={`lib-scope${selected.size ? ' some' : ''}`}>
+                <span>
+                  {selected.size === 0 ? (
+                    'Drafting from all sources'
+                  ) : (
+                    <>
+                      Drafting from <b>{selected.size}</b> of {docs.length}
+                    </>
+                  )}
+                </span>
+                <span className="spacer" />
+                {rows.length > 0 && (
+                  <button className="link" onClick={() => toggleMany(rows)} title="Use every source shown for drafting">
+                    {allShownOn ? 'Deselect shown' : `Select ${rows.length} shown`}
+                  </button>
+                )}
+                {selected.size > 0 && (
+                  <button className="link" onClick={() => toggleMany(docs.filter((d) => selected.has(d.id)))}>
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
-        {docs.length === 0 && (
-          <div className="lib-empty">
-            <div className="lib-empty-title">Your library is empty</div>
-            <p>Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.</p>
-            <ol>
-              <li>Paste a link or path above, or use + Files / + Folder</li>
-              <li>Muse reads each one and writes a summary and tags</li>
-              <li>Make a folder for each subject (+ Folder); matching papers are filed in, as many folders as fit</li>
-            </ol>
-          </div>
-        )}
-        {docs.length > 0 && visible.length === 0 && (
-          <div className="lib-empty">
-            <div className="lib-empty-title">No matches</div>
-            <button
-              className="link"
-              onClick={() => {
-                setQuery('')
-                setKind('all')
-              }}
-            >
-              Clear filters
-            </button>
-          </div>
-        )}
+          <ul className="lib-docs">
+            {rows.map((d) => (
+              <DocCard
+                key={d.id}
+                doc={d}
+                on={selected.has(d.id)}
+                isOpen={open === d.id}
+                folder={openFolder}
+                onToggle={() => onToggle(d.id)}
+                onOpen={() => setOpen(open === d.id ? null : d.id)}
+                run={run}
+              />
+            ))}
+          </ul>
+
+          {docs.length === 0 && (
+            <div className="lib-empty">
+              <div className="lib-empty-title">Your library is empty</div>
+              <p>Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.</p>
+              <ol>
+                <li>Paste a link or path above, or choose files</li>
+                <li>Muse reads each one and writes a summary and tags</li>
+                <li>Make a subject folder (New folder); matching papers are filed in, as many folders as fit</li>
+              </ol>
+            </div>
+          )}
+          {docs.length > 0 && rows.length === 0 && (
+            <div className="lib-empty">
+              <div className="lib-empty-title">{filtering ? 'No matches' : 'This folder is empty'}</div>
+              {filtering ? (
+                <button
+                  className="link"
+                  onClick={() => {
+                    setQuery('')
+                    setKind('all')
+                  }}
+                >
+                  Clear filters
+                </button>
+              ) : (
+                <p>Lower the similarity above to take in looser matches, or drag a paper onto the folder.</p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-      )}
     </aside>
   )
 }

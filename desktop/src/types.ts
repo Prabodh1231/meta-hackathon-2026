@@ -154,3 +154,93 @@ declare global {
     }
   }
 }
+
+/** A saved snapshot of the draft: 'milestone' named by the user, 'auto' taken while writing. */
+export interface DraftVersion {
+  id: number
+  number: number // 1 = oldest
+  kind: 'milestone' | 'auto'
+  label: string
+  title: string
+  words: number
+  change: number // percent changed since the version before it
+  created_at: string // UTC, "YYYY-MM-DD HH:MM:SS"
+}
+
+export interface VersionList {
+  versions: DraftVersion[] // newest first
+  current_words: number
+  current_change: number | null // percent the draft has changed since the newest version
+}
+
+export type ChangeStatus = 'added' | 'removed' | 'modified' | 'unchanged'
+export type DiffOp = ['=' | '+' | '-', string]
+
+export interface ParagraphChange {
+  status: ChangeStatus
+  change: number
+  old: string
+  new: string
+  ops: DiffOp[]
+}
+
+export interface SectionChange {
+  title: string // empty for text before the first heading
+  level: number
+  status: ChangeStatus
+  change: number
+  words: number
+  paragraphs: ParagraphChange[]
+}
+
+export interface Comparison {
+  document: {
+    change: number
+    similarity: number
+    added_words: number
+    removed_words: number
+    old_words: number
+    new_words: number
+  }
+  sections: SectionChange[]
+  paragraph_counts: Record<ChangeStatus, number>
+}
+
+/** A draft sentence that closely matches a passage in the library. */
+export interface SourceMatch {
+  sentence: string
+  block: number // index of the draft's text block it's in
+  similarity: number
+  level: 'copied' | 'close'
+  cited: boolean // the sentence already cites that document
+  doc_id: number
+  chunk_id: number
+  page: number
+  page_label: string | null
+  label: string
+  title: string
+  start: number
+  end: number
+  quote: string
+}
+
+export interface RepeatPair {
+  similarity: number
+  first: string
+  second: string
+  first_block: number
+  second_block: number
+}
+
+export interface DuplicateReport {
+  words: number
+  sentences_checked: number
+  overall: number // percent of the draft's words flagged either way
+  sources: number
+  uncited: number
+  internal: number
+  source_matches: SourceMatch[]
+  repeated_sentences: RepeatPair[]
+  repeated_paragraphs: RepeatPair[]
+  paragraphs: { block: number; words: number; flagged: number; text: string }[] // only paragraphs with flagged text
+}
