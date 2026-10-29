@@ -4,6 +4,7 @@ import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
 import { CitePanel, type CiteRequest } from './components/CitePanel'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
+import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { ExportControl } from './components/ExportControl'
 import { HistoryPanel } from './components/HistoryPanel'
 import { Icon, type IconName } from './components/Icon'
@@ -98,6 +99,7 @@ export default function App() {
   const [errors, setErrors] = useState<string[]>([])
   const [settings, setSettings] = useState<Settings>({ theme: cachedTheme(), citation_style: 'apa' })
   const [showSettings, setShowSettings] = useState(false)
+  const [dupFilesOpen, setDupFilesOpen] = useState(false)
   const [citeRequest, setCiteRequest] = useState<CiteRequest | null>(null)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryWide, setLibraryWide] = useState(false) // library as a file manager
@@ -379,6 +381,7 @@ export default function App() {
     { group: 'DO', name: 'Show references', hint: settings.citation_style.toUpperCase(), run: () => showTab('references') },
     { group: 'DO', name: 'Check for duplication', hint: 'repeats and text matching sources', run: () => showTab('review') },
     { group: 'DO', name: 'Version history', hint: 'save, compare and restore versions', run: () => showTab('history') },
+    { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: () => setDupFilesOpen(true) },
     { group: 'DO', name: 'Settings', hint: 'theme, citation style', run: () => setShowSettings(true) },
   ]
 
@@ -465,6 +468,7 @@ export default function App() {
               onChanged={refresh}
               onError={onError}
               focus={libFocus}
+              onFindDuplicates={() => setDupFilesOpen(true)}
             />
           </div>
 
@@ -637,6 +641,15 @@ export default function App() {
       </footer>
 
       {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
+
+      {dupFilesOpen && (
+        <DuplicateFilesDialog
+          getCited={() => editor.current?.citedDocIds() ?? []}
+          onChanged={refresh}
+          onClose={() => setDupFilesOpen(false)}
+          onError={onError}
+        />
+      )}
 
       {showSettings && (
         <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setShowSettings(false)} />

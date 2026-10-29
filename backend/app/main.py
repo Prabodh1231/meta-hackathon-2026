@@ -125,6 +125,10 @@ class CompareIn(BaseModel):
     against: int | None = None  # another version instead
 
 
+class DuplicateFilesIn(BaseModel):
+    cited: list[int] = []  # documents the draft cites: preferred as the copy to keep
+
+
 class DuplicatesIn(BaseModel):
     content: dict  # the editor's document JSON
 
@@ -178,6 +182,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.get("/documents")
     def list_documents():
         return lib.list_documents()
+
+    @app.post("/library/duplicates")
+    def duplicate_files(body: DuplicateFilesIn):
+        """Duplicate files in the library, labelled by strength of evidence. Recommends only."""
+        return lib.find_duplicate_files(body.cited)
 
     @app.get("/documents/{doc_id}")
     def get_document(doc_id: int):

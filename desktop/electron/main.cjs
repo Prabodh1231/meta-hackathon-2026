@@ -1,7 +1,7 @@
 // Electron main process: starts the Python backend on a free local port with a per-launch
 // token, then opens the window. Set RC_BACKEND_URL to use a backend you started yourself
 // (e.g. `uvicorn app.main:app --reload`); the token check is off in that case.
-const { app, BrowserWindow, dialog, ipcMain } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron')
 const { spawn } = require('node:child_process')
 const crypto = require('node:crypto')
 const fs = require('node:fs')
@@ -177,6 +177,31 @@ ipcMain.handle('rc:save-file', async (event, defaultName, data) => {
   if (res.canceled || !res.filePath) return null
   await fs.promises.writeFile(res.filePath, Buffer.from(data))
   return res.filePath
+})
+
+// The duplicate finder can move a library file to the Recycle Bin / Trash, never delete it outright.
+// Only a file the library actually holds is accepted, so the renderer can't trash arbitrary paths.
+async function libraryFile(filePath) {
+  if (typeof filePath !== 'string' || !path.isAbsolute(filePath)) throw new Error('Not a file path')
+  const { baseUrl, token } = backendConfig
+  const res = await fetch(`${baseUrl}/documents`, { headers: { 'x-rc-token': token } })
+  if (!res.ok) throw new Error(`Could not check the library (${res.status})`)
+  const same = (a, b) => (process.platform === 'win32' || process.platform === 'darwin'
+    ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
+    : path.resolve(a) === path.resolve(b))
+  if (!(await res.json()).some((d) => same(d.source, filePath))) throw new Error('That file is not in your library')
+  const stat = await fs.promises.stat(filePath)
+  if (!stat.isFile()) throw new Error('Not a file')
+  return filePath
+}
+
+ipcMain.handle('rc:trash-file', async (_event, filePath) => {
+  await shell.trashItem(await libraryFile(filePath))
+  return true
+})
+
+ipcMain.handle('rc:show-file', async (_event, filePath) => {
+  shell.showItemInFolder(await libraryFile(filePath))
 })
 
 app.whenReady().then(async () => {

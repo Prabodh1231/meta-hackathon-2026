@@ -144,6 +144,50 @@ export interface Settings {
   citation_style: DocxStyle
 }
 
+export type DuplicateKind = 'exact_file' | 'same_text' | 'likely_same' | 'similar'
+
+/** A library document as the duplicate finder reports it. */
+export interface DuplicateDoc {
+  id: number
+  title: string
+  source: string // file path, or URL for web pages
+  kind: Doc['kind']
+  authors: string[]
+  year: number | null
+  doi: string
+  venue: string
+  page_count: number
+  added_at: string
+  folders: string[]
+  cited: boolean // the draft cites it
+  is_file: boolean
+  exists: boolean
+  size: number | null // bytes
+}
+
+export interface DuplicateGroup {
+  kind: DuplicateKind
+  label: string
+  explanation: string
+  reasons: string[]
+  similarity: number | null // percent of the shorter text found in the other
+  keep: number // suggested document to keep
+  keep_reason: string
+  recoverable: number // bytes freed by removing the others
+  docs: DuplicateDoc[]
+}
+
+export interface FileDuplicateReport {
+  groups: DuplicateGroup[]
+  counts: Record<DuplicateKind, number>
+  recoverable: { identical: number; likely_same: number }
+  scanned: number
+  files: number
+  missing: number
+  web: number
+  no_text: number
+}
+
 declare global {
   interface Window {
     rc?: {
@@ -151,6 +195,8 @@ declare global {
       pickFiles: () => Promise<string[]>
       pickFolder: () => Promise<string | null>
       saveFile: (defaultName: string, data: ArrayBuffer) => Promise<string | null>
+      trashFile?: (path: string) => Promise<boolean> // to the Recycle Bin / Trash; library files only
+      showFile?: (path: string) => Promise<void>
     }
   }
 }
