@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import db, paper_meta
+from . import db, draft_review, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
 from .citegraph import build_graph, focus, keyword_links
 from .refparse import Reference, parse_references
@@ -46,6 +46,16 @@ INGEST_WORKERS = 4
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
 MAX_KEYWORD_TAGS = 8
 MIN_TEXT_HITS = 3  # chunks of a paper that must mention a searched topic for it to count as about it
+
+# Draft versions: an automatic snapshot when the newest version is this old, and one of the
+# draft as it was before an edit that changes at least LARGE_EDIT_PCT of a draft this long.
+AUTO_VERSION_MINUTES = 10
+LARGE_EDIT_PCT = 25
+LARGE_EDIT_MIN_WORDS = 50
+MAX_AUTO_VERSIONS = 40
+# Duplication: share of a draft sentence's word 3-grams found in one library passage.
+SOURCE_MATCH = 0.5  # closely matches the source
+SOURCE_COPIED = 0.85  # copied nearly word for word
 
 
 class Library:
@@ -931,7 +941,8 @@ class Library:
             return {"id": draft_id, "title": "Untitled", "content": "", "updated_at": None}
         return dict(row)
 
-    def save_draft(self, draft_id: int, title: str, content: str) -> dict:
+    def save_draft(self, draft_id: int, title: str, content: str, snapshot: bool = True) -> dict:
+        previous = self.get_draft(draft_id)
         with self.lock, self.conn:
             self.conn.execute(
                 "INSERT INTO drafts (id, title, content, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) "
@@ -939,7 +950,205 @@ class Library:
                 "updated_at = CURRENT_TIMESTAMP",
                 (draft_id, title, content),
             )
+        if snapshot:
+            self._auto_versions(draft_id, previous, title, content)
         return self.get_draft(draft_id)
+
+    # ---------- draft versions ----------
+
+    def _auto_versions(self, draft_id: int, previous: dict, title: str, content: str) -> None:
+        """Snapshots taken while writing: the draft as it was before a large edit (a pasted draft,
+        a deleted section), and the current draft when the last version is getting old."""
+        old_text, new_text = draft_review.plain_text(previous["content"]), draft_review.plain_text(content)
+        if old_text == new_text:
+            return
+        latest = self._latest_version(draft_id)
+        if (draft_review.word_count(old_text) >= LARGE_EDIT_MIN_WORDS
+                and (latest is None or latest["text"] != old_text)
+                and draft_review.change_pct(old_text, new_text) >= LARGE_EDIT_PCT):
+            self._add_version(draft_id, "auto", "Before a large edit", previous["title"], previous["content"])
+            latest = self._latest_version(draft_id)
+        if not new_text.strip():
+            return
+        with self.lock:
+            fresh = latest is not None and self.conn.execute(
+                "SELECT 1 FROM draft_versions WHERE id = ? AND created_at > datetime('now', ?)",
+                (latest["id"], f"-{AUTO_VERSION_MINUTES} minutes"),
+            ).fetchone()
+        if not fresh and (latest is None or latest["text"] != new_text):
+            self._add_version(draft_id, "auto", "", title, content)
+
+    def _latest_version(self, draft_id: int) -> dict | None:
+        with self.lock:
+            row = self.conn.execute(
+                "SELECT id, text FROM draft_versions WHERE draft_id = ? ORDER BY id DESC LIMIT 1", (draft_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def _add_version(self, draft_id: int, kind: str, label: str, title: str, content: str) -> int:
+        text = draft_review.plain_text(content)
+        latest = self._latest_version(draft_id)
+        change = draft_review.change_pct(latest["text"], text) if latest else 100
+        with self.lock, self.conn:
+            vid = self.conn.execute(
+                "INSERT INTO draft_versions (draft_id, kind, label, title, content, text, words, change) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (draft_id, kind, label.strip()[:120], title, content, text, draft_review.word_count(text), change),
+            ).lastrowid
+            # Keep the newest automatic snapshots; milestones stay until the user deletes them.
+            self.conn.execute(
+                "DELETE FROM draft_versions WHERE draft_id = ? AND kind = 'auto' AND id NOT IN "
+                "(SELECT id FROM draft_versions WHERE draft_id = ? AND kind = 'auto' ORDER BY id DESC LIMIT ?)",
+                (draft_id, draft_id, MAX_AUTO_VERSIONS),
+            )
+        return vid
+
+    def list_versions(self, draft_id: int) -> dict:
+        """Versions newest first, numbered in the order they were taken, with how much the draft
+        has changed since the newest one."""
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT id, kind, label, title, words, change, created_at, text FROM draft_versions "
+                "WHERE draft_id = ? ORDER BY id", (draft_id,)
+            ).fetchall()
+            numbers = {r["id"]: n for n, r in enumerate(
+                self.conn.execute("SELECT id FROM draft_versions WHERE draft_id = ? ORDER BY id", (draft_id,)), 1)}
+        current = draft_review.plain_text(self.get_draft(draft_id)["content"])
+        versions = [{k: r[k] for k in r.keys() if k != "text"} | {"number": numbers[r["id"]]} for r in rows]
+        return {
+            "versions": versions[::-1],
+            "current_words": draft_review.word_count(current),
+            "current_change": draft_review.change_pct(rows[-1]["text"], current) if rows else None,
+        }
+
+    def _version(self, draft_id: int, version_id: int) -> dict:
+        with self.lock:
+            row = self.conn.execute(
+                "SELECT * FROM draft_versions WHERE draft_id = ? AND id = ?", (draft_id, version_id)
+            ).fetchone()
+        if not row:
+            raise LookupError(f"No version {version_id}")
+        return dict(row)
+
+    def get_version(self, draft_id: int, version_id: int) -> dict:
+        v = self._version(draft_id, version_id)
+        v.pop("text")
+        return v
+
+    def create_version(self, draft_id: int, label: str, title: str, content: str) -> dict:
+        vid = self._add_version(draft_id, "milestone", label or "Saved version", title, content)
+        return self.get_version(draft_id, vid)
+
+    def rename_version(self, draft_id: int, version_id: int, label: str) -> dict:
+        """Naming an automatic snapshot keeps it: it becomes a milestone and is never pruned."""
+        self._version(draft_id, version_id)
+        with self.lock, self.conn:
+            self.conn.execute("UPDATE draft_versions SET label = ?, kind = 'milestone' WHERE id = ?",
+                              (label.strip()[:120], version_id))
+        return self.get_version(draft_id, version_id)
+
+    def delete_version(self, draft_id: int, version_id: int) -> None:
+        self._version(draft_id, version_id)
+        with self.lock, self.conn:
+            self.conn.execute("DELETE FROM draft_versions WHERE id = ?", (version_id,))
+
+    def compare_version(self, draft_id: int, version_id: int, content: str | dict | None = None,
+                        against: int | None = None) -> dict:
+        """What changed from a version to `against` (another version), or else to `content`
+        (the editor's unsaved document), or else to the saved draft."""
+        old = self._version(draft_id, version_id)["content"]
+        if against is not None:
+            new = self._version(draft_id, against)["content"]
+        elif content is not None:
+            new = content
+        else:
+            new = self.get_draft(draft_id)["content"]
+        return draft_review.compare(old, new)
+
+    def restore_version(self, draft_id: int, version_id: int) -> dict:
+        """Make a version the current draft, keeping the draft as it was as a snapshot first."""
+        v = self._version(draft_id, version_id)
+        current = self.get_draft(draft_id)
+        if draft_review.plain_text(current["content"]) != v["text"]:
+            name = v["label"] or f"version from {v['created_at']} UTC"
+            self._add_version(draft_id, "auto", f"Before restoring “{name}”", current["title"], current["content"])
+        return self.save_draft(draft_id, v["title"], v["content"], snapshot=False)
+
+    # ---------- duplication ----------
+
+    def check_duplicates(self, content: str | dict) -> dict:
+        """Passages of a draft that repeat each other, or that match text in the library closely
+        (copied or lightly edited from a source), with the share of the draft each covers."""
+        bs = draft_review.blocks(content)
+        sents = draft_review.draft_sentences(bs)
+        internal = draft_review.internal_duplicates(bs)
+        total = sum(len(s.tokens) for s in sents)
+        checked = [k for k, s in enumerate(sents) if len(s.tokens) >= draft_review.MIN_SENTENCE_WORDS]
+
+        # Candidate chunks per sentence: keyword hits catch copied wording, embeddings catch
+        # rewordings the keywords miss. Overlap of word n-grams then decides.
+        candidates: dict[int, set[int]] = {k: {cid for cid, _ in self._keyword(sents[k].text, 5, None)}
+                                           for k in checked}
+        with self.lock:
+            self._load_index()
+            if len(self._ids) and checked:
+                vecs = self.embedder.embed([sents[k].text for k in checked])
+                for k, scores in zip(checked, vecs @ self._mat.T):
+                    candidates[k] |= {int(self._ids[i]) for i in np.argsort(-scores)[:3]}
+            ids = sorted(set().union(*candidates.values())) if candidates else []
+            chunk_text = {
+                r["id"]: r["text"]
+                for r in self.conn.execute(f"SELECT id, text FROM chunks WHERE id IN ({','.join('?' * len(ids))})", ids)
+            } if ids else {}
+        chunk_grams = {cid: draft_review.shingles(draft_review.words(t)) for cid, t in chunk_text.items()}
+
+        matches = []
+        flagged: dict[int, bool] = {}  # sentence index -> cited
+        for k in checked:
+            s = sents[k]
+            grams = draft_review.shingles(s.tokens)
+            best, score = None, 0.0
+            for cid in candidates[k]:
+                c = draft_review.containment(grams, chunk_grams.get(cid, set()))
+                if c > score:
+                    best, score = cid, c
+            if best is None or score < SOURCE_MATCH:
+                continue
+            hit = self._hit(best, score)
+            if not hit:
+                continue
+            span = draft_review.matched_span(s.text, hit["text"])
+            a, b = span or (0, len(hit["text"]))
+            cited = hit["doc_id"] in s.cited_docs
+            flagged[k] = cited
+            matches.append({
+                "sentence": s.text, "block": s.block, "similarity": draft_review.pct(score),
+                "level": "copied" if score >= SOURCE_COPIED else "close", "cited": cited,
+                "doc_id": hit["doc_id"], "chunk_id": best, "page": hit["page"], "page_label": hit["page_label"],
+                "label": hit["label"], "title": hit["title"],
+                "start": hit["start"] + a, "end": hit["start"] + b, "quote": hit["text"][a:b],
+            })
+
+        repeated = set(internal["repeated"])
+        share = lambda ks: draft_review.pct(sum(len(sents[k].tokens) for k in ks) / total) if total else 0  # noqa: E731
+        per_block: dict[int, list[int]] = defaultdict(lambda: [0, 0])
+        for k, s in enumerate(sents):
+            per_block[s.block][0] += len(s.tokens)
+            if k in flagged or k in repeated:
+                per_block[s.block][1] += len(s.tokens)
+        return {
+            "words": total,
+            "sentences_checked": len(checked),
+            "overall": share(set(flagged) | repeated),
+            "sources": share(flagged),
+            "uncited": share(k for k, cited in flagged.items() if not cited),
+            "internal": share(repeated),
+            "source_matches": sorted(matches, key=lambda m: (m["cited"], -m["similarity"])),
+            "repeated_sentences": internal["sentences"],
+            "repeated_paragraphs": internal["paragraphs"],
+            "paragraphs": [{"block": b, "words": w, "flagged": draft_review.pct(f / w), "text": bs[b].text[:200]}
+                           for b, (w, f) in sorted(per_block.items()) if f],
+        }
 
 
 def short_label(doc: dict, page: int | None = None, page_label: str | None = None) -> str:

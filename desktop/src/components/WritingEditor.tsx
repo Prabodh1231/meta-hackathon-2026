@@ -4,11 +4,12 @@ import StarterKit from '@tiptap/starter-kit'
 import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
 import { Extension, type Editor, type JSONContent } from '@tiptap/core'
 import { CitationNode } from '../editor/citation'
+import { ReviewMarks, findInBlock, setReviewMarks, textBlocks, type ReviewRange } from '../editor/reviewMarks'
 import { FormatToolbar } from './FormatToolbar'
 import { api } from '../api'
 import type { Citation, DraftSentence } from '../types'
 
-const DRAFT_ID = 1
+export const DRAFT_ID = 1
 const MISSING_REASON = 'This passage is no longer in your library.'
 
 function patchChips(editor: Editor, patches: Map<string, Partial<ChipAttrs>>) {
@@ -66,6 +67,28 @@ export interface ChipAttrs {
   reason: string
 }
 
+/** Live numbers for the status dock. */
+export interface DraftStats {
+  words: number
+  citations: number
+  verified: number
+  flagged: number // weak, unsupported or quote not found
+}
+
+export type SaveState = { state: 'idle' | 'saving' | 'saved' | 'error'; at?: number }
+
+function statsOf(editor: Editor): DraftStats {
+  const s: DraftStats = { words: 0, citations: 0, verified: 0, flagged: 0 }
+  s.words = (editor.getText().match(/\w+(?:['’-]\w+)*/g) ?? []).length
+  editor.state.doc.descendants((node) => {
+    if (node.type.name !== 'citation') return
+    s.citations++
+    if (node.attrs.status === 'verified') s.verified++
+    else if (node.attrs.status !== 'pending') s.flagged++
+  })
+  return s
+}
+
 export interface WritingEditorHandle {
   insertDraft: (sentences: DraftSentence[]) => void
   updateCitation: (cid: string, patch: Partial<ChipAttrs>) => void
@@ -78,6 +101,12 @@ export interface WritingEditorHandle {
   citedDocIds: () => number[]
   /** Insert a chip for the sentence chosen with Cite. Returns false if that spot is gone. */
   insertCitation: (c: Citation, claim: string) => boolean
+  /** Replace the whole document (restoring a version). */
+  setContent: (json: string) => void
+  /** Scroll to a text block (numbered as the backend numbers them) and select `text` in it. */
+  reveal: (block: number, text?: string) => void
+  /** Underline passages found by the duplication check; an empty list clears them. */
+  markReview: (marks: { block: number; text: string; kind: ReviewRange['kind']; title?: string }[]) => void
 }
 
 function titleOf(editor: Editor): string {
@@ -127,6 +156,8 @@ function citeTarget(editor: Editor): { claim: string; pos: number } | null {
 }
 
 interface Props {
+  onStats?: (stats: DraftStats) => void
+  onSaveState?: (s: SaveState) => void
   onCitationClick: (chip: ChipAttrs) => void
   /** Cite button / Ctrl+Shift+C: find sources for this text. */
   onCiteRequest: (claim: string) => void
@@ -134,10 +165,13 @@ interface Props {
 }
 
 export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function WritingEditor(
-  { onCitationClick, onCiteRequest, onError },
+  { onCitationClick, onCiteRequest, onError, onStats, onSaveState },
   ref,
 ) {
   const saveTimer = useRef<number | undefined>(undefined)
+  const statsTimer = useRef<number | undefined>(undefined)
+  const report = useRef({ onStats, onSaveState })
+  report.current = { onStats, onSaveState }
   const loaded = useRef(false)
   const clickRef = useRef(onCitationClick)
   clickRef.current = onCitationClick
@@ -152,6 +186,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       FontFamily,
       FontSize,
       CitationNode,
+      ReviewMarks,
       Extension.create({
         name: 'citeShortcut',
         addKeyboardShortcuts: () => ({ 'Mod-Shift-c': () => (citeRef.current(), true) }),
@@ -173,10 +208,19 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       },
     },
     onUpdate: ({ editor }) => {
+      window.clearTimeout(statsTimer.current)
+      statsTimer.current = window.setTimeout(() => report.current.onStats?.(statsOf(editor)), 250)
       if (!loaded.current) return
       window.clearTimeout(saveTimer.current)
+      report.current.onSaveState?.({ state: 'saving' })
       saveTimer.current = window.setTimeout(() => {
-        api.saveDraft(DRAFT_ID, titleOf(editor), JSON.stringify(editor.getJSON())).catch((e) => onError(String(e)))
+        api
+          .saveDraft(DRAFT_ID, titleOf(editor), JSON.stringify(editor.getJSON()))
+          .then(() => report.current.onSaveState?.({ state: 'saved', at: Date.now() }))
+          .catch((e) => {
+            report.current.onSaveState?.({ state: 'error' })
+            onError(String(e))
+          })
       }, 800)
     },
   })
@@ -199,6 +243,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       }
       if (cancelled) return
       loaded.current = true
+      report.current.onStats?.(statsOf(editor))
+      report.current.onSaveState?.({ state: 'saved' })
       await repairChips(editor)
     })().catch((e) => onError(`Could not refresh citations: ${e instanceof Error ? e.message : e}`))
     return () => {
@@ -250,6 +296,40 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         if (before && !/\s/.test(before)) content.unshift({ type: 'text', text: ' ' })
         editor.chain().focus().insertContentAt(pos, content).run()
         return true
+      },
+
+      setContent(json) {
+        if (!editor) return
+        window.clearTimeout(saveTimer.current) // a pending autosave of the old text must not win
+        editor.commands.setContent(json ? JSON.parse(json) : '', { emitUpdate: false })
+        report.current.onStats?.(statsOf(editor))
+        report.current.onSaveState?.({ state: 'saved', at: Date.now() })
+        repairChips(editor).catch((e) => onError(`Could not refresh citations: ${e instanceof Error ? e.message : e}`))
+      },
+
+      reveal(block, text) {
+        if (!editor) return
+        const b = textBlocks(editor)[block]
+        if (!b) return
+        const range = text ? findInBlock(editor, block, text) : null
+        editor.chain().focus().setTextSelection(range ?? { from: b.start, to: b.start }).scrollIntoView().run()
+        const dom = editor.view.nodeDOM(b.pos)
+        if (dom instanceof HTMLElement) {
+          dom.scrollIntoView({ block: 'center', behavior: 'smooth' })
+          dom.classList.remove('flash')
+          void dom.offsetWidth // restart the animation
+          dom.classList.add('flash')
+        }
+      },
+
+      markReview(marks) {
+        if (!editor) return
+        const ranges: ReviewRange[] = []
+        for (const m of marks) {
+          const r = findInBlock(editor, m.block, m.text)
+          if (r) ranges.push({ ...r, kind: m.kind, title: m.title })
+        }
+        setReviewMarks(editor, ranges)
       },
 
       getText: () => editor?.getText() ?? '',
