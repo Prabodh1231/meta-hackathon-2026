@@ -103,6 +103,9 @@ export interface WritingEditorHandle {
   insertCitation: (c: Citation, claim: string) => boolean
   /** Save pending edits now (before switching to another draft). */
   flush: () => Promise<void>
+  /** Insert a whole document (an imported Word file) at the cursor; it fills an empty draft. */
+  insertDocument: (json: JSONContent) => void
+  isEmpty: () => boolean
   /** Replace the whole document (restoring a version). */
   setContent: (json: string) => void
   /** Scroll to a text block (numbered as the backend numbers them) and select `text` in it. */
@@ -184,6 +187,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   // Where the chip for the pending Cite request goes, kept in step with later edits.
   const citePos = useRef<number | null>(null)
   const citeRef = useRef<() => void>(() => {})
+  const placed = useRef(false) // the writer has put the cursor somewhere since the draft opened
 
   const editor = useEditor({
     extensions: [
@@ -204,6 +208,9 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         citePos.current = mapped.deleted ? null : mapped.pos
       }
     },
+    onFocus: () => {
+      placed.current = true
+    },
     content: '',
     editorProps: {
       attributes: { class: 'prose', spellcheck: 'true' },
@@ -223,15 +230,29 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     },
   })
 
+  // Saves go out one at a time. Two in flight could finish in either order, and an older
+  // copy landing last would overwrite newer text on the server.
+  const saving = useRef<Promise<void>>(Promise.resolve())
+
   function save(e: Editor): Promise<void> {
     saveTimer.current = undefined
-    return api
-      .saveDraft(draftRef.current, titleOf(e), JSON.stringify(e.getJSON()))
-      .then(() => report.current.onSaveState?.({ state: 'saved', at: Date.now() }))
-      .catch((err) => {
-        report.current.onSaveState?.({ state: 'error' })
-        onError(String(err))
-      })
+    const id = draftRef.current
+    const title = titleOf(e)
+    const content = JSON.stringify(e.getJSON())
+    const next = saving.current.then(() =>
+      api
+        .saveDraft(id, title, content)
+        .then(() => {
+          // A later edit already queued its own save: stay on "Saving…" until that one lands.
+          if (saveTimer.current === undefined && saving.current === next) report.current.onSaveState?.({ state: 'saved', at: Date.now() })
+        })
+        .catch((err) => {
+          report.current.onSaveState?.({ state: 'error' })
+          onError(`Could not save the draft: ${err instanceof Error ? err.message : err}`)
+        }),
+    )
+    saving.current = next
+    return next
   }
 
   /** Show other content as if freshly opened: no update event, and an empty undo history, so
@@ -250,6 +271,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     window.clearTimeout(saveTimer.current)
     saveTimer.current = undefined
     loaded.current = false
+    placed.current = false
     draftRef.current = draftId
     ;(async () => {
       // Keep retrying while the backend starts. Autosave stays off until the stored draft
@@ -326,7 +348,20 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
           window.clearTimeout(saveTimer.current)
           await save(editor)
         }
+        await saving.current // and any save already on its way
       },
+
+      insertDocument(json) {
+        if (!editor) return
+        const blocks = json.content ?? []
+        if (!blocks.length) return
+        if (editor.isEmpty) editor.chain().focus().setContent(json).run()
+        // Not clicked into since the draft opened: the cursor is still parked at the top, so
+        // "at the cursor" would push the whole draft down. The end is what's meant.
+        else editor.chain().focus(placed.current ? undefined : 'end').insertContent(blocks).scrollIntoView().run()
+      },
+
+      isEmpty: () => editor?.isEmpty ?? true,
 
       setContent(json) {
         if (!editor) return
@@ -355,8 +390,9 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       markReview(marks) {
         if (!editor) return
         const ranges: ReviewRange[] = []
+        const blocks = textBlocks(editor)
         for (const m of marks) {
-          const r = findInBlock(editor, m.block, m.text)
+          const r = findInBlock(editor, m.block, m.text, blocks)
           if (r) ranges.push({ ...r, kind: m.kind, title: m.title })
         }
         setReviewMarks(editor, ranges)

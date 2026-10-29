@@ -58,9 +58,15 @@ export function textBlocks(editor: Editor): { pos: number; start: number; end: n
   return out
 }
 
-/** Document range of `text` inside block number `block`, ignoring spacing differences. */
-export function findInBlock(editor: Editor, block: number, text: string): { from: number; to: number } | null {
-  const b = textBlocks(editor)[block]
+/** Document range of `text` inside block number `block`, ignoring spacing differences. Pass
+ * `blocks` (from textBlocks) when looking up many passages, so the document is walked once. */
+export function findInBlock(
+  editor: Editor,
+  block: number,
+  text: string,
+  blocks: ReturnType<typeof textBlocks> = textBlocks(editor),
+): { from: number; to: number } | null {
+  const b = blocks[block]
   if (!b) return null
   // Match on words so collapsed whitespace and chips between words don't break it.
   const words = text.split(/\s+/).filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))

@@ -88,7 +88,22 @@ class Library:
         p = Path(path).expanduser()
         if not p.exists():
             raise LookupError(f"No such file or folder: {p}")
-        files = [p] if p.is_file() else sorted(f for f in p.rglob("*") if f.is_file() and is_supported(f))
+        return self.ingest_paths([path])
+
+    def ingest_paths(self, paths: list[str]) -> list[dict]:
+        """Files and folders (searched recursively) added in one go, so they share the worker
+        pool instead of one file waiting for the last. A missing path is reported, not raised."""
+        files: list[Path] = []
+        missing: list[dict] = []
+        for path in paths:
+            p = Path(path).expanduser()
+            if not p.exists():
+                missing.append({"source": str(p), "ok": False, "error": "No such file or folder"})
+            elif p.is_file():
+                files.append(p)
+            else:
+                files += sorted(f for f in p.rglob("*") if f.is_file() and is_supported(f))
+        files = list({str(f.resolve()): f for f in files}.values())  # the same file picked twice, once
 
         def ingest_one(f: Path) -> dict:
             try:
@@ -101,7 +116,7 @@ class Library:
         # Each file spends most of its time waiting on Muse (about 3 s per call), so a few at once
         # cut a folder's time by roughly the worker count. map() keeps the results in file order.
         with ThreadPoolExecutor(max_workers=min(INGEST_WORKERS, max(len(files), 1))) as pool:
-            return list(pool.map(ingest_one, files))
+            return list(pool.map(ingest_one, files)) + missing
 
     def ingest_url(self, url: str) -> dict:
         return self._store(parse_url(url), url)
@@ -111,29 +126,38 @@ class Library:
         if not full_text.strip():
             raise ValueError("No text could be extracted")
         meta = {"title": "", "authors": [], "year": None, "venue": "", "doi": "", "url": ""}
-        try:
-            meta.update({k: v for k, v in self.provider.extract_metadata(parsed.pages[0] or full_text).items() if v})
-        except Exception:
-            log.exception("Metadata extraction failed for %s", source)
-        meta.update({k: v for k, v in parsed.metadata.items() if v})  # file metadata wins when present
-        title = meta["title"] or Path(source).stem
         # Authors print keywords and JEL codes on the first pages: read them directly. A paper with
         # its own keywords needs no model call to be tagged.
         keywords, jel_codes = paper_meta.extract("\n\n".join(parsed.pages[:2]))
         own_keywords = len(keywords) >= MIN_OWN_KEYWORDS
-        with ThreadPoolExecutor(max_workers=2) as pool:  # independent of each other, so overlap the waits
-            summary_job = pool.submit(self.provider.summarize, title, full_text)
-            tags_job = None if own_keywords else pool.submit(self.provider.tag_document, title, full_text)
-            summary = summary_job.result()
-            tags = keywords[:MAX_KEYWORD_TAGS] if own_keywords else tags_job.result()
-
         chunks = [
             (page_no, s, e, text[s:e])
             for page_no, text in enumerate(parsed.pages, start=1)
             for s, e in chunk_page(text)
         ]
-        with self._embed_lock:
-            vectors = self.embedder.embed([c[3] for c in chunks]) if chunks else np.zeros((0, 1))
+
+        def embed_chunks() -> np.ndarray:
+            with self._embed_lock:
+                return self.embedder.embed([c[3] for c in chunks]) if chunks else np.zeros((0, 1))
+
+        # Metadata, summary, tags and embeddings don't depend on each other, so all of them run
+        # at once: a file takes about one model call's time instead of three in a row. The summary
+        # and tags only use the title as a heading, so the file's own title (or name) does.
+        hint = parsed.metadata.get("title") or Path(source).stem
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            meta_job = pool.submit(self.provider.extract_metadata, parsed.pages[0] or full_text)
+            summary_job = pool.submit(self.provider.summarize, hint, full_text)
+            tags_job = None if own_keywords else pool.submit(self.provider.tag_document, hint, full_text)
+            embed_job = pool.submit(embed_chunks)
+            try:
+                meta.update({k: v for k, v in meta_job.result().items() if v})
+            except Exception:
+                log.exception("Metadata extraction failed for %s", source)
+            summary = summary_job.result()
+            tags = keywords[:MAX_KEYWORD_TAGS] if own_keywords else tags_job.result()
+            vectors = embed_job.result()
+        meta.update({k: v for k, v in parsed.metadata.items() if v})  # file metadata wins when present
+        title = meta["title"] or Path(source).stem
 
         fields = {
             "kind": parsed.kind, "title": title, "authors": json.dumps(meta["authors"]), "year": meta["year"],
@@ -300,46 +324,54 @@ class Library:
 
     # ---------- documents ----------
 
-    def _doc_dict(self, row) -> dict:
-        d = dict(row)
-        d["authors"] = json.loads(d["authors"])
-        d["edited_fields"] = json.loads(d["edited_fields"])
-        d["keywords"] = json.loads(d["keywords"])
-        d["jel_codes"] = [{"code": c, "area": paper_meta.jel_area(c)} for c in json.loads(d["jel_codes"])]
-        d["tags"] = [r["tag"] for r in self.conn.execute("SELECT tag FROM tags WHERE doc_id = ? ORDER BY tag", (d["id"],))]
-        d["folders"] = [
-            dict(r)
+    def _doc_dicts(self, rows: list) -> list[dict]:
+        """Documents as the API returns them. Tags, folders and page labels are read in one
+        query each for all of `rows`, not three per document. Call under the lock."""
+        if not rows:
+            return []
+        ids = [r["id"] for r in rows]
+        scope = f"IN ({','.join('?' * len(ids))})"
+        tags: dict[int, list[str]] = defaultdict(list)
+        for r in self.conn.execute(f"SELECT doc_id, tag FROM tags WHERE doc_id {scope} ORDER BY tag", ids):
+            tags[r["doc_id"]].append(r["tag"])
+        folders: dict[int, list[dict]] = defaultdict(list)
+        for r in self.conn.execute(
+            "SELECT df.doc_id, f.id, f.name, df.state, s.score FROM doc_folders df JOIN folders f ON f.id = df.folder_id "
+            "LEFT JOIN folder_scores s ON s.doc_id = df.doc_id AND s.folder_id = df.folder_id "
+            f"WHERE df.doc_id {scope} AND df.state != 'rejected' ORDER BY f.name COLLATE NOCASE",
+            ids,
+        ):
+            folders[r["doc_id"]].append({k: r[k] for k in ("id", "name", "state", "score")})
+        numbered = [r["id"] for r in rows if r["page_numbering"] != "index"]
+        labels: dict[int, list[str]] = defaultdict(list)
+        if numbered:
             for r in self.conn.execute(
-                "SELECT f.id, f.name, df.state, s.score FROM doc_folders df JOIN folders f ON f.id = df.folder_id "
-                "LEFT JOIN folder_scores s ON s.doc_id = df.doc_id AND s.folder_id = df.folder_id "
-                "WHERE df.doc_id = ? AND df.state != 'rejected' ORDER BY f.name COLLATE NOCASE",
-                (d["id"],),
-            )
-        ]
-        d["label"] = short_label(d)
-        d["page_range"] = self._page_range(d["id"], d["page_numbering"])
-        return d
+                f"SELECT doc_id, label FROM pages WHERE doc_id IN ({','.join('?' * len(numbered))}) "
+                "AND label IS NOT NULL ORDER BY doc_id, page", numbered,
+            ):
+                if r["label"].isdigit():
+                    labels[r["doc_id"]].append(r["label"])
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["authors"] = json.loads(d["authors"])
+            d["edited_fields"] = json.loads(d["edited_fields"])
+            d["keywords"] = json.loads(d["keywords"])
+            d["jel_codes"] = [{"code": c, "area": paper_meta.jel_area(c)} for c in json.loads(d["jel_codes"])]
+            d["tags"] = tags[d["id"]]
+            d["folders"] = folders[d["id"]]
+            d["label"] = short_label(d)
+            d["page_range"] = page_range(labels[d["id"]])
+            out.append(d)
+        return out
 
-    def _page_range(self, doc_id: int, numbering: str) -> str:
-        """Printed page range, e.g. '341–355', for references. Empty when only the PDF
-        index is known: those numbers aren't the published pagination."""
-        if numbering == "index":
-            return ""
-        nums = [
-            r["label"]
-            for r in self.conn.execute(
-                "SELECT label FROM pages WHERE doc_id = ? AND label IS NOT NULL ORDER BY page", (doc_id,)
-            )
-            if r["label"].isdigit()
-        ]
-        if not nums:
-            return ""
-        return nums[0] if nums[0] == nums[-1] else f"{nums[0]}–{nums[-1]}"
+    def _doc_dict(self, row) -> dict:
+        return self._doc_dicts([row])[0]
 
     def list_documents(self) -> list[dict]:
         with self.lock:
             rows = self.conn.execute("SELECT * FROM documents ORDER BY added_at DESC, id DESC").fetchall()
-            return [self._doc_dict(r) for r in rows]
+            return self._doc_dicts(rows)
 
     def get_document(self, doc_id: int) -> dict:
         with self.lock:
@@ -596,7 +628,9 @@ class Library:
         rows = self.conn.execute("SELECT id, doc_id, embedding FROM chunks WHERE embedding IS NOT NULL").fetchall()
         self._ids = np.array([r["id"] for r in rows], dtype=np.int64)
         self._docs = np.array([r["doc_id"] for r in rows], dtype=np.int64)
-        self._mat = np.stack([from_blob(r["embedding"]) for r in rows]) if rows else np.zeros((0, 1), np.float32)
+        # One buffer for every vector: much faster than a small array per chunk on a large library.
+        self._mat = (np.frombuffer(b"".join(r["embedding"] for r in rows), dtype=np.float32).reshape(len(rows), -1)
+                     if rows else np.zeros((0, 1), np.float32))
 
     def search(self, query: str, k: int = 8, doc_ids: list[int] | None = None,
                mode: str = "auto", rerank: bool = True) -> list[dict]:
@@ -641,11 +675,14 @@ class Library:
         return sorted(zip(ids, scores), key=lambda kv: -kv[1])
 
     def _dense(self, query: str, n: int, doc_ids: list[int] | None) -> list[tuple[int, float]]:
+        # Embed before taking the lock: the model call is the slow part, and holding the lock
+        # through it would stall every other request (saves, library listing) meanwhile.
+        vec = self.embedder.embed([query])[0]
         with self.lock:
             self._load_index()
             if not len(self._ids):
                 return []
-            scores = self._mat @ self.embedder.embed([query])[0]
+            scores = self._mat @ vec
             if doc_ids:
                 scores = np.where(np.isin(self._docs, doc_ids), scores, -np.inf)
             return [(int(self._ids[i]), float(scores[i])) for i in np.argsort(-scores)[:n] if np.isfinite(scores[i])]
@@ -1072,7 +1109,18 @@ class Library:
         rank = {"verified": 0, "weak": 1, "unsupported": 2, "quote_not_found": 3}
         return sorted(results, key=lambda r: (rank.get(r["status"], 4), -r["score"]))
 
-    def resolve_citation(self, doc_id: int, page: int, quote: str) -> dict | None:
+    def resolve_citations(self, items: list[tuple[int, int, str]]) -> list[dict | None]:
+        """resolve_citation for each (doc_id, page, quote), in order. A draft's chips mostly
+        cite a few documents, so each document's pages are read once for all of them, and a
+        chip repeated in the draft is looked up once."""
+        cache: dict = {}
+        done: dict[tuple[int, int, str], dict | None] = {}
+        for item in items:
+            if item not in done:
+                done[item] = self.resolve_citation(*item, _cache=cache)
+        return [done[item] for item in items]
+
+    def resolve_citation(self, doc_id: int, page: int, quote: str, _cache: dict | None = None) -> dict | None:
         """Re-find a saved citation's quote in the library as it is now. Citations in drafts
         store character offsets and a chunk id, which go stale when a file is re-added (new
         extraction, new chunks) or was removed and added again (new document id).
@@ -1081,16 +1129,21 @@ class Library:
         no longer exists does it look elsewhere, by exact or normalized match, so a citation
         is never silently moved to a different source that happens to contain similar text.
         Returns the citation's current location, or None if the quote can't be found."""
+        cache = {} if _cache is None else _cache
         with self.lock:
-            doc_exists = self.conn.execute("SELECT 1 FROM documents WHERE id = ?", (doc_id,)).fetchone()
-            if doc_exists:
-                rows = self.conn.execute(
-                    "SELECT doc_id, page, text, label FROM pages WHERE doc_id = ? ORDER BY page != ?, page",
-                    (doc_id, page),
-                ).fetchall()
+            if doc_id not in cache:  # the document's pages, or None if it's gone
+                exists = self.conn.execute("SELECT 1 FROM documents WHERE id = ?", (doc_id,)).fetchone()
+                cache[doc_id] = self.conn.execute(
+                    "SELECT doc_id, page, text, label FROM pages WHERE doc_id = ? ORDER BY page", (doc_id,)
+                ).fetchall() if exists else None
+            if cache[doc_id] is not None:
+                rows = sorted(cache[doc_id], key=lambda r: r["page"] != page)  # the cited page first
                 fuzzy = True
             else:
-                rows = self.conn.execute("SELECT doc_id, page, text, label FROM pages ORDER BY doc_id, page").fetchall()
+                if "*" not in cache:
+                    cache["*"] = self.conn.execute(
+                        "SELECT doc_id, page, text, label FROM pages ORDER BY doc_id, page").fetchall()
+                rows = cache["*"]
                 fuzzy = False
         for row in rows:
             loc = locate_quote(quote, row["text"], fuzzy=fuzzy)
@@ -1159,16 +1212,22 @@ class Library:
                 raise LookupError(f"Draft {draft_id} not found")
             self.conn.execute("DELETE FROM draft_versions WHERE draft_id = ?", (draft_id,))
 
-    def import_docx(self, filename: str, data: bytes) -> dict:
-        """Open a Word document as a new draft. Returns the draft and what was converted."""
+    @staticmethod
+    def convert_docx(filename: str, data: bytes) -> dict:
+        """A Word document as editor content, its title and what was converted, without saving anything."""
         try:
             doc, title, stats = docx_import.to_editor(data)
         except Exception as exc:  # not a .docx, or a damaged one
             raise ValueError(f"Couldn't read {filename or 'that file'} as a Word document (.docx): {exc}") from exc
         if not doc["content"]:
             raise ValueError(f"{filename or 'That document'} has no text to import.")
-        title = title or Path(filename).stem or "Imported draft"
-        return {"draft": self.create_draft(title, json.dumps(doc)), "imported": stats}
+        return {"content": doc, "title": title or Path(filename).stem or "Imported draft", "imported": stats}
+
+    def import_docx(self, filename: str, data: bytes) -> dict:
+        """Open a Word document as a new draft. Returns the draft and what was converted."""
+        converted = self.convert_docx(filename, data)
+        return {"draft": self.create_draft(converted["title"], json.dumps(converted["content"])),
+                "imported": converted["imported"]}
 
     def get_draft(self, draft_id: int) -> dict:
         with self.lock:
@@ -1325,12 +1384,13 @@ class Library:
         # rewordings the keywords miss. Overlap of word n-grams then decides.
         candidates: dict[int, set[int]] = {k: {cid for cid, _ in self._keyword(sents[k].text, 5, None)}
                                            for k in checked}
+        vecs = self.embedder.embed([sents[k].text for k in checked]) if checked else None  # outside the lock
         with self.lock:
             self._load_index()
             if len(self._ids) and checked:
-                vecs = self.embedder.embed([sents[k].text for k in checked])
+                top = min(3, len(self._ids))
                 for k, scores in zip(checked, vecs @ self._mat.T):
-                    candidates[k] |= {int(self._ids[i]) for i in np.argsort(-scores)[:3]}
+                    candidates[k] |= {int(self._ids[i]) for i in np.argpartition(-scores, top - 1)[:top]}
             ids = sorted(set().union(*candidates.values())) if candidates else []
             chunk_text = {
                 r["id"]: r["text"]
@@ -1387,6 +1447,23 @@ class Library:
         }
 
 
+def page_range(labels: list[str]) -> str:
+    """Printed page range, e.g. '341–355', for references, from a document's numeric page
+    labels in page order. Empty when there are none: the PDF index isn't the published pagination."""
+    if not labels:
+        return ""
+    return labels[0] if labels[0] == labels[-1] else f"{labels[0]}–{labels[-1]}"
+
+
+def _surname(name: str) -> str:
+    """'Chen, Wei' and 'Wei Chen' -> 'Chen'."""
+    name = name.strip()
+    if "," in name:
+        return name.split(",")[0].strip()
+    parts = name.split()
+    return parts[-1] if parts else ""
+
+
 def short_label(doc: dict, page: int | None = None, page_label: str | None = None) -> str:
     """'Smith et al. 2021, p. 342' style label for citation chips.
 
@@ -1394,9 +1471,11 @@ def short_label(doc: dict, page: int | None = None, page_label: str | None = Non
     authors = doc.get("authors") or []
     if isinstance(authors, str):
         authors = json.loads(authors)
+    authors = [a for a in authors if isinstance(a, str) and _surname(a)]
     if authors:
-        last = authors[0].split(",")[0].strip() if "," in authors[0] else authors[0].split()[-1]
-        who = last + (" et al." if len(authors) > 2 else f" & {authors[1].split()[-1]}" if len(authors) == 2 else "")
+        who = _surname(authors[0]) + (
+            " et al." if len(authors) > 2 else f" & {_surname(authors[1])}" if len(authors) == 2 else ""
+        )
     else:
         title = doc.get("title") or "Untitled"
         who = title if len(title) <= 40 else title[:37] + "..."

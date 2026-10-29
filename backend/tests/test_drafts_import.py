@@ -53,7 +53,8 @@ def test_open_a_word_file_as_a_new_draft(client):
     r = client.post("/drafts/import", json={"filename": "chapter.docx", "data": base64.b64encode(word_file()).decode()})
     assert r.status_code == 200, r.text
     out = r.json()
-    assert out["imported"] == {"headings": 3, "paragraphs": 2, "list_items": 4, "tables": 1, "images": 1}
+    assert out["imported"] == {"headings": 3, "paragraphs": 2, "list_items": 4, "quotes": 0, "links": 0,
+                               "tables": 1, "images": 1}
     draft = out["draft"]
     assert draft["title"] == "Thermal acclimation of reef corals"
     nodes = json.loads(draft["content"])["content"]
@@ -73,6 +74,69 @@ def test_open_a_word_file_as_a_new_draft(client):
     listed = client.get("/drafts").json()
     assert listed[0]["id"] == draft["id"] and listed[0]["words"] > 20
     assert len(client.get(f"/drafts/{draft['id']}/versions").json()["versions"]) == 1
+
+
+def add_link(paragraph, text: str, url: str) -> None:
+    """python-docx has no API for hyperlinks: build the XML Word writes."""
+    from docx.opc.constants import RELATIONSHIP_TYPE
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    rid = paragraph.part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+    link = OxmlElement("w:hyperlink")
+    link.set(qn("r:id"), rid)
+    run = OxmlElement("w:r")
+    t = OxmlElement("w:t")
+    t.text = text
+    run.append(t)
+    link.append(run)
+    paragraph._p.append(link)
+
+
+def rich_word_file() -> bytes:
+    d = docx.Document()
+    d.add_paragraph("Outer one", style="List Bullet")
+    d.add_paragraph("Inner one", style="List Bullet 2")
+    d.add_paragraph("Inner two", style="List Bullet 2")
+    d.add_paragraph("Outer two", style="List Bullet")
+    d.add_paragraph("Quoted line one.", style="Quote")
+    d.add_paragraph("Quoted line two.", style="Quote")
+    p = d.add_paragraph("See ")
+    add_link(p, "the dataset", "https://example.org/data")
+    p.add_run(" and ")
+    p.add_run("struck").font.strike = True
+    p.add_run(" text, split ")
+    p.add_run("across ")
+    p.add_run("runs.")
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+def test_word_lists_nest_and_links_quotes_and_strikethrough_survive(client):
+    r = client.post("/drafts/convert-docx", json={"filename": "notes.docx", "data": base64.b64encode(rich_word_file()).decode()})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["imported"]["list_items"] == 4 and out["imported"]["quotes"] == 2 and out["imported"]["links"] == 1
+    nodes = out["content"]["content"]
+    assert [n["type"] for n in nodes] == ["bulletList", "blockquote", "paragraph"]
+
+    outer = nodes[0]["content"]
+    assert len(outer) == 2  # "Inner one/two" sit inside "Outer one", not beside it
+    first = outer[0]["content"]
+    assert first[0]["content"][0]["text"] == "Outer one"
+    assert first[1]["type"] == "bulletList" and [i["content"][0]["content"][0]["text"] for i in first[1]["content"]] == [
+        "Inner one", "Inner two"]
+    assert outer[1]["content"][0]["content"][0]["text"] == "Outer two"
+
+    assert len(nodes[1]["content"]) == 2  # consecutive quote paragraphs share one blockquote
+    para = nodes[2]["content"]
+    assert {"type": "text", "text": "the dataset", "marks": [{"type": "link", "attrs": {"href": "https://example.org/data"}}]} in para
+    assert {"type": "text", "text": "struck", "marks": [{"type": "strike"}]} in para
+    assert {"type": "text", "text": " text, split across runs."} in para  # same-format runs merged
+
+    # Converting saves nothing: it's for inserting into the draft that's open.
+    assert client.get("/drafts").json() == []
 
 
 def test_not_a_word_file_is_refused_clearly(client):
@@ -103,6 +167,18 @@ def test_word_sources_include_table_text(client, tmp_path):
     assert res["ok"], res
     text = client.get(f"/documents/{res['document']['id']}/pages/1").json()["text"]
     assert "Heron Island | 42%" in text and "Closing paragraph." in text
+
+
+def test_several_paths_are_added_in_one_request(client, tmp_path):
+    a, b = tmp_path / "a.md", tmp_path / "b.md"
+    a.write_text("# Coral heat stress\n\nReefs bleach when water stays warm for weeks.", encoding="utf-8")
+    b.write_text("# Sleep and memory\n\nSpindles during sleep predict next-day recall.", encoding="utf-8")
+    r = client.post("/ingest/paths", json={"paths": [str(a), str(b), str(a), str(tmp_path / "gone.pdf")]})
+    assert r.status_code == 200, r.text
+    results = r.json()["results"]
+    assert [x["ok"] for x in results] == [True, True, False]  # the repeated path is added once
+    assert "No such file" in results[-1]["error"]
+    assert len(client.get("/documents").json()) == 2
 
 
 def test_old_word_files_get_a_clear_message(client, tmp_path):

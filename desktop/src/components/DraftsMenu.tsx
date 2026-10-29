@@ -80,8 +80,8 @@ export function DraftsMenu({ drafts, currentId, busy, onSwitch, onNew, onImport,
         <button className="primary" onClick={onNew} disabled={!!busy}>
           + New draft
         </button>
-        <button onClick={() => file.current?.click()} disabled={!!busy} title="Open a Word document as a new draft you can keep writing">
-          Open Word file (.docx)…
+        <button onClick={() => file.current?.click()} disabled={!!busy} title="Open a Word document as a draft, or into this one (Ctrl+O)">
+          Import Word file…
         </button>
         <input
           ref={file}

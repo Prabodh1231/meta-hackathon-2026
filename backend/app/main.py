@@ -19,6 +19,10 @@ class IngestPathIn(BaseModel):
     path: str
 
 
+class IngestPathsIn(BaseModel):
+    paths: list[str] = Field(min_length=1, max_length=2000)
+
+
 class IngestUrlIn(BaseModel):
     url: str
 
@@ -105,7 +109,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 4
+API_VERSION = 5
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -188,6 +192,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/ingest/path")
     def ingest_path(body: IngestPathIn):
         return {"results": lib.ingest_path(body.path)}
+
+    @app.post("/ingest/paths")
+    def ingest_paths(body: IngestPathsIn):
+        """Several files and folders at once: they're read in parallel, not one request per file."""
+        return {"results": lib.ingest_paths(body.paths)}
 
     @app.post("/ingest/url")
     def ingest_url(body: IngestUrlIn):
@@ -291,7 +300,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/citations/resolve")
     def resolve(body: ResolveIn):
         """Current location of saved citations (null where the quote is gone), in input order."""
-        return [lib.resolve_citation(i.doc_id, i.page, i.quote) for i in body.items]
+        return lib.resolve_citations([(i.doc_id, i.page, i.quote) for i in body.items])
 
     @app.post("/references")
     def references(body: ReferencesIn):
@@ -326,14 +335,21 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def create_draft(body: NewDraftIn):
         return lib.create_draft(body.title)
 
+    def docx_bytes(body: ImportDocxIn) -> bytes:
+        try:
+            return base64.b64decode(body.data, validate=True)
+        except ValueError as exc:
+            raise ValueError("The file data wasn't valid base64") from exc
+
     @app.post("/drafts/import")
     def import_docx(body: ImportDocxIn):
         """Open a Word document as a new draft."""
-        try:
-            data = base64.b64decode(body.data, validate=True)
-        except ValueError as exc:
-            raise ValueError("The file data wasn't valid base64") from exc
-        return lib.import_docx(body.filename, data)
+        return lib.import_docx(body.filename, docx_bytes(body))
+
+    @app.post("/drafts/convert-docx")
+    def convert_docx(body: ImportDocxIn):
+        """A Word document as editor content, saving nothing: for inserting it into the open draft."""
+        return lib.convert_docx(body.filename, docx_bytes(body))
 
     @app.delete("/drafts/{draft_id}")
     def delete_draft(draft_id: int):

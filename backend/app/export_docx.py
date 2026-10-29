@@ -51,12 +51,14 @@ class _Writer:
         self.style = style
         self.doc = docx.Document()
         self.order: list[int] = []  # cited document ids in order of first appearance
+        self._pages: dict = {}  # shared by every citation's lookup, so each document's pages are read once
 
     # ---------- citations ----------
 
     def _resolve(self, attrs: dict) -> Cite:
         status, reason = attrs.get("status") or "pending", attrs.get("reason") or ""
-        r = self.lib.resolve_citation(attrs.get("docId") or 0, attrs.get("page") or 1, attrs.get("quote") or "")
+        r = self.lib.resolve_citation(attrs.get("docId") or 0, attrs.get("page") or 1, attrs.get("quote") or "",
+                                      _cache=self._pages)
         if not r:
             return Cite(None, None, "quote_not_found", reason or "The passage is no longer in your library.",
                         attrs.get("quote") or "")
@@ -113,7 +115,7 @@ class _Writer:
             for item in children:
                 for i, child in enumerate(item.get("content") or []):
                     if child.get("type") in ("bulletList", "orderedList"):
-                        self._block(child, depth)
+                        self._block(child, depth, quote=quote)
                     else:
                         # The first paragraph carries the bullet; later ones continue the item.
                         style = (base if i == 0 else "List Continue") + ("" if depth == 1 else f" {depth}")

@@ -23,11 +23,11 @@ export function GettingStarted({ sources, words, citations, onAddSources, onAsk,
     {
       done: words > 0,
       title: 'Start your draft',
-      text: 'Type on the page, let the Assistant draft from your sources with cited quotes, or open a Word file you already have.',
+      text: 'Type on the page, let the Assistant draft from your sources with cited quotes, or bring in a Word file you already have (or drop it on the window).',
       actions: (
         <>
           <button className={sources && !words ? 'primary' : ''} onClick={onAsk}>Ask the Assistant</button>
-          <button onClick={onOpenWord}>Open a Word file</button>
+          <button onClick={onOpenWord}>Import a Word file</button>
         </>
       ),
     },

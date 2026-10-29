@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { API_VERSION, api, backendLogPath } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
@@ -12,10 +12,10 @@ import { HistoryPanel } from './components/HistoryPanel'
 import { Icon, type IconName } from './components/Icon'
 import { LibraryPanel } from './components/LibraryPanel'
 import { ago, toneOf } from './components/Meters'
-import { NetworkView } from './components/NetworkView'
 import { ReferencesPanel } from './components/ReferencesPanel'
 import { ReviewPanel } from './components/ReviewPanel'
 import { SettingsDialog } from './components/SettingsDialog'
+import { WordImportDialog, convertedSummary, simplifiedNotes } from './components/WordImportDialog'
 import { applyTheme, cacheTheme, cachedTheme, watchSystemTheme } from './theme'
 import { SourceViewer, type SourceTarget } from './components/SourceViewer'
 import {
@@ -25,7 +25,18 @@ import {
   type SaveState,
   type WritingEditorHandle,
 } from './components/WritingEditor'
-import type { Citation, Doc, DraftSummary, DuplicateReport, Folder, Health, Settings, SourceMatch, VersionList } from './types'
+import type {
+  Citation,
+  Doc,
+  DocxConversion,
+  DraftSummary,
+  DuplicateReport,
+  Folder,
+  Health,
+  Settings,
+  SourceMatch,
+  VersionList,
+} from './types'
 
 type Tab = 'assistant' | 'cite' | 'source' | 'references' | 'review' | 'history'
 interface Tool {
@@ -104,24 +115,20 @@ function initialDraft(): number {
   return 1
 }
 
-/** A file's contents as base64, for sending a Word file to the backend. */
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader()
-    r.onload = () => resolve(String(r.result).split(',', 2)[1] ?? '')
-    r.onerror = () => reject(r.error ?? new Error('Could not read the file'))
-    r.readAsDataURL(file)
-  })
+// The graph library is a large part of the bundle and only this view uses it, so it loads on
+// first open instead of slowing every launch.
+const NetworkView = lazy(() => import('./components/NetworkView').then((m) => ({ default: m.NetworkView })))
+
+// What the library can read (the file picker in electron/main.cjs offers the same list).
+const LIBRARY_TYPES = /\.(pdf|docx|pptx|md|markdown|txt|html?|png|jpe?g|webp)$/i
+const WORD_FILE = /\.docx$/i
+
+function importNotice(how: string, name: string, c: DocxConversion): string {
+  const notes = simplifiedNotes(c.imported)
+  return `${how} “${name}”: ${convertedSummary(c.imported)}.${notes.length ? ` ${notes.join('; ')}.` : ''}`
 }
 
-function importSummary(name: string, n: { headings: number; paragraphs: number; list_items: number; tables: number; images: number }): string {
-  const parts = [`${n.paragraphs} paragraph${n.paragraphs === 1 ? '' : 's'}`, `${n.headings} heading${n.headings === 1 ? '' : 's'}`]
-  if (n.list_items) parts.push(`${n.list_items} list item${n.list_items === 1 ? '' : 's'}`)
-  let msg = `Opened “${name}” as a new draft: ${parts.join(', ')}.`
-  if (n.tables) msg += ` ${n.tables} table${n.tables === 1 ? ' was' : 's were'} turned into plain lines (cells separated by |).`
-  if (n.images) msg += ` ${n.images} image${n.images === 1 ? ' was' : 's were'} left out.`
-  return msg
-}
+const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files')
 
 function saveText(s: SaveState): string {
   if (s.state === 'saving') return 'Saving…'
@@ -168,6 +175,10 @@ export default function App() {
   })
   const [, setTick] = useState(0) // re-renders "Saved 3 min ago"
   const editor = useRef<WritingEditorHandle>(null)
+  const [importing, setImporting] = useState<File | null>(null) // the Word file in the import dialog
+  const wordInput = useRef<HTMLInputElement>(null)
+  const [dropping, setDropping] = useState(false) // files dragged over the window
+  const [libBusy, setLibBusy] = useState<string | null>(null) // adding dropped files to the library
 
   useEffect(() => {
     const t = window.setInterval(() => setTick((n) => n + 1), 30000)
@@ -211,19 +222,25 @@ export default function App() {
     else showTab(t)
   }
 
+  const pickWord = useCallback(() => wordInput.current?.click(), [])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((o) => !o)
-      } else if (e.key === 'Escape' && !paletteOpen) {
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === 'o') {
+        e.preventDefault()
+        pickWord()
+      } else if (e.key === 'Escape' && !paletteOpen && !importing) {
         setLibraryOpen(false)
         setDrawerOpen(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [paletteOpen])
+  }, [paletteOpen, importing, pickWord])
 
   const onError = useCallback((msg: string) => setErrors((e) => [...e.slice(-2), msg]), [])
 
@@ -305,25 +322,97 @@ export default function App() {
     }
   }
 
-  async function importWord(file: File) {
-    if (!/\.docx$/i.test(file.name)) {
+  // ---------- Word files and dropped files ----------
+
+  /** Show the import dialog for a Word file (picked, dropped, or from the drafts menu). */
+  function importWord(file: File) {
+    setDraftsOpen(false)
+    if (!WORD_FILE.test(file.name)) {
       onError(`${file.name} isn't a .docx file. Older .doc files: open them in Word and save as .docx first.`)
       return
     }
-    setDraftsBusy(`Opening ${file.name}…`)
+    setImporting(file)
+  }
+
+  async function openAsNewDraft(file: File, c: DocxConversion) {
+    await editor.current?.flush()
+    const d = await api.createDraft(c.title)
+    await api.saveDraft(d.id, c.title, JSON.stringify(c.content)) // also takes its first version
+    await refreshDrafts()
+    setDraftId(d.id)
+    setNotice(importNotice('Opened', file.name, c))
+  }
+
+  function insertIntoDraft(file: File, c: DocxConversion) {
+    editor.current?.insertDocument(c.content)
+    setNotice(importNotice('Inserted', file.name, c))
+  }
+
+  /** Add files or folders on disk to the library, all in one request. */
+  async function addToLibrary(paths: string[]) {
+    openLibrary()
+    setLibBusy(`Adding ${paths.length} file${paths.length === 1 ? '' : 's'}…`)
     try {
-      await editor.current?.flush()
-      const res = await api.importDocx(file.name, await fileToBase64(file))
-      await refreshDrafts()
-      setDraftId(res.draft.id)
-      setDraftsOpen(false)
-      setNotice(importSummary(file.name, res.imported))
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e))
+      const { results } = await api.ingestPaths(paths)
+      await refresh()
+      const failed = results.filter((r) => !r.ok)
+      const added = results.length - failed.length
+      if (added) setNotice(`Added ${added} source${added === 1 ? '' : 's'} to your library.`)
+      if (failed.length) onError(failed.map((f) => `${f.source.split(/[\\/]/).pop()}: ${f.error}`).join('\n'))
     } finally {
-      setDraftsBusy(null)
+      setLibBusy(null)
     }
   }
+
+  // Files dragged in from outside: one Word file opens the import dialog, anything else goes to
+  // the library. Without this, Electron would navigate the window to the dropped file.
+  useEffect(() => {
+    let depth = 0 // dragenter/leave fire for every child element crossed
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      depth++
+      setDropping(true)
+    }
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      depth = Math.max(0, depth - 1)
+      if (!depth) setDropping(false)
+    }
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      depth = 0
+      setDropping(false)
+      const files = [...(e.dataTransfer?.files ?? [])]
+      if (files.length === 1 && WORD_FILE.test(files[0].name)) return importWord(files[0])
+      const usable = files.filter((f) => LIBRARY_TYPES.test(f.name))
+      const paths = usable.map((f) => window.rc?.pathForFile?.(f) ?? '').filter(Boolean)
+      if (usable.length < files.length) {
+        const skipped = files.filter((f) => !LIBRARY_TYPES.test(f.name)).map((f) => f.name)
+        onError(`Can't read ${skipped.join(', ')}. The library takes PDF, Word, PowerPoint, Markdown, text, HTML and images.`)
+      }
+      if (!paths.length) {
+        if (usable.length) onError('Drop files onto the desktop app to add them to your library.')
+        return
+      }
+      addToLibrary(paths).catch((err) => onError(err instanceof Error ? err.message : String(err)))
+    }
+    window.addEventListener('dragenter', enter)
+    window.addEventListener('dragleave', leave)
+    window.addEventListener('dragover', over)
+    window.addEventListener('drop', drop)
+    return () => {
+      window.removeEventListener('dragenter', enter)
+      window.removeEventListener('dragleave', leave)
+      window.removeEventListener('dragover', over)
+      window.removeEventListener('drop', drop)
+    }
+  })
 
   async function deleteDraft(id: number) {
     setDraftsBusy('Deleting…')
@@ -532,7 +621,7 @@ export default function App() {
       .filter((d) => d.id !== draftId)
       .map((d) => ({ group: 'DRAFT', name: d.title || 'Untitled', hint: `${d.words} words`, run: () => switchDraft(d.id) })),
     { group: 'DO', name: 'New draft', hint: 'start a blank draft', run: () => newDraft() },
-    { group: 'DO', name: 'Open a Word file as a draft', hint: '.docx', run: () => setDraftsOpen(true) },
+    { group: 'DO', name: 'Import a Word file', hint: '.docx · Ctrl+O', run: pickWord },
     { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: () => setDupFilesOpen(true) },
     { group: 'DO', name: 'Show getting started', hint: 'the three steps', run: () => {
       setHideGuide(false)
@@ -603,6 +692,21 @@ export default function App() {
           <kbd>Ctrl K</kbd>
         </button>
         <div className="bar-actions">
+          <button className="bar-btn" onClick={pickWord} title="Open a Word file as a draft, into this draft, or as a source (Ctrl+O). You can also drop it on the window.">
+            <Icon name="upload" size={16} />
+            <span>Import .docx</span>
+          </button>
+          <input
+            ref={wordInput}
+            type="file"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) importWord(f)
+            }}
+          />
           <ExportControl
             style={settings.citation_style}
             getJSON={() => editor.current?.getJSON() ?? null}
@@ -649,6 +753,7 @@ export default function App() {
               onChanged={refresh}
               onError={onError}
               focus={libFocus}
+              busyLabel={libBusy}
               onFindDuplicates={() => setDupFilesOpen(true)}
             />
           </div>
@@ -665,7 +770,7 @@ export default function App() {
                     citations={stats.citations}
                     onAddSources={() => openLibrary()}
                     onAsk={() => showTab('assistant')}
-                    onOpenWord={() => setDraftsOpen(true)}
+                    onOpenWord={pickWord}
                     onHide={() => {
                       setHideGuide(true)
                       try {
@@ -766,11 +871,13 @@ export default function App() {
           </aside>
 
           {networkOpen && (
-            <NetworkView
-              onClose={() => setNetworkOpen(false)}
-              onOpenPaper={showPaper}
-              onError={onError}
-            />
+            <Suspense fallback={null}>
+              <NetworkView
+                onClose={() => setNetworkOpen(false)}
+                onOpenPaper={showPaper}
+                onError={onError}
+              />
+            </Suspense>
           )}
 
           <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={drawerOpen && tab === 'source'} />
@@ -865,6 +972,29 @@ export default function App() {
 
       {showSettings && (
         <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setShowSettings(false)} />
+      )}
+
+      {importing && (
+        <WordImportDialog
+          file={importing}
+          currentTitle={title}
+          currentEmpty={editor.current?.isEmpty() ?? true}
+          path={window.rc?.pathForFile?.(importing) ?? ''}
+          onNewDraft={(c) => openAsNewDraft(importing, c)}
+          onInsert={(c) => insertIntoDraft(importing, c)}
+          onAddToLibrary={(p) => addToLibrary([p])}
+          onClose={() => setImporting(null)}
+        />
+      )}
+
+      {dropping && (
+        <div className="drop-overlay" aria-hidden="true">
+          <div className="drop-card">
+            <Icon name="upload" size={34} />
+            <b>Drop to import</b>
+            <span>A Word file opens as a draft or goes into this one. Papers, notes, slides and scans go to your library.</span>
+          </div>
+        </div>
       )}
 
       {(errors.length > 0 || notice) && (

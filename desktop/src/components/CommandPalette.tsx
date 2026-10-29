@@ -20,6 +20,12 @@ export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClo
     return q ? items.filter((i) => `${i.name} ${i.hint} ${i.group}`.toLowerCase().includes(q)) : items
   }, [items, query])
   const active = Math.min(sel, Math.max(shown.length - 1, 0))
+  const list = useRef<HTMLUListElement>(null)
+
+  // Arrowing past the bottom of the list keeps the highlighted item in view.
+  useEffect(() => {
+    list.current?.querySelector('.sel')?.scrollIntoView({ block: 'nearest' })
+  }, [active, shown])
 
   function run(item: PaletteItem | undefined) {
     if (!item) return
@@ -51,7 +57,7 @@ export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClo
           }}
           onKeyDown={onKey}
         />
-        <ul>
+        <ul ref={list}>
           {shown.map((item, i) => (
             <li key={`${item.group}-${item.name}-${i}`} className={i === active ? 'sel' : ''} onClick={() => run(item)}>
               <span className="grp">{item.group}</span>

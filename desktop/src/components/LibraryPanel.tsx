@@ -13,6 +13,8 @@ interface Props {
   onError: (msg: string) => void
   /** A paper to bring into view and open (from the network view or the palette); `n` changes per request. */
   focus?: { id: number; n: number } | null
+  /** Work done for the library elsewhere (files dropped on the window), shown like its own. */
+  busyLabel?: string | null
   onFindDuplicates: () => void
 }
 
@@ -322,8 +324,9 @@ function DocCard({
   )
 }
 
-export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, onFindDuplicates }: Props) {
-  const [busy, setBusy] = useState<string | null>(null)
+export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, busyLabel, onFindDuplicates }: Props) {
+  const [ownBusy, setBusy] = useState<string | null>(null)
+  const busy = ownBusy ?? busyLabel ?? null
   const [source, setSource] = useState('')
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<'all' | Doc['kind']>('all')
@@ -359,11 +362,14 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
     if (failed.length) onError(failed.map((f) => `${f.source.split(/[\\/]/).pop()}: ${f.error}`).join('\n'))
   }
 
-  const addFiles = () =>
-    run('Adding files…', async () => {
-      const files = (await window.rc?.pickFiles()) ?? []
-      for (const f of files) reportFailures((await api.ingestPath(f)).results)
-    })
+  const addFiles = async () => {
+    const files = (await window.rc?.pickFiles()) ?? []
+    if (!files.length) return
+    // One request for all of them: the backend reads several at once instead of one by one.
+    await run(`Adding ${files.length} file${files.length === 1 ? '' : 's'}…`, async () =>
+      reportFailures((await api.ingestPaths(files)).results),
+    )
+  }
 
   const addDiskFolder = () =>
     run('Reading folder…', async () => {
@@ -658,7 +664,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
               <div className="lib-empty-title">Your library is empty</div>
               <p>Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.</p>
               <ol>
-                <li>Paste a link or path above, or choose files</li>
+                <li>Paste a link or path above, choose files, or drop them on the window</li>
                 <li>Muse reads each one and writes a summary and tags</li>
                 <li>Make a subject folder (New folder); matching papers are filed in, as many folders as fit</li>
               </ol>

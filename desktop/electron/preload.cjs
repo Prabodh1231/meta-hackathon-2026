@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('rc', {
   config: () => ipcRenderer.invoke('rc:config'),
@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld('rc', {
   saveFile: (defaultName, data) => ipcRenderer.invoke('rc:save-file', defaultName, data),
   trashFile: (filePath) => ipcRenderer.invoke('rc:trash-file', filePath),
   showFile: (filePath) => ipcRenderer.invoke('rc:show-file', filePath),
+  // A dropped file carries no path in the sandboxed page; Electron can tell where it is.
+  pathForFile: (file) => webUtils.getPathForFile(file),
 })

@@ -75,6 +75,12 @@ def test_falls_back_to_pdf_index(footers, pages):
     assert printed_page_labels(doc) == ([None] * pages, "index")
 
 
+def test_short_label_tolerates_odd_author_names():
+    assert short_label({"authors": ["Chen, Wei", "Martinez, Ana"], "year": 2021}) == "Chen & Martinez 2021"
+    assert short_label({"authors": ["", "  ", "Wei Chen"], "year": 2021}) == "Chen 2021"  # blank names used to crash
+    assert short_label({"authors": [""], "title": "Reef notes"}) == "Reef notes"
+
+
 def test_short_label_formats():
     pdf = {"authors": ["Alice Chen"], "year": 2021, "kind": "pdf"}
     assert short_label({**pdf, "page_numbering": "printed"}, page=2, page_label="342") == "Chen 2021, p. 342"

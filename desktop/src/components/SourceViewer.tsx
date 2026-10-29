@@ -37,12 +37,18 @@ export function SourceViewer({ target, doc }: { target: SourceTarget | null; doc
 
   useEffect(() => {
     if (!target) return
+    // Opening another citation fetches twice (the old page number, then the new one): only the
+    // latest answer may show, or a slow first reply would put the wrong page on screen.
+    let stale = false
     setPageData(null)
     setError(null)
     api
       .page(target.docId, page)
-      .then(setPageData)
-      .catch((e) => setError(String(e)))
+      .then((d) => !stale && setPageData(d))
+      .catch((e) => !stale && setError(e instanceof Error ? e.message : String(e)))
+    return () => {
+      stale = true
+    }
   }, [target, page])
 
   useEffect(() => {

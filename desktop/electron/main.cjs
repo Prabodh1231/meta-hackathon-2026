@@ -114,6 +114,15 @@ function createWindow() {
       sandbox: true,
     },
   })
+  // A file dropped where the page doesn't handle it would replace the app with that file,
+  // losing unsaved typing. Links open in the browser rather than in a window of their own.
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url !== win.webContents.getURL()) e.preventDefault()
+  })
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
   if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL)
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   if (process.env.RC_SMOKE_TEST) win.webContents.once('did-finish-load', smokeTest)

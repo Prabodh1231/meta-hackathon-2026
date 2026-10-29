@@ -54,7 +54,8 @@ The backend runs detached from the terminal you launched from, so a Ctrl+C there
 
 The draft sits in the middle as a single page. Everything else opens beside it:
 
-- **Top bar:** the draft's title, whether it's saved, and its current version (click it for the history). Ctrl K searches sources and runs any action. Export .docx and Settings are on the right.
+- **Top bar:** the draft's title, whether it's saved, and its current version (click it for the history). Ctrl K searches sources and runs any action. Import .docx, Export .docx and Settings are on the right.
+- **Importing:** Import .docx (Ctrl+O), or drop a Word file anywhere on the window, opens a preview of what was read and asks where it goes: a new draft, into the open draft (at the cursor, or at the end if you haven't clicked into it; Ctrl+Z takes it back out), or the library as a source you can cite. Headings, nested lists, quotes, bold/italic/underline/strikethrough, web links and line breaks come across; tables become one line per row and images are left out, and the preview says so. Dropping papers, notes, slides or scans adds them all to the library in one go.
 - **Left rail:** **Library** (add sources, browse them by subject folder, pick which ones the assistant drafts from) and **Network** (who cites whom in your library). Only one of the two is open at a time.
 - **Right rail:** the writing tools, in the order you use them:
   - *Write:* **Assistant** drafts from your library with cited quotes; **Cite** finds sources for the sentence at the cursor (Ctrl+Shift+C).
@@ -98,5 +99,5 @@ Restart the app. The backend reads that file on start; real environment variable
 
 - **Documents imported on the mock** keep its rough metadata, summaries and tags until they're re-imported with Muse on.
 - **Packaging:** the Python backend still needs bundling with PyInstaller and shipping as an Electron `extraResources` binary. Today `main.cjs` runs `backend/.venv`.
-- **Ingestion speed:** files are ingested four at a time with their Muse calls overlapped, but a folder is still one request, so the UI shows no per-file progress. Add a background job with progress reporting.
+- **Ingestion speed:** files are ingested four at a time, and within each file the metadata, summary and tag calls to Muse run at the same time as the local embedding, so a file costs about one model call's wait plus folder scoring. Scanned PDF pages are OCR'd four at a time. Picked or dropped files go in one request. That request still blocks until every file is done, so the UI shows no per-file progress. Add a background job with progress reporting.
 - **Source viewer:** shows extracted page text. Rendering the PDF page itself with pdf.js would make highlights match the original layout.

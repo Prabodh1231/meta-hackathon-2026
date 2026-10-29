@@ -2,6 +2,7 @@ import type {
   Citation,
   CitationGraph,
   Doc,
+  DocxConversion,
   DocxImport,
   DocxStyle,
   DraftSummary,
@@ -32,7 +33,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 4
+export const API_VERSION = 5
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -90,6 +91,8 @@ export const api = {
   health: () => request<Health>('GET', '/health'),
 
   ingestPath: (path: string) => request<{ results: IngestResult[] }>('POST', '/ingest/path', { path }),
+  /** Several files or folders in one request, so the backend reads them in parallel. */
+  ingestPaths: (paths: string[]) => request<{ results: IngestResult[] }>('POST', '/ingest/paths', { paths }),
   ingestUrl: (url: string) => request<Doc>('POST', '/ingest/url', { url }),
 
   documents: () => request<Doc[]>('GET', '/documents'),
@@ -138,6 +141,7 @@ export const api = {
   createDraft: (title = 'Untitled') => request<{ id: number; title: string; content: string }>('POST', '/drafts', { title }),
   deleteDraft: (id: number) => request<{ ok: boolean }>('DELETE', `/drafts/${id}`),
   importDocx: (filename: string, data: string) => request<DocxImport>('POST', '/drafts/import', { filename, data }),
+  convertDocx: (filename: string, data: string) => request<DocxConversion>('POST', '/drafts/convert-docx', { filename, data }),
   getDraft: (id: number) => request<{ id: number; title: string; content: string }>('GET', `/drafts/${id}`),
   saveDraft: (id: number, title: string, content: string) => request('PUT', `/drafts/${id}`, { title, content }),
 

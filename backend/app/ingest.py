@@ -4,6 +4,7 @@
 import json
 import re
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -11,6 +12,7 @@ from typing import Callable
 from .text_utils import sentence_spans
 
 OCR = Callable[[bytes, str], str]
+OCR_WORKERS = 4  # scanned pages sent to the model at once
 
 KINDS = {
     ".pdf": "pdf",
@@ -76,14 +78,28 @@ def parse_url(url: str) -> ParsedDocument:
 def _parse_pdf(path: Path, ocr: OCR) -> ParsedDocument:
     import fitz  # PyMuPDF
 
-    pages = []
+    pages: list[str] = []
+    scans: dict[int, bytes] = {}  # page index -> rendered image, waiting for OCR
+
+    def read_scans() -> None:
+        # Each OCR call waits seconds on the model, so a batch of pages goes at once. Batches
+        # keep memory bounded: a rendered page is a few MB.
+        with ThreadPoolExecutor(max_workers=OCR_WORKERS) as pool:
+            for i, text in zip(list(scans), pool.map(lambda png: ocr(png, "image/png"), scans.values())):
+                pages[i] = text
+        scans.clear()
+
     with fitz.open(path) as doc:
         for page in doc:
             text = page.get_text("text")
             if len(text.strip()) < 20 and page.get_images():
-                # Probably a scanned page: render it and OCR with the model.
-                text = ocr(page.get_pixmap(dpi=200).tobytes("png"), "image/png")
+                # Probably a scanned page: render it and OCR it with the model.
+                scans[len(pages)] = page.get_pixmap(dpi=200).tobytes("png")
             pages.append(text)
+            if len(scans) >= OCR_WORKERS * 2:
+                read_scans()
+        if scans:
+            read_scans()
         meta = doc.metadata or {}
         labels, numbering = printed_page_labels(doc)
     authors = [a.strip() for a in (meta.get("author") or "").replace(";", ",").split(",") if a.strip()]

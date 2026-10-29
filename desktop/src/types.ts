@@ -1,3 +1,5 @@
+import type { JSONContent } from '@tiptap/core'
+
 export interface Doc {
   id: number
   source: string
@@ -154,9 +156,27 @@ export interface DraftSummary {
 }
 
 /** What opening a Word file converted, and what it had to simplify. */
+/** What a Word import converted ("headings" … "links") or simplified ("tables", "images"). */
+export interface DocxStats {
+  headings: number
+  paragraphs: number
+  list_items: number
+  quotes: number
+  links: number
+  tables: number
+  images: number
+}
+
 export interface DocxImport {
   draft: { id: number; title: string; content: string }
-  imported: { headings: number; paragraphs: number; list_items: number; tables: number; images: number }
+  imported: DocxStats
+}
+
+/** A Word document converted for the editor, not saved anywhere yet. */
+export interface DocxConversion {
+  content: JSONContent & { type: 'doc'; content: JSONContent[] }
+  title: string
+  imported: DocxStats
 }
 
 export type DuplicateKind = 'exact_file' | 'same_text' | 'likely_same' | 'similar'
@@ -212,6 +232,8 @@ declare global {
       saveFile: (defaultName: string, data: ArrayBuffer) => Promise<string | null>
       trashFile?: (path: string) => Promise<boolean> // to the Recycle Bin / Trash; library files only
       showFile?: (path: string) => Promise<void>
+      /** Where a dropped or picked file is on disk ('' for one that isn't a file on disk). */
+      pathForFile?: (file: File) => string
     }
   }
 }
