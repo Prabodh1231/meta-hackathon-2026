@@ -149,3 +149,9 @@ def test_auto_version_once_the_newest_is_old(client, monkeypatch):
 def test_old_drafts_that_are_not_json_still_save(client):
     client.put("/drafts/1", json={"title": "x", "content": "not json"})
     assert client.get("/drafts/1/versions").json()["versions"] == []
+
+
+def test_health_reports_the_api_version(client):
+    from app.main import API_VERSION
+
+    assert client.get("/health").json()["api"] == API_VERSION

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import db, draft_review, dupfiles, paper_meta
+from . import db, docx_import, draft_review, dupfiles, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
 from .citegraph import build_graph, focus, keyword_links
 from .refparse import Reference, parse_references
@@ -1137,6 +1137,38 @@ class Library:
         return merged
 
     # ---------- drafts ----------
+
+    def list_drafts(self) -> list[dict]:
+        """Every draft, most recently edited first, with its word count (not its content)."""
+        with self.lock:
+            rows = self.conn.execute("SELECT id, title, content, updated_at FROM drafts ORDER BY updated_at DESC, id DESC").fetchall()
+        return [{"id": r["id"], "title": r["title"], "updated_at": r["updated_at"],
+                 "words": draft_review.word_count(draft_review.plain_text(r["content"]))} for r in rows]
+
+    def create_draft(self, title: str = "Untitled", content: str = "") -> dict:
+        with self.lock, self.conn:
+            draft_id = self.conn.execute("INSERT INTO drafts (title, content) VALUES (?, '')", (title,)).lastrowid
+        if content:
+            return self.save_draft(draft_id, title, content)  # also takes its first version
+        return self.get_draft(draft_id)
+
+    def delete_draft(self, draft_id: int) -> None:
+        """Delete a draft and its version history."""
+        with self.lock, self.conn:
+            if not self.conn.execute("DELETE FROM drafts WHERE id = ?", (draft_id,)).rowcount:
+                raise LookupError(f"Draft {draft_id} not found")
+            self.conn.execute("DELETE FROM draft_versions WHERE draft_id = ?", (draft_id,))
+
+    def import_docx(self, filename: str, data: bytes) -> dict:
+        """Open a Word document as a new draft. Returns the draft and what was converted."""
+        try:
+            doc, title, stats = docx_import.to_editor(data)
+        except Exception as exc:  # not a .docx, or a damaged one
+            raise ValueError(f"Couldn't read {filename or 'that file'} as a Word document (.docx): {exc}") from exc
+        if not doc["content"]:
+            raise ValueError(f"{filename or 'That document'} has no text to import.")
+        title = title or Path(filename).stem or "Imported draft"
+        return {"draft": self.create_draft(title, json.dumps(doc)), "imported": stats}
 
     def get_draft(self, draft_id: int) -> dict:
         with self.lock:

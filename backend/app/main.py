@@ -1,3 +1,4 @@
+import base64
 import logging
 
 from fastapi import FastAPI, Request, Response
@@ -102,6 +103,10 @@ class ExportIn(BaseModel):
     title: str = ""
 
 
+# Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
+# number and asks for a restart when the backend that's running is older than the UI.
+API_VERSION = 4
+
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
@@ -123,6 +128,15 @@ class VersionPatch(BaseModel):
 class CompareIn(BaseModel):
     content: dict | None = None  # the editor's document; the saved draft when missing
     against: int | None = None  # another version instead
+
+
+class NewDraftIn(BaseModel):
+    title: str = "Untitled"
+
+
+class ImportDocxIn(BaseModel):
+    filename: str = ""
+    data: str = Field(max_length=70_000_000)  # base64 of the .docx (about 50 MB at most)
 
 
 class DuplicateFilesIn(BaseModel):
@@ -167,7 +181,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.get("/health")
     def health():
-        return {"ok": True, "provider": lib.provider.name, "embedder": lib.embedder.id,
+        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name, "embedder": lib.embedder.id,
                 "embedder_device": getattr(lib.embedder, "device", "cpu"),
                 "reranker": lib.reranker.id if lib.reranker else None}
 
@@ -303,6 +317,28 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.put("/drafts/{draft_id}")
     def save_draft(draft_id: int, body: DraftDocIn):
         return lib.save_draft(draft_id, body.title, body.content)
+
+    @app.get("/drafts")
+    def list_drafts():
+        return lib.list_drafts()
+
+    @app.post("/drafts")
+    def create_draft(body: NewDraftIn):
+        return lib.create_draft(body.title)
+
+    @app.post("/drafts/import")
+    def import_docx(body: ImportDocxIn):
+        """Open a Word document as a new draft."""
+        try:
+            data = base64.b64decode(body.data, validate=True)
+        except ValueError as exc:
+            raise ValueError("The file data wasn't valid base64") from exc
+        return lib.import_docx(body.filename, data)
+
+    @app.delete("/drafts/{draft_id}")
+    def delete_draft(draft_id: int):
+        lib.delete_draft(draft_id)
+        return {"ok": True}
 
     @app.post("/drafts/check-duplicates")
     def check_duplicates(body: DuplicatesIn):

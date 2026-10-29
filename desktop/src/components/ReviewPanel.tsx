@@ -14,6 +14,7 @@ interface Props {
   checkedAt: number | null
   busy: boolean
   stale: boolean // the draft changed since the last check
+  error: string | null // the last check failed; it isn't retried until onRun
   onRun: () => void
   onReveal: (block: number, text?: string) => void
   onOpenSource: (m: SourceMatch) => void
@@ -38,7 +39,7 @@ function Pair({ p, onReveal }: { p: RepeatPair; onReveal: Props['onReveal'] }) {
 
 /** Duplication check: how much of the draft repeats itself or matches library text, at
  * document, paragraph and sentence level, each with its percentage. */
-export function ReviewPanel({ report, checkedAt, busy, stale, onRun, onReveal, onOpenSource }: Props) {
+export function ReviewPanel({ report, checkedAt, busy, stale, error, onRun, onReveal, onOpenSource }: Props) {
   const [level, setLevel] = useState<Level>('document')
 
   const run = (
@@ -47,9 +48,16 @@ export function ReviewPanel({ report, checkedAt, busy, stale, onRun, onReveal, o
     </button>
   )
 
+  const failed = error && (
+    <div className="review-error" role="alert">
+      <b>The check didn't run.</b> {error}
+    </div>
+  )
+
   if (!report) {
     return (
       <div className="review">
+        {failed}
         <div className="review-intro">
           <p>
             Looks for passages your draft repeats, and for sentences that match text in your library closely
@@ -73,6 +81,7 @@ export function ReviewPanel({ report, checkedAt, busy, stale, onRun, onReveal, o
         </span>
         {run}
       </div>
+      {failed}
       <Segmented label="Duplication level" value={level} options={LEVELS} onChange={setLevel} />
 
       {level === 'document' && (

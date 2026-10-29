@@ -129,6 +129,7 @@ export interface CitationGraph {
 
 export interface Health {
   ok: boolean
+  api?: number // backend API version; missing from backends older than the version check
   provider: string
   embedder: string
   embedder_device?: string // "cuda" or "cpu"; missing from older backends
@@ -142,6 +143,20 @@ export type ThemePref = 'system' | 'light' | 'dark'
 export interface Settings {
   theme: ThemePref
   citation_style: DocxStyle
+}
+
+/** A draft in the drafts menu (without its content). */
+export interface DraftSummary {
+  id: number
+  title: string
+  updated_at: string | null // UTC, "YYYY-MM-DD HH:MM:SS"
+  words: number
+}
+
+/** What opening a Word file converted, and what it had to simplify. */
+export interface DocxImport {
+  draft: { id: number; title: string; content: string }
+  imported: { headings: number; paragraphs: number; list_items: number; tables: number; images: number }
 }
 
 export type DuplicateKind = 'exact_file' | 'same_text' | 'likely_same' | 'similar'
