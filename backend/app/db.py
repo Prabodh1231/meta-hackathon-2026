@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS documents (
   page_count INTEGER NOT NULL DEFAULT 1,
   page_numbering TEXT NOT NULL DEFAULT 'index',
   edited_fields TEXT NOT NULL DEFAULT '[]', -- metadata the user corrected; re-ingest keeps these
+  keywords TEXT NOT NULL DEFAULT '[]', -- author-printed keywords, read from the first pages
+  jel_codes TEXT NOT NULL DEFAULT '[]', -- author-printed JEL classification codes
   topic_id INTEGER REFERENCES topics(id) ON DELETE SET NULL,
   added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -119,6 +121,8 @@ _ADDED_COLUMNS = [
     ("pages", "label", "TEXT"),
     ("documents", "edited_fields", "TEXT NOT NULL DEFAULT '[]'"),
     ("folders", "similarity", "INTEGER NOT NULL DEFAULT 50"),
+    ("documents", "keywords", "TEXT NOT NULL DEFAULT '[]'"),
+    ("documents", "jel_codes", "TEXT NOT NULL DEFAULT '[]'"),
 ]
 
 

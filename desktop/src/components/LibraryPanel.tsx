@@ -186,6 +186,21 @@ function FolderBar({ folder, run }: { folder: Folder; run: Run }) {
   )
 }
 
+/** JEL classification codes the authors printed; hover for the field each belongs to. */
+function JelChips({ doc }: { doc: Doc }) {
+  if (doc.jel_codes.length === 0) return null
+  return (
+    <div className="tags">
+      <span className="muted">JEL</span>
+      {doc.jel_codes.map((j) => (
+        <span key={j.code} className="tag jel" title={j.area}>
+          {j.code}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 type SortKey = 'name' | 'type' | 'year' | 'pages'
 type Scope = 'all' | 'none' | number // every file, files with no folder, or one folder
 
@@ -252,7 +267,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
       docs.filter(
         (d) =>
           (kind === 'all' || d.kind === kind) &&
-          (!needle || `${d.title} ${d.authors.join(' ')} ${d.venue} ${d.tags.join(' ')} ${d.summary}`.toLowerCase().includes(needle)),
+          (!needle || `${d.title} ${d.authors.join(' ')} ${d.venue} ${d.tags.join(' ')} ${d.keywords.join(' ')} ${d.jel_codes.map((j) => j.code).join(' ')} ${d.summary}`.toLowerCase().includes(needle)),
       ),
     [docs, kind, needle],
   )
@@ -363,7 +378,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter by title, author, tag…"
+            placeholder="Filter by title, author, keyword, JEL code…"
             aria-label="Filter library"
           />
           <div className="lib-filters" role="group" aria-label="Filter by type">
@@ -589,6 +604,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
                       <div onClick={(e) => e.stopPropagation()}>
                         {d.summary && <p className="lib-card-summary">{d.summary}</p>}
                         <FolderChips doc={d} editable run={run} />
+                        <JelChips doc={d} />
                         {d.tags.length > 0 && (
                           <div className="tags">
                             {d.tags.map((t) => (
@@ -727,6 +743,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
                           <div className="lib-card-title">{d.title}</div>
                           {byline(d) && <div className="lib-card-by">{byline(d)}</div>}
                           <FolderChips doc={d} editable={open === d.id} run={run} />
+                          {open === d.id && <JelChips doc={d} />}
                           {open === d.id && d.tags.length > 0 && (
                             <div className="tags">
                               {d.tags.map((t) => (

@@ -384,3 +384,4 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .fm-new:hover:not(:disabled) { color: var(--accent); }
 .fm-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fm-folderbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; padding: 10px 12px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.tag.jel { font-family: Consolas, monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--accent); cursor: help; }

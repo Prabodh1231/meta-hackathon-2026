@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import db
+from . import db, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
 from .embeddings import Embedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_url
@@ -39,6 +39,8 @@ UNCHECKED_CAP = 30
 
 
 INGEST_WORKERS = 4
+MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
+MAX_KEYWORD_TAGS = 8
 
 
 class Library:
@@ -59,6 +61,7 @@ class Library:
         self._mat: np.ndarray | None = None
         self._name_vectors: dict[tuple[str, str], np.ndarray] = {}  # (embedder id, folder name) -> vector
         self._reembed_if_needed()
+        self._backfill_keywords()
 
     # ---------- ingestion ----------
 
@@ -95,10 +98,15 @@ class Library:
             log.exception("Metadata extraction failed for %s", source)
         meta.update({k: v for k, v in parsed.metadata.items() if v})  # file metadata wins when present
         title = meta["title"] or Path(source).stem
+        # Authors print keywords and JEL codes on the first pages: read them directly. A paper with
+        # its own keywords needs no model call to be tagged.
+        keywords, jel_codes = paper_meta.extract("\n\n".join(parsed.pages[:2]))
+        own_keywords = len(keywords) >= MIN_OWN_KEYWORDS
         with ThreadPoolExecutor(max_workers=2) as pool:  # independent of each other, so overlap the waits
             summary_job = pool.submit(self.provider.summarize, title, full_text)
-            tags_job = pool.submit(self.provider.tag_document, title, full_text)
-            summary, tags = summary_job.result(), tags_job.result()
+            tags_job = None if own_keywords else pool.submit(self.provider.tag_document, title, full_text)
+            summary = summary_job.result()
+            tags = keywords[:MAX_KEYWORD_TAGS] if own_keywords else tags_job.result()
 
         chunks = [
             (page_no, s, e, text[s:e])
@@ -112,6 +120,7 @@ class Library:
             "kind": parsed.kind, "title": title, "authors": json.dumps(meta["authors"]), "year": meta["year"],
             "venue": meta["venue"], "doi": meta["doi"], "url": meta["url"], "summary": summary,
             "page_count": len(parsed.pages), "page_numbering": parsed.page_numbering,
+            "keywords": json.dumps(keywords), "jel_codes": json.dumps(jel_codes),
         }
         with self.lock, self.conn:
             existing = self.conn.execute(
@@ -181,12 +190,29 @@ class Library:
                     )
             db.set_meta(self.conn, "embedder", self.embedder.id)
 
+    def _backfill_keywords(self) -> None:
+        """Once, for a library from before keywords were read: take them from the stored pages (local, no model call)."""
+        with self.lock, self.conn:
+            if db.get_meta(self.conn, "keywords_backfill") == "1":
+                return
+            for row in self.conn.execute("SELECT id FROM documents").fetchall():
+                text = "\n\n".join(r["text"] for r in self.conn.execute(
+                    "SELECT text FROM pages WHERE doc_id = ? ORDER BY page LIMIT 2", (row["id"],)))
+                keywords, jel_codes = paper_meta.extract(text)
+                self.conn.execute(
+                    "UPDATE documents SET keywords = ?, jel_codes = ? WHERE id = ?",
+                    (json.dumps(keywords), json.dumps(jel_codes), row["id"]),
+                )
+            db.set_meta(self.conn, "keywords_backfill", "1")
+
     # ---------- documents ----------
 
     def _doc_dict(self, row) -> dict:
         d = dict(row)
         d["authors"] = json.loads(d["authors"])
         d["edited_fields"] = json.loads(d["edited_fields"])
+        d["keywords"] = json.loads(d["keywords"])
+        d["jel_codes"] = [{"code": c, "area": paper_meta.jel_area(c)} for c in json.loads(d["jel_codes"])]
         d["tags"] = [r["tag"] for r in self.conn.execute("SELECT tag FROM tags WHERE doc_id = ? ORDER BY tag", (d["id"],))]
         d["folders"] = [
             dict(r)
@@ -539,6 +565,12 @@ class Library:
             doc = self.get_document(doc_id)
             text = "\n\n".join(r["text"] for r in self.conn.execute(
                 "SELECT text FROM pages WHERE doc_id = ? ORDER BY page LIMIT 4", (doc_id,)))
+        signals = []  # what the authors printed is the strongest hint of the subject
+        if doc["keywords"]:
+            signals.append("Keywords: " + "; ".join(doc["keywords"]))
+        if doc["jel_codes"]:
+            signals.append("JEL: " + "; ".join(f"{j['code']} ({j['area']})" for j in doc["jel_codes"]))
+        text = "\n".join(signals) + ("\n\n" if signals else "") + text
         return self.provider.score_folders(doc["title"], doc["summary"], text, names)  # network call: no lock
 
     def _score(self, doc_ids: list[int] | None = None, folder_ids: list[int] | None = None) -> None:

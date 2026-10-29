@@ -14,6 +14,8 @@ export interface Doc {
   page_range: string // printed range like "341–355"; empty when unknown
   topic_id: number | null
   tags: string[]
+  keywords: string[] // printed by the authors on the first page
+  jel_codes: { code: string; area: string }[] // JEL classification codes, with their top-level field
   folders: DocFolder[]
   label: string
 }
