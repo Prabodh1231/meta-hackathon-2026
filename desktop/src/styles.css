@@ -274,7 +274,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 
 /* Settings dialog */
 .modal-backdrop {
-  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, #000 45%, transparent);
 }
 .modal {
@@ -347,7 +347,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .error-text { color: var(--bad); }
 .ref-list { white-space: pre-wrap; font: 13px/1.6 Georgia, serif; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
 
-.toasts { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 10; }
+.toasts { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 100; }
 .toast {
   background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad);
   padding: 8px 14px; border-radius: 8px; max-width: 560px; white-space: pre-wrap; cursor: pointer; font-size: 13px;
