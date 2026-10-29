@@ -13,6 +13,8 @@ const PATHS = {
   pin: 'M9 4h6l-1 6 3 3H7l3-3zM12 13v7',
   download: 'M12 4v11M7 11l5 5 5-5M5 20h14',
   upload: 'M12 16V5M7 9l5-5 5 5M5 20h14',
+  plus: 'M12 5v14M5 12h14',
+  drafts: 'M8 3h8l4 4v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM16 3v4h4M10 12h6M10 16h4M3 7v12a2 2 0 0 0 2 2',
   word: 'M6 3h9l4 4v14H6zM15 3v4h4M8.5 11l1.5 6 2-4.5 2 4.5 1.5-6',
 } as const
 

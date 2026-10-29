@@ -86,7 +86,7 @@ class Library:
 
     def ingest_path(self, path: str) -> list[dict]:
         p = Path(path).expanduser()
-        if not p.exists():
+        if not path.strip() or not p.exists():
             raise LookupError(f"No such file or folder: {p}")
         return self.ingest_paths([path])
 
@@ -96,6 +96,9 @@ class Library:
         files: list[Path] = []
         missing: list[dict] = []
         for path in paths:
+            if not str(path).strip():  # Path("") is the working directory: never read that by accident
+                missing.append({"source": "", "ok": False, "error": "Empty path"})
+                continue
             p = Path(path).expanduser()
             if not p.exists():
                 missing.append({"source": str(p), "ok": False, "error": "No such file or folder"})

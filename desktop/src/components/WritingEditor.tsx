@@ -106,6 +106,7 @@ export interface WritingEditorHandle {
   /** Insert a whole document (an imported Word file) at the cursor; it fills an empty draft. */
   insertDocument: (json: JSONContent) => void
   isEmpty: () => boolean
+  focus: () => void
   /** Replace the whole document (restoring a version). */
   setContent: (json: string) => void
   /** Scroll to a text block (numbered as the backend numbers them) and select `text` in it. */
@@ -362,6 +363,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       },
 
       isEmpty: () => editor?.isEmpty ?? true,
+      focus: () => editor?.commands.focus('end'),
 
       setContent(json) {
         if (!editor) return

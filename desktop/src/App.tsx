@@ -4,7 +4,7 @@ import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
 import { CitePanel, type CiteRequest } from './components/CitePanel'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
-import { DraftsMenu } from './components/DraftsMenu'
+import { DraftsPanel } from './components/DraftsPanel'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { ExportControl } from './components/ExportControl'
 import { GettingStarted } from './components/GettingStarted'
@@ -193,14 +193,27 @@ export default function App() {
     }
   }, [pinned])
 
-  // The library drawer and the network view cover the same area, so only one is open at a time.
+  // The drafts and library drawers and the network view cover the same area, so only one is open at a time.
+  const openDrafts = useCallback((open = true) => {
+    setDraftsOpen(open)
+    if (open) {
+      setLibraryOpen(false)
+      setNetworkOpen(false)
+    }
+  }, [])
   const openLibrary = useCallback((open = true) => {
     setLibraryOpen(open)
-    if (open) setNetworkOpen(false)
+    if (open) {
+      setDraftsOpen(false)
+      setNetworkOpen(false)
+    }
   }, [])
   const openNetwork = useCallback((open = true) => {
     setNetworkOpen(open)
-    if (open) setLibraryOpen(false)
+    if (open) {
+      setDraftsOpen(false)
+      setLibraryOpen(false)
+    }
   }, [])
   const [libFocus, setLibFocus] = useState<{ id: number; n: number } | null>(null)
   const showPaper = useCallback(
@@ -233,8 +246,12 @@ export default function App() {
       } else if (mod && !e.shiftKey && e.key.toLowerCase() === 'o') {
         e.preventDefault()
         pickWord()
+      } else if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        newDraftRef.current()
       } else if (e.key === 'Escape' && !paletteOpen && !importing) {
         setLibraryOpen(false)
+        setDraftsOpen(false)
         setDrawerOpen(false)
       }
     }
@@ -308,19 +325,27 @@ export default function App() {
   }
 
   async function newDraft() {
+    setDraftsOpen(false)
+    // The open draft is still a blank page: that's the new draft, rather than another empty one.
+    if (editor.current?.isEmpty()) {
+      editor.current.focus()
+      return
+    }
     setDraftsBusy('Creating a draft…')
     try {
       await editor.current?.flush()
       const d = await api.createDraft()
       await refreshDrafts()
       setDraftId(d.id)
-      setDraftsOpen(false)
+      window.setTimeout(() => editor.current?.focus(), 150) // once it has loaded
     } catch (e) {
       onError(`Could not create a draft: ${e instanceof Error ? e.message : e}`)
     } finally {
       setDraftsBusy(null)
     }
   }
+  const newDraftRef = useRef(newDraft)
+  newDraftRef.current = newDraft
 
   // ---------- Word files and dropped files ----------
 
@@ -620,7 +645,8 @@ export default function App() {
     ...drafts
       .filter((d) => d.id !== draftId)
       .map((d) => ({ group: 'DRAFT', name: d.title || 'Untitled', hint: `${d.words} words`, run: () => switchDraft(d.id) })),
-    { group: 'DO', name: 'New draft', hint: 'start a blank draft', run: () => newDraft() },
+    { group: 'DO', name: 'New draft', hint: 'a blank page · Ctrl+N', run: () => newDraft() },
+    { group: 'DO', name: 'Show drafts', hint: 'switch, import or delete', run: () => openDrafts() },
     { group: 'DO', name: 'Import a Word file', hint: '.docx · Ctrl+O', run: pickWord },
     { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: () => setDupFilesOpen(true) },
     { group: 'DO', name: 'Show getting started', hint: 'the three steps', run: () => {
@@ -653,9 +679,9 @@ export default function App() {
           <div className="doc-id-text">
             <button
               className="doc-switch"
-              onClick={() => setDraftsOpen((o) => !o)}
+              onClick={() => openDrafts(!draftsOpen)}
               aria-expanded={draftsOpen}
-              title="Your drafts: switch, start a new one, or open a Word file"
+              title="Your drafts: switch, start a new one, or import a Word file"
             >
               <span className="doc-name">{title}</span>
               <span className="doc-caret" aria-hidden="true">▾</span>
@@ -673,18 +699,6 @@ export default function App() {
               )}
             </div>
           </div>
-          {draftsOpen && (
-            <DraftsMenu
-              drafts={drafts}
-              currentId={draftId}
-              busy={draftsBusy}
-              onSwitch={switchDraft}
-              onNew={newDraft}
-              onImport={importWord}
-              onDelete={deleteDraft}
-              onClose={() => setDraftsOpen(false)}
-            />
-          )}
         </div>
         <button className="search-pill" onClick={() => setPaletteOpen(true)}>
           <Icon name="search" size={16} />
@@ -692,10 +706,22 @@ export default function App() {
           <kbd>Ctrl K</kbd>
         </button>
         <div className="bar-actions">
-          <button className="bar-btn" onClick={pickWord} title="Open a Word file as a draft, into this draft, or as a source (Ctrl+O). You can also drop it on the window.">
-            <Icon name="upload" size={16} />
-            <span>Import .docx</span>
-          </button>
+          <div className="bar-group" role="group" aria-label="Document">
+            <button className="bar-btn" onClick={newDraft} title="Start a new draft (Ctrl+N)">
+              <Icon name="plus" size={16} />
+              <span>New</span>
+            </button>
+            <button className="bar-btn" onClick={pickWord} title="Open a Word file as a draft, into this draft, or as a source (Ctrl+O). You can also drop it on the window.">
+              <Icon name="upload" size={16} />
+              <span>Import</span>
+            </button>
+            <ExportControl
+              style={settings.citation_style}
+              getJSON={() => editor.current?.getJSON() ?? null}
+              getTitle={() => editor.current?.getTitle() ?? 'Untitled'}
+              onError={onError}
+            />
+          </div>
           <input
             ref={wordInput}
             type="file"
@@ -707,12 +733,6 @@ export default function App() {
               if (f) importWord(f)
             }}
           />
-          <ExportControl
-            style={settings.citation_style}
-            getJSON={() => editor.current?.getJSON() ?? null}
-            getTitle={() => editor.current?.getTitle() ?? 'Untitled'}
-            onError={onError}
-          />
           <button className="icon-button" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings">
             <Icon name="settings" size={18} />
           </button>
@@ -720,7 +740,12 @@ export default function App() {
       </header>
 
       <div className="workspace">
-        <nav className="rail rail-left" aria-label="Library">
+        <nav className="rail rail-left" aria-label="Drafts and sources">
+          <button className={`rail-btn${draftsOpen ? ' on' : ''}`} onClick={() => openDrafts(!draftsOpen)} title="Your drafts: start a new one, import a Word file, or switch">
+            <Icon name="drafts" />
+            <span>Drafts</span>
+            {drafts.length > 1 && <em className="rail-badge">{drafts.length}</em>}
+          </button>
           <button className={`rail-btn${libraryOpen ? ' on' : ''}`} onClick={() => openLibrary(!libraryOpen)} title="Add and organize sources">
             <Icon name="library" />
             <span>Library</span>
@@ -733,6 +758,23 @@ export default function App() {
         </nav>
 
         <div className={`stage${pinned && drawerOpen ? ' pinned' : ''}`}>
+          <div className={`drawer drawer-left drafts-drawer${draftsOpen ? ' show' : ''}`} aria-hidden={!draftsOpen}>
+            <button className="drawer-close" onClick={() => setDraftsOpen(false)} aria-label="Close drafts">
+              ×
+            </button>
+            <DraftsPanel
+              drafts={drafts}
+              currentId={draftId}
+              busy={draftsBusy}
+              onSwitch={switchDraft}
+              onNew={newDraft}
+              onImport={() => {
+                setDraftsOpen(false)
+                pickWord()
+              }}
+              onDelete={deleteDraft}
+            />
+          </div>
           <div className={`drawer drawer-left${libraryOpen ? ' show' : ''}${libraryWide ? ' wide' : ''}`} aria-hidden={!libraryOpen}>
             <button className="drawer-close" onClick={() => setLibraryOpen(false)} aria-label="Close library">
               ×

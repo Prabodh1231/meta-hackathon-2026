@@ -54,9 +54,10 @@ The backend runs detached from the terminal you launched from, so a Ctrl+C there
 
 The draft sits in the middle as a single page. Everything else opens beside it:
 
-- **Top bar:** the draft's title, whether it's saved, and its current version (click it for the history). Ctrl K searches sources and runs any action. Import .docx, Export .docx and Settings are on the right.
+- **Top bar:** the draft's title, whether it's saved, and its current version (click it for the history). Ctrl K searches sources and runs any action. On the right: New (Ctrl+N), Import (Ctrl+O) and Export for the document, then Settings.
 - **Importing:** Import .docx (Ctrl+O), or drop a Word file anywhere on the window, opens a preview of what was read and asks where it goes: a new draft, into the open draft (at the cursor, or at the end if you haven't clicked into it; Ctrl+Z takes it back out), or the library as a source you can cite. Headings, nested lists, quotes, bold/italic/underline/strikethrough, web links and line breaks come across; tables become one line per row and images are left out, and the preview says so. Dropping papers, notes, slides or scans adds them all to the library in one go.
-- **Left rail:** **Library** (add sources, browse them by subject folder, pick which ones the assistant drafts from) and **Network** (who cites whom in your library). Only one of the two is open at a time.
+- **Left rail:** **Drafts** (start a new draft, import a Word file, switch between drafts or delete one), **Library** and **Network** (who cites whom in your library). Only one is open at a time.
+- **Library:** an Add menu (choose files, import a folder, or paste a link or path), one search/type/sort toolbar, subject folders (a strip in the side panel, a sidebar when expanded), and one line per source. Clicking a source shows its details (summary, folders, keywords, removal) over the list, or as a third column when expanded. Tick sources to have the Assistant draft only from them; a bar at the bottom says how many are ticked.
 - **Right rail:** the writing tools, in the order you use them:
   - *Write:* **Assistant** drafts from your library with cited quotes; **Cite** finds sources for the sentence at the cursor (Ctrl+Shift+C).
   - *Evidence:* **Source** shows a cited passage highlighted on its page; **Refs** builds the reference list.

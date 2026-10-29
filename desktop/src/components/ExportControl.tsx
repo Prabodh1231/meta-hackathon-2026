@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { JSONContent } from '@tiptap/core'
 import { api } from '../api'
 import type { DocxStyle } from '../types'
+import { Icon } from './Icon'
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
@@ -58,8 +59,9 @@ export function ExportControl({ style, getJSON, getTitle, onError }: Props) {
           Saved {saved.split(/[\\/]/).pop()}
         </span>
       )}
-      <button onClick={exportDocx} disabled={busy}>
-        {busy ? 'Exporting…' : 'Export .docx'}
+      <button className="bar-btn" onClick={exportDocx} disabled={busy} title={`Save as a Word file with ${style.toUpperCase()} citations and a reference list`}>
+        <Icon name="download" size={16} />
+        <span>{busy ? 'Exporting…' : 'Export'}</span>
       </button>
     </div>
   )

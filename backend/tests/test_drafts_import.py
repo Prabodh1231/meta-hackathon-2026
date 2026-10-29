@@ -173,11 +173,13 @@ def test_several_paths_are_added_in_one_request(client, tmp_path):
     a, b = tmp_path / "a.md", tmp_path / "b.md"
     a.write_text("# Coral heat stress\n\nReefs bleach when water stays warm for weeks.", encoding="utf-8")
     b.write_text("# Sleep and memory\n\nSpindles during sleep predict next-day recall.", encoding="utf-8")
-    r = client.post("/ingest/paths", json={"paths": [str(a), str(b), str(a), str(tmp_path / "gone.pdf")]})
+    r = client.post("/ingest/paths", json={"paths": [str(a), str(b), str(a), str(tmp_path / "gone.pdf"), "  "]})
     assert r.status_code == 200, r.text
     results = r.json()["results"]
-    assert [x["ok"] for x in results] == [True, True, False]  # the repeated path is added once
-    assert "No such file" in results[-1]["error"]
+    assert [x["ok"] for x in results] == [True, True, False, False]  # the repeated path is added once
+    assert "No such file" in results[-2]["error"]
+    assert results[-1]["error"] == "Empty path"  # not the working directory
+    assert client.post("/ingest/path", json={"path": ""}).status_code == 404
     assert len(client.get("/documents").json()) == 2
 
 
