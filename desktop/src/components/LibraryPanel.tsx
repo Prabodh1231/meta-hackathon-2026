@@ -274,8 +274,8 @@ function DocCard({
         e.dataTransfer.effectAllowed = 'copy'
       }}
     >
-      <label className="pick" title={on ? 'Used for drafting' : 'Use this source for drafting'}>
-        <input type="checkbox" checked={on} onChange={onToggle} />
+      <label className="pick" title={on ? 'The Assistant drafts from this source' : 'Tick to have the Assistant draft only from ticked sources'}>
+        <input type="checkbox" checked={on} onChange={onToggle} aria-label={`Use “${d.title}” for drafting`} />
       </label>
       <div className="lib-doc-body" onClick={onOpen}>
         <div className="lib-doc-meta">
@@ -332,6 +332,15 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
   const [creating, setCreating] = useState(false)
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
   const [dropOn, setDropOn] = useState<Scope | null>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!moreOpen) return
+    const close = (e: MouseEvent) => !moreRef.current?.contains(e.target as Node) && setMoreOpen(false)
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [moreOpen])
 
   async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(label)
@@ -461,29 +470,47 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
             {folders.length > 0 && ` · ${folders.length} folder${folders.length === 1 ? '' : 's'}`}
           </span>
         </div>
-        {folders.length > 0 && (
-          <button
-            className="ghost"
-            onClick={() => run('Re-scoring papers…', api.classifyFolders)}
-            disabled={!!busy || docs.length === 0}
-            title="Score every paper against your folders again. Your own additions and removals are kept."
-          >
-            Re-sort
-          </button>
-        )}
-        {docs.length > 1 && (
-          <button className="ghost" onClick={onFindDuplicates} title="Find duplicate files and suggest which copies to remove">
-            Duplicates
-          </button>
-        )}
         <button
-          className="ghost"
+          className="ghost lib-icon-btn"
           onClick={onToggleWide}
           title={wide ? 'Back to the compact panel' : 'Expand into a full library view'}
           aria-label={wide ? 'Collapse library' : 'Expand library'}
         >
-          {wide ? '⤡ Compact' : '⤢ Expand'}
+          {wide ? '⤡' : '⤢'}
         </button>
+        {docs.length > 0 && (
+          <div className="lib-more" ref={moreRef}>
+            <button className="ghost lib-icon-btn" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More library actions" title="More" onClick={() => setMoreOpen((o) => !o)}>
+              ⋯
+            </button>
+            {moreOpen && (
+              <div className="lib-menu" role="menu">
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    onFindDuplicates()
+                  }}
+                  disabled={docs.length < 2}
+                >
+                  <b>Find duplicate files</b>
+                  <span>Copies of the same paper, with what you could free up</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    run('Re-filing papers…', api.classifyFolders)
+                  }}
+                  disabled={!!busy || folders.length === 0}
+                >
+                  <b>Re-file papers into folders</b>
+                  <span>{folders.length ? 'Score every paper against your folders again. Your own changes are kept.' : 'Make a folder first'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       <section className="lib-add-box" aria-label="Add sources">
@@ -589,7 +616,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
               <div className={`lib-scope${selected.size ? ' some' : ''}`}>
                 <span>
                   {selected.size === 0 ? (
-                    'Drafting from all sources'
+                    'The Assistant drafts from all sources. Tick some to narrow it.'
                   ) : (
                     <>
                       Drafting from <b>{selected.size}</b> of {docs.length}

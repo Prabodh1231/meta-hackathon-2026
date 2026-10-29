@@ -3,13 +3,13 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
 import { Extension, type Editor, type JSONContent } from '@tiptap/core'
+import { EditorState } from '@tiptap/pm/state'
 import { CitationNode } from '../editor/citation'
 import { ReviewMarks, findInBlock, setReviewMarks, textBlocks, type ReviewRange } from '../editor/reviewMarks'
 import { FormatToolbar } from './FormatToolbar'
 import { api } from '../api'
 import type { Citation, DraftSentence } from '../types'
 
-export const DRAFT_ID = 1
 const MISSING_REASON = 'This passage is no longer in your library.'
 
 function patchChips(editor: Editor, patches: Map<string, Partial<ChipAttrs>>) {
@@ -101,6 +101,8 @@ export interface WritingEditorHandle {
   citedDocIds: () => number[]
   /** Insert a chip for the sentence chosen with Cite. Returns false if that spot is gone. */
   insertCitation: (c: Citation, claim: string) => boolean
+  /** Save pending edits now (before switching to another draft). */
+  flush: () => Promise<void>
   /** Replace the whole document (restoring a version). */
   setContent: (json: string) => void
   /** Scroll to a text block (numbered as the backend numbers them) and select `text` in it. */
@@ -156,6 +158,9 @@ function citeTarget(editor: Editor): { claim: string; pos: number } | null {
 }
 
 interface Props {
+  draftId: number
+  /** Shown above the page, e.g. the getting-started steps. */
+  banner?: React.ReactNode
   onStats?: (stats: DraftStats) => void
   onSaveState?: (s: SaveState) => void
   onCitationClick: (chip: ChipAttrs) => void
@@ -165,10 +170,11 @@ interface Props {
 }
 
 export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function WritingEditor(
-  { onCitationClick, onCiteRequest, onError, onStats, onSaveState },
+  { draftId, banner, onCitationClick, onCiteRequest, onError, onStats, onSaveState },
   ref,
 ) {
   const saveTimer = useRef<number | undefined>(undefined)
+  const draftRef = useRef(draftId) // the draft the editor is showing; saves go here
   const statsTimer = useRef<number | undefined>(undefined)
   const report = useRef({ onStats, onSaveState })
   report.current = { onStats, onSaveState }
@@ -213,29 +219,46 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       if (!loaded.current) return
       window.clearTimeout(saveTimer.current)
       report.current.onSaveState?.({ state: 'saving' })
-      saveTimer.current = window.setTimeout(() => {
-        api
-          .saveDraft(DRAFT_ID, titleOf(editor), JSON.stringify(editor.getJSON()))
-          .then(() => report.current.onSaveState?.({ state: 'saved', at: Date.now() }))
-          .catch((e) => {
-            report.current.onSaveState?.({ state: 'error' })
-            onError(String(e))
-          })
-      }, 800)
+      saveTimer.current = window.setTimeout(() => save(editor), 800)
     },
   })
+
+  function save(e: Editor): Promise<void> {
+    saveTimer.current = undefined
+    return api
+      .saveDraft(draftRef.current, titleOf(e), JSON.stringify(e.getJSON()))
+      .then(() => report.current.onSaveState?.({ state: 'saved', at: Date.now() }))
+      .catch((err) => {
+        report.current.onSaveState?.({ state: 'error' })
+        onError(String(err))
+      })
+  }
+
+  /** Show other content as if freshly opened: no update event, and an empty undo history, so
+   * Ctrl+Z can't bring back the text of the draft that was showing before. */
+  function replaceContent(e: Editor, json: JSONContent | string) {
+    e.commands.setContent(json, { emitUpdate: false })
+    const { state } = e
+    e.view.updateState(EditorState.create({ schema: state.schema, doc: state.doc, plugins: state.plugins }))
+  }
 
   useEffect(() => {
     if (!editor) return
     let cancelled = false
+    // A save still waiting for this draft would land on the next one: App flushes before
+    // switching, so anything left here is dropped.
+    window.clearTimeout(saveTimer.current)
+    saveTimer.current = undefined
+    loaded.current = false
+    draftRef.current = draftId
     ;(async () => {
       // Keep retrying while the backend starts. Autosave stays off until the stored draft
       // has loaded, or the first keystroke into an empty editor would overwrite it.
       while (!cancelled) {
         try {
-          const d = await api.getDraft(DRAFT_ID)
+          const d = await api.getDraft(draftId)
           if (cancelled) return
-          if (d.content) editor.commands.setContent(JSON.parse(d.content))
+          replaceContent(editor, d.content ? JSON.parse(d.content) : '')
           break
         } catch {
           await new Promise((r) => setTimeout(r, 700))
@@ -250,7 +273,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     return () => {
       cancelled = true
     }
-  }, [editor])
+  }, [editor, draftId])
 
   citeRef.current = () => {
     if (!editor) return
@@ -296,6 +319,13 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         if (before && !/\s/.test(before)) content.unshift({ type: 'text', text: ' ' })
         editor.chain().focus().insertContentAt(pos, content).run()
         return true
+      },
+
+      async flush() {
+        if (editor && loaded.current && saveTimer.current !== undefined) {
+          window.clearTimeout(saveTimer.current)
+          await save(editor)
+        }
       },
 
       setContent(json) {
@@ -351,6 +381,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     <>
       <FormatToolbar editor={editor} onCite={() => citeRef.current()} />
       <div className="editor-wrap">
+        {banner}
         <EditorContent editor={editor} />
       </div>
     </>

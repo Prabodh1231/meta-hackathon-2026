@@ -3,7 +3,6 @@ import type { JSONContent } from '@tiptap/core'
 import { api } from '../api'
 import type { ChangeStatus, Comparison, DiffOp, DraftVersion, VersionList } from '../types'
 import { Meter, Ring, Segmented, ago } from './Meters'
-import { DRAFT_ID } from './WritingEditor'
 
 type Level = 'document' | 'sections' | 'paragraphs'
 const LEVELS: { value: Level; label: string }[] = [
@@ -14,6 +13,7 @@ const LEVELS: { value: Level; label: string }[] = [
 const STATUS_LABEL: Record<ChangeStatus, string> = { added: 'new', removed: 'removed', modified: 'edited', unchanged: 'same' }
 
 interface Props {
+  draftId: number
   list: VersionList | null
   onRefresh: () => Promise<void>
   getJSON: () => JSONContent | null
@@ -39,7 +39,7 @@ function Diff({ ops }: { ops: DiffOp[] }) {
 
 /** Version control for the draft: milestones and automatic snapshots, compared with the draft
  * (or each other) at document, section and paragraph level, each with a percentage changed. */
-export function HistoryPanel({ list, onRefresh, getJSON, getTitle, onRestore, onError }: Props) {
+export function HistoryPanel({ draftId, list, onRefresh, getJSON, getTitle, onRestore, onError }: Props) {
   const [naming, setNaming] = useState<string | null>(null) // label being typed for a new milestone
   const [filter, setFilter] = useState<'all' | 'milestone'>('all')
   const [selected, setSelected] = useState<DraftVersion | null>(null)
@@ -62,7 +62,7 @@ export function HistoryPanel({ list, onRefresh, getJSON, getTitle, onRestore, on
     let stale = false
     const to = against === 'current' ? { content: getJSON() } : { against }
     api
-      .compareVersion(DRAFT_ID, selected.id, to)
+      .compareVersion(draftId, selected.id, to)
       .then((c) => !stale && setCmp(c))
       .catch(fail)
     return () => {
@@ -74,7 +74,7 @@ export function HistoryPanel({ list, onRefresh, getJSON, getTitle, onRestore, on
     const content = getJSON()
     if (!content) return
     try {
-      await api.saveVersion(DRAFT_ID, naming?.trim() || '', getTitle(), JSON.stringify(content))
+      await api.saveVersion(draftId, naming?.trim() || '', getTitle(), JSON.stringify(content))
       setNaming(null)
       await onRefresh()
     } catch (e) {
@@ -84,7 +84,7 @@ export function HistoryPanel({ list, onRefresh, getJSON, getTitle, onRestore, on
 
   async function restore(v: DraftVersion) {
     try {
-      const d = await api.restoreVersion(DRAFT_ID, v.id)
+      const d = await api.restoreVersion(draftId, v.id)
       onRestore(d.content)
       setConfirm(null)
       setSelected(null)
@@ -96,7 +96,7 @@ export function HistoryPanel({ list, onRefresh, getJSON, getTitle, onRestore, on
 
   async function remove(v: DraftVersion) {
     try {
-      await api.deleteVersion(DRAFT_ID, v.id)
+      await api.deleteVersion(draftId, v.id)
       setConfirm(null)
       if (selected?.id === v.id) setSelected(null)
       await onRefresh()
@@ -108,7 +108,7 @@ export function HistoryPanel({ list, onRefresh, getJSON, getTitle, onRestore, on
   async function rename() {
     if (!renaming?.label.trim()) return setRenaming(null)
     try {
-      await api.renameVersion(DRAFT_ID, renaming.id, renaming.label.trim())
+      await api.renameVersion(draftId, renaming.id, renaming.label.trim())
       setRenaming(null)
       await onRefresh()
     } catch (e) {

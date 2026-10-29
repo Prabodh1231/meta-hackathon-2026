@@ -47,6 +47,8 @@ def is_supported(path: Path) -> bool:
 def parse_file(path: Path, ocr: OCR) -> ParsedDocument:
     kind = KINDS.get(path.suffix.lower())
     if kind is None:
+        if path.suffix.lower() in (".doc", ".rtf", ".odt"):
+            raise ValueError(f"{path.suffix} files can't be read yet. Open it in Word and save it as .docx, then add that.")
         raise ValueError(f"Unsupported file type: {path.suffix or path.name}")
     if kind == "pdf":
         return _parse_pdf(path, ocr)
@@ -145,8 +147,10 @@ def printed_page_labels(doc, band: float = 0.1) -> tuple[list[str | None], str]:
 def _parse_docx(path: Path) -> ParsedDocument:
     import docx
 
+    from .docx_import import plain_text
+
     d = docx.Document(str(path))
-    text = "\n\n".join(p.text for p in d.paragraphs if p.text.strip())
+    text = plain_text(d)  # paragraphs and tables, in document order
     props = d.core_properties
     # core_properties.created is a file timestamp (python-docx even stamps 2013), not a
     # publication year, so the year is left to metadata extraction.

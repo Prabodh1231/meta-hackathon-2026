@@ -3,8 +3,18 @@ import { api } from '../api'
 import type { Citation, DraftSentence } from '../types'
 import { StatusBadge } from './StatusBadge'
 
+// Starting points that work with any library; clicking one fills the box to edit or send.
+const EXAMPLES = [
+  'Summarize the main findings across my sources',
+  'Write an introduction paragraph for this chapter',
+  'Compare the methods my sources use',
+  'List the open questions my sources raise',
+]
+
 interface Props {
   scope: number[]
+  sourceCount: number
+  onChooseSources: () => void
   getContext: () => string
   onInsert: (sentences: DraftSentence[]) => void
   onVerified: (cid: string, result: Citation) => void
@@ -14,7 +24,7 @@ interface Props {
 
 let nextCid = 0
 
-export function AssistantPanel({ scope, getContext, onInsert, onVerified, onOpenCitation, onError }: Props) {
+export function AssistantPanel({ scope, sourceCount, onChooseSources, getContext, onInsert, onVerified, onOpenCitation, onError }: Props) {
   const [instruction, setInstruction] = useState('')
   const [sentences, setSentences] = useState<DraftSentence[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -58,6 +68,18 @@ export function AssistantPanel({ scope, getContext, onInsert, onVerified, onOpen
     (s) => s.citations.length === 0 || s.citations.every((c) => c.status !== 'verified' && c.status !== 'pending'),
   ).length
 
+  if (sourceCount === 0) {
+    return (
+      <div className="assistant">
+        <div className="lib-empty">
+          <div className="lib-empty-title">Add sources first</div>
+          <p>The Assistant only writes from your own sources, and quotes them for every sentence. Add a few papers or notes to start.</p>
+          <button className="primary" onClick={onChooseSources}>Add sources</button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="assistant">
       <form
@@ -75,8 +97,22 @@ export function AssistantPanel({ scope, getContext, onInsert, onVerified, onOpen
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && instruction.trim()) draft()
           }}
         />
+        {!instruction && !sentences && (
+          <div className="examples" aria-label="Examples">
+            {EXAMPLES.map((ex) => (
+              <button key={ex} type="button" className="example" onClick={() => setInstruction(ex)}>
+                {ex}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="row">
-          <span className="muted">{scope.length ? `Using ${scope.length} selected docs` : 'Using whole library'}</span>
+          <span className="muted">
+            {scope.length ? `From ${scope.length} chosen source${scope.length === 1 ? '' : 's'}` : `From all ${sourceCount} sources`} ·{' '}
+            <button type="button" className="link" onClick={onChooseSources}>
+              {scope.length ? 'Change' : 'Choose sources'}
+            </button>
+          </span>
           <button className="primary" disabled={busy || !instruction.trim()}>
             {busy ? 'Drafting…' : 'Draft with citations'}
           </button>

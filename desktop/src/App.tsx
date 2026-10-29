@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, backendLogPath } from './api'
+import { API_VERSION, api, backendLogPath } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
 import { CitePanel, type CiteRequest } from './components/CitePanel'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
+import { DraftsMenu } from './components/DraftsMenu'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { ExportControl } from './components/ExportControl'
+import { GettingStarted } from './components/GettingStarted'
 import { HistoryPanel } from './components/HistoryPanel'
 import { Icon, type IconName } from './components/Icon'
 import { LibraryPanel } from './components/LibraryPanel'
@@ -17,14 +19,13 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { applyTheme, cacheTheme, cachedTheme, watchSystemTheme } from './theme'
 import { SourceViewer, type SourceTarget } from './components/SourceViewer'
 import {
-  DRAFT_ID,
   WritingEditor,
   type ChipAttrs,
   type DraftStats,
   type SaveState,
   type WritingEditorHandle,
 } from './components/WritingEditor'
-import type { Citation, Doc, DuplicateReport, Folder, Health, Settings, SourceMatch, VersionList } from './types'
+import type { Citation, Doc, DraftSummary, DuplicateReport, Folder, Health, Settings, SourceMatch, VersionList } from './types'
 
 type Tab = 'assistant' | 'cite' | 'source' | 'references' | 'review' | 'history'
 interface Tool {
@@ -82,6 +83,46 @@ function initialPinned(): boolean {
   return window.innerWidth >= 1280
 }
 
+const GUIDE_KEY = 'rc.gettingStartedHidden'
+function guideHidden(): boolean {
+  try {
+    return localStorage.getItem(GUIDE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+// The draft that was open last time, reopened on launch.
+const DRAFT_KEY = 'rc.draftId'
+function initialDraft(): number {
+  try {
+    const v = Number(localStorage.getItem(DRAFT_KEY))
+    if (Number.isInteger(v) && v > 0) return v
+  } catch {
+    /* storage unavailable */
+  }
+  return 1
+}
+
+/** A file's contents as base64, for sending a Word file to the backend. */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result).split(',', 2)[1] ?? '')
+    r.onerror = () => reject(r.error ?? new Error('Could not read the file'))
+    r.readAsDataURL(file)
+  })
+}
+
+function importSummary(name: string, n: { headings: number; paragraphs: number; list_items: number; tables: number; images: number }): string {
+  const parts = [`${n.paragraphs} paragraph${n.paragraphs === 1 ? '' : 's'}`, `${n.headings} heading${n.headings === 1 ? '' : 's'}`]
+  if (n.list_items) parts.push(`${n.list_items} list item${n.list_items === 1 ? '' : 's'}`)
+  let msg = `Opened “${name}” as a new draft: ${parts.join(', ')}.`
+  if (n.tables) msg += ` ${n.tables} table${n.tables === 1 ? ' was' : 's were'} turned into plain lines (cells separated by |).`
+  if (n.images) msg += ` ${n.images} image${n.images === 1 ? ' was' : 's were'} left out.`
+  return msg
+}
+
 function saveText(s: SaveState): string {
   if (s.state === 'saving') return 'Saving…'
   if (s.state === 'error') return 'Not saved'
@@ -97,6 +138,12 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('assistant')
   const [source, setSource] = useState<(SourceTarget & { cid?: string }) | null>(null)
   const [errors, setErrors] = useState<string[]>([])
+  const [notice, setNotice] = useState<string | null>(null)
+  const [draftId, setDraftId] = useState(initialDraft)
+  const [drafts, setDrafts] = useState<DraftSummary[]>([])
+  const [draftsOpen, setDraftsOpen] = useState(false)
+  const [draftsBusy, setDraftsBusy] = useState<string | null>(null)
+  const [hideGuide, setHideGuide] = useState(guideHidden)
   const [settings, setSettings] = useState<Settings>({ theme: cachedTheme(), citation_style: 'apa' })
   const [showSettings, setShowSettings] = useState(false)
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
@@ -111,11 +158,13 @@ export default function App() {
   const [title, setTitle] = useState('Untitled')
   const [saveState, setSaveState] = useState<SaveState>({ state: 'idle' })
   const [versions, setVersions] = useState<VersionList | null>(null)
-  const [dup, setDup] = useState<{ report: DuplicateReport | null; at: number | null; busy: boolean; stale: boolean }>({
+  // `error` stops the automatic re-checks after a failure until the user asks again.
+  const [dup, setDup] = useState<{ report: DuplicateReport | null; at: number | null; busy: boolean; stale: boolean; error: string | null }>({
     report: null,
     at: null,
     busy: false,
     stale: false,
+    error: null,
   })
   const [, setTick] = useState(0) // re-renders "Saved 3 min ago"
   const editor = useRef<WritingEditorHandle>(null)
@@ -203,8 +252,99 @@ export default function App() {
   }, [])
 
   const refreshVersions = useCallback(async () => {
-    setVersions(await api.versions(DRAFT_ID))
+    setVersions(await api.versions(draftId))
+  }, [draftId])
+
+  const refreshDrafts = useCallback(async () => {
+    const list = await api.drafts()
+    setDrafts(list)
+    return list
   }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, String(draftId))
+    } catch {
+      /* storage unavailable */
+    }
+    setVersions(null)
+    setDup({ report: null, at: null, busy: false, stale: false, error: null })
+    refreshVersions().catch(() => {})
+  }, [draftId, refreshVersions])
+
+  // Once the backend is up: if the remembered draft was deleted, open the most recent one.
+  useEffect(() => {
+    if (!health) return
+    refreshDrafts()
+      .then((list) => {
+        if (list.length && !list.some((d) => d.id === draftId)) setDraftId(list[0].id)
+      })
+      .catch(() => {})
+  }, [health !== null])
+
+  /** Save what's pending in the open draft, then show another. */
+  async function switchDraft(id: number) {
+    setDraftsOpen(false)
+    if (id === draftId) return
+    await editor.current?.flush()
+    setDraftId(id)
+  }
+
+  async function newDraft() {
+    setDraftsBusy('Creating a draft…')
+    try {
+      await editor.current?.flush()
+      const d = await api.createDraft()
+      await refreshDrafts()
+      setDraftId(d.id)
+      setDraftsOpen(false)
+    } catch (e) {
+      onError(`Could not create a draft: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setDraftsBusy(null)
+    }
+  }
+
+  async function importWord(file: File) {
+    if (!/\.docx$/i.test(file.name)) {
+      onError(`${file.name} isn't a .docx file. Older .doc files: open them in Word and save as .docx first.`)
+      return
+    }
+    setDraftsBusy(`Opening ${file.name}…`)
+    try {
+      await editor.current?.flush()
+      const res = await api.importDocx(file.name, await fileToBase64(file))
+      await refreshDrafts()
+      setDraftId(res.draft.id)
+      setDraftsOpen(false)
+      setNotice(importSummary(file.name, res.imported))
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setDraftsBusy(null)
+    }
+  }
+
+  async function deleteDraft(id: number) {
+    setDraftsBusy('Deleting…')
+    try {
+      if (id === draftId) await editor.current?.flush()
+      await api.deleteDraft(id)
+      const left = await refreshDrafts()
+      if (id === draftId) {
+        if (left.length) setDraftId(left[0].id)
+        else {
+          const d = await api.createDraft()
+          await refreshDrafts()
+          setDraftId(d.id)
+        }
+      }
+    } catch (e) {
+      onError(`Could not delete the draft: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setDraftsBusy(null)
+    }
+  }
 
   // The backend may take a while on first launch (embedding model download).
   useEffect(() => {
@@ -257,15 +397,14 @@ export default function App() {
   const runCheck = useCallback(async () => {
     const content = editor.current?.getJSON()
     if (!content) return
-    setDup((d) => ({ ...d, busy: true }))
+    setDup((d) => ({ ...d, busy: true, error: null }))
     try {
       const report = await api.checkDuplicates(content)
-      setDup({ report, at: Date.now(), busy: false, stale: false })
+      setDup({ report, at: Date.now(), busy: false, stale: false, error: null })
     } catch (e) {
-      setDup((d) => ({ ...d, busy: false }))
-      onError(`Duplication check failed: ${e instanceof Error ? e.message : e}`)
+      setDup((d) => ({ ...d, busy: false, error: e instanceof Error ? e.message : String(e) }))
     }
-  }, [onError])
+  }, [])
 
   const reviewing = drawerOpen && tab === 'review'
 
@@ -294,7 +433,7 @@ export default function App() {
 
   // Opening the panel checks the draft; while it stays open, it re-checks a few seconds after edits.
   useEffect(() => {
-    if (!reviewing || dup.busy) return
+    if (!reviewing || dup.busy || dup.error) return
     if (!dup.report) {
       runCheck()
       return
@@ -302,7 +441,12 @@ export default function App() {
     if (!dup.stale) return
     const t = window.setTimeout(runCheck, 4000)
     return () => window.clearTimeout(t)
-  }, [reviewing, dup.stale, dup.report, dup.busy, runCheck])
+  }, [reviewing, dup.stale, dup.report, dup.busy, dup.error, runCheck])
+
+  // Closing the panel forgets a failed check, so opening it again tries once more.
+  useEffect(() => {
+    if (!reviewing) setDup((d) => (d.error ? { ...d, error: null } : d))
+  }, [reviewing])
 
   function onStats(s: DraftStats) {
     setStats(s)
@@ -312,7 +456,10 @@ export default function App() {
 
   function onSaveState(s: SaveState) {
     setSaveState(s)
-    if (s.state === 'saved') refreshVersions().catch(() => {})
+    if (s.state === 'saved') {
+      refreshVersions().catch(() => {})
+      if (s.at) refreshDrafts().catch(() => {}) // a real save, not just a load: titles and word counts changed
+    }
   }
 
   // ---------- sources ----------
@@ -381,7 +528,20 @@ export default function App() {
     { group: 'DO', name: 'Show references', hint: settings.citation_style.toUpperCase(), run: () => showTab('references') },
     { group: 'DO', name: 'Check for duplication', hint: 'repeats and text matching sources', run: () => showTab('review') },
     { group: 'DO', name: 'Version history', hint: 'save, compare and restore versions', run: () => showTab('history') },
+    ...drafts
+      .filter((d) => d.id !== draftId)
+      .map((d) => ({ group: 'DRAFT', name: d.title || 'Untitled', hint: `${d.words} words`, run: () => switchDraft(d.id) })),
+    { group: 'DO', name: 'New draft', hint: 'start a blank draft', run: () => newDraft() },
+    { group: 'DO', name: 'Open a Word file as a draft', hint: '.docx', run: () => setDraftsOpen(true) },
     { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: () => setDupFilesOpen(true) },
+    { group: 'DO', name: 'Show getting started', hint: 'the three steps', run: () => {
+      setHideGuide(false)
+      try {
+        localStorage.removeItem(GUIDE_KEY)
+      } catch {
+        /* storage unavailable */
+      }
+    } },
     { group: 'DO', name: 'Settings', hint: 'theme, citation style', run: () => setShowSettings(true) },
   ]
 
@@ -402,7 +562,16 @@ export default function App() {
         <div className="doc-id">
           <span className="logo" aria-hidden="true">rc</span>
           <div className="doc-id-text">
-            <div className="doc-name" title={title}>{title}</div>
+            <button
+              className="doc-switch"
+              onClick={() => setDraftsOpen((o) => !o)}
+              aria-expanded={draftsOpen}
+              title="Your drafts: switch, start a new one, or open a Word file"
+            >
+              <span className="doc-name">{title}</span>
+              <span className="doc-caret" aria-hidden="true">▾</span>
+              {drafts.length > 1 && <span className="doc-count">{drafts.length}</span>}
+            </button>
             <div className={`save-state save-${saveState.state}`}>
               {saveText(saveState)}
               {latest && (
@@ -415,6 +584,18 @@ export default function App() {
               )}
             </div>
           </div>
+          {draftsOpen && (
+            <DraftsMenu
+              drafts={drafts}
+              currentId={draftId}
+              busy={draftsBusy}
+              onSwitch={switchDraft}
+              onNew={newDraft}
+              onImport={importWord}
+              onDelete={deleteDraft}
+              onClose={() => setDraftsOpen(false)}
+            />
+          )}
         </div>
         <button className="search-pill" onClick={() => setPaletteOpen(true)}>
           <Icon name="search" size={16} />
@@ -475,6 +656,27 @@ export default function App() {
           <main className="writing">
             <WritingEditor
               ref={editor}
+              draftId={draftId}
+              banner={
+                health && !hideGuide && (docs.length === 0 || stats.words === 0) ? (
+                  <GettingStarted
+                    sources={docs.length}
+                    words={stats.words}
+                    citations={stats.citations}
+                    onAddSources={() => openLibrary()}
+                    onAsk={() => showTab('assistant')}
+                    onOpenWord={() => setDraftsOpen(true)}
+                    onHide={() => {
+                      setHideGuide(true)
+                      try {
+                        localStorage.setItem(GUIDE_KEY, '1')
+                      } catch {
+                        /* storage unavailable */
+                      }
+                    }}
+                  />
+                ) : null
+              }
               onStats={onStats}
               onSaveState={onSaveState}
               onCitationClick={openChip}
@@ -509,6 +711,8 @@ export default function App() {
               <div hidden={tab !== 'assistant'}>
                 <AssistantPanel
                   scope={[...selected]}
+                  sourceCount={docs.length}
+                  onChooseSources={() => openLibrary()}
                   getContext={() => editor.current?.getText() ?? ''}
                   onInsert={(s) => editor.current?.insertDraft(s)}
                   onVerified={onVerified}
@@ -540,6 +744,7 @@ export default function App() {
                   checkedAt={dup.at}
                   busy={dup.busy}
                   stale={dup.stale}
+                  error={dup.error}
                   onRun={runCheck}
                   onReveal={(block, text) => editor.current?.reveal(block, text)}
                   onOpenSource={openMatch}
@@ -547,6 +752,8 @@ export default function App() {
               )}
               {tab === 'history' && (
                 <HistoryPanel
+                  key={draftId}
+                  draftId={draftId}
                   list={versions}
                   onRefresh={refreshVersions}
                   getJSON={() => editor.current?.getJSON() ?? null}
@@ -603,22 +810,22 @@ export default function App() {
       <footer className="dock">
         <div className="dock-stats">
           <span className="stat" title="Words in the draft">
-            <b>{stats.words.toLocaleString()}</b> words
+            <b>{stats.words.toLocaleString()}</b> <span className="lbl">words</span>
           </span>
           <button className="stat" onClick={() => showTab('references')} title="Citations verified against their source">
             <span className="mini-bar">
               <span style={{ width: `${stats.citations ? (100 * stats.verified) / stats.citations : 0}%` }} />
             </span>
-            <b>{stats.verified}</b>/{stats.citations} citations verified
+            <b>{stats.verified}</b>/{stats.citations} <span className="lbl">citations verified</span>
             {stats.flagged > 0 && <em className="flag">{stats.flagged} flagged</em>}
           </button>
           <button className="stat" onClick={() => showTab('review')} title="Share of the draft that repeats itself or matches a source">
             <span className="dot" style={{ background: dupPct == null ? 'var(--pending)' : toneOf(dupPct, 'risk') }} />
-            {dupPct == null ? 'Duplication not checked' : <><b>{dupPct}%</b> duplication{dup.stale ? ' (outdated)' : ''}</>}
+            {dupPct == null ? <span className="lbl">Duplication not checked</span> : <><b>{dupPct}%</b> <span className="lbl">duplication{dup.stale ? ' (outdated)' : ''}</span></>}
           </button>
           <button className="stat" onClick={() => showTab('history')} title="How much the draft changed since the newest version">
             <Icon name="history" size={14} />
-            {change == null ? 'No versions yet' : <><b>{change}%</b> changed since v{latest?.number}</>}
+            {change == null ? <span className="lbl">No versions yet</span> : <><b>{change}%</b> <span className="lbl">changed since v{latest?.number}</span></>}
           </button>
         </div>
         <div className="grow">
@@ -628,6 +835,11 @@ export default function App() {
             </span>
           ))}
         </div>
+        {health && health.api !== API_VERSION && !offline && (
+          <span className="offline status" title="The backend was started before the app was updated">
+            Restart the app to finish updating
+          </span>
+        )}
         {offline ? (
           <span className="offline status" title={logPath ? `Backend log: ${logPath}` : undefined}>
             Backend offline, reconnecting…
@@ -655,8 +867,13 @@ export default function App() {
         <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setShowSettings(false)} />
       )}
 
-      {errors.length > 0 && (
+      {(errors.length > 0 || notice) && (
         <div className="toasts">
+          {notice && (
+            <div className="toast info" onClick={() => setNotice(null)} title="Click to dismiss">
+              {notice}
+            </div>
+          )}
           {errors.map((e, i) => (
             <div key={i} className="toast" onClick={() => setErrors((es) => es.filter((_, j) => j !== i))}>
               {e}

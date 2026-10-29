@@ -2,7 +2,9 @@ import type {
   Citation,
   CitationGraph,
   Doc,
+  DocxImport,
   DocxStyle,
+  DraftSummary,
   DraftResult,
   DraftVersion,
   DuplicateReport,
@@ -29,6 +31,17 @@ function config() {
   return configPromise
 }
 
+/** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
+export const API_VERSION = 4
+
+/** The backend answered "no such endpoint": it's an older backend than this UI, still running
+ * from before an update (the desktop app starts it once, at launch). */
+export class BackendOutdated extends Error {
+  constructor() {
+    super('The backend is older than the app, so this feature is missing. Restart the app to finish updating.')
+  }
+}
+
 /** The backend didn't answer at all (not running, or restarting), as opposed to an error reply. */
 export class BackendUnreachable extends Error {
   constructor() {
@@ -49,6 +62,10 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
     throw new BackendUnreachable() // the browser's own message is just "Failed to fetch"
   }
   if (!res.ok) {
+    // An unknown route answers 405 (the path exists for other methods) or a bare "Not Found";
+    // a missing item answers 404 with its own message ("Draft 2 not found").
+    if (res.status === 405) throw new BackendOutdated()
+    if (res.status === 404 && (await res.clone().json().catch(() => ({}))).detail === 'Not Found') throw new BackendOutdated()
     let detail = res.statusText
     try {
       detail = (await res.json()).detail ?? detail
@@ -117,6 +134,10 @@ export const api = {
   exportDocx: async (content: unknown, style: DocxStyle, title: string) =>
     (await send('POST', '/export/docx', { content, style, title })).arrayBuffer(),
 
+  drafts: () => request<DraftSummary[]>('GET', '/drafts'),
+  createDraft: (title = 'Untitled') => request<{ id: number; title: string; content: string }>('POST', '/drafts', { title }),
+  deleteDraft: (id: number) => request<{ ok: boolean }>('DELETE', `/drafts/${id}`),
+  importDocx: (filename: string, data: string) => request<DocxImport>('POST', '/drafts/import', { filename, data }),
   getDraft: (id: number) => request<{ id: number; title: string; content: string }>('GET', `/drafts/${id}`),
   saveDraft: (id: number, title: string, content: string) => request('PUT', `/drafts/${id}`, { title, content }),
 
