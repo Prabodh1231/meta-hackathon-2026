@@ -230,8 +230,8 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         return lib.set_folder_membership(doc_id, folder_id, body.member)
 
     @app.get("/graph")
-    def citation_graph():
-        return lib.citation_graph()
+    def citation_graph(q: str = ""):
+        return lib.citation_graph(q)
 
     @app.post("/write/draft")
     def draft(body: DraftIn):

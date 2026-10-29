@@ -18,9 +18,16 @@ NAMES = ["Adler", "Brandt", "Cohen", "Dumont", "Eriksen", "Fischer", "Garcia", "
 FILLER = [f"{n}, A., 20{10 + i}. Filler reference number {i} on assorted unrelated subjects. Journal {i}, 1-{i + 5}." for i, n in enumerate(NAMES)]
 
 
+class NoTags(MockProvider):
+    """The mock tags a paper with its own most frequent words, which would make a stray mention look like a topic."""
+
+    def tag_document(self, title, text):
+        return ["misc"]
+
+
 @pytest.fixture
 def lib(tmp_path):
-    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder())
+    return Library(Settings(data_dir=tmp_path / "data"), provider=NoTags(), embedder=HashEmbedder())
 
 
 def add(lib, tmp_path, name, text):
@@ -74,3 +81,39 @@ def test_references_are_stored_once_and_reread_when_the_file_is_added_again(lib,
     assert lib.conn.execute("SELECT refs_parsed FROM documents WHERE id = ?", (a,)).fetchone()[0] == 0
     lib.citation_graph()
     assert lib.conn.execute("SELECT COUNT(*) FROM doc_refs WHERE doc_id = ?", (a,)).fetchone()[0] < count
+
+
+def topical(title: str, keywords: str, refs: list[str], body: str = "") -> str:
+    return f"{title}\nSome Author 2020\n\nAbstract. {body}\nKeywords: {keywords}\n\n" + "Plain body text. " * 20 + "\n\nReferences\n" + "\n".join(refs) + "\n"
+
+
+def test_searching_a_topic_shows_its_papers_their_links_and_shared_keywords(lib, tmp_path):
+    a = add(lib, tmp_path, "a.txt", topical("Blockchain adoption in banks", "blockchain; banking; adoption", [HONG, *FILLER]))
+    b = add(lib, tmp_path, "b.txt", topical("Smart contracts for lending", "blockchain; banking; lending", [HONG, *FILLER]))
+    other = add(lib, tmp_path, "c.txt", topical("Coral reef bleaching", "coral; heatwave; reefs", [HONG, *FILLER]))
+    graph = lib.citation_graph("blockchain")
+
+    papers = {n["doc_id"]: n for n in graph["nodes"] if n["kind"] == "paper"}
+    assert set(papers) == {a, b}  # the coral paper is not about it
+    assert "keywords" in papers[a]["match"]["why"]
+    (link,) = graph["keyword"]
+    assert link["shared"] == ["banking", "blockchain"] and link["weight"] == 2
+    assert any(c["weight"] >= 2 for c in graph["coupling"])  # they share references among themselves
+    assert [m["cited_by"] for m in graph["missing"]][:1] == [2]  # counted among the matches only, not all three
+    assert other not in papers
+
+
+def test_a_topic_mentioned_in_the_body_counts_but_one_stray_mention_does_not(lib, tmp_path):
+    deep = add(lib, tmp_path, "d.txt", topical("Payment systems", "payments; settlement; banks", FILLER, body=("Blockchain is discussed here. " + "Filler sentence about settlement. " * 40) * 5))
+    once = add(lib, tmp_path, "e.txt", "Notes\nA single mention of blockchain. " + "Other words. " * 40)
+    graph = lib.citation_graph("blockchain")
+    ids = {n["doc_id"] for n in graph["nodes"] if n["kind"] == "paper"}
+    assert deep in ids and once not in ids
+    assert next(n for n in graph["nodes"] if n["doc_id"] == deep)["match"]["hits"] >= 1  # found through its text, whatever else named it
+
+
+def test_an_unmatched_or_blank_search_is_harmless(lib, tmp_path):
+    add(lib, tmp_path, "a.txt", topical("Blockchain adoption", "blockchain; banking; adoption", FILLER))
+    assert lib.citation_graph("zzzqqq")["nodes"] == []
+    assert lib.citation_graph('"')["nodes"] == []
+    assert len(lib.citation_graph("")["nodes"]) >= 1

@@ -114,14 +114,17 @@ export interface GraphNode {
   cites: number
   cited_by: number
   parsed?: boolean // false when no reference list could be read from the paper
+  match?: { why: string[]; hits: number } // in a topic search: what ties the paper to it
 }
 
 export interface CitationGraph {
   nodes: GraphNode[]
   citations: { source: string; target: string; kind: 'cites'; how: string }[]
   coupling: { source: string; target: string; kind: 'coupled'; weight: number }[]
+  keyword?: { source: string; target: string; kind: 'keyword'; weight: number; shared: string[] }[]
   missing: GraphNode[]
   isolated: number[]
+  query?: string
 }
 
 export interface Health {

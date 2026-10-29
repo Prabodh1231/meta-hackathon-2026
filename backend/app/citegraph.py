@@ -92,3 +92,43 @@ def build_graph(docs: list[dict], refs_by_doc: dict[int, list[Reference]]) -> di
         "nodes": nodes, "citations": edges, "coupling": coupling, "missing": missing,
         "isolated": [n["doc_id"] for n in nodes if n["kind"] == "paper" and n["id"] not in linked],
     }
+
+
+def keyword_links(terms_by_doc: dict[int, set[str]], min_shared: int = 1) -> list[dict]:
+    """Papers that share author keywords or tags. `shared` names them, so the link explains itself."""
+    links = []
+    for a, b in combinations(sorted(terms_by_doc), 2):
+        shared = sorted(terms_by_doc[a] & terms_by_doc[b])
+        if len(shared) >= min_shared:
+            links.append({"source": f"doc:{a}", "target": f"doc:{b}", "kind": "keyword", "weight": len(shared), "shared": shared})
+    return links
+
+
+def focus(graph: dict, doc_ids: set[int], keyword: list[dict]) -> dict:
+    """The part of the graph among the given papers: their citations and shared references, the
+    works at least two of them cite that the library lacks, and their shared keywords."""
+    keep = {f"doc:{i}" for i in doc_ids}
+    citations = [e for e in graph["citations"] if e["source"] in keep and (e["target"] in keep or e["target"].startswith("ghost:"))]
+    cited_by = Counter(e["target"] for e in citations if e["target"].startswith("ghost:"))
+    missing_ids = {k for k, n in cited_by.items() if n >= MIN_GHOST_CITERS}
+    keep |= missing_ids
+    nodes = []
+    for n in graph["nodes"]:
+        if n["id"] not in keep:
+            continue
+        n = dict(n)
+        if n["kind"] == "missing":
+            n["cited_by"] = cited_by[n["id"]]
+        else:
+            n["cites"] = sum(1 for e in citations if e["source"] == n["id"] and e["target"] in keep)
+            n["cited_by"] = sum(1 for e in citations if e["target"] == n["id"])
+        nodes.append(n)
+    citations = [e for e in citations if e["target"] in keep]
+    coupling = [e for e in graph["coupling"] if e["source"] in keep and e["target"] in keep]
+    keyword = [e for e in keyword if e["source"] in keep and e["target"] in keep]
+    linked = {x for e in citations + coupling + keyword for x in (e["source"], e["target"])}
+    return {
+        "nodes": nodes, "citations": citations, "coupling": coupling, "keyword": keyword,
+        "missing": sorted((n for n in nodes if n["kind"] == "missing"), key=lambda n: (-n["cited_by"], n["title"])),
+        "isolated": [n["doc_id"] for n in nodes if n["kind"] == "paper" and n["id"] not in linked],
+    }

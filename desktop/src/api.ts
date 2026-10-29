@@ -92,7 +92,7 @@ export const api = {
   setFolderMember: (docId: number, folderId: number, member: boolean) =>
     request<Doc>('PUT', `/documents/${docId}/folders/${folderId}`, { member }),
 
-  graph: () => request<CitationGraph>('GET', '/graph'),
+  graph: (q = '') => request<CitationGraph>('GET', `/graph${q ? `?q=${encodeURIComponent(q)}` : ''}`),
 
   draft: (instruction: string, context: string, docIds: number[] | null) =>
     request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds }),

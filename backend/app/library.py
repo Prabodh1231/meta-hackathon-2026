@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +12,7 @@ import numpy as np
 
 from . import db, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
-from .citegraph import build_graph
+from .citegraph import build_graph, focus, keyword_links
 from .refparse import Reference, parse_references
 from .embeddings import Embedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_url
@@ -44,6 +45,7 @@ UNCHECKED_CAP = 30
 INGEST_WORKERS = 4
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
 MAX_KEYWORD_TAGS = 8
+MIN_TEXT_HITS = 3  # chunks of a paper that must mention a searched topic for it to count as about it
 
 
 class Library:
@@ -226,7 +228,40 @@ class Library:
                 )
                 self.conn.execute("UPDATE documents SET refs_parsed = 1 WHERE id = ?", (row["id"],))
 
-    def citation_graph(self) -> dict:
+    def _terms(self, doc_id: int, keywords: str) -> set[str]:
+        tags = [r["tag"] for r in self.conn.execute("SELECT tag FROM tags WHERE doc_id = ?", (doc_id,))]
+        return {t.strip().lower() for t in [*json.loads(keywords), *tags] if t.strip()}
+
+    def _topic_matches(self, query: str) -> dict[int, dict]:
+        """Papers about a topic, strongest evidence first: the authors' keywords, title, tags and
+        summary name it, or the body text mentions it in several places."""
+        tokens = [t.lower() for t in re.findall(r"[\w-]{2,}", query)]
+        if not tokens:
+            return {}
+        found: dict[int, dict] = {}
+        for r in self.conn.execute("SELECT id, title, summary, keywords FROM documents"):
+            fields = {
+                "keywords": " ".join(json.loads(r["keywords"])), "title": r["title"], "summary": r["summary"],
+                "tags": " ".join(t["tag"] for t in self.conn.execute("SELECT tag FROM tags WHERE doc_id = ?", (r["id"],))),
+            }
+            why = [name for name, text in fields.items() if all(t in text.lower() for t in tokens)]
+            if why:
+                found[r["id"]] = {"why": why, "hits": 0}
+        match = " ".join('"' + t.replace('"', "") + '"' for t in tokens)
+        try:
+            rows = self.conn.execute(
+                "SELECT c.doc_id AS doc_id, COUNT(*) AS n FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                "WHERE chunks_fts MATCH ? GROUP BY c.doc_id", (match,)).fetchall()
+        except Exception:  # an unparseable query matches nothing in the text
+            rows = []
+        for r in rows:
+            if r["n"] >= MIN_TEXT_HITS:
+                found.setdefault(r["doc_id"], {"why": [], "hits": 0})["hits"] = r["n"]
+                if "text" not in found[r["doc_id"]]["why"]:
+                    found[r["doc_id"]]["why"].append("text")
+        return found
+
+    def citation_graph(self, query: str = "") -> dict:
         with self.lock:
             self._parse_references()
             docs = [
@@ -236,7 +271,18 @@ class Library:
             refs: dict[int, list[Reference]] = defaultdict(list)
             for r in self.conn.execute("SELECT * FROM doc_refs ORDER BY doc_id, idx"):
                 refs[r["doc_id"]].append(Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"]))
-        return build_graph(docs, refs)
+            terms = {r["id"]: self._terms(r["id"], r["keywords"]) for r in self.conn.execute("SELECT id, keywords FROM documents")}
+            matches = self._topic_matches(query) if query.strip() else None
+        graph = build_graph(docs, refs)
+        if matches is None:
+            graph["keyword"] = keyword_links(terms, min_shared=2)
+            return graph
+        graph = focus(graph, set(matches), keyword_links({i: terms[i] for i in matches}))
+        for n in graph["nodes"]:
+            if n["kind"] == "paper":
+                n["match"] = matches[n["doc_id"]]
+        graph["query"] = query.strip()
+        return graph
 
     # ---------- documents ----------
 
