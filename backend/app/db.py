@@ -127,6 +127,14 @@ CREATE TABLE IF NOT EXISTS draft_versions (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS draft_versions_draft ON draft_versions(draft_id, id);
+-- SHA-256 of library files for the duplicate finder, reused while a file's size and
+-- modification time are unchanged so a re-scan doesn't read every file again.
+CREATE TABLE IF NOT EXISTS file_hashes (
+  path TEXT PRIMARY KEY,
+  size INTEGER NOT NULL,
+  mtime REAL NOT NULL,
+  sha256 TEXT NOT NULL
+);
 """
 
 

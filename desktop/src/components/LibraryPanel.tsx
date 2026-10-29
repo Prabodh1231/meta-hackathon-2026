@@ -13,6 +13,7 @@ interface Props {
   onError: (msg: string) => void
   /** A paper to bring into view and open (from the network view or the palette); `n` changes per request. */
   focus?: { id: number; n: number } | null
+  onFindDuplicates: () => void
 }
 
 const KIND_LABEL: Record<Doc['kind'], string> = {
@@ -321,7 +322,7 @@ function DocCard({
   )
 }
 
-export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus }: Props) {
+export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, onFindDuplicates }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [source, setSource] = useState('')
   const [query, setQuery] = useState('')
@@ -468,6 +469,11 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
             title="Score every paper against your folders again. Your own additions and removals are kept."
           >
             Re-sort
+          </button>
+        )}
+        {docs.length > 1 && (
+          <button className="ghost" onClick={onFindDuplicates} title="Find duplicate files and suggest which copies to remove">
+            Duplicates
           </button>
         )}
         <button

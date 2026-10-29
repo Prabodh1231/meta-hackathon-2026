@@ -605,3 +605,52 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .lib-doc-actions { display: flex; gap: 6px; margin-top: 12px; }
 .lib-doc-actions button:not(.link) { font-size: 12px; padding: 2px 10px; }
 .folder-chips { align-items: center; }
+
+/* Duplicate files: a large dialog of groups, each with the copies side by side */
+.modal.dupfiles { width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; padding: 0 22px 22px; }
+.dupfiles .modal-head { position: sticky; top: 0; z-index: 2; gap: 8px; align-items: flex-start; margin: 0 -22px; padding: 18px 22px 10px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.dupfiles .modal-head h2 { font: 600 19px/1.3 var(--doc-font); }
+.df-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.df-stat { padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); display: flex; flex-direction: column; }
+.df-stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.df-stat span { font-size: 12px; color: var(--muted); }
+.df-scope { grid-column: 1 / -1; margin: 0; line-height: 1.5; }
+.df-done { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--ok-bg); color: var(--ok); font-size: 13px; }
+.df-filters { padding: 12px 0 0; }
+.df-groups { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.df-group { border: 1px solid var(--border); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; }
+.df-exact_file { border-left-color: var(--bad); }
+.df-same_text { border-left-color: var(--warn); }
+.df-likely_same { border-left-color: var(--accent); }
+.df-similar { border-left-color: var(--pending); }
+.df-group-head { display: flex; align-items: center; gap: 10px; }
+.df-badge { font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 2px 10px; }
+.df-badge-exact_file { background: var(--bad-bg); color: var(--bad); }
+.df-badge-same_text { background: var(--warn-bg); color: var(--warn); }
+.df-badge-likely_same { background: var(--hover); color: var(--accent); }
+.df-badge-similar { background: var(--pending-bg); color: var(--muted); }
+.df-frees { font-size: 12.5px; font-weight: 600; color: var(--ok); }
+.df-explain { margin: 8px 0 6px; font-size: 13px; color: var(--muted); }
+.df-reasons { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.df-reasons li { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); }
+.df-docs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+.df-doc { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.df-doc.keep { border-color: color-mix(in srgb, var(--ok) 55%, var(--border)); background: color-mix(in srgb, var(--ok) 5%, var(--panel)); }
+.df-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 2px; }
+.df-keep { font-size: 11px; font-weight: 700; color: var(--ok); }
+.df-other { font-size: 11px; font-weight: 600; color: var(--muted); }
+.df-flag { font-size: 10.5px; padding: 0 7px; border-radius: 999px; background: var(--pending-bg); color: var(--muted); }
+.df-flag.cited { background: var(--hover); color: var(--accent); font-weight: 600; }
+.df-flag.bad { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
+.df-path { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; min-width: 0; }
+.df-path code { flex: 1; min-width: 0; font: 11.5px/1.45 Consolas, monospace; color: var(--text); word-break: break-all; background: var(--bg); padding: 3px 6px; border-radius: 6px; }
+.df-path .link { white-space: nowrap; }
+.df-meta { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 6px 0 0; font-size: 12px; }
+.df-meta dt { color: var(--muted); }
+.df-meta dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.df-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.df-actions button:not(.link) { font-size: 12px; padding: 3px 10px; }
+.df-confirm { margin-top: 8px; padding: 10px; border-radius: 8px; background: var(--bad-bg); font-size: 12.5px; }
+.df-confirm p { margin: 0 0 6px; }
+.df-confirm code { font: 11.5px Consolas, monospace; word-break: break-all; }
+@media (max-width: 720px) { .df-stat { padding: 8px 10px; } .df-stat b { font-size: 16px; } .df-stat span { font-size: 11px; } .df-docs { grid-template-columns: 1fr; } }

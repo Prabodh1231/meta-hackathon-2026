@@ -7,6 +7,7 @@ import type {
   DraftVersion,
   DuplicateReport,
   Comparison,
+  FileDuplicateReport,
   Folder,
   Health,
   IngestResult,
@@ -77,6 +78,7 @@ export const api = {
   documents: () => request<Doc[]>('GET', '/documents'),
   updateDocument: (id: number, patch: Partial<Doc>) => request<Doc>('PATCH', `/documents/${id}`, patch),
   deleteDocument: (id: number) => request<{ ok: boolean }>('DELETE', `/documents/${id}`),
+  duplicateFiles: (cited: number[]) => request<FileDuplicateReport>('POST', '/library/duplicates', { cited }),
   page: (docId: number, page: number) => request<PageText>('GET', `/documents/${docId}/pages/${page}`),
 
   topics: () => request<Topic[]>('GET', '/topics'),

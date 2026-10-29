@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import threading
 from collections import defaultdict
@@ -10,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import db, draft_review, paper_meta
+from . import db, draft_review, dupfiles, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
 from .citegraph import build_graph, focus, keyword_links
 from .refparse import Reference, parse_references
@@ -56,6 +57,9 @@ MAX_AUTO_VERSIONS = 40
 # Duplication: share of a draft sentence's word 3-grams found in one library passage.
 SOURCE_MATCH = 0.5  # closely matches the source
 SOURCE_COPIED = 0.85  # copied nearly word for word
+# Duplicate files: documents whose mean chunk embeddings are this close are compared in detail.
+# Only picks candidates; shared passages and metadata decide what's shown.
+DUP_DOC_COS = 0.9
 
 
 class Library:
@@ -368,6 +372,206 @@ class Library:
             if not self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,)).rowcount:
                 raise LookupError(f"Document {doc_id} not found")
             self._invalidate_index()
+
+    # ---------- duplicate files ----------
+
+    def _file_info(self, source: str) -> dict:
+        """Whether a document's source is a file on disk, its size and SHA-256. The hash is cached
+        while the file's size and modification time stay the same."""
+        if re.match(r"^https?://", source, re.I):
+            return {"is_file": False, "exists": False, "size": None, "sha256": None, "real": None}
+        path = Path(source)
+        try:
+            st = path.stat()
+            if not path.is_file():
+                raise OSError
+        except OSError:
+            return {"is_file": True, "exists": False, "size": None, "sha256": None, "real": None}
+        with self.lock:
+            row = self.conn.execute("SELECT size, mtime, sha256 FROM file_hashes WHERE path = ?", (source,)).fetchone()
+        if row and row["size"] == st.st_size and row["mtime"] == st.st_mtime:
+            sha = row["sha256"]
+        else:
+            sha = dupfiles.file_sha256(source)
+            with self.lock, self.conn:
+                self.conn.execute(
+                    "INSERT INTO file_hashes (path, size, mtime, sha256) VALUES (?, ?, ?, ?) ON CONFLICT(path) DO UPDATE "
+                    "SET size = excluded.size, mtime = excluded.mtime, sha256 = excluded.sha256",
+                    (source, st.st_size, st.st_mtime, sha),
+                )
+        return {"is_file": True, "exists": True, "size": st.st_size, "sha256": sha,
+                "real": os.path.normcase(os.path.realpath(source))}
+
+    def find_duplicate_files(self, cited: list[int] | None = None) -> dict:
+        """Groups of library documents that duplicate each other, labelled by how strong the
+        evidence is, each with the copy we suggest keeping and the space removing the others
+        would free. A recommendation only: nothing is removed here. `cited` are the documents
+        the draft cites, which are preferred as the copy to keep."""
+        cited_ids = set(cited or [])
+        with self.lock:
+            rows = [dict(r) for r in self.conn.execute(
+                "SELECT id, source, kind, title, authors, year, doi, venue, page_count, added_at, edited_fields "
+                "FROM documents ORDER BY id")]
+            texts: dict[int, list[str]] = defaultdict(list)
+            for r in self.conn.execute("SELECT doc_id, text FROM pages ORDER BY doc_id, page"):
+                texts[r["doc_id"]].append(r["text"])
+            in_folders: dict[int, list[tuple[str, str]]] = defaultdict(list)
+            for r in self.conn.execute(
+                "SELECT df.doc_id, f.name, df.state FROM doc_folders df JOIN folders f ON f.id = df.folder_id "
+                "WHERE df.state != 'rejected' ORDER BY f.name COLLATE NOCASE"
+            ):
+                in_folders[r["doc_id"]].append((r["name"], r["state"]))
+
+        docs: dict[int, dict] = {}
+        for r in rows:
+            text = dupfiles.normalize_text("\n".join(texts[r["id"]]))
+            docs[r["id"]] = {
+                **{k: r[k] for k in ("id", "source", "kind", "title", "year", "doi", "venue", "page_count", "added_at")},
+                "authors": json.loads(r["authors"]),
+                "folders": [name for name, _ in in_folders[r["id"]]],
+                "user_folders": sum(state == "user" for _, state in in_folders[r["id"]]),
+                "edited": len(json.loads(r["edited_fields"])),
+                "cited": r["id"] in cited_ids,
+                **self._file_info(r["source"]),
+                "text": text if len(text) >= dupfiles.MIN_TEXT_CHARS else "",
+            }
+
+        # Documents already shown as identical (same bytes or same text) form clusters, so they
+        # aren't listed again as "likely the same" and their freed space is counted once.
+        parent = {i: i for i in docs}
+
+        def find(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        def union(members):
+            for m in members[1:]:
+                parent[find(m["id"])] = find(members[0]["id"])
+
+        groups = []
+        by_sha: dict[str, list[dict]] = defaultdict(list)
+        for d in docs.values():
+            if d["sha256"]:
+                by_sha[d["sha256"]].append(d)
+        for sha, members in by_sha.items():
+            if len(members) > 1:
+                reasons = [f"SHA-256 {sha[:16]}… matches"]
+                if len({m["real"] for m in members}) < len(members):
+                    reasons.append("Some entries point to the same file on disk, so removing them frees no space")
+                groups.append(self._dup_group("exact_file", members, reasons, 100))
+                union(members)
+
+        by_text: dict[str, list[dict]] = defaultdict(list)
+        for d in docs.values():
+            if d["text"]:
+                by_text[dupfiles.text_sha256(d["text"])].append(d)
+        for members in by_text.values():
+            # Skip when every member is the same file: that's already an exact duplicate.
+            if len(members) > 1 and len({m["sha256"] or m["id"] for m in members}) > 1:
+                groups.append(self._dup_group("same_text", members, ["Extracted text is identical after normalizing formatting"], 100))
+                union(members)
+
+        # Near matches: pairs that share a DOI, have alike titles, or whose text embeddings are
+        # very close are candidates; metadata and shared passages then decide.
+        pairs: set[tuple[int, int]] = set()
+        by_doi: dict[str, list[int]] = defaultdict(list)
+        for d in docs.values():
+            if dupfiles.norm_doi(d["doi"]):
+                by_doi[dupfiles.norm_doi(d["doi"])].append(d["id"])
+        for ids in by_doi.values():
+            pairs |= {(a, b) for i, a in enumerate(ids) for b in ids[i + 1:]}
+        words = {i: set(dupfiles.norm_title(d["title"]).split()) for i, d in docs.items()}
+        ids = sorted(docs)
+        for n, a in enumerate(ids):
+            for b in ids[n + 1:]:
+                wa, wb = words[a], words[b]
+                if wa and wb and len(wa & wb) >= 0.6 * max(len(wa), len(wb)):
+                    pairs.add((a, b))
+        with self.lock:
+            self._load_index()
+            chunk_docs, mat = self._docs, self._mat
+        if len(chunk_docs):
+            doc_ids = np.unique(chunk_docs)
+            vecs = np.stack([mat[chunk_docs == d].mean(axis=0) for d in doc_ids])
+            vecs /= np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-9
+            for i, j in np.argwhere(np.triu(vecs @ vecs.T, 1) >= DUP_DOC_COS):
+                a, b = int(doc_ids[i]), int(doc_ids[j])
+                if a in docs and b in docs:
+                    pairs.add((min(a, b), max(a, b)))
+
+        grams: dict[int, set[int]] = {}
+
+        def text_grams(d):
+            if d["id"] not in grams:
+                grams[d["id"]] = dupfiles.shingles(d["text"])
+            return grams[d["id"]]
+
+        for a, b in sorted(pairs):
+            if find(a) == find(b):
+                continue
+            da, db = docs[a], docs[b]
+            shared = dupfiles.overlap(text_grams(da), text_grams(db)) if da["text"] and db["text"] else None
+            verdict = dupfiles.classify_pair(dupfiles.compare_metadata(da, db), shared)
+            if verdict:
+                kind, reasons = verdict
+                groups.append(self._dup_group(kind, [da, db], reasons, None if shared is None else round(100 * shared)))
+
+        order = list(dupfiles.KINDS)
+        groups.sort(key=lambda g: (order.index(g["kind"]), -g["recoverable"]))
+
+        clusters: dict[int, list[dict]] = defaultdict(list)
+        for d in docs.values():
+            clusters[find(d["id"])].append(d)
+        identical = sum(self._freed(members, dupfiles.suggest_keep(members, "exact_file")[0])
+                        for members in clusters.values() if len(members) > 1)
+        # Space from also removing the copy not kept in each "likely the same" pair, each file once.
+        extra: dict[str, int] = {}
+        for g in groups:
+            if g["kind"] == "likely_same":
+                for d in g["docs"]:
+                    full = docs[d["id"]]
+                    if d["id"] != g["keep"] and full["exists"] and len(clusters[find(d["id"])]) == 1:
+                        extra[full["real"]] = full["size"]
+        return {
+            "groups": groups,
+            "counts": {k: sum(g["kind"] == k for g in groups) for k in dupfiles.KINDS},
+            "recoverable": {"identical": identical, "likely_same": sum(extra.values())},
+            "scanned": len(docs),
+            "files": sum(d["exists"] for d in docs.values()),
+            "missing": sum(d["is_file"] and not d["exists"] for d in docs.values()),
+            "web": sum(not d["is_file"] for d in docs.values()),
+            "no_text": sum(not d["text"] for d in docs.values()),
+        }
+
+    @staticmethod
+    def _freed(members: list[dict], keep: int) -> int:
+        """Bytes freed by removing every member except `keep`; entries pointing at one file count once."""
+        kept = next(m for m in members if m["id"] == keep)
+        seen = {kept["real"]}
+        freed = 0
+        for m in members:
+            if m["exists"] and m["real"] not in seen:
+                seen.add(m["real"])
+                freed += m["size"]
+        return freed
+
+    def _dup_group(self, kind: str, members: list[dict], reasons: list[str], similarity: int | None) -> dict:
+        keep, why = dupfiles.suggest_keep(members, kind)
+        public = ("id", "title", "source", "kind", "authors", "year", "doi", "venue", "page_count", "added_at",
+                  "folders", "cited", "is_file", "exists", "size")
+        return {
+            "kind": kind,
+            "label": dupfiles.KINDS[kind],
+            "explanation": dupfiles.EXPLAIN[kind],
+            "reasons": reasons,
+            "similarity": similarity,
+            "keep": keep,
+            "keep_reason": why,
+            "recoverable": self._freed(members, keep),
+            "docs": [{k: m[k] for k in public} for m in members],
+        }
 
     def get_page(self, doc_id: int, page: int) -> dict:
         with self.lock:
