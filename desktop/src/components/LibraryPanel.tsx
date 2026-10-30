@@ -15,6 +15,7 @@ interface Props {
   focus?: { id: number; n: number } | null
   onFindDuplicates: () => void
   onCitedPapers: (docId: number) => void
+  onFindMissing: () => void
   cited: number[] // documents the draft cites
 }
 
@@ -547,7 +548,7 @@ function DocDetails({ doc: d, on, cited, back, onToggle, onClose, onCited, run }
   )
 }
 
-export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, cited }: Props) {
+export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onFindMissing, cited }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [source, setSource] = useState('')
   const [query, setQuery] = useState('')
@@ -765,6 +766,16 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
                   >
                     <b>Find duplicate files</b>
                     <span>Copies of the same paper, with what you could free up</span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false)
+                      onFindMissing()
+                    }}
+                  >
+                    <b>Most-cited papers you don't have</b>
+                    <span>What your papers on a topic cite most, with free copies to download</span>
                   </button>
                   <button
                     role="menuitem"

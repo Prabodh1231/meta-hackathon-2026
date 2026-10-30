@@ -94,6 +94,32 @@ def build_graph(docs: list[dict], refs_by_doc: dict[int, list[Reference]]) -> di
     }
 
 
+def missing_works(docs: list[dict], refs_by_doc: dict[int, list[Reference]], citing: set[int] | None = None) -> list[dict]:
+    """Works the given papers (every paper when None) cite that the library lacks, the most cited
+    first. Unlike the graph's missing nodes, a work one paper cites counts too. Each names the papers
+    citing it and one reference entry to fetch it by, an entry with a DOI when any has one."""
+    by_id = {d["id"]: d for d in docs}
+    works: dict[str, dict] = {}
+    for doc_id, refs in refs_by_doc.items():
+        doc = by_id.get(doc_id)
+        if not doc or (citing is not None and doc_id not in citing):
+            continue
+        for idx, ref in enumerate(refs):
+            key = ghost_key(ref)
+            if not key or match_reference(ref, docs, doc.get("year"), doc_id):
+                continue
+            w = works.setdefault(key, {"id": f"ghost:{key}", "title": _clean(ref.title), "first_author": "", "year": ref.year,
+                                       "doi": "", "citers": [], "ref": {"doc_id": doc_id, "idx": idx}})
+            if doc_id not in w["citers"]:
+                w["citers"].append(doc_id)
+            w["first_author"] = w["first_author"] or _clean(ref.first_author)
+            if ref.doi and not w["doi"]:
+                w["doi"], w["ref"] = ref.doi, {"doc_id": doc_id, "idx": idx}
+    out = [{**w, "cited_by": len(w["citers"])} for w in works.values()]
+    out.sort(key=lambda w: (-w["cited_by"], -(w["year"] or 0), w["title"]))
+    return out
+
+
 def keyword_links(terms_by_doc: dict[int, set[str]], min_shared: int = 1) -> list[dict]:
     """Papers that share author keywords or tags. `shared` names them, so the link explains itself."""
     links = []

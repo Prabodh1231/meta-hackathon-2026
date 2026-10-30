@@ -86,6 +86,10 @@ Drafts are saved as the editor's own JSON in SQLite, not as .md files, because c
 
 Security: the backend can read any local path, so it binds to 127.0.0.1 only, and Electron passes it a random token each launch that every request must carry.
 
+## Most-cited papers you don't have
+
+The Library's ⋯ menu, Ctrl K, and the Network view's list of missing works open **Most-cited papers you don't have**. Type a topic, or leave it empty for the whole library. The papers about it are found the way the Network's topic search finds them (their keywords, title, tags or summary name it, or the text mentions it in several places). Every work their reference lists cite that isn't in the library is ranked by how many of those papers cite it, each with the papers citing it. Unlike the Network, works cited only once are included. **Download top N** (or a work's own button) fetches free copies as described under [Cited papers](#cited-papers), and a downloaded work drops off the list. "Most cited" counts your own papers' citations, not citations worldwide: that's what says a work matters to this topic.
+
 ## Cited papers
 
 Each entry in a paper's reference list is looked up in two open scholarly indexes: **OpenAlex** first, then **Semantic Scholar**. An entry with a DOI is looked up by it; otherwise by its title, and a hit only counts when its title matches the entry's (a subtitle the entry left out is allowed) and its year is within one, so a look-alike paper is never downloaded. Entries with no DOI and a title under four words aren't searched.

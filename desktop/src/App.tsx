@@ -13,6 +13,7 @@ import { HistoryPanel } from './components/HistoryPanel'
 import { Icon, type IconName } from './components/Icon'
 import { LibraryPanel } from './components/LibraryPanel'
 import { ago, toneOf } from './components/Meters'
+import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { NetworkView } from './components/NetworkView'
 import { ReferencesPanel } from './components/ReferencesPanel'
 import { ReviewPanel } from './components/ReviewPanel'
@@ -149,6 +150,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
   const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
+  const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
   const [citeRequest, setCiteRequest] = useState<CiteRequest | null>(null)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryWide, setLibraryWide] = useState(false) // library as a file manager
@@ -538,6 +540,7 @@ export default function App() {
     { group: 'DO', name: 'New draft', hint: 'start a blank draft', run: () => newDraft() },
     { group: 'DO', name: 'Open a Word file as a draft', hint: '.docx', run: () => setDraftsOpen(true) },
     { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: () => setDupFilesOpen(true) },
+    { group: 'DO', name: "Most-cited papers you don't have", hint: 'what your papers cite most, by topic', run: () => setMissingQuery('') },
     { group: 'DO', name: 'Show getting started', hint: 'the three steps', run: () => {
       setHideGuide(false)
       try {
@@ -655,6 +658,7 @@ export default function App() {
               focus={libFocus}
               onFindDuplicates={() => setDupFilesOpen(true)}
               onCitedPapers={setCitedFor}
+              onFindMissing={() => setMissingQuery('')}
               cited={citedIds}
             />
           </div>
@@ -776,6 +780,7 @@ export default function App() {
               onClose={() => setNetworkOpen(false)}
               onOpenPaper={showPaper}
               onCitedPapers={setCitedFor}
+              onFindMissing={setMissingQuery}
               onError={onError}
             />
           )}
@@ -876,6 +881,16 @@ export default function App() {
           onOpenPaper={showPaper}
           onChanged={refresh}
           onClose={() => setCitedFor(null)}
+          onError={onError}
+        />
+      )}
+
+      {missingQuery != null && (
+        <MissingPapersDialog
+          initialQuery={missingQuery}
+          onOpenPaper={showPaper}
+          onChanged={refresh}
+          onClose={() => setMissingQuery(null)}
           onError={onError}
         />
       )}

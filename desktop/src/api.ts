@@ -11,6 +11,7 @@ import type {
   DuplicateReport,
   Comparison,
   FetchResult,
+  MissingWorks,
   FileDuplicateReport,
   Folder,
   Health,
@@ -34,7 +35,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 5
+export const API_VERSION = 6
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -118,6 +119,7 @@ export const api = {
     request<Doc>('PUT', `/documents/${docId}/folders/${folderId}`, { member }),
 
   citedWorks: (docId: number) => request<CitedWorks>('GET', `/documents/${docId}/cited`),
+  missingWorks: (q = '') => request<MissingWorks>('GET', `/missing${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   fetchCitedWork: (docId: number, idx: number) => request<FetchResult>('POST', `/documents/${docId}/cited/${idx}/fetch`),
 
   graph: (q = '') => request<CitationGraph>('GET', `/graph${q ? `?q=${encodeURIComponent(q)}` : ''}`),
