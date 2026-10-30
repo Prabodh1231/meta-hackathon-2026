@@ -30,10 +30,19 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
   const [instruction, setInstruction] = useState('')
   const [sentences, setSentences] = useState<DraftSentence[] | null>(null)
   const [busy, setBusy] = useState(false)
+  const [picked, setPicked] = useState<Set<number>>(new Set()) // sentences ticked for inserting
+
+  const toggle = (i: number) =>
+    setPicked((p) => {
+      const n = new Set(p)
+      n.has(i) ? n.delete(i) : n.add(i)
+      return n
+    })
 
   async function draft() {
     setBusy(true)
     setSentences(null)
+    setPicked(new Set())
     try {
       const res = await api.draft(instruction.trim(), getContext(), scope.length ? scope : null, passages)
       const withIds = res.sentences.map((s) => ({
@@ -130,20 +139,41 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
           <div className="row">
             <strong>Draft</strong>
             {!!flagged && <span className="warn">{flagged} sentence(s) need attention</span>}
-            <button className="primary" onClick={() => onInsert(sentences)}>Insert into document</button>
           </div>
+          <p className="muted draft-hint">Tick the sentences you want, then insert them. Click a citation to see its quote.</p>
           {sentences.map((s, i) => (
-            <div key={i} className="draft-sentence">
-              <p>{s.text}</p>
-              {s.citations.length === 0 && <StatusBadge status="unsupported" text="no citation" />}
-              {s.citations.map((c) => (
-                <button key={c.cid} className="cite-row" onClick={() => onOpenCitation(c)} title={c.reason}>
-                  <StatusBadge status={c.status} />
-                  <span>{c.label}</span>
-                </button>
-              ))}
+            <div key={i} className={`draft-sentence${picked.has(i) ? ' picked' : ''}`}>
+              <label className="draft-pick">
+                <input type="checkbox" checked={picked.has(i)} onChange={() => toggle(i)} />
+                <p>{s.text}</p>
+              </label>
+              <div className="draft-cites">
+                {s.citations.length === 0 && <StatusBadge status="unsupported" text="no citation" />}
+                {s.citations.map((c) => (
+                  <button key={c.cid} className="cite-row" onClick={() => onOpenCitation(c)} title={c.reason}>
+                    <StatusBadge status={c.status} />
+                    <span>{c.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           ))}
+          <div className="row draft-actions">
+            <button className="link" onClick={() => setPicked(picked.size === sentences.length ? new Set() : new Set(sentences.map((_, i) => i)))}>
+              {picked.size === sentences.length ? 'Select none' : 'Select all'}
+            </button>
+            <button
+              className="primary"
+              disabled={!picked.size}
+              onClick={() => {
+                // In the draft's order, whatever order they were ticked in.
+                onInsert(sentences.filter((_, i) => picked.has(i)))
+                setPicked(new Set())
+              }}
+            >
+              {picked.size ? `Insert ${picked.size} selected` : 'Tick sentences to insert'}
+            </button>
+          </div>
         </div>
       )}
     </div>

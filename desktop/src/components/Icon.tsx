@@ -2,6 +2,8 @@
 const PATHS = {
   write: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
   focus: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  collapse: 'M8 6l6 6-6 6M19 5v14', // close a panel on the right: chevron toward its edge
+  expand: 'M16 6l-6 6 6 6M5 5v14',
   library: 'M4 5v14M8 5v14M12 5l4 14M17 5l3 13',
   network: 'M6 7a2 2 0 1 0 0-.01M18 6a2 2 0 1 0 0-.01M12 18a2 2 0 1 0 0-.01M7.8 7.8l3.2 8.4M16.4 7.4l-3.4 8.8M8 6.6h8',
   assistant: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z',

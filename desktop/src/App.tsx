@@ -970,6 +970,12 @@ export default function App() {
           <aside className="panel side-panel" aria-label="Writing tools">
             {toolsOpen ? (
               <>
+                <header className="panel-title">
+                  <h2>Writing tools</h2>
+                  <button className="panel-toggle" onClick={() => setToolsOpen(false)} title="Close the writing tools (Ctrl+\)" aria-label="Close the writing tools">
+                    <Icon name="collapse" size={18} />
+                  </button>
+                </header>
                 <div className="tabs" role="tablist" aria-label="Writing tools">
                   {TABS.map((t) => (
                     <button
@@ -985,28 +991,20 @@ export default function App() {
                       {tabBadge(t.tab)}
                     </button>
                   ))}
-                  <button
-                    className="tabs-close"
-                    onClick={() => setToolsOpen(false)}
-                    title="Close the writing tools (Ctrl+\)"
-                    aria-label="Close the writing tools"
-                  >
-                    »
-                  </button>
                 </div>
                 <p className="tab-hint">{TAB[tab].hint}</p>
               </>
             ) : (
               <nav className="tool-strip" aria-label="Writing tools">
+                <button className="panel-toggle strip-toggle" onClick={() => setToolsOpen(true)} title="Open the writing tools (Ctrl+\)" aria-label="Open the writing tools">
+                  <Icon name="expand" size={18} />
+                </button>
                 {TABS.map((t) => (
                   <button key={t.tab} className="strip-btn" onClick={() => pickTab(t.tab)} title={`${t.label}: ${t.hint}`} aria-label={t.label}>
                     <Icon name={t.icon} size={20} />
                     {tabBadge(t.tab)}
                   </button>
                 ))}
-                <button className="strip-btn strip-open" onClick={() => setToolsOpen(true)} title="Open the writing tools (Ctrl+\)" aria-label="Open the writing tools">
-                  «
-                </button>
               </nav>
             )}
             {/* Kept mounted while closed, so a draft from the Assistant or a cite search's results survive. */}

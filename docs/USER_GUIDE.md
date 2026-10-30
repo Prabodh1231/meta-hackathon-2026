@@ -33,11 +33,11 @@ The window has four parts:
 
 ### Open and close the writing tools
 
-The **»** at the end of the tabs, or `Ctrl+\`, closes the writing tools and gives the page the room. A slim strip of their icons stays on the right, with their counts (citations to confirm, duplication, change since the last version):
+The **>|** button at the top-right of the panel, beside its *Writing tools* title, or `Ctrl+\`, closes the writing tools and gives the page the room. A slim strip of their icons stays on the right, with their counts (citations to confirm, duplication, change since the last version):
 
 ![The writing tools closed to a strip of icons](images/tools-closed.png)
 
-Click an icon to open that tab, or **«** to open the panel as it was. Anything that needs a tool opens it by itself: clicking a citation or a cite marker, a count in the status bar, or an action from Ctrl K. The app remembers whether you left it open; Settings can make it always start open or closed.
+Click an icon to open that tab, or the **|<** button at the top of the strip (the same corner) to open the panel as it was. Anything that needs a tool opens it by itself: clicking a citation or a cite marker, a count in the status bar, or an action from Ctrl K. The app remembers whether you left it open; Settings can make it always start open or closed.
 
 ### Focus mode
 
@@ -126,7 +126,7 @@ The **Assistant** tab drafts from your sources. Type what you want (or pick an e
 | weak (amber) | The quote is there but only partly supports it. |
 | unsupported / quote not found (red) | The source doesn't back the sentence, or the quote isn't in it. |
 
-Click a citation to see its passage. **Insert into document** puts the draft at the cursor, or at the end if you haven't clicked into the page yet.
+Click a citation to see its passage. Tick the sentences you want to keep (or click a sentence; **Select all** ticks every one), then **Insert N selected** puts just those in, in the draft's order, at the cursor, or at the end if you haven't clicked into the page yet.
 
 ## 4. Back up each claim
 
