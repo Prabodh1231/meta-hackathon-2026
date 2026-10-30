@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.embeddings import HashEmbedder
-from app.library import Library
+from app.library import INGEST_WORKERS, Library
 from app.main import create_app
 from app.providers import MockProvider
 from app.settings import Settings
@@ -130,10 +130,10 @@ def test_re_adding_while_muse_is_down_keeps_the_good_summary(setup, tmp_path):
 def test_cancelling_skips_the_files_not_started(setup, tmp_path):
     client, provider = setup
     provider.gate.clear()  # files stop at their summary until released
-    folder = write_notes(tmp_path / "notes", 7)
+    folder = write_notes(tmp_path / "notes", INGEST_WORKERS + 3)  # a full round of workers, then 3 waiting
     job_id = client.post("/ingest/jobs", json={"paths": [str(folder)]}).json()["id"]
     end = time.time() + 10
-    while sum(f["state"] == "working" for f in client.get(f"/ingest/jobs/{job_id}").json()["files"]) < 4:
+    while sum(f["state"] == "working" for f in client.get(f"/ingest/jobs/{job_id}").json()["files"]) < INGEST_WORKERS:
         assert time.time() < end, "files never started"
         time.sleep(0.05)
     working = client.get(f"/ingest/jobs/{job_id}").json()["files"]
@@ -142,6 +142,6 @@ def test_cancelling_skips_the_files_not_started(setup, tmp_path):
     assert client.post(f"/ingest/jobs/{job_id}/cancel").json()["cancelled"]
     provider.gate.set()
     job = wait_for(client, job_id)
-    assert job["state"] == "cancelled" and (job["done"], job["skipped"]) == (4, 3)
-    assert len(client.get("/documents").json()) == 4
+    assert job["state"] == "cancelled" and (job["done"], job["skipped"]) == (INGEST_WORKERS, 3)
+    assert len(client.get("/documents").json()) == INGEST_WORKERS
     assert client.get("/ingest/jobs/999").status_code == 404

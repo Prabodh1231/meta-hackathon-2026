@@ -33,12 +33,16 @@ class FakeMuse(MockProvider):
 
     def __init__(self):
         self.asked = []  # one list of folder names per call
+        self.summaries = []  # the summary each call was given
         self.fail = False
+        self.fail_next = 0  # fail this many calls, then answer again
 
     def score_folders(self, title, summary, text, folders):
-        if self.fail:
+        if self.fail or self.fail_next:
+            self.fail_next = max(0, self.fail_next - 1)
             raise RuntimeError("Muse is down")
         self.asked.append(list(folders))
+        self.summaries.append(summary)
         found = {k: int(v) for k, v in re.findall(r"fit_(\w+)=(\d+)", text)}
         return {f: found.get(f.lower().replace(" ", "_"), 0) for f in folders}
 
@@ -242,3 +246,31 @@ def test_placements_from_before_scores_were_kept_survive_until_rescored(lib, tmp
     assert names(lib.get_document(doc["id"])) == ["Blockchain", "Digital Finance"]
     lib.classify_all()  # a full re-sort scores everything, so the 30% placement now goes
     assert names(lib.get_document(doc["id"])) == ["Blockchain"]
+
+
+def test_a_new_paper_is_filed_alongside_its_other_model_calls(lib, tmp_path):
+    # One filing call per paper, made while the summary is still being written (so without it).
+    make(lib, "Blockchain")
+    doc = add(lib, tmp_path, "a.txt", PAPER)
+    assert names(doc) == ["Blockchain"]
+    assert lib.provider.asked == [["Blockchain"]] and lib.provider.summaries == [""]
+
+
+def test_a_new_paper_is_only_asked_about_folders_it_plausibly_fits(lib, tmp_path):
+    many_papers(lib, tmp_path)
+    make(lib, "Blockchain")
+    before = len(lib.provider.asked)
+    far = add(lib, tmp_path, "new-far.txt", "New paper on sleep. cos_blockchain=0.1 fit_blockchain=90")
+    assert len(lib.provider.asked) == before  # below the library's average: never sent
+    score = lib.conn.execute("SELECT score FROM folder_scores WHERE doc_id = ?", (far["id"],)).fetchone()[0]
+    assert score <= UNCHECKED_CAP and names(far) == []
+    close = add(lib, tmp_path, "new-close.txt", "New paper on ledgers. cos_blockchain=0.9 fit_blockchain=90")
+    assert len(lib.provider.asked) == before + 1 and names(close) == ["Blockchain"]
+
+
+def test_when_early_filing_fails_the_paper_is_filed_the_usual_way(lib, tmp_path):
+    make(lib, "Blockchain")
+    lib.provider.fail_next = 1
+    doc = add(lib, tmp_path, "a.txt", PAPER)
+    assert names(doc) == ["Blockchain"]
+    assert lib.provider.summaries == [doc["summary"]]  # the retry had the stored summary

@@ -35,7 +35,7 @@ How Research Companion is put together, for anyone changing it. For using the ap
 | `library.py` | The knowledge base: ingestion, search, folders, the citation graph, drafting, verification, drafts and versions, duplicate checks. Holds one SQLite connection behind an `RLock`. |
 | `db.py` | Schema and migrations (SQLite in WAL mode, FTS5 for keyword search). |
 | `ingest.py` | Parsers for PDF, DOCX, PPTX, Markdown/text, HTML and URLs, and images. Each returns page-addressed text. |
-| `jobs.py` | Background imports: four files at a time, with per-file stages for the progress card. |
+| `jobs.py` | Background imports: eight files at a time (`INGEST_WORKERS` in `library.py`), with per-file stages for the progress card. Within a file, the Muse calls (metadata, summary, tags, folder scoring) run alongside the GPU embedding; folder scoring starts once the vectors are ready. |
 | `embeddings.py` | Local embedders: BGE-M3 on a GPU, bge-small via fastembed on CPU, a hashing fallback. |
 | `retrieval.py` | Keyword (BM25) queries, reciprocal rank fusion, the optional local reranker. |
 | `citations.py` | Finding a model's quote in the source, tolerant of whitespace, case, curly quotes and OCR slips. |

@@ -69,7 +69,9 @@ class LLMProvider(ABC):
 
     def score_folders(self, title: str, summary: str, text: str, folders: list[str]) -> dict[str, int]:
         """How well a document fits each named folder, 0-100 (folder name -> score)."""
-        user = f"Folders: {json.dumps(folders)}\n\nTitle: {title}\nSummary: {summary}\n\n{text[:6000]}"
+        # Filing can start before the summary is written; then it goes by the text alone.
+        about = f"Title: {title}\n" + (f"Summary: {summary}\n" if summary else "")
+        user = f"Folders: {json.dumps(folders)}\n\n{about}\n{text[:6000]}"
         out = self._json(prompts.FOLDER_FIT_SYSTEM, user, prompts.FOLDER_FIT_SCHEMA, max_tokens=60 + 40 * len(folders))
         by_name = {f.lower(): f for f in folders}
         scores: dict[str, int] = {}

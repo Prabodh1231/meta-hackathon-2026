@@ -38,7 +38,7 @@ MIN_DOCS_FOR_RELATIVE = 8
 UNCHECKED_CAP = 30
 
 
-INGEST_WORKERS = 4
+INGEST_WORKERS = 8
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
 MAX_KEYWORD_TAGS = 8
 MIN_TEXT_HITS = 3  # chunks of a paper that must mention a searched topic for it to count as about it
@@ -261,11 +261,20 @@ class Library:
             on_stage("analysing")
         hint = parsed.metadata.get("title") or Path(source).stem
         missing: list[str] = []
-        with ThreadPoolExecutor(max_workers=4) as pool:
+
+        def file_early():
+            # Filing used to wait for the stored summary, the slowest step of an import. It only
+            # needs the paper's vectors, to pick the folders worth asking about, and its text, so
+            # it starts as soon as the embedding is done, alongside the other model calls.
+            vectors = embed_job.result()
+            return self._judge_folders(hint, "", self._folder_text(keywords, jel_codes, parsed.pages[:4]), vectors)
+
+        with ThreadPoolExecutor(max_workers=5) as pool:
             meta_job = pool.submit(self.provider.extract_metadata, parsed.pages[0] or full_text)
             summary_job = pool.submit(self.provider.summarize, hint, full_text)
             tags_job = None if own_keywords else pool.submit(self.provider.tag_document, hint, full_text)
             embed_job = pool.submit(embed_chunks)
+            folders_job = pool.submit(file_early)
             try:
                 meta.update({k: v for k, v in meta_job.result().items() if v})
             except Exception:
@@ -286,6 +295,11 @@ class Library:
                     tags = []
                     missing.append("tags")
             vectors = embed_job.result()
+            try:
+                judged = folders_job.result()
+            except Exception:
+                log.exception("Early folder scoring failed for %s; filing it the usual way", source)
+                judged = None
         meta.update({k: v for k, v in parsed.metadata.items() if v})  # file metadata wins when present
         title = meta["title"] or Path(source).stem
         if "metadata" in missing and not meta["title"]:
@@ -351,7 +365,12 @@ class Library:
         if on_stage:
             on_stage("filing")
         try:
-            self.classify_document(doc_id)
+            if judged is not None:
+                self._save_scores(doc_id, *judged)
+                with self.lock, self.conn:
+                    self._apply_scores()
+            else:
+                self.classify_document(doc_id)
         except Exception:  # the document is stored and searchable; folders can be filled in later
             log.exception("Folder classification failed for %s", source)
         return self.get_document(doc_id)
@@ -1112,29 +1131,90 @@ class Library:
         or below the library's average it sits for each folder, in standard deviations (z).
         Raw cosines can't be read as percentages (a finance library scores every finance paper
         high for every finance folder), but the ranking they give is reliable. Call under the lock."""
+        doc_ids, cosine = self._folder_cosines(names)
+        if not len(doc_ids):
+            return {}
+        spread = cosine.std(axis=0)
+        z = (cosine - cosine.mean(axis=0)) / np.where(spread > 0, spread, 1.0)
+        return {int(d): z[i] for i, d in enumerate(doc_ids)}
+
+    def _folder_cosines(self, names: list[str]) -> tuple[np.ndarray, np.ndarray]:
+        """Each stored document's blended cosine to each folder name: (document ids, (docs, folders)).
+        Call under the lock."""
         self._load_index()
         if not len(self._ids):
-            return {}
+            return np.zeros(0, np.int64), np.zeros((0, len(names)), np.float32)
         sims = self._mat @ self._folder_vectors(names).T  # (chunks, folders)
         order = np.argsort(self._docs, kind="stable")
         groups = np.split(order, np.flatnonzero(np.diff(self._docs[order])) + 1)
-        cosine = np.stack([self._blend(sims[g]) for g in groups])
+        return np.array([self._docs[g[0]] for g in groups]), np.stack([self._blend(sims[g]) for g in groups])
+
+    def _new_paper_fit(self, vectors: np.ndarray, names: list[str]) -> np.ndarray | None:
+        """Like _relative_fit, for a paper not stored yet: how far above or below the library's
+        average its own chunk vectors sit for each folder. None for a small library. Call under the lock."""
+        doc_ids, cosine = self._folder_cosines(names)
+        if len(doc_ids) < MIN_DOCS_FOR_RELATIVE or not len(vectors):
+            return None
         spread = cosine.std(axis=0)
-        z = (cosine - cosine.mean(axis=0)) / np.where(spread > 0, spread, 1.0)
-        return {int(self._docs[g[0]]): z[i] for i, g in enumerate(groups)}
+        mine = self._blend(vectors @ self._folder_vectors(names).T)
+        return (mine - cosine.mean(axis=0)) / np.where(spread > 0, spread, 1.0)
+
+    @staticmethod
+    def _folder_text(keywords: list[str], jel_codes: list[str], pages: list[str]) -> str:
+        """What the model reads to file a paper: its first pages, after what the authors printed
+        about its subject (the strongest hint)."""
+        signals = []
+        if keywords:
+            signals.append("Keywords: " + "; ".join(keywords))
+        if jel_codes:
+            signals.append("JEL: " + "; ".join(f"{j} ({paper_meta.jel_area(j)})" for j in jel_codes))
+        return "\n".join(signals) + ("\n\n" if signals else "") + "\n\n".join(pages)
 
     def _ask_model(self, doc_id: int, names: list[str]) -> dict[str, int]:
         with self.lock:
             doc = self.get_document(doc_id)
-            text = "\n\n".join(r["text"] for r in self.conn.execute(
-                "SELECT text FROM pages WHERE doc_id = ? ORDER BY page LIMIT 4", (doc_id,)))
-        signals = []  # what the authors printed is the strongest hint of the subject
-        if doc["keywords"]:
-            signals.append("Keywords: " + "; ".join(doc["keywords"]))
-        if doc["jel_codes"]:
-            signals.append("JEL: " + "; ".join(f"{j['code']} ({j['area']})" for j in doc["jel_codes"]))
-        text = "\n".join(signals) + ("\n\n" if signals else "") + text
+            pages = [r["text"] for r in self.conn.execute(
+                "SELECT text FROM pages WHERE doc_id = ? ORDER BY page LIMIT 4", (doc_id,))]
+        text = self._folder_text(doc["keywords"], [j["code"] for j in doc["jel_codes"]], pages)
         return self.provider.score_folders(doc["title"], doc["summary"], text, names)  # network call: no lock
+
+    def _judge_folders(self, title: str, summary: str, text: str, vectors: np.ndarray):
+        """Score a paper that isn't stored yet against every folder: the embedding ranking picks
+        the plausible folders, the model judges those. Returns what _save_scores needs, or None
+        when there are no folders."""
+        with self.lock:
+            folders = self.conn.execute("SELECT id, name FROM folders ORDER BY id").fetchall()
+            if not folders:
+                return None
+            names = [f["name"] for f in folders]
+            z = self._new_paper_fit(vectors, names)
+        ask = [i for i in range(len(names)) if z is None or z[i] >= 0]
+        verdict = self.provider.score_folders(title, summary, text, [names[i] for i in ask]) if ask else {}
+        return folders, names, z, ask, verdict
+
+    def _save_scores(self, doc_id: int, folders: list, names: list[str], z: np.ndarray | None,
+                     ask: list[int], verdict: dict[str, int]) -> None:
+        """Keep a document's folder scores: the model's verdict where it judged, else the
+        embedding ranking, capped for folders the model wasn't asked about."""
+        rows = []
+        for i, f in enumerate(folders):
+            if names[i] in verdict:
+                score = verdict[names[i]]
+            elif z is not None:
+                score = int(round(min(max(50 + 25 * z[i], 0), 100)))
+                if i not in ask:
+                    score = min(score, UNCHECKED_CAP)
+            else:
+                continue
+            rows.append((doc_id, f["id"], score))
+        with self.lock, self.conn:
+            if not self.conn.execute("SELECT 1 FROM documents WHERE id = ?", (doc_id,)).fetchone():
+                return
+            alive = {r["id"] for r in self.conn.execute("SELECT id FROM folders")}  # one may be deleted meanwhile
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO folder_scores (doc_id, folder_id, score) VALUES (?, ?, ?)",
+                [r for r in rows if r[1] in alive],
+            )
 
     def _score(self, doc_ids: list[int] | None = None, folder_ids: list[int] | None = None) -> None:
         """Score documents (all by default) against folders (all by default) and keep the scores.
@@ -1164,22 +1244,7 @@ class Library:
                     verdict = self._ask_model(doc_id, [names[i] for i in ask])
                 except Exception:  # fall back to the embedding ranking for this document
                     log.exception("Folder scoring failed for document %s", doc_id)
-            rows = []
-            for i, f in enumerate(folders):
-                if names[i] in verdict:
-                    score = verdict[names[i]]
-                elif z is not None:
-                    score = int(round(min(max(50 + 25 * z[i], 0), 100)))
-                    if i not in ask:
-                        score = min(score, UNCHECKED_CAP)
-                else:
-                    continue
-                rows.append((doc_id, f["id"], score))
-            with self.lock, self.conn:
-                if self.conn.execute("SELECT 1 FROM documents WHERE id = ?", (doc_id,)).fetchone():
-                    self.conn.executemany(
-                        "INSERT OR REPLACE INTO folder_scores (doc_id, folder_id, score) VALUES (?, ?, ?)", rows
-                    )
+            self._save_scores(doc_id, folders, names, z, ask, verdict)
 
         with ThreadPoolExecutor(max_workers=min(INGEST_WORKERS, len(targets))) as pool:
             list(pool.map(one, targets))
