@@ -115,12 +115,14 @@ function createWindow() {
     },
   })
   // A file dropped where the page doesn't handle it would replace the app with that file,
-  // losing unsaved typing. Links open in the browser rather than in a window of their own.
+  // losing unsaved typing.
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== win.webContents.getURL()) e.preventDefault()
   })
+  // Links the app shows (a cited paper's free page, a Scholar search) open in the system browser,
+  // never in an app window that has the backend bridge.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/i.test(url)) shell.openExternal(url)
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
   if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL)

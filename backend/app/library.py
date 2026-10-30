@@ -11,10 +11,10 @@ from pathlib import Path
 
 import numpy as np
 
-from . import db, docx_import, draft_review, dupfiles, paper_meta
+from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
-from .citegraph import build_graph, focus, keyword_links
-from .refparse import Reference, parse_references
+from .citegraph import build_graph, focus, keyword_links, missing_works
+from .refparse import Reference, match_reference, parse_references
 from .embeddings import Embedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
@@ -64,7 +64,7 @@ DUP_DOC_COS = 0.9
 
 class Library:
     def __init__(self, settings: Settings, provider: LLMProvider | None = None, embedder: Embedder | None = None,
-                 reranker: "Reranker | None | object" = _FROM_SETTINGS):
+                 reranker: "Reranker | None | object" = _FROM_SETTINGS, open_access: openaccess.OpenAccess | None = None):
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         self.settings = settings
         self.conn = db.connect(settings.db_path)
@@ -75,6 +75,7 @@ class Library:
         self.reranker = (
             make_reranker(settings.reranker, settings.data_dir / "models") if reranker is _FROM_SETTINGS else reranker
         )
+        self.open_access = open_access or openaccess.OpenAccess(settings.contact_email)
         self._ids: np.ndarray | None = None  # in-memory vector index, rebuilt lazily
         self._docs: np.ndarray | None = None
         self._mat: np.ndarray | None = None
@@ -405,16 +406,37 @@ class Library:
                     found[r["doc_id"]]["why"].append("text")
         return found
 
+    def _graph_inputs(self) -> tuple[list[dict], dict[int, list[Reference]]]:
+        """Every paper, and every paper's reference list (a list index is the entry's idx)."""
+        self._parse_references()
+        docs = [
+            {"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
+            for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents ORDER BY id")
+        ]
+        refs: dict[int, list[Reference]] = defaultdict(list)
+        for r in self.conn.execute("SELECT * FROM doc_refs ORDER BY doc_id, idx"):
+            refs[r["doc_id"]].append(Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"]))
+        return docs, refs
+
+    def missing_works(self, query: str = "", limit: int = 100) -> dict:
+        """What the papers about a topic (every paper, with no topic) cite that the library lacks,
+        ranked by how many of them cite it."""
+        with self.lock:
+            docs, refs = self._graph_inputs()
+            matches = self._topic_matches(query) if query.strip() else None
+        citing = {d["id"] for d in docs} if matches is None else set(matches)
+        works = missing_works(docs, refs, citing)
+        titles = {d["id"]: d["title"] for d in docs}
+        for w in works[:limit]:
+            w["citers"] = [{"id": i, "title": titles[i]} for i in w["citers"]]
+        return {
+            "query": query.strip(), "papers": len(citing), "with_refs": sum(1 for i in citing if refs.get(i)),
+            "total": len(works), "cited_twice": sum(1 for w in works if w["cited_by"] >= 2), "works": works[:limit],
+        }
+
     def citation_graph(self, query: str = "") -> dict:
         with self.lock:
-            self._parse_references()
-            docs = [
-                {"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
-                for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents ORDER BY id")
-            ]
-            refs: dict[int, list[Reference]] = defaultdict(list)
-            for r in self.conn.execute("SELECT * FROM doc_refs ORDER BY doc_id, idx"):
-                refs[r["doc_id"]].append(Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"]))
+            docs, refs = self._graph_inputs()
             terms = {r["id"]: self._terms(r["id"], r["keywords"]) for r in self.conn.execute("SELECT id, keywords FROM documents")}
             matches = self._topic_matches(query) if query.strip() else None
         graph = build_graph(docs, refs)
@@ -427,6 +449,61 @@ class Library:
                 n["match"] = matches[n["doc_id"]]
         graph["query"] = query.strip()
         return graph
+
+    # ---------- cited papers ----------
+
+    def _refs_and_docs(self, doc_id: int) -> tuple[dict, list[Reference], list[dict]]:
+        with self.lock:
+            self._parse_references()
+            doc = self.get_document(doc_id)
+            refs = [Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"])
+                    for r in self.conn.execute("SELECT * FROM doc_refs WHERE doc_id = ? ORDER BY idx", (doc_id,))]
+            docs = [{"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
+                    for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents")]
+        return doc, refs, docs
+
+    def cited_works(self, doc_id: int) -> dict:
+        """A paper's reference list, each entry with the library document it matches, if any."""
+        doc, refs, docs = self._refs_and_docs(doc_id)
+        entries = []
+        for i, ref in enumerate(refs):
+            m = match_reference(ref, docs, doc["year"], doc_id)
+            entries.append({
+                "idx": i, "raw": ref.raw, "number": ref.number, "title": ref.title, "first_author": ref.first_author,
+                "year": ref.year, "doi": ref.doi, "in_library": m.doc_id if m else None, "searchable": openaccess.searchable(ref),
+            })
+        return {"doc_id": doc_id, "title": doc["title"], "references": entries}
+
+    def fetch_cited_work(self, doc_id: int, idx: int) -> dict:
+        """Find a free copy of one entry in a paper's reference list and add it to the library."""
+        doc, refs, docs = self._refs_and_docs(doc_id)
+        if not 0 <= idx < len(refs):
+            raise LookupError(f"Reference {idx} not found")
+        ref = refs[idx]
+        m = match_reference(ref, docs, doc["year"], doc_id)
+        if m:  # already here, perhaps fetched for another paper's reference list
+            return {"status": "in_library", "doc_id": m.doc_id}
+        got = self.open_access.fetch(ref, self.settings.data_dir / "papers")
+        out = {"status": got.status, "url": got.url, "reason": got.reason, "found_in": got.work.source if got.work else ""}
+        if got.status != "downloaded":
+            return out
+        [res] = self.ingest_path(str(got.path))
+        if not res["ok"]:
+            got.path.unlink(missing_ok=True)
+            return {**out, "status": "failed", "reason": f"Downloaded, but couldn't be read: {res['error']}"}
+        added = res["document"]
+        # The index matched the work by DOI or by title and year, so its title is the right one; a
+        # PDF's own title is often a file name ("Microsoft Word - final3.docx"), which would also
+        # keep the next look-up from seeing the paper is already here. DOI, year and URL fill gaps.
+        known = {"url": got.url, "doi": got.work.doi, "year": got.work.year}
+        fill = {k: v for k, v in known.items() if v and not added[k]}
+        if got.work.title:
+            fill["title"] = got.work.title
+        if fill:
+            with self.lock, self.conn:
+                cols = ", ".join(f"{k} = ?" for k in fill)
+                self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*fill.values(), added["id"]))
+        return {**out, "doc_id": added["id"], "document": self.get_document(added["id"])}
 
     # ---------- documents ----------
 

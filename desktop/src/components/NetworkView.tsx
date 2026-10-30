@@ -6,6 +6,8 @@ import type { CitationGraph, GraphNode } from '../types'
 interface Props {
   onClose: () => void
   onOpenPaper: (docId: number) => void
+  onCitedPapers: (docId: number) => void
+  onFindMissing: (topic: string) => void
   onError: (message: string) => void
 }
 
@@ -17,7 +19,7 @@ function byline(n: GraphNode): string {
 
 /** The library as a network: papers, who cites whom, who shares references, and the works
  *  several papers cite that the library lacks. */
-export function NetworkView({ onClose, onOpenPaper, onError }: Props) {
+export function NetworkView({ onClose, onOpenPaper, onCitedPapers, onFindMissing, onError }: Props) {
   const [graph, setGraph] = useState<CitationGraph | null>(null)
   const [showShared, setShowShared] = useState(true)
   const [showMissing, setShowMissing] = useState(true)
@@ -154,7 +156,10 @@ export function NetworkView({ onClose, onOpenPaper, onError }: Props) {
               <p className="muted">{node.kind === 'paper' ? `Cites ${node.cites} shown here · ` : ''}cited by {node.cited_by} paper{node.cited_by === 1 ? '' : 's'} in your library</p>
               {node.match && <p className="muted">Matches “{topic}” through its {node.match.why.join(', ')}{node.match.hits ? ` (${node.match.hits} passages)` : ''}</p>}
               {node.kind === 'paper' && node.doc_id !== undefined && (
-                <button onClick={() => onOpenPaper(node.doc_id!)}>Open in library</button>
+                <div className="network-actions">
+                  <button onClick={() => onOpenPaper(node.doc_id!)}>Open in library</button>
+                  {node.parsed && <button onClick={() => onCitedPapers(node.doc_id!)}>Get cited papers…</button>}
+                </div>
               )}
               <NodeList title="Cites" items={links.cites.map((n) => ({ node: n }))} onPick={setPicked} />
               <NodeList title="Cited by" items={links.citedBy.map((n) => ({ node: n }))} onPick={setPicked} />
@@ -165,6 +170,11 @@ export function NetworkView({ onClose, onOpenPaper, onError }: Props) {
             <>
               {topic && graph && graph.nodes.length === 0 && <p className="muted">No paper in your library is about “{topic}”.</p>}
               <h3>{topic ? `Works these papers cite but you don't have` : `Works you cite but don't have`}</h3>
+              <div className="network-actions">
+                <button onClick={() => onFindMissing(topic)} title="Every missing work ranked by how many papers cite it, with free copies to download">
+                  Rank and download…
+                </button>
+              </div>
               {graph && graph.missing.length === 0 && <p className="muted">No work is cited by two or more papers yet.</p>}
               <NodeList title="" items={(graph?.missing ?? []).slice(0, 25).map((n) => ({ node: n }))} onPick={setPicked} badge={(n) => `${n.cited_by} papers`} />
               {noList > 0 && <p className="muted network-foot">{noList} paper{noList === 1 ? '' : 's'} had no reference list to read.</p>}

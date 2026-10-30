@@ -1,10 +1,11 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_VERSION, api, backendLogPath } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
 import { CitePanel } from './components/CitePanel'
 import type { CiteMarkAttrs } from './editor/citeMark'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
+import { CitedPapersDialog } from './components/CitedPapersDialog'
 import { DraftsPanel } from './components/DraftsPanel'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { ExportControl } from './components/ExportControl'
@@ -13,6 +14,7 @@ import { HistoryPanel } from './components/HistoryPanel'
 import { Icon, type IconName } from './components/Icon'
 import { LibraryPanel } from './components/LibraryPanel'
 import { ago, toneOf } from './components/Meters'
+import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { ReferencesPanel } from './components/ReferencesPanel'
 import { ReviewPanel } from './components/ReviewPanel'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -158,6 +160,8 @@ export default function App() {
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
   const [citeMarks, setCiteMarks] = useState<CiteMarkAttrs[]>([]) // "cite" markers in the draft, searching or waiting
   const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker the Cite panel is showing
+  const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
+  const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryWide, setLibraryWide] = useState(false) // library as a file manager
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -182,6 +186,8 @@ export default function App() {
   const wordInput = useRef<HTMLInputElement>(null)
   const [dropping, setDropping] = useState(false) // files dragged over the window
   const [jobs, setJobs] = useState<IngestJob[]>([]) // background imports, newest first
+  // Papers the draft cites, for the library to mark. Recounted whenever the draft's stats change.
+  const citedIds = useMemo(() => editor.current?.citedDocIds() ?? [], [stats, draftId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = window.setInterval(() => setTick((n) => n + 1), 30000)
@@ -693,6 +699,7 @@ export default function App() {
     { group: 'DO', name: 'Show drafts', hint: 'switch, import or delete', run: () => openDrafts() },
     { group: 'DO', name: 'Import a Word file', hint: '.docx · Ctrl+O', run: pickWord },
     { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: () => setDupFilesOpen(true) },
+    { group: 'DO', name: "Most-cited papers you don't have", hint: 'what your papers cite most, by topic', run: () => setMissingQuery('') },
     { group: 'DO', name: 'Show getting started', hint: 'the three steps', run: () => {
       setHideGuide(false)
       try {
@@ -849,6 +856,9 @@ export default function App() {
               onCancelJob={cancelJob}
               onDismissJob={(id) => setJobs((js) => js.filter((j) => j.id !== id))}
               onFindDuplicates={() => setDupFilesOpen(true)}
+              onCitedPapers={setCitedFor}
+              onFindMissing={() => setMissingQuery('')}
+              cited={citedIds}
             />
           </div>
 
@@ -982,6 +992,8 @@ export default function App() {
               <NetworkView
                 onClose={() => setNetworkOpen(false)}
                 onOpenPaper={showPaper}
+                onCitedPapers={setCitedFor}
+                onFindMissing={setMissingQuery}
                 onError={onError}
               />
             </Suspense>
@@ -1092,6 +1104,26 @@ export default function App() {
           getCited={() => editor.current?.citedDocIds() ?? []}
           onChanged={refresh}
           onClose={() => setDupFilesOpen(false)}
+          onError={onError}
+        />
+      )}
+
+      {citedFor != null && (
+        <CitedPapersDialog
+          docId={citedFor}
+          onOpenPaper={showPaper}
+          onChanged={refresh}
+          onClose={() => setCitedFor(null)}
+          onError={onError}
+        />
+      )}
+
+      {missingQuery != null && (
+        <MissingPapersDialog
+          initialQuery={missingQuery}
+          onOpenPaper={showPaper}
+          onChanged={refresh}
+          onClose={() => setMissingQuery(null)}
           onError={onError}
         />
       )}

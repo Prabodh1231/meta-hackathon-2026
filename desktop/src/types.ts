@@ -22,6 +22,7 @@ export interface Doc {
   jel_codes: { code: string; area: string }[] // JEL classification codes, with their top-level field
   folders: DocFolder[]
   label: string
+  added_at: string // "YYYY-MM-DD HH:MM:SS", UTC
 }
 
 /** A virtual folder a document is filed under: 'auto' was the classifier's call, 'user' was added by hand. */
@@ -158,6 +159,60 @@ export interface CitationGraph {
   missing: GraphNode[]
   isolated: number[]
   query?: string
+}
+
+/** One entry of a paper's reference list. `in_library`: the library document it matches. */
+export interface CitedWork {
+  idx: number
+  raw: string
+  number: number | null
+  title: string
+  first_author: string
+  year: number | null
+  doi: string
+  in_library: number | null
+  searchable: boolean // has a DOI or a title long enough to look up
+}
+
+export interface CitedWorks {
+  doc_id: number
+  title: string
+  references: CitedWork[]
+}
+
+/** A work papers in the library cite but the library lacks, with who cites it. `ref`: one
+ *  reference entry to fetch it by (one with a DOI when any has). */
+export interface MissingWork {
+  id: string // the same id the citation network gives its node
+  title: string
+  first_author: string
+  year: number | null
+  doi: string
+  cited_by: number
+  citers: { id: number; title: string }[]
+  ref: { doc_id: number; idx: number }
+}
+
+export interface MissingWorks {
+  query: string
+  papers: number // papers searched: about the topic, or every paper
+  with_refs: number // of those, how many had a reference list to read
+  total: number // works missing, before the limit
+  cited_twice: number // of those, cited by two or more papers
+  works: MissingWork[]
+}
+
+/** downloaded: added to the library · link: free to read online, no PDF to download ·
+ *  no_free_copy: found, but paywalled · not_found: no index knows it · failed: an error */
+export type FetchStatus = 'in_library' | 'downloaded' | 'link' | 'no_free_copy' | 'not_found' | 'failed'
+
+export interface FetchResult {
+  status: FetchStatus
+  doc_id?: number
+  document?: Doc
+  url?: string
+  reason?: string
+  found_in?: string // the index that found it: OpenAlex or Semantic Scholar
 }
 
 export interface Health {
