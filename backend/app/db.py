@@ -161,6 +161,9 @@ _ADDED_COLUMNS = [
     ("documents", "keywords", "TEXT NOT NULL DEFAULT '[]'"),
     ("documents", "jel_codes", "TEXT NOT NULL DEFAULT '[]'"),
     ("documents", "refs_parsed", "INTEGER NOT NULL DEFAULT 0"),  # 1 once doc_refs holds its reference list
+    # Model work that failed when the document was added ("metadata", "title", "summary", "tags"),
+    # to be retried; the document is stored and searchable meanwhile.
+    ("documents", "missing", "TEXT NOT NULL DEFAULT '[]'"),
 ]
 
 

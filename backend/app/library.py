@@ -90,9 +90,10 @@ class Library:
             raise LookupError(f"No such file or folder: {p}")
         return self.ingest_paths([path])
 
-    def ingest_paths(self, paths: list[str]) -> list[dict]:
-        """Files and folders (searched recursively) added in one go, so they share the worker
-        pool instead of one file waiting for the last. A missing path is reported, not raised."""
+    @staticmethod
+    def expand_paths(paths: list[str]) -> tuple[list[Path], list[dict]]:
+        """The files to read for these files and folders (searched recursively), each once, and
+        a failed result for each path that doesn't exist."""
         files: list[Path] = []
         missing: list[dict] = []
         for path in paths:
@@ -106,25 +107,93 @@ class Library:
                 files.append(p)
             else:
                 files += sorted(f for f in p.rglob("*") if f.is_file() and is_supported(f))
-        files = list({str(f.resolve()): f for f in files}.values())  # the same file picked twice, once
+        return list({str(f.resolve()): f for f in files}.values()), missing  # the same file picked twice, once
 
-        def ingest_one(f: Path) -> dict:
-            try:
-                parsed = parse_file(f, self.provider.transcribe_image)
-                return {"source": str(f), "ok": True, "document": self._store(parsed, str(f.resolve()))}
-            except Exception as exc:
-                log.exception("Failed to ingest %s", f)
-                return {"source": str(f), "ok": False, "error": str(exc)}
+    def ingest_file(self, f: Path, on_stage=None) -> dict:
+        """Read and store one file. `on_stage("reading" | "analysing" | "filing")` reports progress."""
+        try:
+            if on_stage:
+                on_stage("reading")
+            parsed = parse_file(f, self.provider.transcribe_image)
+            return {"source": str(f), "ok": True, "document": self._store(parsed, str(f.resolve()), on_stage)}
+        except Exception as exc:
+            log.exception("Failed to ingest %s", f)
+            return {"source": str(f), "ok": False, "error": str(exc)}
 
+    def ingest_paths(self, paths: list[str]) -> list[dict]:
+        """Files and folders added in one go, so they share the worker pool instead of one file
+        waiting for the last. A missing path is reported, not raised. (The app uses IngestJobs,
+        which does the same in the background and reports each file's progress.)"""
+        files, missing = self.expand_paths(paths)
         # Each file spends most of its time waiting on Muse (about 3 s per call), so a few at once
         # cut a folder's time by roughly the worker count. map() keeps the results in file order.
         with ThreadPoolExecutor(max_workers=min(INGEST_WORKERS, max(len(files), 1))) as pool:
-            return list(pool.map(ingest_one, files)) + missing
+            return list(pool.map(self.ingest_file, files)) + missing
 
     def ingest_url(self, url: str) -> dict:
         return self._store(parse_url(url), url)
 
-    def _store(self, parsed: ParsedDocument, source: str) -> dict:
+    def fill_missing(self, doc_ids: list[int] | None = None) -> dict:
+        """Try again the model calls that failed when documents were added (all such documents,
+        or those in `doc_ids`). Only fills what is still empty, and never a field the user
+        corrected. Returns how many documents are now complete and how many still aren't."""
+        with self.lock:
+            rows = [dict(r) for r in self.conn.execute(
+                "SELECT id, title, authors, year, venue, doi, missing, edited_fields FROM documents WHERE missing != '[]'")]
+        if doc_ids is not None:
+            wanted = set(doc_ids)
+            rows = [r for r in rows if r["id"] in wanted]
+
+        def one(r: dict) -> bool:
+            owed, edited = json.loads(r["missing"]), set(json.loads(r["edited_fields"]))
+            with self.lock:
+                pages = [p["text"] for p in self.conn.execute("SELECT text FROM pages WHERE doc_id = ? ORDER BY page", (r["id"],))]
+            full = "\n\n".join(pages)
+            updates: dict = {}
+            still: list[str] = []
+            new_tags: list[str] = []
+            title = r["title"]
+            if "metadata" in owed:
+                try:
+                    meta = self.provider.extract_metadata(pages[0] if pages and pages[0].strip() else full)
+                    if meta.get("title") and "title" in owed and "title" not in edited:
+                        updates["title"] = title = meta["title"]
+                    if meta.get("authors") and not json.loads(r["authors"]) and "authors" not in edited:
+                        updates["authors"] = json.dumps(meta["authors"])
+                    for key in ("year", "venue", "doi"):
+                        if meta.get(key) and not r[key] and key not in edited:
+                            updates[key] = meta[key]
+                except Exception:
+                    log.exception("Metadata extraction failed again for document %s", r["id"])
+                    still += [m for m in ("metadata", "title") if m in owed]
+            if "summary" in owed:
+                try:
+                    updates["summary"] = self.provider.summarize(title, full)
+                except Exception:
+                    log.exception("Summary failed again for document %s", r["id"])
+                    still.append("summary")
+            if "tags" in owed:
+                try:
+                    new_tags = self.provider.tag_document(title, full)
+                except Exception:
+                    log.exception("Tagging failed again for document %s", r["id"])
+                    still.append("tags")
+            updates["missing"] = json.dumps(still)
+            with self.lock, self.conn:
+                if not self.conn.execute("SELECT 1 FROM documents WHERE id = ?", (r["id"],)).fetchone():
+                    return True  # removed meanwhile
+                cols = ", ".join(f"{k} = ?" for k in updates)
+                self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*updates.values(), r["id"]))
+                self.conn.executemany("INSERT OR IGNORE INTO tags (doc_id, tag) VALUES (?, ?)", [(r["id"], t) for t in new_tags])
+            return not still
+
+        if not rows:
+            return {"filled": 0, "still_missing": 0}
+        with ThreadPoolExecutor(max_workers=min(INGEST_WORKERS, len(rows))) as pool:
+            done = list(pool.map(one, rows))
+        return {"filled": sum(done), "still_missing": len(done) - sum(done)}
+
+    def _store(self, parsed: ParsedDocument, source: str, on_stage=None) -> dict:
         full_text = "\n\n".join(parsed.pages)
         if not full_text.strip():
             raise ValueError("No text could be extracted")
@@ -146,7 +215,12 @@ class Library:
         # Metadata, summary, tags and embeddings don't depend on each other, so all of them run
         # at once: a file takes about one model call's time instead of three in a row. The summary
         # and tags only use the title as a heading, so the file's own title (or name) does.
+        # A failed model call (rate limit, timeout, Muse down) doesn't lose the file: it's stored
+        # with that part left out and listed in `missing`, for fill_missing() to try again.
+        if on_stage:
+            on_stage("analysing")
         hint = parsed.metadata.get("title") or Path(source).stem
+        missing: list[str] = []
         with ThreadPoolExecutor(max_workers=4) as pool:
             meta_job = pool.submit(self.provider.extract_metadata, parsed.pages[0] or full_text)
             summary_job = pool.submit(self.provider.summarize, hint, full_text)
@@ -156,11 +230,26 @@ class Library:
                 meta.update({k: v for k, v in meta_job.result().items() if v})
             except Exception:
                 log.exception("Metadata extraction failed for %s", source)
-            summary = summary_job.result()
-            tags = keywords[:MAX_KEYWORD_TAGS] if own_keywords else tags_job.result()
+                missing.append("metadata")
+            try:
+                summary = summary_job.result()
+            except Exception:
+                log.exception("Summary failed for %s", source)
+                summary = ""
+                missing.append("summary")
+            tags: list[str] = keywords[:MAX_KEYWORD_TAGS]
+            if not own_keywords:
+                try:
+                    tags = tags_job.result()
+                except Exception:
+                    log.exception("Tagging failed for %s", source)
+                    tags = []
+                    missing.append("tags")
             vectors = embed_job.result()
         meta.update({k: v for k, v in parsed.metadata.items() if v})  # file metadata wins when present
         title = meta["title"] or Path(source).stem
+        if "metadata" in missing and not meta["title"]:
+            missing.append("title")  # only the file name for now
 
         fields = {
             "kind": parsed.kind, "title": title, "authors": json.dumps(meta["authors"]), "year": meta["year"],
@@ -170,7 +259,7 @@ class Library:
         }
         with self.lock, self.conn:
             existing = self.conn.execute(
-                "SELECT id, edited_fields FROM documents WHERE source = ?", (source,)
+                "SELECT id, edited_fields, missing FROM documents WHERE source = ?", (source,)
             ).fetchone()
             if existing:
                 # Re-adding a file refreshes its content in place: the id (which citations in
@@ -178,6 +267,17 @@ class Library:
                 doc_id = existing["id"]
                 for key in json.loads(existing["edited_fields"]):
                     fields.pop(key, None)
+                # A call that failed this time keeps what the last reading found, if it found it.
+                had_missing = set(json.loads(existing["missing"]))
+                owed = {"summary": ["summary"], "title": ["title"],
+                        "metadata": [k for k in ("authors", "year", "venue", "doi", "url") if not parsed.metadata.get(k)]}
+                for item in [m for m in missing if m in owed and m not in had_missing]:
+                    missing.remove(item)
+                    for key in owed[item]:
+                        fields.pop(key, None)
+                if "tags" in missing and self.conn.execute("SELECT 1 FROM tags WHERE doc_id = ?", (doc_id,)).fetchone():
+                    missing.remove("tags")  # tags aren't replaced on re-adding, and it has some
+                fields["missing"] = json.dumps(missing)
                 cols = ", ".join(f"{k} = ?" for k in fields)
                 self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*fields.values(), doc_id))
                 self.conn.execute("DELETE FROM pages WHERE doc_id = ?", (doc_id,))
@@ -185,6 +285,7 @@ class Library:
                 self.conn.execute("DELETE FROM doc_refs WHERE doc_id = ?", (doc_id,))
                 self.conn.execute("UPDATE documents SET refs_parsed = 0 WHERE id = ?", (doc_id,))
             else:
+                fields["missing"] = json.dumps(missing)
                 cols = ", ".join(fields)
                 [doc_id] = self._allocate_ids("documents", 1)
                 self.conn.execute(
@@ -207,6 +308,8 @@ class Library:
                 ],
             )
             self._invalidate_index()
+        if on_stage:
+            on_stage("filing")
         try:
             self.classify_document(doc_id)
         except Exception:  # the document is stored and searchable; folders can be filled in later
@@ -360,6 +463,7 @@ class Library:
             d["authors"] = json.loads(d["authors"])
             d["edited_fields"] = json.loads(d["edited_fields"])
             d["keywords"] = json.loads(d["keywords"])
+            d["missing"] = json.loads(d["missing"])
             d["jel_codes"] = [{"code": c, "area": paper_meta.jel_area(c)} for c in json.loads(d["jel_codes"])]
             d["tags"] = tags[d["id"]]
             d["folders"] = folders[d["id"]]

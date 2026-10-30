@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
-import type { Doc, Folder, IngestResult } from '../types'
+import type { Doc, Folder, IngestJob } from '../types'
+import { ImportProgress, owedText } from './ImportProgress'
 
 interface Props {
   docs: Doc[]
@@ -13,8 +14,12 @@ interface Props {
   onError: (msg: string) => void
   /** A paper to bring into view and open (from the network view or the palette); `n` changes per request. */
   focus?: { id: number; n: number } | null
-  /** Work done for the library elsewhere (files dropped on the window), shown like its own. */
-  busyLabel?: string | null
+  /** Background imports, newest first, with each file's progress. */
+  jobs: IngestJob[]
+  /** Add files and folders on disk, in the background. */
+  onAddPaths: (paths: string[]) => Promise<void>
+  onCancelJob: (id: number) => void
+  onDismissJob: (id: number) => void
   onFindDuplicates: () => void
 }
 
@@ -298,6 +303,11 @@ function Row({
         <span className="lb-row-title">{d.title}</span>
         <span className="lb-row-meta">
           <span className={`kind kind-${d.kind}`}>{KIND_LABEL[d.kind]}</span>
+          {d.missing.length > 0 && (
+            <span className="lb-row-owed" title={`Muse couldn't write its ${owedText(d.missing)} when it was added`}>
+              no {owedText(d.missing)} yet
+            </span>
+          )}
           {meta && <span className="lb-row-by">{meta}</span>}
         </span>
       </button>
@@ -317,13 +327,14 @@ function Row({
 }
 
 /** Everything about one source: summary, folders, keywords, and removing it. */
-function Detail({ doc: d, on, onToggle, onClose, closeLabel, run }: {
+function Detail({ doc: d, on, onToggle, onClose, closeLabel, run, onRetry }: {
   doc: Doc
   on: boolean
   onToggle: () => void
   onClose: () => void
   closeLabel: string
   run: Run
+  onRetry: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
   useEffect(() => setConfirming(false), [d.id])
@@ -347,6 +358,15 @@ function Detail({ doc: d, on, onToggle, onClose, closeLabel, run }: {
           <p className="muted">
             DOI <span className="lb-doi">{d.doi}</span>
           </p>
+        )}
+
+        {d.missing.length > 0 && (
+          <div className="lb-owed">
+            <span>Muse couldn't write its {owedText(d.missing)} when it was added. It's searchable and citable meanwhile.</span>
+            <button className="link" onClick={onRetry}>
+              Try again
+            </button>
+          </div>
         )}
 
         <button className={`lb-use${on ? ' on' : ''}`} onClick={onToggle} aria-pressed={on}>
@@ -404,39 +424,33 @@ function Detail({ doc: d, on, onToggle, onClose, closeLabel, run }: {
 }
 
 /** Paste a link or path, or pick files and folders: everything that adds a source, in one menu. */
-function AddMenu({ busy, run, reportFailures }: { busy: boolean; run: Run; reportFailures: (r: IngestResult[]) => void }) {
+function AddMenu({ busy, run, onAddPaths }: { busy: boolean; run: Run; onAddPaths: (paths: string[]) => Promise<void> }) {
   const [open, setOpen] = useState(false)
   const [source, setSource] = useState('')
   const box = useRef<HTMLDivElement>(null)
   useDismiss(open, box, () => setOpen(false))
 
+  // Files and folders are read in the background, with each file's progress shown here.
   const addFiles = async () => {
     setOpen(false)
     const files = (await window.rc?.pickFiles()) ?? []
-    if (!files.length) return
-    // One request for all of them: the backend reads several at once instead of one by one.
-    await run(`Adding ${files.length} file${files.length === 1 ? '' : 's'}…`, async () =>
-      reportFailures((await api.ingestPaths(files)).results),
-    )
+    if (files.length) await onAddPaths(files)
   }
 
   const addDiskFolder = async () => {
     setOpen(false)
     const folder = await window.rc?.pickFolder()
-    if (folder) await run('Reading folder…', async () => reportFailures((await api.ingestPath(folder)).results))
+    if (folder) await onAddPaths([folder])
   }
 
   // One field for both web pages and local paths, so there's nothing to choose between.
   const addSource = () => {
     const value = source.trim().replace(/^"(.*)"$/, '$1')
     if (!value) return
-    const isUrl = /^https?:\/\//i.test(value)
     setOpen(false)
     setSource('')
-    run(isUrl ? 'Fetching page…' : 'Reading…', async () => {
-      if (isUrl) await api.ingestUrl(value)
-      else reportFailures((await api.ingestPath(value)).results)
-    })
+    if (/^https?:\/\//i.test(value)) run('Fetching page…', () => api.ingestUrl(value))
+    else onAddPaths([value])
   }
 
   return (
@@ -525,9 +539,10 @@ function MoreMenu({ docs, folders, busy, run, onFindDuplicates }: {
   )
 }
 
-export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, busyLabel, onFindDuplicates }: Props) {
-  const [ownBusy, setBusy] = useState<string | null>(null)
-  const busy = ownBusy ?? busyLabel ?? null
+export function LibraryPanel({
+  docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, jobs, onAddPaths, onCancelJob, onDismissJob, onFindDuplicates,
+}: Props) {
+  const [busy, setBusy] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<'all' | Doc['kind']>('all')
   const [open, setOpen] = useState<number | null>(null) // doc whose details are showing
@@ -548,10 +563,14 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
     }
   }
 
-  function reportFailures(results: IngestResult[]) {
-    const failed = results.filter((r) => !r.ok)
-    if (failed.length) onError(failed.map((f) => `${f.source.split(/[\\/]/).pop()}: ${f.error}`).join('\n'))
-  }
+  /** Ask Muse again for what failed when sources were added (all of them, or `ids`). */
+  const retry = (ids?: number[]) =>
+    run('Asking Muse again…', async () => {
+      const r = await api.fillMissing(ids)
+      if (r.still_missing) {
+        onError(`Muse still couldn't finish ${r.still_missing} source${r.still_missing === 1 ? '' : 's'}. They stay searchable; try again in a few minutes.`)
+      }
+    })
 
   // Bring a requested paper into view: show everything, open its details, scroll to it.
   useEffect(() => {
@@ -601,6 +620,8 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
   }, [docs, kind, needle, scope, sort])
 
   const unfiled = docs.filter((d) => d.folders.length === 0).length
+  const owed = docs.filter((d) => d.missing.length > 0).length
+  const importing = jobs.some((j) => j.finished_at == null) // the job retries them itself when it ends
   const kinds = (Object.keys(KIND_LABEL) as Doc['kind'][])
     .map((k) => ({ kind: k, n: docs.filter((d) => d.kind === k).length }))
     .filter((k) => k.n > 0)
@@ -782,7 +803,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
             {folders.length > 0 && ` · ${folders.length} folder${folders.length === 1 ? '' : 's'}`}
           </span>
         </div>
-        <AddMenu busy={!!busy} run={run} reportFailures={reportFailures} />
+        <AddMenu busy={!!busy} run={run} onAddPaths={onAddPaths} />
         <button
           className="lb-icon-btn"
           onClick={onToggleWide}
@@ -801,6 +822,24 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
           </>
         )}
       </div>
+      {(jobs.length > 0 || (owed > 0 && !importing)) && (
+        <div className="lb-jobs">
+          {jobs.map((j) => (
+            <ImportProgress key={j.id} job={j} onCancel={() => onCancelJob(j.id)} onDismiss={() => onDismissJob(j.id)} />
+          ))}
+          {owed > 0 && !importing && (
+            <div className="lb-owed lb-owed-all">
+              <span>
+                {owed} source{owed === 1 ? ' has' : 's have'} no {owedText(docs.flatMap((d) => d.missing))} yet: Muse was unavailable when{' '}
+                {owed === 1 ? 'it was' : 'they were'} added.
+              </span>
+              <button className="link" onClick={() => retry()} disabled={!!busy}>
+                Try again
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <datalist id="folder-names">
         {folders.map((f) => (
@@ -842,6 +881,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
             onClose={() => setOpen(null)}
             closeLabel={wide ? 'Close' : scopeName}
             run={run}
+            onRetry={() => retry([detail.id])}
           />
         )}
       </div>

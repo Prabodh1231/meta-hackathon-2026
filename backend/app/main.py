@@ -7,7 +7,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .export_docx import export_docx
-from .library import Library
+from .jobs import IngestJobs
+from .library import INGEST_WORKERS, Library
 from .parent_watch import exit_with_parent
 from .settings import Settings
 
@@ -21,6 +22,10 @@ class IngestPathIn(BaseModel):
 
 class IngestPathsIn(BaseModel):
     paths: list[str] = Field(min_length=1, max_length=2000)
+
+
+class FillMissingIn(BaseModel):
+    doc_ids: list[int] | None = None  # every document with missing parts when left out
 
 
 class IngestUrlIn(BaseModel):
@@ -109,7 +114,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 5
+API_VERSION = 6
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -158,6 +163,8 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     lib = library or Library(settings)
     app = FastAPI(title="Research Companion")
     app.state.library = lib
+    jobs = IngestJobs(lib, INGEST_WORKERS)
+    app.state.jobs = jobs
 
     @app.middleware("http")
     async def require_token(request: Request, call_next):
@@ -197,6 +204,28 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def ingest_paths(body: IngestPathsIn):
         """Several files and folders at once: they're read in parallel, not one request per file."""
         return {"results": lib.ingest_paths(body.paths)}
+
+    @app.post("/ingest/jobs")
+    def start_ingest_job(body: IngestPathsIn):
+        """Add files and folders in the background; poll the job for each file's progress."""
+        return jobs.start(body.paths)
+
+    @app.get("/ingest/jobs")
+    def list_ingest_jobs():
+        return jobs.list()
+
+    @app.get("/ingest/jobs/{job_id}")
+    def get_ingest_job(job_id: int):
+        return jobs.get(job_id)
+
+    @app.post("/ingest/jobs/{job_id}/cancel")
+    def cancel_ingest_job(job_id: int):
+        return jobs.cancel(job_id)
+
+    @app.post("/library/fill-missing")
+    def fill_missing(body: FillMissingIn):
+        """Try again the summaries, tags and metadata that failed when documents were added."""
+        return lib.fill_missing(body.doc_ids)
 
     @app.post("/ingest/url")
     def ingest_url(body: IngestUrlIn):

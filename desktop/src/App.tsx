@@ -33,6 +33,7 @@ import type {
   DuplicateReport,
   Folder,
   Health,
+  IngestJob,
   Settings,
   SourceMatch,
   VersionList,
@@ -178,7 +179,7 @@ export default function App() {
   const [importing, setImporting] = useState<File | null>(null) // the Word file in the import dialog
   const wordInput = useRef<HTMLInputElement>(null)
   const [dropping, setDropping] = useState(false) // files dragged over the window
-  const [libBusy, setLibBusy] = useState<string | null>(null) // adding dropped files to the library
+  const [jobs, setJobs] = useState<IngestJob[]>([]) // background imports, newest first
 
   useEffect(() => {
     const t = window.setInterval(() => setTick((n) => n + 1), 30000)
@@ -374,18 +375,46 @@ export default function App() {
   }
 
   /** Add files or folders on disk to the library, all in one request. */
+  /** Add files or folders on disk to the library in the background; the library shows progress. */
   async function addToLibrary(paths: string[]) {
     openLibrary()
-    setLibBusy(`Adding ${paths.length} file${paths.length === 1 ? '' : 's'}…`)
     try {
-      const { results } = await api.ingestPaths(paths)
-      await refresh()
-      const failed = results.filter((r) => !r.ok)
-      const added = results.length - failed.length
-      if (added) setNotice(`Added ${added} source${added === 1 ? '' : 's'} to your library.`)
-      if (failed.length) onError(failed.map((f) => `${f.source.split(/[\\/]/).pop()}: ${f.error}`).join('\n'))
-    } finally {
-      setLibBusy(null)
+      const job = await api.startIngest(paths)
+      setJobs((js) => [job, ...js.filter((j) => j.id !== job.id)])
+    } catch (e) {
+      onError(`Could not start adding files: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
+  // Follow running imports: the library list updates as each file lands, and when an import
+  // ends a short summary is shown (the details stay in the library until dismissed).
+  useEffect(() => {
+    const running = jobs.filter((j) => j.finished_at == null)
+    if (!running.length) return
+    const t = window.setTimeout(async () => {
+      let fresh: IngestJob[]
+      try {
+        fresh = await Promise.all(running.map((j) => api.ingestJob(j.id)))
+      } catch {
+        return // backend restarting: the next poll tries again (the dock shows it's offline)
+      }
+      const before = new Map(running.map((j) => [j.id, j]))
+      setJobs((js) => js.map((j) => fresh.find((f) => f.id === j.id) ?? j))
+      if (fresh.some((f) => f.done !== before.get(f.id)?.done || f.finished_at)) refresh().catch(() => {})
+      for (const f of fresh.filter((f) => f.finished_at)) {
+        if (f.state === 'failed') onError(`Adding files stopped: ${f.error}`)
+        else if (f.done) setNotice(`Added ${f.done} source${f.done === 1 ? '' : 's'} to your library${f.failed ? `; ${f.failed} couldn't be read` : ''}.`)
+      }
+    }, 700)
+    return () => window.clearTimeout(t)
+  }, [jobs, refresh, onError])
+
+  async function cancelJob(id: number) {
+    try {
+      const job = await api.cancelIngest(id)
+      setJobs((js) => js.map((j) => (j.id === id ? job : j)))
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -471,6 +500,11 @@ export default function App() {
             .settings()
             .then(setSettings)
             .catch((e) => onError(`Could not load settings: ${e instanceof Error ? e.message : e}`))
+          // An import still running from before a reload keeps showing its progress.
+          api
+            .ingestJobs()
+            .then((js) => setJobs(js.filter((j) => j.finished_at == null)))
+            .catch(() => {})
           await refresh()
           return
         } catch {
@@ -660,6 +694,10 @@ export default function App() {
     { group: 'DO', name: 'Settings', hint: 'theme, citation style', run: () => setShowSettings(true) },
   ]
 
+  const running = jobs.filter((j) => j.finished_at == null)
+  const importingNow = running.length
+    ? { total: running.reduce((n, j) => n + j.total, 0), settled: running.reduce((n, j) => n + j.done + j.failed + j.skipped, 0) }
+    : null
   const latest = versions?.versions[0]
   const change = versions?.current_change ?? null
   const dupPct = dup.report?.overall ?? null
@@ -795,7 +833,10 @@ export default function App() {
               onChanged={refresh}
               onError={onError}
               focus={libFocus}
-              busyLabel={libBusy}
+              jobs={jobs}
+              onAddPaths={addToLibrary}
+              onCancelJob={cancelJob}
+              onDismissJob={(id) => setJobs((js) => js.filter((j) => j.id !== id))}
               onFindDuplicates={() => setDupFilesOpen(true)}
             />
           </div>
@@ -988,6 +1029,16 @@ export default function App() {
           <span className="offline status" title="The backend was started before the app was updated">
             Restart the app to finish updating
           </span>
+        )}
+        {importingNow && (
+          <button className="stat dock-import" onClick={() => openLibrary()} title="Adding files to your library: open it to see each file">
+            <span className="mini-bar">
+              <span style={{ width: `${importingNow.total ? (100 * importingNow.settled) / importingNow.total : 0}%` }} />
+            </span>
+            <span className="lbl">
+              Adding files {importingNow.total ? `${importingNow.settled}/${importingNow.total}` : '…'}
+            </span>
+          </button>
         )}
         {offline ? (
           <span className="offline status" title={logPath ? `Backend log: ${logPath}` : undefined}>

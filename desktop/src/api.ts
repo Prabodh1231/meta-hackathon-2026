@@ -13,6 +13,7 @@ import type {
   FileDuplicateReport,
   Folder,
   Health,
+  IngestJob,
   IngestResult,
   PageText,
   RefStyle,
@@ -33,7 +34,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 5
+export const API_VERSION = 6
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -94,6 +95,14 @@ export const api = {
   /** Several files or folders in one request, so the backend reads them in parallel. */
   ingestPaths: (paths: string[]) => request<{ results: IngestResult[] }>('POST', '/ingest/paths', { paths }),
   ingestUrl: (url: string) => request<Doc>('POST', '/ingest/url', { url }),
+  /** Add files and folders in the background; poll ingestJob for each file's progress. */
+  startIngest: (paths: string[]) => request<IngestJob>('POST', '/ingest/jobs', { paths }),
+  ingestJob: (id: number) => request<IngestJob>('GET', `/ingest/jobs/${id}`),
+  ingestJobs: () => request<IngestJob[]>('GET', '/ingest/jobs'),
+  cancelIngest: (id: number) => request<IngestJob>('POST', `/ingest/jobs/${id}/cancel`),
+  /** Retry the summaries, tags and metadata that failed when documents were added. */
+  fillMissing: (docIds?: number[]) =>
+    request<{ filled: number; still_missing: number }>('POST', '/library/fill-missing', { doc_ids: docIds ?? null }),
 
   documents: () => request<Doc[]>('GET', '/documents'),
   updateDocument: (id: number, patch: Partial<Doc>) => request<Doc>('PATCH', `/documents/${id}`, patch),

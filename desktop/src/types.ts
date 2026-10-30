@@ -17,6 +17,8 @@ export interface Doc {
   topic_id: number | null
   tags: string[]
   keywords: string[] // printed by the authors on the first page
+  /** Model work that failed when it was added and is still owed: "metadata", "title", "summary", "tags". */
+  missing: string[]
   jel_codes: { code: string; area: string }[] // JEL classification codes, with their top-level field
   folders: DocFolder[]
   label: string
@@ -97,6 +99,35 @@ export interface DraftSentence {
 export interface DraftResult {
   sentences: DraftSentence[]
   passages: { pid: string; chunk_id: number; label: string }[]
+}
+
+/** One file in a background import. */
+export interface IngestFile {
+  source: string
+  name: string
+  state: 'queued' | 'working' | 'done' | 'failed' | 'skipped'
+  stage: '' | 'reading' | 'analysing' | 'filing'
+  error: string | null
+  document_id: number | null
+  title: string | null
+  missing: string[] // added, but with these parts still owed
+}
+
+/** Files and folders being added in the background (POST /ingest/jobs). */
+export interface IngestJob {
+  id: number
+  state: 'queued' | 'listing' | 'running' | 'retrying' | 'done' | 'cancelled' | 'failed'
+  paths: string[]
+  files: IngestFile[]
+  total: number
+  done: number
+  failed: number
+  skipped: number
+  incomplete: number // added without a summary, tags or metadata
+  cancelled: boolean
+  error: string | null
+  started_at: number
+  finished_at: number | null
 }
 
 export interface IngestResult {
