@@ -129,7 +129,7 @@ The page line gives both numbers when they differ: the printed page (p. 342) and
 
 ### Reference list
 
-The **References** tab builds the reference list for every source the draft cites, in the style chosen in Settings: APA 7, MLA 9, IEEE or BibTeX.
+The **References** tab builds the reference list for every source the draft cites, in the style chosen in Settings: APA 7, MLA 9 or IEEE. **Copy** copies the list, and **Copy as BibTeX** copies the same sources as BibTeX entries for a reference manager or LaTeX.
 
 ## 5. Check the draft
 
@@ -181,7 +181,7 @@ On a Mac, use Cmd in place of Ctrl.
 The gear in the top bar sets:
 
 - **Theme:** Light, Dark, or System (follows your computer).
-- **Citation style:** APA 7, MLA 9, IEEE or BibTeX. It's used by the References tab and by Export.
+- **Citation style:** APA 7, MLA 9 or IEEE. It's used by the References tab and by Export.
 
 ## Troubleshooting
 
