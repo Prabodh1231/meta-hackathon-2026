@@ -13,7 +13,7 @@ import numpy as np
 
 from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
-from .citegraph import build_graph, focus, keyword_links
+from .citegraph import build_graph, focus, keyword_links, missing_works
 from .refparse import Reference, match_reference, parse_references
 from .embeddings import Embedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_url
@@ -276,16 +276,37 @@ class Library:
                     found[r["doc_id"]]["why"].append("text")
         return found
 
+    def _graph_inputs(self) -> tuple[list[dict], dict[int, list[Reference]]]:
+        """Every paper, and every paper's reference list (a list index is the entry's idx)."""
+        self._parse_references()
+        docs = [
+            {"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
+            for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents ORDER BY id")
+        ]
+        refs: dict[int, list[Reference]] = defaultdict(list)
+        for r in self.conn.execute("SELECT * FROM doc_refs ORDER BY doc_id, idx"):
+            refs[r["doc_id"]].append(Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"]))
+        return docs, refs
+
+    def missing_works(self, query: str = "", limit: int = 100) -> dict:
+        """What the papers about a topic (every paper, with no topic) cite that the library lacks,
+        ranked by how many of them cite it."""
+        with self.lock:
+            docs, refs = self._graph_inputs()
+            matches = self._topic_matches(query) if query.strip() else None
+        citing = {d["id"] for d in docs} if matches is None else set(matches)
+        works = missing_works(docs, refs, citing)
+        titles = {d["id"]: d["title"] for d in docs}
+        for w in works[:limit]:
+            w["citers"] = [{"id": i, "title": titles[i]} for i in w["citers"]]
+        return {
+            "query": query.strip(), "papers": len(citing), "with_refs": sum(1 for i in citing if refs.get(i)),
+            "total": len(works), "cited_twice": sum(1 for w in works if w["cited_by"] >= 2), "works": works[:limit],
+        }
+
     def citation_graph(self, query: str = "") -> dict:
         with self.lock:
-            self._parse_references()
-            docs = [
-                {"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
-                for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents ORDER BY id")
-            ]
-            refs: dict[int, list[Reference]] = defaultdict(list)
-            for r in self.conn.execute("SELECT * FROM doc_refs ORDER BY doc_id, idx"):
-                refs[r["doc_id"]].append(Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"]))
+            docs, refs = self._graph_inputs()
             terms = {r["id"]: self._terms(r["id"], r["keywords"]) for r in self.conn.execute("SELECT id, keywords FROM documents")}
             matches = self._topic_matches(query) if query.strip() else None
         graph = build_graph(docs, refs)

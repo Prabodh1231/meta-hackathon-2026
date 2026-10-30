@@ -147,6 +147,28 @@ export interface CitedWorks {
   references: CitedWork[]
 }
 
+/** A work papers in the library cite but the library lacks, with who cites it. `ref`: one
+ *  reference entry to fetch it by (one with a DOI when any has). */
+export interface MissingWork {
+  id: string // the same id the citation network gives its node
+  title: string
+  first_author: string
+  year: number | null
+  doi: string
+  cited_by: number
+  citers: { id: number; title: string }[]
+  ref: { doc_id: number; idx: number }
+}
+
+export interface MissingWorks {
+  query: string
+  papers: number // papers searched: about the topic, or every paper
+  with_refs: number // of those, how many had a reference list to read
+  total: number // works missing, before the limit
+  cited_twice: number // of those, cited by two or more papers
+  works: MissingWork[]
+}
+
 /** downloaded: added to the library · link: free to read online, no PDF to download ·
  *  no_free_copy: found, but paywalled · not_found: no index knows it · failed: an error */
 export type FetchStatus = 'in_library' | 'downloaded' | 'link' | 'no_free_copy' | 'not_found' | 'failed'
