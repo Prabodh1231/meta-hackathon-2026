@@ -6,6 +6,7 @@ import type { CitationGraph, GraphNode } from '../types'
 interface Props {
   onClose: () => void
   onOpenPaper: (docId: number) => void
+  onCitedPapers: (docId: number) => void
   onError: (message: string) => void
 }
 
@@ -17,7 +18,7 @@ function byline(n: GraphNode): string {
 
 /** The library as a network: papers, who cites whom, who shares references, and the works
  *  several papers cite that the library lacks. */
-export function NetworkView({ onClose, onOpenPaper, onError }: Props) {
+export function NetworkView({ onClose, onOpenPaper, onCitedPapers, onError }: Props) {
   const [graph, setGraph] = useState<CitationGraph | null>(null)
   const [showShared, setShowShared] = useState(true)
   const [showMissing, setShowMissing] = useState(true)
@@ -154,7 +155,10 @@ export function NetworkView({ onClose, onOpenPaper, onError }: Props) {
               <p className="muted">{node.kind === 'paper' ? `Cites ${node.cites} shown here · ` : ''}cited by {node.cited_by} paper{node.cited_by === 1 ? '' : 's'} in your library</p>
               {node.match && <p className="muted">Matches “{topic}” through its {node.match.why.join(', ')}{node.match.hits ? ` (${node.match.hits} passages)` : ''}</p>}
               {node.kind === 'paper' && node.doc_id !== undefined && (
-                <button onClick={() => onOpenPaper(node.doc_id!)}>Open in library</button>
+                <div className="network-actions">
+                  <button onClick={() => onOpenPaper(node.doc_id!)}>Open in library</button>
+                  {node.parsed && <button onClick={() => onCitedPapers(node.doc_id!)}>Get cited papers…</button>}
+                </div>
               )}
               <NodeList title="Cites" items={links.cites.map((n) => ({ node: n }))} onPick={setPicked} />
               <NodeList title="Cited by" items={links.citedBy.map((n) => ({ node: n }))} onPick={setPicked} />

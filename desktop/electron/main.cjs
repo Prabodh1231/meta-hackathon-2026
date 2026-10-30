@@ -114,6 +114,12 @@ function createWindow() {
       sandbox: true,
     },
   })
+  // Links the app shows (a cited paper's free page, a Scholar search) open in the system browser,
+  // never in an app window that has the backend bridge.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
   if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL)
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   if (process.env.RC_SMOKE_TEST) win.webContents.once('did-finish-load', smokeTest)

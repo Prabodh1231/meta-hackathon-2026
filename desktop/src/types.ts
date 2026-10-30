@@ -127,6 +127,38 @@ export interface CitationGraph {
   query?: string
 }
 
+/** One entry of a paper's reference list. `in_library`: the library document it matches. */
+export interface CitedWork {
+  idx: number
+  raw: string
+  number: number | null
+  title: string
+  first_author: string
+  year: number | null
+  doi: string
+  in_library: number | null
+  searchable: boolean // has a DOI or a title long enough to look up
+}
+
+export interface CitedWorks {
+  doc_id: number
+  title: string
+  references: CitedWork[]
+}
+
+/** downloaded: added to the library · link: free to read online, no PDF to download ·
+ *  no_free_copy: found, but paywalled · not_found: no index knows it · failed: an error */
+export type FetchStatus = 'in_library' | 'downloaded' | 'link' | 'no_free_copy' | 'not_found' | 'failed'
+
+export interface FetchResult {
+  status: FetchStatus
+  doc_id?: number
+  document?: Doc
+  url?: string
+  reason?: string
+  found_in?: string // the index that found it: OpenAlex or Semantic Scholar
+}
+
 export interface Health {
   ok: boolean
   api?: number // backend API version; missing from backends older than the version check

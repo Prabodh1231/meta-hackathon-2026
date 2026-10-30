@@ -55,7 +55,7 @@ The backend runs detached from the terminal you launched from, so a Ctrl+C there
 The draft sits in the middle as a single page. Everything else opens beside it:
 
 - **Top bar:** the draft's title, whether it's saved, and its current version (click it for the history). Ctrl K searches sources and runs any action. Export .docx and Settings are on the right.
-- **Left rail:** **Library** (add sources, browse them by subject folder, pick which ones the assistant drafts from) and **Network** (who cites whom in your library). Only one of the two is open at a time.
+- **Left rail:** **Library** (add sources, browse them by subject folder, pick which ones the assistant drafts from) and **Network** (who cites whom in your library). Only one of the two is open at a time. A paper's card in the Library, or its node in the Network, has **Cited papers…**: its reference list, with free copies of the works it cites downloaded into the library (see [Cited papers](#cited-papers)).
 - **Right rail:** the writing tools, in the order you use them:
   - *Write:* **Assistant** drafts from your library with cited quotes; **Cite** finds sources for the sentence at the cursor (Ctrl+Shift+C).
   - *Evidence:* **Source** shows a cited passage highlighted on its page; **Refs** builds the reference list.
@@ -77,9 +77,23 @@ The draft sits in the middle as a single page. Everything else opens beside it:
 9. **Versions.** The draft is snapshotted automatically every 10 minutes while you edit, before any large edit (one that changes 25% or more of a draft of 50+ words, such as inserting an assistant draft or deleting a section), and before a restore, so a restore can be undone. You can also save a named version ("Sent to advisor"). Any version can be compared with the current draft or another version at three levels, each with a percentage changed: the whole **document** (similarity, words added and removed), each **section** (matched by its heading, so editing one section doesn't mark the others changed) and each **paragraph** (a word-level diff). The 40 newest automatic snapshots are kept; naming one keeps it for good.
 10. **Duplication check.** Looks for two things: sentences that copy or closely follow a passage in the library, and passages the draft repeats from earlier in itself. It compares runs of three words (word 3-grams) with no model call: candidate passages come from keyword and embedding search, and a sentence is flagged when at least half its 3-grams appear in one passage ("copied" from 85%). A match counts as cited when the sentence already cites that document. The result is the share of the draft's words flagged, overall and per category (matches a source, of which uncited, repeats itself), per paragraph and per sentence. While the panel is open, flagged text is underlined in the draft, and each match opens its source passage. It catches copied and lightly edited text, not heavy paraphrase.
 
+11. **Cited papers.** Lists a paper's reference list (read as for the network), marks the works already in the library, and fetches free copies of the rest, one at a time or all at once (three in parallel, stoppable). See [Cited papers](#cited-papers).
+
 Drafts are saved as the editor's own JSON in SQLite, not as .md files, because citations carry data (source, page, character positions, verification status) that Markdown can't hold. Versions are stored the same way, alongside a plain-text copy used for comparisons.
 
 Security: the backend can read any local path, so it binds to 127.0.0.1 only, and Electron passes it a random token each launch that every request must carry.
+
+## Cited papers
+
+Each entry in a paper's reference list is looked up in two open scholarly indexes: **OpenAlex** first, then **Semantic Scholar**. An entry with a DOI is looked up by it; otherwise by its title, and a hit only counts when its title matches the entry's (a subtitle the entry left out is allowed) and its year is within one, so a look-alike paper is never downloaded. Entries with no DOI and a title under four words aren't searched.
+
+Only open-access copies those indexes list are downloaded: open-access journals, arXiv and university or preprint repositories. A link only counts when it actually serves a PDF; publisher pages that answer with a login wall are skipped for the next link. Each entry ends as one of:
+
+- **Downloaded:** saved to `~/.research-companion/papers/` as `Author Year - Title.pdf` and imported like any other file (metadata, summary, folders, citation network). The index's title, DOI and year replace what the PDF itself claims, since PDF titles are often file names, and a later look-up then finds the paper already in the library.
+- **Free to read online:** a free page exists but no PDF could be downloaded; "Read online" opens it in the browser.
+- **No free copy / Not found:** paywalled, or unknown to both indexes; "Search Google Scholar" opens a search for it. Nothing is downloaded.
+
+Only the reference's DOI or title is sent to OpenAlex and Semantic Scholar. Set `RC_CONTACT_EMAIL=you@example.org` in the `.env` below to join OpenAlex's faster "polite pool"; it's optional.
 
 ## Using Muse
 
