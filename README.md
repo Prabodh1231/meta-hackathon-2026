@@ -55,7 +55,10 @@ The backend runs detached from the terminal you launched from, so a Ctrl+C there
 The draft sits in the middle as a single page. Everything else opens beside it:
 
 - **Top bar:** the draft's title, whether it's saved, and its current version (click it for the history). Ctrl K searches sources and runs any action. Export .docx and Settings are on the right.
-- **Left rail:** **Library** (add sources, browse them by subject folder, pick which ones the assistant drafts from) and **Network** (who cites whom in your library). Only one of the two is open at a time. A paper's card in the Library, or its node in the Network, has **Cited papers…**: its reference list, with free copies of the works it cites downloaded into the library (see [Cited papers](#cited-papers)).
+- **Left rail:** **Library** (add sources, browse them by subject folder, pick which ones the assistant drafts from) and **Network** (who cites whom in your library). Only one of the two is open at a time.
+  - The Library opens as a panel of two-line rows; clicking one shows its details in place (‹ goes back to the list). The expand button turns it into a reference manager: folders on the left, a table sortable by title, authors, year, type, date added or folder match (↑ ↓ move between papers, Esc closes), and the open paper's details on the right.
+  - A paper's details hold its summary, folders, keywords and JEL codes, DOI, link and file location, plus **Use for drafting**, **Edit details** (correct the title, authors, year, journal, DOI or link; references are built from these, and a corrected field is kept when the file is re-added) and **Remove**. Papers the draft cites are marked **Cited**. Drag a paper onto a folder to file it there.
+  - A paper's details, or its node in the Network, also have **Cited papers…**: its reference list, with free copies of the works it cites downloaded into the library (see [Cited papers](#cited-papers)).
 - **Right rail:** the writing tools, in the order you use them:
   - *Write:* **Assistant** drafts from your library with cited quotes; **Cite** finds sources for the sentence at the cursor (Ctrl+Shift+C).
   - *Evidence:* **Source** shows a cited passage highlighted on its page; **Refs** builds the reference list.

@@ -18,6 +18,7 @@ export interface Doc {
   jel_codes: { code: string; area: string }[] // JEL classification codes, with their top-level field
   folders: DocFolder[]
   label: string
+  added_at: string // "YYYY-MM-DD HH:MM:SS", UTC
 }
 
 /** A virtual folder a document is filed under: 'auto' was the classifier's call, 'user' was added by hand. */

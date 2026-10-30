@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_VERSION, api, backendLogPath } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
@@ -170,6 +170,8 @@ export default function App() {
   })
   const [, setTick] = useState(0) // re-renders "Saved 3 min ago"
   const editor = useRef<WritingEditorHandle>(null)
+  // Papers the draft cites, for the library to mark. Recounted whenever the draft's stats change.
+  const citedIds = useMemo(() => editor.current?.citedDocIds() ?? [], [stats, draftId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = window.setInterval(() => setTick((n) => n + 1), 30000)
@@ -653,6 +655,7 @@ export default function App() {
               focus={libFocus}
               onFindDuplicates={() => setDupFilesOpen(true)}
               onCitedPapers={setCitedFor}
+              cited={citedIds}
             />
           </div>
 
