@@ -154,7 +154,7 @@ export function FormatToolbar({ editor, onCite }: { editor: Editor | null; onCit
       </div>
       <button
         className="cite-button"
-        title="Find a source for the selected text or the sentence at the cursor (Ctrl+Shift+C)"
+        title="Mark the sentence at the cursor (or the selection) for a citation; a source is found in the background (Ctrl+Shift+C)"
         onMouseDown={keep}
         onClick={onCite}
       >

@@ -139,6 +139,28 @@ def test_unverified_and_missing_citations_get_word_comments(setup):
     assert all(c.author == "Research Companion" for c in d.comments)
 
 
+def test_unconfirmed_cite_markers_leave_no_text_and_become_comments(setup):
+    client, ids = setup
+    found = [{"label": "Chen & Martinez 2021, p. 342", "quote": CHEN_Q, "status": "verified", "doc_id": ids["chen"]}]
+    mark = lambda state, claim, results=(): {"type": "citeMark", "attrs": {  # noqa: E731
+        "cid": f"k-{state}", "claim": claim, "state": state, "results": list(results)}}
+    content = {"type": "doc", "content": [
+        {"type": "paragraph", "content": [
+            text("Spindles predict recall. "), mark("verified", "Spindles predict recall.", found),
+            text(" Coral reefs glow at night. "), mark("none", "Coral reefs glow at night."),
+        ]},
+        {"type": "paragraph", "content": [mark("searching", "")]},  # nothing before it to comment on
+    ]}
+    d = export(client, content, "apa")
+    assert d.paragraphs[0].text == "Spindles predict recall. Coral reefs glow at night."  # no "cite", no double spaces
+    notes = [c.text for c in d.comments]
+    assert len(notes) == 3
+    assert "not confirmed" in notes[0] and "Best match: Chen & Martinez 2021, p. 342" in notes[0]
+    assert "nothing in the library matches" in notes[1] and "Coral reefs glow at night." in notes[1]
+    assert "hadn't finished" in notes[2]
+    assert ("Heading 1", "References") not in paragraphs(d)  # an unconfirmed source isn't cited
+
+
 def test_toolbar_fonts_and_sizes_carry_into_word(setup):
     client, _ = setup
     styled = lambda t, **attrs: {"type": "text", "text": t, "marks": [{"type": "textStyle", "attrs": attrs}, {"type": "bold"}]}

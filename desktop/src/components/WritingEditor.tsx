@@ -5,6 +5,7 @@ import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
 import { Extension, type Editor, type JSONContent } from '@tiptap/core'
 import { EditorState } from '@tiptap/pm/state'
 import { CitationNode } from '../editor/citation'
+import { CiteMarkNode, stateOf, type CiteMarkAttrs } from '../editor/citeMark'
 import { ReviewMarks, findInBlock, setReviewMarks, textBlocks, type ReviewRange } from '../editor/reviewMarks'
 import { FormatToolbar } from './FormatToolbar'
 import { api } from '../api'
@@ -12,17 +13,54 @@ import type { Citation, DraftSentence } from '../types'
 
 const MISSING_REASON = 'This passage is no longer in your library.'
 
-function patchChips(editor: Editor, patches: Map<string, Partial<ChipAttrs>>) {
+/** Update chips and cite markers by cid. Not an undo step: these are the app's findings, and
+ * Ctrl+Z should undo the writer's own edits, not a colour change that arrived meanwhile. */
+function patchChips(editor: Editor, patches: Map<string, Partial<ChipAttrs> | Partial<CiteMarkAttrs>>) {
   const { state, view } = editor
   let tr = state.tr
   let changed = false
   state.doc.descendants((node, pos) => {
-    const patch = node.type.name === 'citation' ? patches.get(node.attrs.cid) : undefined
+    const patch = node.type.name === 'citation' || node.type.name === 'citeMark' ? patches.get(node.attrs.cid) : undefined
     if (!patch || Object.entries(patch).every(([k, v]) => node.attrs[k] === v)) return
     tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...patch })
     changed = true
   })
-  if (changed) view.dispatch(tr)
+  if (changed) view.dispatch(tr.setMeta('addToHistory', false))
+}
+
+/** Position of the node with this cid, if it's still in the document. */
+function findCid(editor: Editor, cid: string): number | null {
+  let found: number | null = null
+  editor.state.doc.descendants((node, pos) => {
+    if (found != null) return false
+    if ((node.type.name === 'citeMark' || node.type.name === 'citation') && node.attrs.cid === cid) found = pos
+  })
+  return found
+}
+
+function citeMarks(editor: Editor): CiteMarkAttrs[] {
+  const out: CiteMarkAttrs[] = []
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === 'citeMark') out.push(node.attrs as CiteMarkAttrs)
+  })
+  return out
+}
+
+// Background searches for cite markers: a few at a time (each runs several Muse checks), and
+// never two for the same marker.
+const MAX_SEARCHES = 3
+let activeSearches = 0
+const waitingSearches: (() => void)[] = []
+const searching = new Set<string>()
+async function limited<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeSearches >= MAX_SEARCHES) await new Promise<void>((r) => waitingSearches.push(r))
+  activeSearches++
+  try {
+    return await fn()
+  } finally {
+    activeSearches--
+    waitingSearches.shift()?.()
+  }
 }
 
 /** Re-find chips' quotes in the library as it is now (files may have been re-added since
@@ -73,14 +111,16 @@ export interface DraftStats {
   citations: number
   verified: number
   flagged: number // weak, unsupported or quote not found
+  unconfirmed: number // cite markers waiting for the writer to pick a source
 }
 
 export type SaveState = { state: 'idle' | 'saving' | 'saved' | 'error'; at?: number }
 
 function statsOf(editor: Editor): DraftStats {
-  const s: DraftStats = { words: 0, citations: 0, verified: 0, flagged: 0 }
+  const s: DraftStats = { words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 }
   s.words = (editor.getText().match(/\w+(?:['’-]\w+)*/g) ?? []).length
   editor.state.doc.descendants((node) => {
+    if (node.type.name === 'citeMark') s.unconfirmed++
     if (node.type.name !== 'citation') return
     s.citations++
     if (node.attrs.status === 'verified') s.verified++
@@ -99,8 +139,13 @@ export interface WritingEditorHandle {
   /** First non-empty line, used as the draft's title. */
   getTitle: () => string
   citedDocIds: () => number[]
-  /** Insert a chip for the sentence chosen with Cite. Returns false if that spot is gone. */
-  insertCitation: (c: Citation, claim: string) => boolean
+  /** Turn a cite marker into a citation of the chosen source. False if the marker is gone. */
+  confirmCite: (cid: string, c: Citation) => boolean
+  /** Search again for a marker, for its sentence as it reads now. */
+  recheckCite: (cid: string) => void
+  removeCite: (cid: string) => void
+  /** Select a marker and scroll it into view. */
+  showCite: (cid: string) => void
   /** Save pending edits now (before switching to another draft). */
   flush: () => Promise<void>
   /** Insert a whole document (an imported Word file) at the cursor; it fills an empty draft. */
@@ -139,6 +184,15 @@ function chipFromCitation(c: Citation, claim: string): ChipAttrs {
 
 const LEAF = '￼' // stands in for a chip so text offsets line up with document positions
 
+/** The sentence just before `pos` in its paragraph (what a cite marker there is citing now). */
+function sentenceBefore(editor: Editor, pos: number): string {
+  const $pos = editor.state.doc.resolve(pos)
+  if (!$pos.parent.isTextblock) return ''
+  const text = editor.state.doc.textBetween($pos.start(), pos, ' ', LEAF).split(LEAF).join('')
+  const sentences = text.match(/[^.!?]+[.!?]*["')\]]*/g) ?? []
+  return (sentences.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean).at(-1) ?? '').trim()
+}
+
 /** The text to cite and where its chip goes: the selection, or else the sentence around
  * the cursor. Null when there's no text there. */
 function citeTarget(editor: Editor): { claim: string; pos: number } | null {
@@ -168,27 +222,48 @@ interface Props {
   onStats?: (stats: DraftStats) => void
   onSaveState?: (s: SaveState) => void
   onCitationClick: (chip: ChipAttrs) => void
-  /** Cite button / Ctrl+Shift+C: find sources for this text. */
-  onCiteRequest: (claim: string) => void
+  /** A cite marker was clicked: show what its search found. */
+  onCiteMarkClick: (cid: string) => void
+  /** The draft's cite markers, whenever they change (added, recoloured, confirmed, removed). */
+  onCiteMarks?: (marks: CiteMarkAttrs[]) => void
+  /** The sources cite searches look in (the ticked ones), or null for the whole library. */
+  getScope: () => number[] | null
   onError: (msg: string) => void
 }
 
 export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function WritingEditor(
-  { draftId, banner, onCitationClick, onCiteRequest, onError, onStats, onSaveState },
+  { draftId, banner, onCitationClick, onCiteMarkClick, onCiteMarks, getScope, onError, onStats, onSaveState },
   ref,
 ) {
   const saveTimer = useRef<number | undefined>(undefined)
   const draftRef = useRef(draftId) // the draft the editor is showing; saves go here
   const statsTimer = useRef<number | undefined>(undefined)
-  const report = useRef({ onStats, onSaveState })
-  report.current = { onStats, onSaveState }
+  const report = useRef({ onStats, onSaveState, onCiteMarks })
+  report.current = { onStats, onSaveState, onCiteMarks }
   const loaded = useRef(false)
-  const clickRef = useRef(onCitationClick)
-  clickRef.current = onCitationClick
-  // Where the chip for the pending Cite request goes, kept in step with later edits.
-  const citePos = useRef<number | null>(null)
+  const clickRef = useRef({ chip: onCitationClick, mark: onCiteMarkClick })
+  clickRef.current = { chip: onCitationClick, mark: onCiteMarkClick }
+  const scopeRef = useRef(getScope)
+  scopeRef.current = getScope
   const citeRef = useRef<() => void>(() => {})
   const placed = useRef(false) // the writer has put the cursor somewhere since the draft opened
+  const editorRef = useRef<Editor | null>(null)
+
+  /** Find sources for a marker's sentence in the background, then recolour the marker. */
+  function searchFor(cid: string, claim: string) {
+    if (searching.has(cid)) return
+    searching.add(cid)
+    limited(() => api.suggestCitations(claim, scopeRef.current()))
+      .then((results) => {
+        // The writer may have moved to another draft meanwhile: then this marker isn't in the
+        // editor, stays "searching" in its draft, and is searched again when that draft opens.
+        if (editorRef.current) patchChips(editorRef.current, new Map([[cid, { state: stateOf(results), results, claim }]]))
+      })
+      .catch(() => {
+        if (editorRef.current) patchChips(editorRef.current, new Map([[cid, { state: 'error' as const }]]))
+      })
+      .finally(() => searching.delete(cid))
+  }
 
   const editor = useEditor({
     extensions: [
@@ -197,18 +272,13 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       FontFamily,
       FontSize,
       CitationNode,
+      CiteMarkNode,
       ReviewMarks,
       Extension.create({
         name: 'citeShortcut',
         addKeyboardShortcuts: () => ({ 'Mod-Shift-c': () => (citeRef.current(), true) }),
       }),
     ],
-    onTransaction: ({ transaction }) => {
-      if (citePos.current != null && transaction.docChanged) {
-        const mapped = transaction.mapping.mapResult(citePos.current)
-        citePos.current = mapped.deleted ? null : mapped.pos
-      }
-    },
     onFocus: () => {
       placed.current = true
     },
@@ -216,14 +286,21 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     editorProps: {
       attributes: { class: 'prose', spellcheck: 'true' },
       handleClickOn: (_view, _pos, node) => {
+        if (node.type.name === 'citeMark') {
+          clickRef.current.mark(node.attrs.cid)
+          return true
+        }
         if (node.type.name !== 'citation') return false
-        clickRef.current(node.attrs as ChipAttrs)
+        clickRef.current.chip(node.attrs as ChipAttrs)
         return true
       },
     },
     onUpdate: ({ editor }) => {
       window.clearTimeout(statsTimer.current)
-      statsTimer.current = window.setTimeout(() => report.current.onStats?.(statsOf(editor)), 250)
+      statsTimer.current = window.setTimeout(() => {
+        report.current.onStats?.(statsOf(editor))
+        report.current.onCiteMarks?.(citeMarks(editor))
+      }, 250)
       if (!loaded.current) return
       window.clearTimeout(saveTimer.current)
       report.current.onSaveState?.({ state: 'saving' })
@@ -290,7 +367,10 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       if (cancelled) return
       loaded.current = true
       report.current.onStats?.(statsOf(editor))
+      report.current.onCiteMarks?.(citeMarks(editor))
       report.current.onSaveState?.({ state: 'saved' })
+      // Markers still searching when the draft was last open (closed mid-search) search again.
+      for (const m of citeMarks(editor)) if (m.state === 'searching') searchFor(m.cid, m.claim)
       await repairChips(editor)
     })().catch((e) => onError(`Could not refresh citations: ${e instanceof Error ? e.message : e}`))
     return () => {
@@ -298,6 +378,10 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     }
   }, [editor, draftId])
 
+  editorRef.current = editor
+
+  // Cite: put a grey "cite" marker at the end of the sentence at once and look for sources in
+  // the background, so writing never waits. The cursor stays where it was.
   citeRef.current = () => {
     if (!editor) return
     const target = citeTarget(editor)
@@ -305,8 +389,12 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       onError('Put the cursor in a sentence, or select the text you want to cite.')
       return
     }
-    citePos.current = target.pos
-    onCiteRequest(target.claim)
+    const cid = `k${Date.now()}-${nextCid++}`
+    const before = target.pos > 0 ? editor.state.doc.textBetween(target.pos - 1, target.pos, ' ', LEAF) : ''
+    const content: JSONContent[] = [{ type: 'citeMark', attrs: { cid, claim: target.claim, state: 'searching', results: [] } }]
+    if (before && !/\s/.test(before)) content.unshift({ type: 'text', text: ' ' })
+    editor.chain().insertContentAt(target.pos, content, { updateSelection: false }).run()
+    searchFor(cid, target.claim)
   }
 
   useImperativeHandle(
@@ -334,14 +422,36 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         return { ...chip, ...patch }
       },
 
-      insertCitation(c, claim) {
-        const pos = citePos.current
+      confirmCite(cid, c) {
+        const pos = editor ? findCid(editor, cid) : null
         if (!editor || pos == null) return false
-        const before = pos > 0 ? editor.state.doc.textBetween(pos - 1, pos, ' ', LEAF) : ''
-        const content: JSONContent[] = [{ type: 'citation', attrs: chipFromCitation(c, claim) }]
-        if (before && !/\s/.test(before)) content.unshift({ type: 'text', text: ' ' })
-        editor.chain().focus().insertContentAt(pos, content).run()
+        const mark = editor.state.doc.nodeAt(pos)!
+        // This one is an undo step: Ctrl+Z brings the marker back.
+        const chip = editor.schema.nodes.citation.create(chipFromCitation({ ...c, cid: undefined }, mark.attrs.claim))
+        editor.view.dispatch(editor.state.tr.replaceWith(pos, pos + 1, chip))
         return true
+      },
+
+      recheckCite(cid) {
+        const pos = editor ? findCid(editor, cid) : null
+        if (!editor || pos == null) return
+        const claim = sentenceBefore(editor, pos) || editor.state.doc.nodeAt(pos)!.attrs.claim
+        patchChips(editor, new Map([[cid, { state: 'searching' as const, results: [], claim }]]))
+        searchFor(cid, claim)
+      },
+
+      removeCite(cid) {
+        const pos = editor ? findCid(editor, cid) : null
+        if (!editor || pos == null) return
+        // Take the space put in front of it too, so no double space is left behind.
+        const from = pos > 0 && editor.state.doc.textBetween(pos - 1, pos) === ' ' ? pos - 1 : pos
+        editor.view.dispatch(editor.state.tr.delete(from, pos + 1))
+      },
+
+      showCite(cid) {
+        const pos = editor ? findCid(editor, cid) : null
+        if (!editor || pos == null) return
+        editor.chain().focus().setNodeSelection(pos).scrollIntoView().run()
       },
 
       async flush() {
@@ -370,7 +480,9 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         window.clearTimeout(saveTimer.current) // a pending autosave of the old text must not win
         editor.commands.setContent(json ? JSON.parse(json) : '', { emitUpdate: false })
         report.current.onStats?.(statsOf(editor))
+        report.current.onCiteMarks?.(citeMarks(editor))
         report.current.onSaveState?.({ state: 'saved', at: Date.now() })
+        for (const m of citeMarks(editor)) if (m.state === 'searching') searchFor(m.cid, m.claim)
         repairChips(editor).catch((e) => onError(`Could not refresh citations: ${e instanceof Error ? e.message : e}`))
       },
 

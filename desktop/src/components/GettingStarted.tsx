@@ -34,7 +34,7 @@ export function GettingStarted({ sources, words, citations, onAddSources, onAsk,
     {
       done: citations > 0,
       title: 'Back up each claim',
-      text: 'Put the cursor in a sentence and press Cite (Ctrl+Shift+C) to find the passage that supports it. Click a citation to see the quote on its page.',
+      text: 'Press Cite (Ctrl+Shift+C) in a sentence and keep writing: a cite marker turns green when a source supports it. Click the marker to confirm the source, and a citation to see its quote on the page.',
       actions: null,
     },
   ]

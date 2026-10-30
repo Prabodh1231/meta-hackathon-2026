@@ -5,6 +5,8 @@ IEEE numbered), moved before the sentence's closing punctuation as the styles re
 Adjacent chips merge into one citation, and a reference list closes the document. Every
 chip is re-resolved against the library first, so page numbers are current. Citations
 that didn't pass verification get a Word comment, so nothing questionable ships unnoticed.
+A "cite" marker the writer never confirmed is left out of the text and becomes a comment on
+its sentence, saying what the search found.
 """
 
 import io
@@ -27,6 +29,15 @@ FLAGS = {
     "pending": "Citation check: not verified yet.",
 }
 _END_PUNCT = re.compile(r"([.!?]+)(\s*)$")
+# What an unconfirmed cite marker's search had found, for its comment.
+MARK_STATE = {
+    "searching": "the search for a source hadn't finished",
+    "verified": "a supporting source was found but not confirmed",
+    "weak": "only a partly supporting source was found",
+    "unsupported": "no source in the library supports it",
+    "none": "nothing in the library matches it",
+    "error": "the search for a source didn't finish",
+}
 
 
 @dataclass
@@ -151,6 +162,17 @@ class _Writer:
                 items.append(["break"])
             elif kind == "text":
                 items.append(["text", node.get("text", ""), node.get("marks") or []])
+            elif kind == "citeMark":
+                items.append(["mark", node.get("attrs") or {}])
+
+        # An unconfirmed marker leaves no text behind, and no double space where it stood.
+        for i, item in enumerate(items):
+            if item[0] != "mark":
+                continue
+            prev = next((x for x in reversed(items[:i]) if x[0] != "mark"), None)
+            nxt = next((x for x in items[i + 1:] if x[0] != "mark"), None)
+            if prev and prev[0] == "text" and prev[1].endswith(" ") and (nxt is None or (nxt[0] == "text" and nxt[1][:1].isspace())):
+                prev[1] = prev[1].rstrip(" ")
 
         # Citations go before the sentence's closing punctuation: "… sleep (Chen, 2021)."
         for i, item in enumerate(items):
@@ -163,20 +185,34 @@ class _Writer:
                 item[2] = m.group(1)
             prev[1] = prev[1].rstrip() + " "
 
+        last_run = None
         for item in items:
             if item[0] == "text":
-                _styled_run(para, item[1], item[2])
+                last_run = _styled_run(para, item[1], item[2]) or last_run
             elif item[0] == "break":
                 para.add_run().add_break()
+            elif item[0] == "mark":
+                self._mark_comment(para, last_run, item[1])
             else:
                 cites, suffix = item[1], item[2]
-                run = para.add_run(self._in_text(cites))
+                run = last_run = para.add_run(self._in_text(cites))
                 for c in cites:
                     if c.status in FLAGS:
                         note = FLAGS[c.status] + (f" {c.reason}" if c.reason else "") + f"\nQuoted: “{c.quote}”"
                         self.doc.add_comment(run, text=note, author=COMMENT_AUTHOR, initials="RC")
                 if suffix:
                     para.add_run(suffix)
+
+    def _mark_comment(self, para, run, attrs: dict) -> None:
+        """A comment on the text the marker followed (its sentence), saying what the search found."""
+        state = attrs.get("state") or "searching"
+        note = f"Citation not confirmed: {MARK_STATE.get(state, MARK_STATE['searching'])}."
+        results = attrs.get("results") or []
+        if results and state in ("verified", "weak"):
+            note += f"\nBest match: {results[0].get('label', '')}, “{results[0].get('quote', '')}”"
+        if attrs.get("claim"):
+            note += f"\nSentence: “{attrs['claim']}”"
+        self.doc.add_comment(run or para.add_run(" "), text=note, author=COMMENT_AUTHOR, initials="RC")
 
     def _references(self) -> None:
         if not self.order:
@@ -190,9 +226,9 @@ class _Writer:
                 p.paragraph_format.first_line_indent = Inches(-0.5)
 
 
-def _styled_run(para, text: str, marks: list[dict]) -> None:
+def _styled_run(para, text: str, marks: list[dict]):
     if not text:
-        return
+        return None
     run = para.add_run(text)
     for mark in marks:
         kind = mark.get("type")
@@ -215,6 +251,7 @@ def _styled_run(para, text: str, marks: list[dict]) -> None:
                 run.font.name = family
             if size := _points(attrs.get("fontSize")):
                 run.font.size = Pt(size)
+    return run
 
 
 _GENERIC_FONTS = {"serif", "sans-serif", "monospace", "system-ui", "cursive", "fantasy"}

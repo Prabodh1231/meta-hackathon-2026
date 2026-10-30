@@ -2,7 +2,8 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { API_VERSION, api, backendLogPath } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
-import { CitePanel, type CiteRequest } from './components/CitePanel'
+import { CitePanel } from './components/CitePanel'
+import type { CiteMarkAttrs } from './editor/citeMark'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
 import { DraftsPanel } from './components/DraftsPanel'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
@@ -53,7 +54,7 @@ const TOOLS: { group: string; tools: Tool[] }[] = [
     group: 'Write',
     tools: [
       { tab: 'assistant', label: 'Assistant', icon: 'assistant', hint: 'Draft from your library with cited quotes' },
-      { tab: 'cite', label: 'Cite', icon: 'cite', hint: 'Sources for the sentence at the cursor' },
+      { tab: 'cite', label: 'Cite', icon: 'cite', hint: 'Sources found for your cite markers, to confirm' },
     ],
   },
   {
@@ -155,14 +156,15 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>({ theme: cachedTheme(), citation_style: 'apa' })
   const [showSettings, setShowSettings] = useState(false)
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
-  const [citeRequest, setCiteRequest] = useState<CiteRequest | null>(null)
+  const [citeMarks, setCiteMarks] = useState<CiteMarkAttrs[]>([]) // "cite" markers in the draft, searching or waiting
+  const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker the Cite panel is showing
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryWide, setLibraryWide] = useState(false) // library as a file manager
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [pinned, setPinned] = useState(initialPinned)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [networkOpen, setNetworkOpen] = useState(false)
-  const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0 })
+  const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 })
   const [title, setTitle] = useState('Untitled')
   const [saveState, setSaveState] = useState<SaveState>({ state: 'idle' })
   const [versions, setVersions] = useState<VersionList | null>(null)
@@ -672,7 +674,15 @@ export default function App() {
     { group: 'DO', name: 'Show citation network', hint: 'who cites whom, shared references', run: () => openNetwork() },
     { group: 'DO', name: 'Open library', hint: 'add and organize sources', run: () => openLibrary() },
     { group: 'DO', name: 'Ask the assistant', hint: 'draft with citations', run: () => showTab('assistant') },
-    { group: 'DO', name: 'Find a citation', hint: 'for the selected sentence', run: () => showTab('cite') },
+    {
+      group: 'DO',
+      name: 'Citations to confirm',
+      hint: citeMarks.length ? `${citeMarks.length} waiting` : 'Ctrl+Shift+C marks a sentence',
+      run: () => {
+        setCiteFocus(null)
+        showTab('cite')
+      },
+    },
     { group: 'DO', name: 'Show references', hint: settings.citation_style.toUpperCase(), run: () => showTab('references') },
     { group: 'DO', name: 'Check for duplication', hint: 'repeats and text matching sources', run: () => showTab('review') },
     { group: 'DO', name: 'Version history', hint: 'save, compare and restore versions', run: () => showTab('history') },
@@ -704,6 +714,7 @@ export default function App() {
   const tool = TOOL[tab]
 
   function badgeFor(t: Tab): string | null {
+    if (t === 'cite' && citeMarks.length) return String(citeMarks.length)
     if (t === 'review' && dupPct != null) return `${dupPct}%`
     if (t === 'history' && change) return `${change}%`
     return null
@@ -868,10 +879,12 @@ export default function App() {
               onStats={onStats}
               onSaveState={onSaveState}
               onCitationClick={openChip}
-              onCiteRequest={(claim) => {
-                setCiteRequest({ id: Date.now(), claim })
+              onCiteMarkClick={(cid) => {
+                setCiteFocus(cid)
                 showTab('cite')
               }}
+              onCiteMarks={setCiteMarks}
+              getScope={() => (selected.size ? [...selected] : null)}
               onError={onError}
             />
           </main>
@@ -912,11 +925,22 @@ export default function App() {
               {/* Kept mounted (hidden) so results survive a look at the Source tab. */}
               <div hidden={tab !== 'cite'}>
                 <CitePanel
-                  request={citeRequest}
-                  scope={[...selected]}
-                  onInsert={(c, claim) => editor.current?.insertCitation(c, claim) ?? false}
+                  marks={citeMarks}
+                  focus={citeFocus}
+                  onFocus={(cid) => {
+                    setCiteFocus(cid)
+                    if (cid) editor.current?.showCite(cid)
+                  }}
+                  onConfirm={(cid, c) => {
+                    if (editor.current?.confirmCite(cid, c)) setCiteFocus(null)
+                    else onError('That marker was deleted from the draft.')
+                  }}
+                  onRecheck={(cid) => editor.current?.recheckCite(cid)}
+                  onRemove={(cid) => {
+                    editor.current?.removeCite(cid)
+                    setCiteFocus(null)
+                  }}
                   onOpenSource={openCitation}
-                  onError={onError}
                 />
               </div>
               {tab === 'references' && (
@@ -1002,12 +1026,21 @@ export default function App() {
           <span className="stat" title="Words in the draft">
             <b>{stats.words.toLocaleString()}</b> <span className="lbl">words</span>
           </span>
-          <button className="stat" onClick={() => showTab('references')} title="Citations verified against their source">
+          <button
+            className="stat"
+            onClick={() => {
+              if (!stats.unconfirmed) return showTab('references')
+              setCiteFocus(null)
+              showTab('cite')
+            }}
+            title={stats.unconfirmed ? 'Cite markers waiting for you to confirm a source' : 'Citations verified against their source'}
+          >
             <span className="mini-bar">
               <span style={{ width: `${stats.citations ? (100 * stats.verified) / stats.citations : 0}%` }} />
             </span>
             <b>{stats.verified}</b>/{stats.citations} <span className="lbl">citations verified</span>
             {stats.flagged > 0 && <em className="flag">{stats.flagged} flagged</em>}
+            {stats.unconfirmed > 0 && <em className="flag to-confirm">{stats.unconfirmed} to confirm</em>}
           </button>
           <button className="stat" onClick={() => showTab('review')} title="Share of the draft that repeats itself or matches a source">
             <span className="dot" style={{ background: dupPct == null ? 'var(--pending)' : toneOf(dupPct, 'risk') }} />

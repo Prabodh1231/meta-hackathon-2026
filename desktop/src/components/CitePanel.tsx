@@ -1,93 +1,109 @@
-import { useEffect, useState } from 'react'
-import { api } from '../api'
-import type { Citation, Suggestion } from '../types'
+import type { CiteMarkAttrs, CiteMarkState } from '../editor/citeMark'
+import type { Citation } from '../types'
 import { StatusBadge } from './StatusBadge'
 
-export interface CiteRequest {
-  id: number // bumps on every Cite click, so citing the same text again re-runs
-  claim: string
-}
-
 interface Props {
-  request: CiteRequest | null
-  scope: number[]
-  onInsert: (c: Citation, claim: string) => boolean
+  /** The draft's cite markers, in document order. */
+  marks: CiteMarkAttrs[]
+  /** The marker being reviewed (clicked in the draft or picked from the list), if any. */
+  focus: string | null
+  onFocus: (cid: string | null) => void
+  onConfirm: (cid: string, c: Citation) => void
+  onRecheck: (cid: string) => void
+  onRemove: (cid: string) => void
   onOpenSource: (c: Citation) => void
-  onError: (msg: string) => void
 }
 
-/** Sources for a sentence the user wrote themselves: best supported first, ready to insert. */
-export function CitePanel({ request, scope, onInsert, onOpenSource, onError }: Props) {
-  const [results, setResults] = useState<Suggestion[] | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [inserted, setInserted] = useState<string | null>(null)
+const HEADLINE: Record<CiteMarkState, string> = {
+  searching: 'Looking for a source…',
+  verified: 'A source supports this sentence',
+  weak: 'Only partial support found',
+  unsupported: 'No source supports this sentence',
+  none: 'Nothing in your library matches this sentence',
+  error: "The search didn't finish",
+}
 
-  useEffect(() => {
-    if (!request) return
-    let cancelled = false
-    setResults(null)
-    setInserted(null)
-    setBusy(true)
-    api
-      .suggestCitations(request.claim, scope.length ? scope : null)
-      .then((r) => !cancelled && setResults(r))
-      .catch((e) => !cancelled && onError(`Could not find sources: ${e instanceof Error ? e.message : e}`))
-      .finally(() => !cancelled && setBusy(false))
-    return () => {
-      cancelled = true
-    }
-    // Re-run only for a new Cite click, not when the library selection changes later.
-  }, [request?.id])
+/** Cite markers waiting for the writer: what each search found, and confirming a source. */
+export function CitePanel({ marks, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource }: Props) {
+  const mark = focus ? marks.find((m) => m.cid === focus) : undefined
 
-  if (!request) {
+  if (!mark) {
     return (
-      <div className="empty">
-        <p>Put your cursor in a sentence you wrote, or select some text, then click <strong>Cite</strong> in the toolbar (Ctrl+Shift+C).</p>
-        <p>You'll get the best supporting passages from your library, each already checked against your sentence.</p>
+      <div className="cite-panel">
+        <p className="cite-intro">
+          Put the cursor in a sentence (or select text) and press <strong>Cite</strong> (Ctrl+Shift+C). A grey{' '}
+          <span className="cite-mark cite-mark-searching">cite</span> marker appears and you keep writing; it turns{' '}
+          <span className="cite-mark cite-mark-verified">cite</span> when a source supports the sentence,{' '}
+          <span className="cite-mark cite-mark-weak">cite</span> for partial support, and{' '}
+          <span className="cite-mark cite-mark-unsupported">cite</span> when nothing does. Click it to confirm a source.
+        </p>
+        {marks.length > 0 && (
+          <>
+            <h4 className="eyebrow">Waiting for you · {marks.length}</h4>
+            <ul className="cite-queue">
+              {marks.map((m) => (
+                <li key={m.cid}>
+                  <button onClick={() => onFocus(m.cid)} title={HEADLINE[m.state]}>
+                    <span className={`cite-mark cite-mark-${m.state}`}>cite</span>
+                    <span className="cite-queue-claim">{m.claim}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     )
   }
 
-  const supported = results?.some((r) => r.status === 'verified' || r.status === 'weak')
+  const results = mark.results ?? []
   return (
     <div className="cite-panel">
-      <blockquote className="cite-claim">{request.claim}</blockquote>
-      <div className="muted">{scope.length ? `Searching ${scope.length} selected docs` : 'Searching whole library'}</div>
-      {busy && <p className="busy">Finding and checking sources…</p>}
-      {results && results.length === 0 && <p className="empty">Nothing in your library matches this sentence.</p>}
-      {results && results.length > 0 && !supported && (
-        <p className="warn">No source in your library supports this claim. You may need to add one.</p>
+      {marks.length > 1 && (
+        <button className="link cite-back" onClick={() => onFocus(null)}>
+          ‹ All {marks.length} waiting
+        </button>
       )}
-      {results?.map((r, i) => {
-        const key = `${r.chunk_id}:${i}`
-        return (
-          <div key={key} className={`suggestion suggestion-${r.status}`}>
-            <div className="row">
-              <StatusBadge status={r.status} />
-              <span className="suggestion-label">{r.label}</span>
-            </div>
-            <p className="suggestion-quote">“{r.quote}”</p>
-            {r.reason && <p className="reason">{r.reason}</p>}
-            <div className="row">
-              <button onClick={() => onOpenSource(r)}>View source</button>
-              {inserted === key ? (
-                <span className="muted">Inserted</span>
-              ) : (
-                <button
-                  className={r.status === 'verified' ? 'primary' : ''}
-                  disabled={r.status === 'quote_not_found'}
-                  onClick={() => {
-                    if (onInsert(r, request.claim)) setInserted(key)
-                    else onError('That sentence was deleted. Click Cite again on the text you want to cite.')
-                  }}
-                >
-                  Insert citation
-                </button>
-              )}
-            </div>
+      <div className={`cite-head cite-head-${mark.state}`}>
+        <span className={`cite-mark cite-mark-${mark.state}`}>cite</span>
+        <b>{HEADLINE[mark.state]}</b>
+      </div>
+      <blockquote className="cite-claim">{mark.claim}</blockquote>
+      {mark.state === 'searching' && <p className="busy">Searching your library and checking each passage against the sentence. Keep writing.</p>}
+      {mark.state === 'error' && <p className="warn">The backend didn't answer. Try again in a moment.</p>}
+      {(mark.state === 'unsupported' || mark.state === 'none') && (
+        <p className="warn">You may need to add a source for this, reword the sentence, or remove the marker.</p>
+      )}
+
+      {results.map((r, i) => (
+        <div key={`${r.chunk_id}:${i}`} className={`suggestion suggestion-${r.status}`}>
+          <div className="row">
+            <StatusBadge status={r.status} />
+            <span className="suggestion-label">{r.label}</span>
           </div>
-        )
-      })}
+          <p className="suggestion-quote">“{r.quote}”</p>
+          {r.reason && <p className="reason">{r.reason}</p>}
+          <div className="row">
+            <button onClick={() => onOpenSource(r)}>View source</button>
+            <button
+              className={i === 0 && r.status === 'verified' ? 'primary' : ''}
+              disabled={r.status === 'quote_not_found'}
+              onClick={() => onConfirm(mark.cid, r)}
+            >
+              Use this source
+            </button>
+          </div>
+        </div>
+      ))}
+
+      <div className="cite-foot">
+        <button onClick={() => onRecheck(mark.cid)} disabled={mark.state === 'searching'} title="Search again for the sentence as it reads now">
+          Check again
+        </button>
+        <button className="link danger-link" onClick={() => onRemove(mark.cid)}>
+          Remove marker
+        </button>
+      </div>
     </div>
   )
 }
