@@ -14,6 +14,7 @@ interface Props {
   /** A paper to bring into view and open (from the network view or the palette); `n` changes per request. */
   focus?: { id: number; n: number } | null
   onFindDuplicates: () => void
+  onCitedPapers: (docId: number) => void
 }
 
 const KIND_LABEL: Record<Doc['kind'], string> = {
@@ -252,6 +253,7 @@ function DocCard({
   folder,
   onToggle,
   onOpen,
+  onCited,
   run,
 }: {
   doc: Doc
@@ -260,6 +262,7 @@ function DocCard({
   folder: Folder | undefined // the folder being browsed, to show how well the paper fits it
   onToggle: () => void
   onOpen: () => void
+  onCited: () => void
   run: Run
 }) {
   const [confirming, setConfirming] = useState(false)
@@ -302,6 +305,11 @@ function DocCard({
               </div>
             )}
             <div className="lib-doc-actions">
+              {!confirming && (
+                <button onClick={onCited} title="List the works this paper cites and download free copies of them">
+                  Cited papers…
+                </button>
+              )}
               {confirming ? (
                 <>
                   <button className="danger" onClick={() => run('Removing…', () => api.deleteDocument(d.id))}>
@@ -322,7 +330,7 @@ function DocCard({
   )
 }
 
-export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, onFindDuplicates }: Props) {
+export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [source, setSource] = useState('')
   const [query, setQuery] = useState('')
@@ -648,6 +656,7 @@ export function LibraryPanel({ docs, folders, wide, onToggleWide, selected, onTo
                 folder={openFolder}
                 onToggle={() => onToggle(d.id)}
                 onOpen={() => setOpen(open === d.id ? null : d.id)}
+                onCited={() => onCitedPapers(d.id)}
                 run={run}
               />
             ))}

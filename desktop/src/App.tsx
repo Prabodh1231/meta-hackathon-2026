@@ -5,6 +5,7 @@ import { CitationWire } from './components/CitationWire'
 import { CitePanel, type CiteRequest } from './components/CitePanel'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
 import { DraftsMenu } from './components/DraftsMenu'
+import { CitedPapersDialog } from './components/CitedPapersDialog'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { ExportControl } from './components/ExportControl'
 import { GettingStarted } from './components/GettingStarted'
@@ -147,6 +148,7 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>({ theme: cachedTheme(), citation_style: 'apa' })
   const [showSettings, setShowSettings] = useState(false)
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
+  const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
   const [citeRequest, setCiteRequest] = useState<CiteRequest | null>(null)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryWide, setLibraryWide] = useState(false) // library as a file manager
@@ -650,6 +652,7 @@ export default function App() {
               onError={onError}
               focus={libFocus}
               onFindDuplicates={() => setDupFilesOpen(true)}
+              onCitedPapers={setCitedFor}
             />
           </div>
 
@@ -769,6 +772,7 @@ export default function App() {
             <NetworkView
               onClose={() => setNetworkOpen(false)}
               onOpenPaper={showPaper}
+              onCitedPapers={setCitedFor}
               onError={onError}
             />
           )}
@@ -859,6 +863,16 @@ export default function App() {
           getCited={() => editor.current?.citedDocIds() ?? []}
           onChanged={refresh}
           onClose={() => setDupFilesOpen(false)}
+          onError={onError}
+        />
+      )}
+
+      {citedFor != null && (
+        <CitedPapersDialog
+          docId={citedFor}
+          onOpenPaper={showPaper}
+          onChanged={refresh}
+          onClose={() => setCitedFor(null)}
           onError={onError}
         />
       )}

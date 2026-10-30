@@ -17,6 +17,7 @@ class Settings:
     muse_api_key: str = ""
     muse_model: str = "muse-spark-1.3"
     muse_reasoning_effort: str = "low"  # minimal | low | medium | high | xhigh
+    contact_email: str = ""  # sent to OpenAlex and Semantic Scholar when finding cited papers (polite pool)
 
     @property
     def db_path(self) -> Path:
@@ -44,6 +45,7 @@ class Settings:
             muse_api_key=env("MUSE_API_KEY") or env("MODEL_API_KEY"),
             muse_model=env("MUSE_MODEL", cls.muse_model),
             muse_reasoning_effort=env("MUSE_REASONING_EFFORT", cls.muse_reasoning_effort),
+            contact_email=env("RC_CONTACT_EMAIL"),
         )
 
 
