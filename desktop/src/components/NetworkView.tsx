@@ -4,7 +4,8 @@ import { api } from '../api'
 import type { CitationGraph, GraphNode } from '../types'
 
 interface Props {
-  onClose: () => void
+  /** The topic typed in the app bar's search box. */
+  query: string
   onOpenPaper: (docId: number) => void
   onCitedPapers: (docId: number) => void
   onFindMissing: (topic: string) => void
@@ -19,13 +20,12 @@ function byline(n: GraphNode): string {
 
 /** The library as a network: papers, who cites whom, who shares references, and the works
  *  several papers cite that the library lacks. */
-export function NetworkView({ onClose, onOpenPaper, onCitedPapers, onFindMissing, onError }: Props) {
+export function NetworkView({ query, onOpenPaper, onCitedPapers, onFindMissing, onError }: Props) {
   const [graph, setGraph] = useState<CitationGraph | null>(null)
   const [showShared, setShowShared] = useState(true)
   const [showMissing, setShowMissing] = useState(true)
   const [showKeywords, setShowKeywords] = useState(false)
-  const [query, setQuery] = useState('') // what the user is typing
-  const [topic, setTopic] = useState('') // the search the graph is showing
+  const [topic, setTopic] = useState(query.trim()) // the search the graph is showing
   const [picked, setPicked] = useState<string | null>(null)
   const box = useRef<HTMLDivElement>(null)
   const cy = useRef<Core | null>(null)
@@ -124,7 +124,7 @@ export function NetworkView({ onClose, onOpenPaper, onCitedPapers, onFindMissing
   const noList = graph?.nodes.filter((n) => n.kind === 'paper' && !n.parsed).length ?? 0
 
   return (
-    <div className="network" role="dialog" aria-label="Citation network">
+    <div className="network" aria-label="Citation network">
       <header className="network-head">
         <h2>Citation network</h2>
         {graph && (
@@ -132,12 +132,10 @@ export function NetworkView({ onClose, onOpenPaper, onCitedPapers, onFindMissing
             {topic ? `${papers} paper${papers === 1 ? '' : 's'} about “${topic}” · ` : `${papers} papers · `}{graph.citations.filter((e) => e.target.startsWith('doc:')).length} citations in the library · {graph.coupling.length} pairs share references
           </span>
         )}
-        <input className="network-search" type="search" placeholder="Search a topic: blockchain, financial inclusion…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search a topic" />
         <div className="spacer" />
         <label><input type="checkbox" checked={showKeywords} onChange={(e) => setShowKeywords(e.target.checked)} /> Shared keywords</label>
         <label><input type="checkbox" checked={showShared} onChange={(e) => setShowShared(e.target.checked)} /> Shared references</label>
         <label><input type="checkbox" checked={showMissing} onChange={(e) => setShowMissing(e.target.checked)} /> Missing works</label>
-        <button className="drawer-close static" onClick={onClose} aria-label="Close network">×</button>
       </header>
       <div className="network-body">
         <div className="network-canvas" ref={box}>

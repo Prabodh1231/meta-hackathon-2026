@@ -27,18 +27,17 @@ function pageCaption(doc: Doc, page: number, data: PageText | null): string {
 
 export function SourceViewer({ target, doc }: { target: SourceTarget | null; doc: Doc | undefined }) {
   const [pageData, setPageData] = useState<PageText | null>(null)
-  const [page, setPage] = useState(1)
+  // The page turned to, for the citation it was turned for. Another citation opens on its own page
+  // straight away, so its page is fetched once rather than the old page number first.
+  const [turned, setTurned] = useState<{ target: SourceTarget | null; page: number }>({ target: null, page: 1 })
+  const page = turned.target === target ? turned.page : target?.page ?? 1
+  const setPage = (p: number) => setTurned({ target, page: p })
   const [error, setError] = useState<string | null>(null)
   const markRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
-    if (target) setPage(target.page)
-  }, [target])
-
-  useEffect(() => {
     if (!target) return
-    // Opening another citation fetches twice (the old page number, then the new one): only the
-    // latest answer may show, or a slow first reply would put the wrong page on screen.
+    // Only the latest answer may show, or a slow reply would put the wrong page on screen.
     let stale = false
     setPageData(null)
     setError(null)

@@ -42,39 +42,30 @@ import type {
   VersionList,
 } from './types'
 
-type Tab = 'assistant' | 'cite' | 'source' | 'references' | 'review' | 'history'
-interface Tool {
-  tab: Tab
-  label: string
-  icon: IconName
-  hint: string
-}
-
-/** The right-hand tools, grouped by stage of writing: draft, back it up, then check it. */
-const TOOLS: { group: string; tools: Tool[] }[] = [
-  {
-    group: 'Write',
-    tools: [
-      { tab: 'assistant', label: 'Assistant', icon: 'assistant', hint: 'Draft from your library with cited quotes' },
-      { tab: 'cite', label: 'Cite', icon: 'cite', hint: 'Sources found for your cite markers, to confirm' },
-    ],
-  },
-  {
-    group: 'Evidence',
-    tools: [
-      { tab: 'source', label: 'Source', icon: 'source', hint: 'The cited passage, highlighted on its page' },
-      { tab: 'references', label: 'Refs', icon: 'references', hint: 'Reference list for the sources you cite' },
-    ],
-  },
-  {
-    group: 'Review',
-    tools: [
-      { tab: 'review', label: 'Duplicates', icon: 'review', hint: 'Repeated passages and text matching your sources' },
-      { tab: 'history', label: 'History', icon: 'history', hint: 'Versions of the draft and what changed' },
-    ],
-  },
+/** The three places in the app: the draft, the library, and the citation network. */
+type Mode = 'write' | 'library' | 'network'
+const MODES: { mode: Mode; label: string; icon: IconName; hint: string }[] = [
+  { mode: 'write', label: 'Write', icon: 'write', hint: 'Your draft, with the writing tools beside it' },
+  { mode: 'library', label: 'Library', icon: 'library', hint: 'Add, organize and pick your sources' },
+  { mode: 'network', label: 'Network', icon: 'network', hint: 'Who cites whom in your library' },
 ]
-const TOOL = Object.fromEntries(TOOLS.flatMap((g) => g.tools.map((t) => [t.tab, t]))) as Record<Tab, Tool>
+
+/** The tabs of the panel beside the draft, in the order you use them while writing. */
+type Tab = 'assistant' | 'citations' | 'references' | 'review' | 'history'
+const TABS: { tab: Tab; label: string; icon: IconName; hint: string }[] = [
+  { tab: 'assistant', label: 'Assistant', icon: 'assistant', hint: 'Draft from your library with cited quotes' },
+  { tab: 'citations', label: 'Citations', icon: 'cite', hint: 'Confirm cite markers and see each quote on its page' },
+  { tab: 'references', label: 'References', icon: 'references', hint: 'Reference list for the sources you cite' },
+  { tab: 'review', label: 'Review', icon: 'review', hint: 'Repeated passages and text matching your sources' },
+  { tab: 'history', label: 'History', icon: 'history', hint: 'Versions of the draft and what changed' },
+]
+const TAB = Object.fromEntries(TABS.map((t) => [t.tab, t])) as Record<Tab, (typeof TABS)[number]>
+
+/** What the one search box does in each place. */
+const SEARCH: Record<Exclude<Mode, 'write'>, { scope: string; placeholder: string }> = {
+  library: { scope: 'Library', placeholder: 'Filter by title, author, keyword, JEL code…' },
+  network: { scope: 'Network', placeholder: 'Search a topic: blockchain, financial inclusion…' },
+}
 
 const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mock' }
 
@@ -84,18 +75,6 @@ function modelLine(h: Health): string {
   const embedder = model.replace(/-en-v[\d.]+$/, '').replace(/^bge/, 'BGE').replace('-m3', '-M3')
   const device = h.embedder_device === 'cuda' ? ' (GPU)' : ''
   return `${PROVIDER_NAMES[h.provider] ?? h.provider} · ${embedder}${device}`
-}
-
-// Whether the right panel sits beside the page (pinned) or slides over it. Wide windows pin by default.
-const PIN_KEY = 'rc.panelPinned'
-function initialPinned(): boolean {
-  try {
-    const v = localStorage.getItem(PIN_KEY)
-    if (v != null) return v === '1'
-  } catch {
-    /* storage unavailable */
-  }
-  return window.innerWidth >= 1280
 }
 
 const GUIDE_KEY = 'rc.gettingStartedHidden'
@@ -146,28 +125,27 @@ export default function App() {
   const [docs, setDocs] = useState<Doc[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [mode, setMode] = useState<Mode>('write')
   const [tab, setTab] = useState<Tab>('assistant')
   const [source, setSource] = useState<(SourceTarget & { cid?: string }) | null>(null)
+  const [sourceFrom, setSourceFrom] = useState<Tab | null>(null) // showing `source`, opened from this tab
+  const [libQuery, setLibQuery] = useState('')
+  const [netQuery, setNetQuery] = useState('')
   const [errors, setErrors] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [draftId, setDraftId] = useState(initialDraft)
   const [drafts, setDrafts] = useState<DraftSummary[]>([])
-  const [draftsOpen, setDraftsOpen] = useState(false)
+  const [draftsOpen, setDraftsOpen] = useState(false) // the drafts menu under the title
   const [draftsBusy, setDraftsBusy] = useState<string | null>(null)
   const [hideGuide, setHideGuide] = useState(guideHidden)
   const [settings, setSettings] = useState<Settings>({ theme: cachedTheme(), citation_style: 'apa' })
   const [showSettings, setShowSettings] = useState(false)
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
   const [citeMarks, setCiteMarks] = useState<CiteMarkAttrs[]>([]) // "cite" markers in the draft, searching or waiting
-  const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker the Cite panel is showing
+  const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker the Citations tab is showing
   const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
   const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
-  const [libraryOpen, setLibraryOpen] = useState(false)
-  const [libraryWide, setLibraryWide] = useState(false) // library as a file manager
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [pinned, setPinned] = useState(initialPinned)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [networkOpen, setNetworkOpen] = useState(false)
   const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 })
   const [title, setTitle] = useState('Untitled')
   const [saveState, setSaveState] = useState<SaveState>({ state: 'idle' })
@@ -184,64 +162,39 @@ export default function App() {
   const editor = useRef<WritingEditorHandle>(null)
   const [importing, setImporting] = useState<File | null>(null) // the Word file in the import dialog
   const wordInput = useRef<HTMLInputElement>(null)
+  const draftsMenu = useRef<HTMLDivElement>(null)
   const [dropping, setDropping] = useState(false) // files dragged over the window
   const [jobs, setJobs] = useState<IngestJob[]>([]) // background imports, newest first
-  // Papers the draft cites, for the library to mark. Recounted whenever the draft's stats change.
-  const citedIds = useMemo(() => editor.current?.citedDocIds() ?? [], [stats, draftId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Papers the draft cites, for the library to mark. Recounted whenever the draft's stats change,
+  // but a new list only when the papers do, so the library doesn't redraw at every pause in typing.
+  const citedKey = useMemo(() => (editor.current?.citedDocIds() ?? []).join(','), [stats, draftId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const citedIds = useMemo(() => (citedKey ? citedKey.split(',').map(Number) : []), [citedKey])
 
   useEffect(() => {
     const t = window.setInterval(() => setTick((n) => n + 1), 30000)
     return () => window.clearInterval(t)
   }, [])
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(PIN_KEY, pinned ? '1' : '0')
-    } catch {
-      /* storage unavailable */
-    }
-  }, [pinned])
-
-  // The drafts and library drawers and the network view cover the same area, so only one is open at a time.
-  const openDrafts = useCallback((open = true) => {
-    setDraftsOpen(open)
-    if (open) {
-      setLibraryOpen(false)
-      setNetworkOpen(false)
-    }
-  }, [])
-  const openLibrary = useCallback((open = true) => {
-    setLibraryOpen(open)
-    if (open) {
-      setDraftsOpen(false)
-      setNetworkOpen(false)
-    }
-  }, [])
-  const openNetwork = useCallback((open = true) => {
-    setNetworkOpen(open)
-    if (open) {
-      setDraftsOpen(false)
-      setLibraryOpen(false)
-    }
-  }, [])
+  const openLibrary = useCallback(() => setMode('library'), [])
   const [libFocus, setLibFocus] = useState<{ id: number; n: number } | null>(null)
-  const showPaper = useCallback(
-    (id: number) => {
-      openLibrary()
-      setLibFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
-    },
-    [openLibrary],
-  )
-
-  const showTab = useCallback((t: Tab) => {
-    setTab(t)
-    setDrawerOpen(true)
+  const showPaper = useCallback((id: number) => {
+    setMode('library')
+    setLibFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
   }, [])
 
-  // A rail button opens its tool, or closes the panel when that tool is already showing.
-  function toggleTool(t: Tab) {
-    if (drawerOpen && tab === t) setDrawerOpen(false)
-    else showTab(t)
+  /** Show a tab of the panel beside the draft. */
+  const showTab = useCallback((t: Tab) => {
+    setMode('write')
+    setTab(t)
+    setSourceFrom(null)
+  }, [])
+
+  /** Show a cited passage on its page, in the Citations tab; "back" returns to `from`. */
+  function showSource(target: SourceTarget & { cid?: string }, from: Tab = tab) {
+    setSource(target)
+    setSourceFrom(sourceFrom ?? from)
+    setMode('write')
+    setTab('citations')
   }
 
   const pickWord = useCallback(() => wordInput.current?.click(), [])
@@ -259,14 +212,22 @@ export default function App() {
         e.preventDefault()
         newDraftRef.current()
       } else if (e.key === 'Escape' && !paletteOpen && !importing) {
-        setLibraryOpen(false)
-        setDraftsOpen(false)
-        setDrawerOpen(false)
+        if (draftsOpen) setDraftsOpen(false)
+        // Esc on the page itself (not in a field or the library table) goes back to the draft.
+        else if (mode !== 'write' && e.target === document.body) setMode('write')
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [paletteOpen, importing, pickWord])
+  }, [paletteOpen, importing, pickWord, draftsOpen, mode])
+
+  // The drafts menu closes on a click anywhere else.
+  useEffect(() => {
+    if (!draftsOpen) return
+    const close = (e: MouseEvent) => !draftsMenu.current?.contains(e.target as Node) && setDraftsOpen(false)
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [draftsOpen])
 
   const onError = useCallback((msg: string) => setErrors((e) => [...e.slice(-2), msg]), [])
 
@@ -328,6 +289,7 @@ export default function App() {
   /** Save what's pending in the open draft, then show another. */
   async function switchDraft(id: number) {
     setDraftsOpen(false)
+    setMode('write')
     if (id === draftId) return
     await editor.current?.flush()
     setDraftId(id)
@@ -335,6 +297,7 @@ export default function App() {
 
   async function newDraft() {
     setDraftsOpen(false)
+    setMode('write')
     // The open draft is still a blank page: that's the new draft, rather than another empty one.
     if (editor.current?.isEmpty()) {
       editor.current.focus()
@@ -374,25 +337,29 @@ export default function App() {
     await api.saveDraft(d.id, c.title, JSON.stringify(c.content)) // also takes its first version
     await refreshDrafts()
     setDraftId(d.id)
+    setMode('write')
     setNotice(importNotice('Opened', file.name, c))
   }
 
   function insertIntoDraft(file: File, c: DocxConversion) {
+    setMode('write')
     editor.current?.insertDocument(c.content)
     setNotice(importNotice('Inserted', file.name, c))
   }
 
-  /** Add files or folders on disk to the library, all in one request. */
   /** Add files or folders on disk to the library in the background; the library shows progress. */
-  async function addToLibrary(paths: string[]) {
-    openLibrary()
-    try {
-      const job = await api.startIngest(paths)
-      setJobs((js) => [job, ...js.filter((j) => j.id !== job.id)])
-    } catch (e) {
-      onError(`Could not start adding files: ${e instanceof Error ? e.message : e}`)
-    }
-  }
+  const addToLibrary = useCallback(
+    async (paths: string[]) => {
+      setMode('library')
+      try {
+        const job = await api.startIngest(paths)
+        setJobs((js) => [job, ...js.filter((j) => j.id !== job.id)])
+      } catch (e) {
+        onError(`Could not start adding files: ${e instanceof Error ? e.message : e}`)
+      }
+    },
+    [onError],
+  )
 
   // Follow running imports: the library list updates as each file lands, and when an import
   // ends a short summary is shown (the details stay in the library until dismissed).
@@ -417,17 +384,36 @@ export default function App() {
     return () => window.clearTimeout(t)
   }, [jobs, refresh, onError])
 
-  async function cancelJob(id: number) {
-    try {
-      const job = await api.cancelIngest(id)
-      setJobs((js) => js.map((j) => (j.id === id ? job : j)))
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e))
-    }
-  }
+  const cancelJob = useCallback(
+    async (id: number) => {
+      try {
+        const job = await api.cancelIngest(id)
+        setJobs((js) => js.map((j) => (j.id === id ? job : j)))
+      } catch (e) {
+        onError(e instanceof Error ? e.message : String(e))
+      }
+    },
+    [onError],
+  )
+  const dismissJob = useCallback((id: number) => setJobs((js) => js.filter((j) => j.id !== id)), [])
+  const toggleSelected = useCallback(
+    (id: number) =>
+      setSelected((s) => {
+        const n = new Set(s)
+        n.has(id) ? n.delete(id) : n.add(id)
+        return n
+      }),
+    [],
+  )
+  const findDuplicateFiles = useCallback(() => setDupFilesOpen(true), [])
+  const findMissing = useCallback(() => setMissingQuery(''), [])
 
   // Files dragged in from outside: one Word file opens the import dialog, anything else goes to
   // the library. Without this, Electron would navigate the window to the dropped file.
+  // Subscribed once: re-subscribing on every render reset the enter/leave count mid-drag, and the
+  // overlay vanished as soon as the pointer crossed into another element.
+  const onDropRef = useRef({ importWord, addToLibrary, onError })
+  onDropRef.current = { importWord, addToLibrary, onError }
   useEffect(() => {
     let depth = 0 // dragenter/leave fire for every child element crossed
     const enter = (e: DragEvent) => {
@@ -450,6 +436,7 @@ export default function App() {
       e.preventDefault()
       depth = 0
       setDropping(false)
+      const { importWord, addToLibrary, onError } = onDropRef.current
       const files = [...(e.dataTransfer?.files ?? [])]
       if (files.length === 1 && WORD_FILE.test(files[0].name)) return importWord(files[0])
       const usable = files.filter((f) => LIBRARY_TYPES.test(f.name))
@@ -474,7 +461,7 @@ export default function App() {
       window.removeEventListener('dragover', over)
       window.removeEventListener('drop', drop)
     }
-  })
+  }, [])
 
   async function deleteDraft(id: number) {
     setDraftsBusy('Deleting…')
@@ -562,9 +549,9 @@ export default function App() {
     }
   }, [])
 
-  const reviewing = drawerOpen && tab === 'review'
+  const reviewing = mode === 'write' && tab === 'review'
 
-  // Underline what the check found while the Duplicates panel is open.
+  // Underline what the check found while the Review tab is open.
   useEffect(() => {
     const r = dup.report
     if (!reviewing || !r) {
@@ -587,7 +574,7 @@ export default function App() {
     ])
   }, [reviewing, dup.report])
 
-  // Opening the panel checks the draft; while it stays open, it re-checks a few seconds after edits.
+  // Opening the tab checks the draft; while it stays open, it re-checks a few seconds after edits.
   useEffect(() => {
     if (!reviewing || dup.busy || dup.error) return
     if (!dup.report) {
@@ -599,7 +586,7 @@ export default function App() {
     return () => window.clearTimeout(t)
   }, [reviewing, dup.stale, dup.report, dup.busy, dup.error, runCheck])
 
-  // Closing the panel forgets a failed check, so opening it again tries once more.
+  // Leaving the tab forgets a failed check, so opening it again tries once more.
   useEffect(() => {
     if (!reviewing) setDup((d) => (d.error ? { ...d, error: null } : d))
   }, [reviewing])
@@ -621,7 +608,7 @@ export default function App() {
   // ---------- sources ----------
 
   function openMatch(m: SourceMatch) {
-    setSource({
+    showSource({
       docId: m.doc_id,
       page: m.page,
       start: m.start,
@@ -634,11 +621,10 @@ export default function App() {
       label: m.label,
       badge: m.cited ? 'cited match' : 'uncited match',
     })
-    showTab('source')
   }
 
   function openCitation(c: Citation) {
-    setSource({
+    showSource({
       cid: c.cid,
       docId: c.doc_id,
       page: c.page,
@@ -649,16 +635,16 @@ export default function App() {
       reason: c.reason,
       label: c.label,
     })
-    showTab('source')
   }
 
   async function openChip(a: ChipAttrs) {
-    setSource({ ...a })
-    showTab('source')
+    showSource({ ...a })
     // The file may have been re-added since this chip was written; jump to where the quote is now.
     try {
       const current = (await editor.current?.resolveChip(a)) ?? a
-      setSource((s) => (s?.cid === a.cid ? { ...current } : s))
+      // Only a chip that moved (or lost its passage) shows again: the same page needn't load twice.
+      const moved = (s: SourceTarget) => (['docId', 'page', 'start', 'end', 'status', 'label'] as const).some((k) => s[k] !== current[k])
+      setSource((s) => (s?.cid === a.cid && moved(s) ? { ...current } : s))
     } catch (e) {
       onError(`Could not refresh citation: ${e instanceof Error ? e.message : e}`)
     }
@@ -669,6 +655,11 @@ export default function App() {
     setSource((s) => (s?.cid === cid ? { ...s, status: v.status, reason: v.reason } : s))
   }
 
+  function showCitations(focus: string | null = null) {
+    showTab('citations')
+    setCiteFocus(focus)
+  }
+
   const paletteItems: PaletteItem[] = [
     ...docs.map((d) => ({
       group: d.kind.toUpperCase(),
@@ -676,31 +667,30 @@ export default function App() {
       hint: [d.authors[0], d.year].filter(Boolean).join(' '),
       run: () => showPaper(d.id),
     })),
-    ...folders.map((f) => ({ group: 'FOLDER', name: f.name, hint: `${f.doc_count} docs`, run: () => openLibrary() })),
-    { group: 'DO', name: 'Show citation network', hint: 'who cites whom, shared references', run: () => openNetwork() },
-    { group: 'DO', name: 'Open library', hint: 'add and organize sources', run: () => openLibrary() },
+    ...folders.map((f) => ({ group: 'FOLDER', name: f.name, hint: `${f.doc_count} docs`, run: openLibrary })),
+    ...drafts
+      .filter((d) => d.id !== draftId)
+      .map((d) => ({ group: 'DRAFT', name: d.title || 'Untitled', hint: `${d.words} words`, run: () => switchDraft(d.id) })),
+    { group: 'GO', name: 'Write', hint: 'the draft and its tools', run: () => setMode('write') },
+    { group: 'GO', name: 'Library', hint: 'add and organize sources', run: openLibrary },
+    { group: 'GO', name: 'Citation network', hint: 'who cites whom, shared references', run: () => setMode('network') },
     { group: 'DO', name: 'Ask the assistant', hint: 'draft with citations', run: () => showTab('assistant') },
     {
       group: 'DO',
       name: 'Citations to confirm',
       hint: citeMarks.length ? `${citeMarks.length} waiting` : 'Ctrl+Shift+C marks a sentence',
-      run: () => {
-        setCiteFocus(null)
-        showTab('cite')
-      },
+      run: () => showCitations(),
     },
     { group: 'DO', name: 'Show references', hint: settings.citation_style.toUpperCase(), run: () => showTab('references') },
     { group: 'DO', name: 'Check for duplication', hint: 'repeats and text matching sources', run: () => showTab('review') },
     { group: 'DO', name: 'Version history', hint: 'save, compare and restore versions', run: () => showTab('history') },
-    ...drafts
-      .filter((d) => d.id !== draftId)
-      .map((d) => ({ group: 'DRAFT', name: d.title || 'Untitled', hint: `${d.words} words`, run: () => switchDraft(d.id) })),
     { group: 'DO', name: 'New draft', hint: 'a blank page · Ctrl+N', run: () => newDraft() },
-    { group: 'DO', name: 'Show drafts', hint: 'switch, import or delete', run: () => openDrafts() },
+    { group: 'DO', name: 'Show drafts', hint: 'switch, import or delete', run: () => setDraftsOpen(true) },
     { group: 'DO', name: 'Import a Word file', hint: '.docx · Ctrl+O', run: pickWord },
-    { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: () => setDupFilesOpen(true) },
-    { group: 'DO', name: "Most-cited papers you don't have", hint: 'what your papers cite most, by topic', run: () => setMissingQuery('') },
+    { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: findDuplicateFiles },
+    { group: 'DO', name: "Most-cited papers you don't have", hint: 'what your papers cite most, by topic', run: findMissing },
     { group: 'DO', name: 'Show getting started', hint: 'the three steps', run: () => {
+      setMode('write')
       setHideGuide(false)
       try {
         localStorage.removeItem(GUIDE_KEY)
@@ -718,26 +708,30 @@ export default function App() {
   const latest = versions?.versions[0]
   const change = versions?.current_change ?? null
   const dupPct = dup.report?.overall ?? null
-  const tool = TOOL[tab]
+  const showingSource = tab === 'citations' && sourceFrom !== null
 
   function badgeFor(t: Tab): string | null {
-    if (t === 'cite' && citeMarks.length) return String(citeMarks.length)
+    if (t === 'citations' && citeMarks.length) return String(citeMarks.length)
     if (t === 'review' && dupPct != null) return `${dupPct}%`
     if (t === 'history' && change) return `${change}%`
     return null
   }
 
+  const query = mode === 'library' ? libQuery : netQuery
+  const setQuery = mode === 'library' ? setLibQuery : setNetQuery
+
   return (
     <div className="app">
       <header className="app-bar">
-        <div className="doc-id">
+        <div className="doc-id" ref={draftsMenu}>
           <span className="logo" aria-hidden="true">rc</span>
           <div className="doc-id-text">
             <button
               className="doc-switch"
-              onClick={() => openDrafts(!draftsOpen)}
+              onClick={() => setDraftsOpen((o) => !o)}
               aria-expanded={draftsOpen}
-              title="Your drafts: switch, start a new one, or import a Word file"
+              aria-haspopup="dialog"
+              title="Your drafts: switch, start a new one, import a Word file, or delete one"
             >
               <span className="doc-name">{title}</span>
               <span className="doc-caret" aria-hidden="true">▾</span>
@@ -755,29 +749,66 @@ export default function App() {
               )}
             </div>
           </div>
+          {draftsOpen && (
+            <div className="drafts-menu" role="dialog" aria-label="Drafts">
+              <DraftsPanel
+                drafts={drafts}
+                currentId={draftId}
+                busy={draftsBusy}
+                onSwitch={switchDraft}
+                onNew={newDraft}
+                onImport={() => {
+                  setDraftsOpen(false)
+                  pickWord()
+                }}
+                onDelete={deleteDraft}
+              />
+            </div>
+          )}
         </div>
-        <button className="search-pill" onClick={() => setPaletteOpen(true)}>
-          <Icon name="search" size={16} />
-          <span>Search sources, jump, run actions</span>
-          <kbd>Ctrl K</kbd>
-        </button>
-        <div className="bar-actions">
-          <div className="bar-group" role="group" aria-label="Document">
-            <button className="bar-btn" onClick={newDraft} title="Start a new draft (Ctrl+N)">
-              <Icon name="plus" size={16} />
-              <span>New</span>
-            </button>
-            <button className="bar-btn" onClick={pickWord} title="Open a Word file as a draft, into this draft, or as a source (Ctrl+O). You can also drop it on the window.">
-              <Icon name="upload" size={16} />
-              <span>Import</span>
-            </button>
-            <ExportControl
-              style={settings.citation_style}
-              getJSON={() => editor.current?.getJSON() ?? null}
-              getTitle={() => editor.current?.getTitle() ?? 'Untitled'}
-              onError={onError}
+
+        {mode === 'write' ? (
+          <button className="search-pill" onClick={() => setPaletteOpen(true)}>
+            <Icon name="search" size={16} />
+            <span>Search sources, drafts and actions</span>
+            <kbd>Ctrl K</kbd>
+          </button>
+        ) : (
+          <div className="search-pill search-field">
+            <Icon name="search" size={16} />
+            <span className="search-scope">{SEARCH[mode].scope}</span>
+            <input
+              key={mode}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Escape') return
+                e.stopPropagation()
+                if (query) setQuery('')
+                else e.currentTarget.blur()
+              }}
+              placeholder={SEARCH[mode].placeholder}
+              aria-label={`Search the ${SEARCH[mode].scope.toLowerCase()}`}
             />
+            {query && (
+              <button className="search-clear" onClick={() => setQuery('')} aria-label="Clear the search" title="Clear (Esc)">
+                ×
+              </button>
+            )}
+            <button className="search-all" onClick={() => setPaletteOpen(true)} title="Search everything and run actions">
+              <kbd>Ctrl K</kbd>
+            </button>
           </div>
+        )}
+
+        <div className="bar-actions">
+          <ExportControl
+            style={settings.citation_style}
+            getJSON={() => editor.current?.getJSON() ?? null}
+            getTitle={() => editor.current?.getTitle() ?? 'Untitled'}
+            onError={onError}
+          />
           <input
             ref={wordInput}
             type="file"
@@ -796,72 +827,23 @@ export default function App() {
       </header>
 
       <div className="workspace">
-        <nav className="rail rail-left" aria-label="Drafts and sources">
-          <button className={`rail-btn${draftsOpen ? ' on' : ''}`} onClick={() => openDrafts(!draftsOpen)} title="Your drafts: start a new one, import a Word file, or switch">
-            <Icon name="drafts" />
-            <span>Drafts</span>
-            {drafts.length > 1 && <em className="rail-badge">{drafts.length}</em>}
-          </button>
-          <button className={`rail-btn${libraryOpen ? ' on' : ''}`} onClick={() => openLibrary(!libraryOpen)} title="Add and organize sources">
-            <Icon name="library" />
-            <span>Library</span>
-            {docs.length > 0 && <em className="rail-badge">{docs.length}</em>}
-          </button>
-          <button className={`rail-btn${networkOpen ? ' on' : ''}`} onClick={() => openNetwork(!networkOpen)} title="Who cites whom in your library">
-            <Icon name="network" />
-            <span>Network</span>
-          </button>
+        <nav className="rail" aria-label="Places">
+          {MODES.map((m) => (
+            <button
+              key={m.mode}
+              className={`rail-btn${mode === m.mode ? ' on' : ''}`}
+              onClick={() => setMode(m.mode)}
+              title={m.hint}
+              aria-current={mode === m.mode ? 'page' : undefined}
+            >
+              <Icon name={m.icon} />
+              <span>{m.label}</span>
+              {m.mode === 'library' && docs.length > 0 && <em className="rail-badge">{docs.length}</em>}
+            </button>
+          ))}
         </nav>
 
-        <div className={`stage${pinned && drawerOpen ? ' pinned' : ''}`}>
-          <div className={`drawer drawer-left drafts-drawer${draftsOpen ? ' show' : ''}`} aria-hidden={!draftsOpen}>
-            <button className="drawer-close" onClick={() => setDraftsOpen(false)} aria-label="Close drafts">
-              ×
-            </button>
-            <DraftsPanel
-              drafts={drafts}
-              currentId={draftId}
-              busy={draftsBusy}
-              onSwitch={switchDraft}
-              onNew={newDraft}
-              onImport={() => {
-                setDraftsOpen(false)
-                pickWord()
-              }}
-              onDelete={deleteDraft}
-            />
-          </div>
-          <div className={`drawer drawer-left${libraryOpen ? ' show' : ''}${libraryWide ? ' wide' : ''}`} aria-hidden={!libraryOpen}>
-            <button className="drawer-close" onClick={() => setLibraryOpen(false)} aria-label="Close library">
-              ×
-            </button>
-            <LibraryPanel
-              docs={docs}
-              folders={folders}
-              wide={libraryWide}
-              onToggleWide={() => setLibraryWide((w) => !w)}
-              selected={selected}
-              onToggle={(id) =>
-                setSelected((s) => {
-                  const n = new Set(s)
-                  n.has(id) ? n.delete(id) : n.add(id)
-                  return n
-                })
-              }
-              onChanged={refresh}
-              onError={onError}
-              focus={libFocus}
-              jobs={jobs}
-              onAddPaths={addToLibrary}
-              onCancelJob={cancelJob}
-              onDismissJob={(id) => setJobs((js) => js.filter((j) => j.id !== id))}
-              onFindDuplicates={() => setDupFilesOpen(true)}
-              onCitedPapers={setCitedFor}
-              onFindMissing={() => setMissingQuery('')}
-              cited={citedIds}
-            />
-          </div>
-
+        <div className="view write-view" hidden={mode !== 'write'}>
           <main className="writing">
             <WritingEditor
               ref={editor}
@@ -872,7 +854,7 @@ export default function App() {
                     sources={docs.length}
                     words={stats.words}
                     citations={stats.citations}
-                    onAddSources={() => openLibrary()}
+                    onAddSources={openLibrary}
                     onAsk={() => showTab('assistant')}
                     onOpenWord={pickWord}
                     onHide={() => {
@@ -889,41 +871,47 @@ export default function App() {
               onStats={onStats}
               onSaveState={onSaveState}
               onCitationClick={openChip}
-              onCiteMarkClick={(cid) => {
-                setCiteFocus(cid)
-                showTab('cite')
-              }}
+              onCiteMarkClick={(cid) => showCitations(cid)}
               onCiteMarks={setCiteMarks}
               getScope={() => (selected.size ? [...selected] : null)}
               onError={onError}
             />
           </main>
 
-          <aside className={`drawer drawer-right panel sidebar${drawerOpen ? ' show' : ''}`} aria-hidden={!drawerOpen}>
-            <header className="panel-bar">
-              <span className="panel-ico"><Icon name={tool.icon} size={18} /></span>
-              <div className="panel-bar-text">
-                <h2>{tool.tab === 'references' ? 'References' : tool.label}</h2>
-                <span>{tool.hint}</span>
-              </div>
-              <button
-                className={`icon-button${pinned ? ' on' : ''}`}
-                onClick={() => setPinned((p) => !p)}
-                title={pinned ? 'Unpin: slide the panel over the page' : 'Pin beside the page'}
-                aria-pressed={pinned}
-              >
-                <Icon name="pin" size={16} />
-              </button>
-              <button className="icon-button" onClick={() => setDrawerOpen(false)} aria-label="Close panel">
-                ×
-              </button>
-            </header>
+          <aside className="panel side-panel" aria-label="Writing tools">
+            <div className="tabs" role="tablist" aria-label="Writing tools">
+              {TABS.map((t) => {
+                const badge = badgeFor(t.tab)
+                return (
+                  <button
+                    key={t.tab}
+                    role="tab"
+                    aria-selected={tab === t.tab}
+                    className={`tab${tab === t.tab ? ' on' : ''}`}
+                    onClick={() => (t.tab === 'citations' ? showCitations(tab === 'citations' ? null : citeFocus) : showTab(t.tab))}
+                    title={t.hint}
+                  >
+                    <Icon name={t.icon} size={18} />
+                    <span>{t.label}</span>
+                    {badge && (
+                      <em
+                        className="tab-badge"
+                        style={t.tab === 'review' && dupPct != null ? { background: toneOf(dupPct, 'risk') } : undefined}
+                      >
+                        {badge}
+                      </em>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="tab-hint">{TAB[tab].hint}</p>
             <div className="tab-body">
               <div hidden={tab !== 'assistant'}>
                 <AssistantPanel
                   scope={[...selected]}
                   sourceCount={docs.length}
-                  onChooseSources={() => openLibrary()}
+                  onChooseSources={openLibrary}
                   getContext={() => editor.current?.getText() ?? ''}
                   onInsert={(s) => editor.current?.insertDraft(s)}
                   onVerified={onVerified}
@@ -931,9 +919,16 @@ export default function App() {
                   onError={onError}
                 />
               </div>
-              {tab === 'source' && <SourceViewer target={source} doc={docs.find((d) => d.id === source?.docId)} />}
-              {/* Kept mounted (hidden) so results survive a look at the Source tab. */}
-              <div hidden={tab !== 'cite'}>
+              {tab === 'citations' && sourceFrom && (
+                <>
+                  <button className="link cite-back" onClick={() => showTab(sourceFrom)}>
+                    ‹ Back to {sourceFrom === 'citations' ? 'citations to confirm' : TAB[sourceFrom].label}
+                  </button>
+                  <SourceViewer target={source} doc={docs.find((d) => d.id === source?.docId)} />
+                </>
+              )}
+              {/* Kept mounted (hidden) so results survive a look at a source. */}
+              <div hidden={tab !== 'citations' || showingSource}>
                 <CitePanel
                   marks={citeMarks}
                   focus={citeFocus}
@@ -950,7 +945,7 @@ export default function App() {
                     editor.current?.removeCite(cid)
                     setCiteFocus(null)
                   }}
-                  onOpenSource={openCitation}
+                  onOpenSource={(c) => openCitation(c)}
                 />
               </div>
               {tab === 'references' && (
@@ -981,56 +976,53 @@ export default function App() {
                   getJSON={() => editor.current?.getJSON() ?? null}
                   getTitle={() => editor.current?.getTitle() ?? 'Untitled'}
                   onRestore={(content) => editor.current?.setContent(content)}
+                  onFlush={async () => {
+                    await editor.current?.flush()
+                  }}
                   onError={onError}
                 />
               )}
             </div>
           </aside>
 
-          {networkOpen && (
-            <Suspense fallback={null}>
+          <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={mode === 'write' && showingSource} />
+        </div>
+
+        <div className="view library-view" hidden={mode !== 'library'}>
+          <LibraryPanel
+            docs={docs}
+            folders={folders}
+            query={libQuery}
+            onQuery={setLibQuery}
+            selected={selected}
+            onToggle={toggleSelected}
+            onChanged={refresh}
+            onError={onError}
+            focus={libFocus}
+            jobs={jobs}
+            onAddPaths={addToLibrary}
+            onCancelJob={cancelJob}
+            onDismissJob={dismissJob}
+            onFindDuplicates={findDuplicateFiles}
+            onCitedPapers={setCitedFor}
+            onFindMissing={findMissing}
+            cited={citedIds}
+          />
+        </div>
+
+        {mode === 'network' && (
+          <div className="view network-view">
+            <Suspense fallback={<p className="network-note">Loading the network…</p>}>
               <NetworkView
-                onClose={() => setNetworkOpen(false)}
+                query={netQuery}
                 onOpenPaper={showPaper}
                 onCitedPapers={setCitedFor}
                 onFindMissing={setMissingQuery}
                 onError={onError}
               />
             </Suspense>
-          )}
-
-          <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={drawerOpen && tab === 'source'} />
-        </div>
-
-        <nav className="rail rail-right" aria-label="Writing tools">
-          {TOOLS.map((g) => (
-            <div key={g.group} className="rail-group">
-              <span className="rail-group-label">{g.group}</span>
-              {g.tools.map((t) => {
-                const badge = badgeFor(t.tab)
-                return (
-                  <button
-                    key={t.tab}
-                    className={`rail-btn${drawerOpen && tab === t.tab ? ' on' : ''}`}
-                    onClick={() => toggleTool(t.tab)}
-                    title={t.hint}
-                  >
-                    <Icon name={t.icon} />
-                    <span>{t.label}</span>
-                    {badge && (
-                      <em
-                        className="rail-badge"
-                        style={t.tab === 'review' && dupPct != null ? { background: toneOf(dupPct, 'risk') } : undefined}
-                      >
-                        {badge}
-                      </em>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
-        </nav>
+          </div>
+        )}
       </div>
 
       <footer className="dock">
@@ -1040,11 +1032,7 @@ export default function App() {
           </span>
           <button
             className="stat"
-            onClick={() => {
-              if (!stats.unconfirmed) return showTab('references')
-              setCiteFocus(null)
-              showTab('cite')
-            }}
+            onClick={() => (stats.unconfirmed ? showCitations() : showTab('references'))}
             title={stats.unconfirmed ? 'Cite markers waiting for you to confirm a source' : 'Citations verified against their source'}
           >
             <span className="mini-bar">
@@ -1063,20 +1051,14 @@ export default function App() {
             {change == null ? <span className="lbl">No versions yet</span> : <><b>{change}%</b> <span className="lbl">changed since v{latest?.number}</span></>}
           </button>
         </div>
-        <div className="grow">
-          {folders.slice(0, 3).map((f) => (
-            <span key={f.id} className="pill" title={`${f.doc_count} docs`}>
-              {f.name}
-            </span>
-          ))}
-        </div>
+        <span className="spacer" />
         {health && health.api !== API_VERSION && !offline && (
           <span className="offline status" title="The backend was started before the app was updated">
             Restart the app to finish updating
           </span>
         )}
         {importingNow && (
-          <button className="stat dock-import" onClick={() => openLibrary()} title="Adding files to your library: open it to see each file">
+          <button className="stat dock-import" onClick={openLibrary} title="Adding files to your library: open it to see each file">
             <span className="mini-bar">
               <span style={{ width: `${importingNow.total ? (100 * importingNow.settled) / importingNow.total : 0}%` }} />
             </span>

@@ -16,7 +16,7 @@ const COLORS: Record<CitationStatus, string> = {
   quote_not_found: 'var(--bad)',
 }
 
-/** Draws a dashed wire from the cited chip in the draft to its highlighted quote in the source drawer. */
+/** Draws a dashed wire from the cited chip in the draft to its highlighted quote in the side panel. */
 export function CitationWire({ cid, status, active }: { cid: string | undefined; status: CitationStatus; active: boolean }) {
   const [line, setLine] = useState<Line | null>(null)
 
@@ -30,8 +30,8 @@ export function CitationWire({ cid, status, active }: { cid: string | undefined;
     let lit: HTMLElement | null = null
     const tick = () => {
       const chip = document.querySelector<HTMLElement>(`.cite[data-cid="${CSS.escape(cid)}"]`)
-      const mark = document.querySelector<HTMLElement>('.drawer-right .page-text mark')
-      const pane = document.querySelector<HTMLElement>('.drawer-right .tab-body')
+      const mark = document.querySelector<HTMLElement>('.side-panel .page-text mark')
+      const pane = document.querySelector<HTMLElement>('.side-panel .tab-body')
       if (chip !== lit) {
         lit?.classList.remove('cite-active')
         lit = chip

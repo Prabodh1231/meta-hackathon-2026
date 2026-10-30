@@ -14,6 +14,11 @@ Muse is the only hosted model the app calls. Only text chunks, and images that n
 
 **Status:** the app runs on Muse once a key is in place.
 
+## Documentation
+
+- [User guide](docs/USER_GUIDE.md): using the app, screen by screen.
+- [Architecture](docs/ARCHITECTURE.md): processes, modules, API, data and the frontend.
+
 ## Layout
 
 ```
@@ -22,6 +27,7 @@ backend/   Python FastAPI service: parsing, local index, topics, cited drafting,
   tests/           pytest suite: full pipeline on a generated corpus
   scripts/         make_samples.py builds a demo corpus in ../samples
 desktop/   Electron shell + React/Tiptap UI
+docs/      User guide and architecture notes
 samples/   Demo corpus (two research themes, six formats)
 ```
 
@@ -52,22 +58,15 @@ The backend runs detached from the terminal you launched from, so a Ctrl+C there
 
 ## Using the app
 
-The draft sits in the middle as a single page. Everything else opens beside it:
+The **[user guide](docs/USER_GUIDE.md)** walks through every screen with pictures. In short:
 
-- **Top bar:** the draft's title, whether it's saved, and its current version (click it for the history). Ctrl K searches sources and runs any action. On the right: New (Ctrl+N), Import (Ctrl+O) and Export for the document, then Settings.
-- **Importing:** Import .docx (Ctrl+O), or drop a Word file anywhere on the window, opens a preview of what was read and asks where it goes: a new draft, into the open draft (at the cursor, or at the end if you haven't clicked into it; Ctrl+Z takes it back out), or the library as a source you can cite. Headings, nested lists, quotes, bold/italic/underline/strikethrough, web links and line breaks come across; tables become one line per row and images are left out, and the preview says so. Dropping papers, notes, slides or scans adds them all to the library in one go.
-- **Left rail:** **Drafts** (start a new draft, import a Word file, switch between drafts or delete one), **Library** (add sources, browse them by subject folder, pick which ones the assistant drafts from) and **Network** (who cites whom in your library). Only one is open at a time.
-  - The Library opens as a panel of two-line rows; clicking one shows its details in place (‹ goes back to the list). The expand button turns it into a reference manager: folders on the left, a table sortable by title, authors, year, type, date added or folder match (↑ ↓ move between papers, Esc closes), and the open paper's details on the right.
-  - Adding files or folders runs in the background: a card under the Library's header shows each file's progress and can stop the import. A paper whose summary or tags Muse couldn't write is marked "no summary yet", and the Library offers **Try again**.
-  - A paper's details hold its summary, folders, keywords and JEL codes, DOI, link and file location, plus **Use for drafting**, **Edit details** (correct the title, authors, year, journal, DOI or link; references are built from these, and a corrected field is kept when the file is re-added) and **Remove**. Papers the draft cites are marked **Cited**. Drag a paper onto a folder to file it there.
-  - A paper's details, or its node in the Network, also have **Cited papers…**: its reference list, with free copies of the works it cites downloaded into the library (see [Cited papers](#cited-papers)).
-- **Right rail:** the writing tools, in the order you use them:
-  - *Write:* **Assistant** drafts from your library with cited quotes; **Cite** lists the citations waiting for you to confirm. Pressing Cite in the toolbar (Ctrl+Shift+C) puts a small grey `cite` marker at the end of the sentence at the cursor (or the selection) and searches in the background while you keep writing; the cursor doesn't move. The marker turns green when a source supports the sentence, amber for partial support and red when nothing does, without changing size, so the line you're typing never shifts. Click it to see what was found and confirm a source; only then does it become a full citation (Ctrl+Z undoes that). The panel can also search again for a reworded sentence, or remove the marker.
-  - *Evidence:* **Source** shows a cited passage highlighted on its page; **Refs** builds the reference list.
-  - *Review:* **Duplicates** checks for copied and repeated text; **History** saves, compares and restores versions.
+- The **rail** on the left switches between three places: **Write** (the draft, with its tools beside it), **Library** (your sources) and **Network** (who cites whom). One fills the window at a time.
+- The **top bar** has the draft's title (click it for your drafts: new, import a Word file, switch, delete), its save state and version, **one search box**, Export and Settings. In Write the search box finds anything and runs any action (Ctrl K); in the Library it filters your sources; in the Network it finds papers on a topic.
+- Beside the draft, five **tabs**: **Assistant** (drafts from your sources with cited quotes), **Citations** (confirm `cite` markers, and see a cited quote highlighted on its page), **References**, **Review** (duplication) and **History** (versions).
+- The **Library** is a reference manager: **+ Add sources** (files, a folder, or a pasted link or path; or drop files on the window), subject folders, a sortable table, and the open paper's details.
+- The **status bar** shows live counts for the draft; each one opens its tool.
 
-  The tools open in a panel that slides over the page; the pin button keeps it beside the page instead (the default on wide windows).
-- **Status bar:** live counts, each clickable: words, citations verified, how much of the draft is flagged as duplicated, and how much it has changed since the last version.
+How the code fits together is in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ## How it works
 

@@ -373,8 +373,15 @@ class Library:
                 )
                 self.conn.execute("UPDATE documents SET refs_parsed = 1 WHERE id = ?", (row["id"],))
 
-    def _terms(self, doc_id: int, keywords: str) -> set[str]:
-        tags = [r["tag"] for r in self.conn.execute("SELECT tag FROM tags WHERE doc_id = ?", (doc_id,))]
+    def _all_tags(self) -> dict[int, list[str]]:
+        """Every document's tags in one query (one per document was slow on a large library)."""
+        tags: dict[int, list[str]] = defaultdict(list)
+        for r in self.conn.execute("SELECT doc_id, tag FROM tags"):
+            tags[r["doc_id"]].append(r["tag"])
+        return tags
+
+    @staticmethod
+    def _terms(keywords: str, tags: list[str]) -> set[str]:
         return {t.strip().lower() for t in [*json.loads(keywords), *tags] if t.strip()}
 
     def _topic_matches(self, query: str) -> dict[int, dict]:
@@ -384,10 +391,11 @@ class Library:
         if not tokens:
             return {}
         found: dict[int, dict] = {}
+        tags = self._all_tags()
         for r in self.conn.execute("SELECT id, title, summary, keywords FROM documents"):
             fields = {
                 "keywords": " ".join(json.loads(r["keywords"])), "title": r["title"], "summary": r["summary"],
-                "tags": " ".join(t["tag"] for t in self.conn.execute("SELECT tag FROM tags WHERE doc_id = ?", (r["id"],))),
+                "tags": " ".join(tags.get(r["id"], [])),
             }
             why = [name for name, text in fields.items() if all(t in text.lower() for t in tokens)]
             if why:
@@ -437,7 +445,9 @@ class Library:
     def citation_graph(self, query: str = "") -> dict:
         with self.lock:
             docs, refs = self._graph_inputs()
-            terms = {r["id"]: self._terms(r["id"], r["keywords"]) for r in self.conn.execute("SELECT id, keywords FROM documents")}
+            tags = self._all_tags()
+            terms = {r["id"]: self._terms(r["keywords"], tags.get(r["id"], []))
+                     for r in self.conn.execute("SELECT id, keywords FROM documents")}
             matches = self._topic_matches(query) if query.strip() else None
         graph = build_graph(docs, refs)
         if matches is None:

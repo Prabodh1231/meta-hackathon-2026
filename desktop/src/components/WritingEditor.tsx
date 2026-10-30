@@ -409,7 +409,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
             content.push({ type: 'citation', attrs: chipFromCitation(c, s.text) }, { type: 'text', text: ' ' })
           }
         }
-        editor.chain().focus().insertContent({ type: 'paragraph', content }).run()
+        // As with an imported file: not clicked into since the draft opened means the end.
+        editor.chain().focus(placed.current ? undefined : 'end').insertContent({ type: 'paragraph', content }).scrollIntoView().run()
       },
 
       updateCitation(cid, patch) {

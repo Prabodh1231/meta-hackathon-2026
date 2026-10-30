@@ -19,6 +19,8 @@ interface Props {
   getJSON: () => JSONContent | null
   getTitle: () => string
   onRestore: (content: string) => void
+  /** Save pending edits in the editor now. */
+  onFlush: () => Promise<void>
   onError: (msg: string) => void
 }
 
@@ -39,7 +41,7 @@ function Diff({ ops }: { ops: DiffOp[] }) {
 
 /** Version control for the draft: milestones and automatic snapshots, compared with the draft
  * (or each other) at document, section and paragraph level, each with a percentage changed. */
-export function HistoryPanel({ draftId, list, onRefresh, getJSON, getTitle, onRestore, onError }: Props) {
+export function HistoryPanel({ draftId, list, onRefresh, getJSON, getTitle, onRestore, onFlush, onError }: Props) {
   const [naming, setNaming] = useState<string | null>(null) // label being typed for a new milestone
   const [filter, setFilter] = useState<'all' | 'milestone'>('all')
   const [selected, setSelected] = useState<DraftVersion | null>(null)
@@ -84,6 +86,9 @@ export function HistoryPanel({ draftId, list, onRefresh, getJSON, getTitle, onRe
 
   async function restore(v: DraftVersion) {
     try {
+      // Save what was just typed first: it goes into the "before restoring" snapshot, and a save
+      // still on its way can't land after the restore and overwrite it.
+      await onFlush()
       const d = await api.restoreVersion(draftId, v.id)
       onRestore(d.content)
       setConfirm(null)

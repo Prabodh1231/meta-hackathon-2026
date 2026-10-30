@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import type { Doc, Folder, IngestJob } from '../types'
 import { ImportProgress, owedText } from './ImportProgress'
@@ -6,8 +6,9 @@ import { ImportProgress, owedText } from './ImportProgress'
 interface Props {
   docs: Doc[]
   folders: Folder[]
-  wide: boolean
-  onToggleWide: () => void
+  /** The app bar's search, which filters the library while it's open. */
+  query: string
+  onQuery: (query: string) => void
   selected: Set<number>
   onToggle: (id: number) => void
   onChanged: () => Promise<void>
@@ -283,39 +284,6 @@ function OwedMark({ doc: d }: { doc: Doc }) {
   )
 }
 
-/** One source in the compact panel: two lines, opens its details. */
-function DocRow({ doc: d, on, active, cited, folder, onToggle, onOpen }: {
-  doc: Doc
-  on: boolean
-  active: boolean
-  cited: boolean
-  folder: Folder | undefined
-  onToggle: () => void
-  onOpen: () => void
-}) {
-  const fit = fitLabel(d, folder)
-  const meta = [authorsShort(d), d.year].filter(Boolean).join(' · ')
-  const where = folder ? '' : d.folders.map((f) => f.name).join(', ')
-  return (
-    <li id={`lib-doc-${d.id}`} className={`lib-row${on ? ' on' : ''}${active ? ' active' : ''}`} {...dragProps(d)}>
-      <label className="pick" title={on ? 'The Assistant drafts from this source' : 'Tick to have the Assistant draft only from ticked sources'}>
-        <input type="checkbox" checked={on} onChange={onToggle} aria-label={`Use “${d.title}” for drafting`} />
-      </label>
-      <button className="lib-row-body" onClick={onOpen}>
-        <span className="lib-row-title">{d.title}</span>
-        <span className="lib-row-meta">
-          <span className={`kind kind-${d.kind}`}>{KIND_LABEL[d.kind]}</span>
-          {meta && <span>{meta}</span>}
-          {d.missing.length > 0 && <OwedMark doc={d} />}
-          {where && <span className="lib-row-where">{where}</span>}
-          {fit && <span className="fit">{fit}</span>}
-          {cited && <span className="cited-mark" title="Your draft cites this">Cited</span>}
-        </span>
-      </button>
-    </li>
-  )
-}
-
 const COLUMNS: { key: SortKey; label: string; first: 1 | -1 }[] = [
   { key: 'title', label: 'Title', first: 1 },
   { key: 'authors', label: 'Authors', first: 1 },
@@ -458,11 +426,10 @@ function EditDetails({ doc: d, run, onDone }: { doc: Doc; run: Run; onDone: () =
 }
 
 /** Everything about one source, and what can be done with it. */
-function DocDetails({ doc: d, on, cited, back, onToggle, onClose, onCited, onRetry, run }: {
+function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, run }: {
   doc: Doc
   on: boolean
   cited: boolean
-  back?: string // the compact panel shows details in place of the list, with a way back to it
   onToggle: () => void
   onClose: () => void
   onCited: () => void
@@ -477,13 +444,9 @@ function DocDetails({ doc: d, on, cited, back, onToggle, onClose, onCited, onRet
   return (
     <section className="lib-detail" aria-label="Source details">
       <div className="lib-detail-top">
-        {back ? (
-          <button className="link lib-back" onClick={onClose}>‹ {back}</button>
-        ) : (
-          <span className={`kind kind-${d.kind}`}>{KIND_LABEL[d.kind]}</span>
-        )}
+        <span className={`kind kind-${d.kind}`}>{KIND_LABEL[d.kind]}</span>
         <span className="spacer" />
-        {!back && <button className="icon" onClick={onClose} aria-label="Close details" title="Close (Esc)">×</button>}
+        <button className="icon" onClick={onClose} aria-label="Close details" title="Close (Esc)">×</button>
       </div>
 
       {editing ? (
@@ -575,13 +538,103 @@ function DocDetails({ doc: d, on, cited, back, onToggle, onClose, onCited, onRet
   )
 }
 
-export function LibraryPanel({
-  docs, folders, wide, onToggleWide, selected, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onFindMissing, cited,
+/** Closes a popup menu on a click outside `ref`. */
+function useDismiss(open: boolean, close: () => void, ref: React.RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && close()
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [open, close, ref])
+}
+
+/** One button for every way in: files, a folder on disk, or a pasted link or path. */
+function AddSources({ disabled, onFiles, onFolder, onLink }: {
+  disabled: boolean
+  onFiles: () => void
+  onFolder: () => void
+  onLink: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [pasting, setPasting] = useState(false)
+  const [value, setValue] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const close = useCallback(() => {
+    setOpen(false)
+    setPasting(false)
+    setValue('')
+  }, [])
+  useDismiss(open, close, ref)
+  const pick = (fn: () => void) => () => {
+    close()
+    fn()
+  }
+  return (
+    <div className="add-sources" ref={ref}>
+      <button className="primary" onClick={() => (open ? close() : setOpen(true))} disabled={disabled} aria-haspopup="menu" aria-expanded={open}>
+        + Add sources
+      </button>
+      {open && (
+        <div
+          className="lib-menu add-menu"
+          role="menu"
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return
+            e.stopPropagation()
+            close()
+          }}
+        >
+          {window.rc && (
+            <>
+              <button role="menuitem" onClick={pick(onFiles)}>
+                <b>Files…</b>
+                <span>PDF, Word, PowerPoint, Markdown, text, HTML, images</span>
+              </button>
+              <button role="menuitem" onClick={pick(onFolder)}>
+                <b>Folder…</b>
+                <span>Every readable document in a folder and its subfolders</span>
+              </button>
+            </>
+          )}
+          {pasting ? (
+            <form
+              className="add-link"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const v = value.trim().replace(/^"(.*)"$/, '$1')
+                if (v) pick(() => onLink(v))()
+              }}
+            >
+              <input
+                autoFocus
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder="https://… or a file path"
+                aria-label="Web link or file path"
+              />
+              <button className="primary" disabled={!value.trim()}>Add</button>
+            </form>
+          ) : (
+            <button role="menuitem" onClick={() => setPasting(true)}>
+              <b>Paste a link or path…</b>
+              <span>A web page, or a file or folder on this computer</span>
+            </button>
+          )}
+          <p className="muted add-hint">You can also drop files anywhere on the window.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The library: subject folders on the left, every source as a sortable table, and the open
+ * source's details on the right. The app bar's search box filters it. Memoized: the app redraws
+ * at every pause in typing, and the library has no reason to follow. */
+export const LibraryPanel = memo(function LibraryPanel({
+  docs, folders, query, onQuery, selected, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onFindMissing, cited,
   jobs, onAddPaths, onCancelJob, onDismissJob,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
-  const [source, setSource] = useState('')
-  const [query, setQuery] = useState('')
   const [kind, setKind] = useState<'all' | Doc['kind']>('all')
   const [open, setOpen] = useState<number | null>(null) // doc whose details are showing
   const [scope, setScope] = useState<Scope>('all') // the folder being browsed
@@ -590,15 +643,8 @@ export function LibraryPanel({
   const [dropOn, setDropOn] = useState<Scope | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const moreRef = useRef<HTMLDivElement>(null)
-  const mainRef = useRef<HTMLDivElement>(null)
-  const listScroll = useRef(0) // where the compact list was, to return there from a paper's details
-
-  useEffect(() => {
-    if (!moreOpen) return
-    const close = (e: MouseEvent) => !moreRef.current?.contains(e.target as Node) && setMoreOpen(false)
-    window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
-  }, [moreOpen])
+  const closeMore = useCallback(() => setMoreOpen(false), [])
+  useDismiss(moreOpen, closeMore, moreRef)
 
   async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(label)
@@ -624,10 +670,7 @@ export function LibraryPanel({
   }
 
   // One field for both web pages and local paths, so there's nothing to choose between.
-  const addSource = () => {
-    const value = source.trim().replace(/^"(.*)"$/, '$1')
-    if (!value) return
-    setSource('')
+  const addLink = (value: string) => {
     if (/^https?:\/\//i.test(value)) run('Fetching page…', () => api.ingestUrl(value))
     else onAddPaths([value])
   }
@@ -643,21 +686,11 @@ export function LibraryPanel({
   const owed = docs.filter((d) => d.missing.length > 0).length
   const importing = jobs.some((j) => j.finished_at == null) // an import retries what it owes when it ends
 
-  // Opening a paper's details in the compact panel replaces the list; keep the list's place.
-  const openDoc = (id: number | null) => {
-    if (!wide && open === null && id !== null) listScroll.current = mainRef.current?.scrollTop ?? 0
-    setOpen(id)
-  }
-  useLayoutEffect(() => {
-    if (wide || !mainRef.current) return
-    mainRef.current.scrollTop = open === null ? listScroll.current : 0
-  }, [open, wide])
-
   // Bring a requested paper into view: show everything and open its details.
   useEffect(() => {
     if (!focus) return
     setScope('all')
-    setQuery('')
+    onQuery('')
     setKind('all')
     setOpen(focus.id)
     const t = window.setTimeout(() => document.getElementById(`lib-doc-${focus.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350)
@@ -705,9 +738,7 @@ export function LibraryPanel({
   const unfiled = docs.filter((d) => d.folders.length === 0).length
   const kinds = FILTERS.filter((f) => docs.some((d) => d.kind === f.id))
   const filtering = kind !== 'all' || needle !== ''
-  const allShownOn = rows.length > 0 && rows.every((d) => selected.has(d.id))
   const current = open !== null ? docs.find((d) => d.id === open) : undefined
-  const scopeName = scope === 'all' ? 'All sources' : scope === 'none' ? 'Unfiled' : openFolder?.name ?? 'Library'
 
   const toggleMany = (members: Doc[]) => {
     const allOn = members.every((d) => selected.has(d.id))
@@ -720,10 +751,7 @@ export function LibraryPanel({
       <button
         key={String(id)}
         className={`lib-nav-item${scope === id ? ' on' : ''}${dropOn === id ? ' drop' : ''}`}
-        onClick={() => {
-          setScope(id)
-          if (!wide) setOpen(null)
-        }}
+        onClick={() => setScope(id)}
         title={folder ? `${folder.similarity}% similarity · drop a paper here to file it` : undefined}
         onDragOver={(e) => {
           if (!folder) return
@@ -747,24 +775,8 @@ export function LibraryPanel({
     )
   }
 
-  const details = current && (
-    <DocDetails
-      key={current.id}
-      doc={current}
-      on={selected.has(current.id)}
-      cited={citedSet.has(current.id)}
-      back={wide ? undefined : scopeName}
-      onToggle={() => onToggle(current.id)}
-      onClose={() => openDoc(null)}
-      onCited={() => onCitedPapers(current.id)}
-      onRetry={() => retry([current.id])}
-      run={run}
-    />
-  )
-  const showingDetails = !wide && !!details
-
   return (
-    <aside className={`panel library${wide ? ' wide' : ''}${wide && details ? ' has-pane' : ''}`}>
+    <section className={`panel library${current ? ' has-pane' : ''}`} aria-label="Library">
       <header className="lib-head">
         <div className="lib-title">
           <h2>Library</h2>
@@ -773,89 +785,60 @@ export function LibraryPanel({
             {folders.length > 0 && ` · ${folders.length} folder${folders.length === 1 ? '' : 's'}`}
           </span>
         </div>
-        <div className="lib-head-btns">
-          <button
-            className="ghost lib-icon-btn"
-            onClick={onToggleWide}
-            title={wide ? 'Back to the compact panel' : 'Expand into a full library view'}
-            aria-label={wide ? 'Collapse library' : 'Expand library'}
-          >
-            {wide ? '⤡' : '⤢'}
-          </button>
-          {docs.length > 0 && (
-            <div className="lib-more" ref={moreRef}>
-              <button className="ghost lib-icon-btn" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More library actions" title="More" onClick={() => setMoreOpen((o) => !o)}>
-                ⋯
-              </button>
-              {moreOpen && (
-                <div className="lib-menu" role="menu">
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setMoreOpen(false)
-                      onFindDuplicates()
-                    }}
-                    disabled={docs.length < 2}
-                  >
-                    <b>Find duplicate files</b>
-                    <span>Copies of the same paper, with what you could free up</span>
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setMoreOpen(false)
-                      onFindMissing()
-                    }}
-                  >
-                    <b>Most-cited papers you don't have</b>
-                    <span>What your papers on a topic cite most, with free copies to download</span>
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setMoreOpen(false)
-                      run('Re-filing papers…', api.classifyFolders)
-                    }}
-                    disabled={!!busy || folders.length === 0}
-                  >
-                    <b>Re-file papers into folders</b>
-                    <span>{folders.length ? 'Score every paper against your folders again. Your own changes are kept.' : 'Make a folder first'}</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        <form className="lib-add" onSubmit={(e) => (e.preventDefault(), addSource())} aria-label="Add sources">
-          <input
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            placeholder="Paste a web link or a file path…"
-            aria-label="Add a web page or local path"
-          />
-          <button className="primary" disabled={!!busy || !source.trim()}>
-            Add
-          </button>
-          {window.rc && (
-            <>
-              <button type="button" className="ghost" onClick={addFiles} disabled={!!busy} title="Choose files to add">
-                Files…
-              </button>
-              <button type="button" className="ghost" onClick={addDiskFolder} disabled={!!busy} title="Add every document in a folder on disk">
-                Folder…
-              </button>
-            </>
-          )}
-        </form>
         {busy && (
           <div className="lib-busy" role="status">
             <span className="bar" />
             {busy}
           </div>
         )}
+        <span className="spacer" />
+        <AddSources disabled={!!busy} onFiles={addFiles} onFolder={addDiskFolder} onLink={addLink} />
+        {docs.length > 0 && (
+          <div className="lib-more" ref={moreRef}>
+            <button className="ghost lib-icon-btn" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More library actions" title="More" onClick={() => setMoreOpen((o) => !o)}>
+              ⋯
+            </button>
+            {moreOpen && (
+              <div className="lib-menu" role="menu">
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    onFindDuplicates()
+                  }}
+                  disabled={docs.length < 2}
+                >
+                  <b>Find duplicate files</b>
+                  <span>Copies of the same paper, with what you could free up</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    onFindMissing()
+                  }}
+                >
+                  <b>Most-cited papers you don't have</b>
+                  <span>What your papers on a topic cite most, with free copies to download</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    run('Re-filing papers…', api.classifyFolders)
+                  }}
+                  disabled={!!busy || folders.length === 0}
+                >
+                  <b>Re-file papers into folders</b>
+                  <span>{folders.length ? 'Score every paper against your folders again. Your own changes are kept.' : 'Make a folder first'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
-      {(jobs.length > 0 || (owed > 0 && !importing)) && !showingDetails && (
+      {(jobs.length > 0 || (owed > 0 && !importing)) && (
         <div className="lb-jobs">
           {jobs.map((j) => (
             <ImportProgress key={j.id} job={j} onCancel={() => onCancelJob(j.id)} onDismiss={() => onDismissJob(j.id)} />
@@ -881,21 +864,20 @@ export function LibraryPanel({
       </datalist>
 
       <div className="lib-body">
-        <nav className="lib-nav" aria-label="Folders" hidden={showingDetails}>
-          {wide && <div className="lib-nav-label">Browse</div>}
+        <nav className="lib-nav" aria-label="Folders">
+          <div className="lib-nav-label">Browse</div>
           {navItem('all', 'All sources', docs.length)}
           {unfiled > 0 && navItem('none', 'Unfiled', unfiled)}
-          {wide && folders.length > 0 && <div className="lib-nav-label">Subject folders</div>}
-          {folders.map((f) => navItem(f.id, f.name, f.doc_count, wide ? `${f.similarity}%` : undefined))}
+          {folders.length > 0 && <div className="lib-nav-label">Subject folders</div>}
+          {folders.map((f) => navItem(f.id, f.name, f.doc_count, `${f.similarity}%`))}
           <button className="lib-nav-item lib-nav-new" onClick={() => setCreating((c) => !c)} title="Make a folder for a subject you choose">
             <span className="lib-nav-ico" aria-hidden="true">+</span>
             <span className="lib-nav-name">New folder</span>
           </button>
         </nav>
 
-        <div className="lib-main" ref={mainRef}>
-          {showingDetails && details}
-          <div className="lib-list" hidden={showingDetails}>
+        <div className="lib-main">
+          <div className="lib-list">
             {creating && (
               <NewFolderForm
                 onCancel={() => setCreating(false)}
@@ -909,100 +891,49 @@ export function LibraryPanel({
 
             {docs.length > 0 && (
               <div className="lib-tools">
-                <div className="lib-search-row">
-                  <input
-                    className="lib-search"
-                    type="search"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Filter by title, author, keyword, JEL code…"
-                    aria-label="Filter library"
-                  />
-                  {kinds.length > 1 && (
-                    <select className="lib-kind" aria-label="Type" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-                      <option value="all">All types</option>
-                      {kinds.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.label} ({docs.filter((d) => d.kind === f.id).length})
-                        </option>
-                      ))}
-                    </select>
+                {kinds.length > 1 && (
+                  <select className="lib-kind" aria-label="Type" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+                    <option value="all">All types</option>
+                    {kinds.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label} ({docs.filter((d) => d.kind === f.id).length})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <span className="muted">
+                  {filtering ? `${rows.length} of ${docs.length} shown` : `${rows.length} shown`}
+                  {needle && <> matching “{query.trim()}”</>}
+                </span>
+                <span className="spacer" />
+                <span className={`lib-scope${selected.size ? ' some' : ''}`} title="Tick sources to have the Assistant and cite searches use only them">
+                  {selected.size === 0 ? (
+                    'Tick sources to draft from only those'
+                  ) : (
+                    <>
+                      <b>{selected.size}</b> ticked for drafting
+                      <button className="link" onClick={() => toggleMany(docs.filter((d) => selected.has(d.id)))}>
+                        Clear
+                      </button>
+                    </>
                   )}
-                  {!wide && (
-                    <select
-                      className="lib-sort"
-                      aria-label="Sort"
-                      value={`${sort.key}:${sort.dir}`}
-                      onChange={(e) => {
-                        const [key, dir] = e.target.value.split(':')
-                        setSort({ key: key as SortKey, dir: Number(dir) as 1 | -1 })
-                      }}
-                    >
-                      <option value="title:1">Title A–Z</option>
-                      <option value="authors:1">Author A–Z</option>
-                      <option value="year:-1">Newest</option>
-                      <option value="year:1">Oldest</option>
-                      <option value="added:-1">Recently added</option>
-                      <option value="type:1">Type</option>
-                      {openFolder && <option value="match:-1">Best match</option>}
-                    </select>
-                  )}
-                </div>
-                <div className={`lib-scope${selected.size ? ' some' : ''}`} title="The Assistant drafts from the ticked sources, or from all of them when none is ticked">
-                  <span>
-                    {selected.size === 0 ? (
-                      'Drafting from all sources · tick to narrow'
-                    ) : (
-                      <>
-                        Drafting from <b>{selected.size}</b> of {docs.length}
-                      </>
-                    )}
-                  </span>
-                  <span className="spacer" />
-                  {!wide && rows.length > 0 && (
-                    <button className="link" onClick={() => toggleMany(rows)} title="Use every source shown for drafting">
-                      {allShownOn ? 'Deselect shown' : `Select ${rows.length} shown`}
-                    </button>
-                  )}
-                  {selected.size > 0 && (
-                    <button className="link" onClick={() => toggleMany(docs.filter((d) => selected.has(d.id)))}>
-                      Clear
-                    </button>
-                  )}
-                </div>
+                </span>
               </div>
             )}
 
-            {wide ? (
-              rows.length > 0 && (
-                <DocTable
-                  rows={rows}
-                  selected={selected}
-                  cited={citedSet}
-                  open={open}
-                  folder={openFolder}
-                  sort={sort}
-                  onSort={setSort}
-                  onToggle={onToggle}
-                  onToggleAll={() => toggleMany(rows)}
-                  onOpen={openDoc}
-                />
-              )
-            ) : (
-              <ul className="lib-rows">
-                {rows.map((d) => (
-                  <DocRow
-                    key={d.id}
-                    doc={d}
-                    on={selected.has(d.id)}
-                    active={open === d.id}
-                    cited={citedSet.has(d.id)}
-                    folder={openFolder}
-                    onToggle={() => onToggle(d.id)}
-                    onOpen={() => openDoc(d.id)}
-                  />
-                ))}
-              </ul>
+            {rows.length > 0 && (
+              <DocTable
+                rows={rows}
+                selected={selected}
+                cited={citedSet}
+                open={open}
+                folder={openFolder}
+                sort={sort}
+                onSort={setSort}
+                onToggle={onToggle}
+                onToggleAll={() => toggleMany(rows)}
+                onOpen={setOpen}
+              />
             )}
 
             {docs.length === 0 && (
@@ -1010,7 +941,7 @@ export function LibraryPanel({
                 <div className="lib-empty-title">Your library is empty</div>
                 <p>Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.</p>
                 <ol>
-                  <li>Paste a link or path above, or choose files</li>
+                  <li>Click <b>Add sources</b>, or drop files anywhere on the window</li>
                   <li>Muse reads each one and writes a summary and tags</li>
                   <li>Make a subject folder (New folder); matching papers are filed in, as many folders as fit</li>
                 </ol>
@@ -1023,11 +954,11 @@ export function LibraryPanel({
                   <button
                     className="link"
                     onClick={() => {
-                      setQuery('')
+                      onQuery('')
                       setKind('all')
                     }}
                   >
-                    Clear filters
+                    Clear the search and type filter
                   </button>
                 ) : (
                   <p>Lower the similarity above to take in looser matches, or drag a paper onto the folder.</p>
@@ -1037,8 +968,22 @@ export function LibraryPanel({
           </div>
         </div>
 
-        {wide && details && <div className="lib-pane">{details}</div>}
+        {current && (
+          <div className="lib-pane">
+            <DocDetails
+              key={current.id}
+              doc={current}
+              on={selected.has(current.id)}
+              cited={citedSet.has(current.id)}
+              onToggle={() => onToggle(current.id)}
+              onClose={() => setOpen(null)}
+              onCited={() => onCitedPapers(current.id)}
+              onRetry={() => retry([current.id])}
+              run={run}
+            />
+          </div>
+        )}
       </div>
-    </aside>
+    </section>
   )
-}
+})
