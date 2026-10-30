@@ -19,6 +19,10 @@ interface Props {
   onCitedPapers: (docId: number) => void
   onFindMissing: () => void
   cited: number[] // documents the draft cites
+  /** Where a new folder's similarity starts (Settings). */
+  folderSimilarity: number
+  /** Show a PDF in the app's viewer. */
+  onOpenPdf: (doc: Doc) => void
   /** Background imports, newest first, with each file's progress. */
   jobs: IngestJob[]
   /** Add files and folders on disk, in the background. */
@@ -123,9 +127,13 @@ function SimilaritySlider({ value, onChange, disabled }: { value: number; onChan
 }
 
 /** A folder is defined by the subject the user types and how closely a paper must match it. */
-function NewFolderForm({ onCreate, onCancel }: { onCreate: (name: string, similarity: number) => void; onCancel: () => void }) {
+function NewFolderForm({ initial, onCreate, onCancel }: {
+  initial: number
+  onCreate: (name: string, similarity: number) => void
+  onCancel: () => void
+}) {
   const [name, setName] = useState('')
-  const [similarity, setSimilarity] = useState(50)
+  const [similarity, setSimilarity] = useState(initial)
   return (
     <form
       className="newfolder"
@@ -426,10 +434,11 @@ function EditDetails({ doc: d, run, onDone }: { doc: Doc; run: Run; onDone: () =
 }
 
 /** Everything about one source, and what can be done with it. */
-function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, run }: {
+function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, onOpenPdf, run }: {
   doc: Doc
   on: boolean
   cited: boolean
+  onOpenPdf: () => void
   onToggle: () => void
   onClose: () => void
   onCited: () => void
@@ -469,6 +478,11 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, ru
           )}
 
           <div className="lib-detail-actions">
+            {d.kind === 'pdf' && isFile && (
+              <button className="primary" onClick={onOpenPdf} title="Read the whole PDF here: search, zoom and print">
+                Open PDF
+              </button>
+            )}
             <label className={`lib-use${on ? ' on' : ''}`} title="Tick sources to have the Assistant draft only from them">
               <input type="checkbox" checked={on} onChange={onToggle} /> Use for drafting
             </label>
@@ -632,7 +646,7 @@ function AddSources({ disabled, onFiles, onFolder, onLink }: {
  * at every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs, folders, query, onQuery, selected, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onFindMissing, cited,
-  jobs, onAddPaths, onCancelJob, onDismissJob,
+  folderSimilarity, onOpenPdf,  jobs, onAddPaths, onCancelJob, onDismissJob,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [kind, setKind] = useState<'all' | Doc['kind']>('all')
@@ -880,6 +894,7 @@ export const LibraryPanel = memo(function LibraryPanel({
           <div className="lib-list">
             {creating && (
               <NewFolderForm
+                initial={folderSimilarity}
                 onCancel={() => setCreating(false)}
                 onCreate={(name, similarity) => {
                   setCreating(false)
@@ -979,6 +994,7 @@ export const LibraryPanel = memo(function LibraryPanel({
               onClose={() => setOpen(null)}
               onCited={() => onCitedPapers(current.id)}
               onRetry={() => retry([current.id])}
+              onOpenPdf={() => onOpenPdf(current)}
               run={run}
             />
           </div>

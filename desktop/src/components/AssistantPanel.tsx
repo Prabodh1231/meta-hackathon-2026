@@ -13,6 +13,8 @@ const EXAMPLES = [
 
 interface Props {
   scope: number[]
+  /** How many passages to draft from (Settings). */
+  passages: number
   sourceCount: number
   onChooseSources: () => void
   getContext: () => string
@@ -24,7 +26,7 @@ interface Props {
 
 let nextCid = 0
 
-export function AssistantPanel({ scope, sourceCount, onChooseSources, getContext, onInsert, onVerified, onOpenCitation, onError }: Props) {
+export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, getContext, onInsert, onVerified, onOpenCitation, onError }: Props) {
   const [instruction, setInstruction] = useState('')
   const [sentences, setSentences] = useState<DraftSentence[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -33,7 +35,7 @@ export function AssistantPanel({ scope, sourceCount, onChooseSources, getContext
     setBusy(true)
     setSentences(null)
     try {
-      const res = await api.draft(instruction.trim(), getContext(), scope.length ? scope : null)
+      const res = await api.draft(instruction.trim(), getContext(), scope.length ? scope : null, passages)
       const withIds = res.sentences.map((s) => ({
         ...s,
         citations: s.citations.map((c) => ({ ...c, cid: `c${Date.now()}-${nextCid++}` })),

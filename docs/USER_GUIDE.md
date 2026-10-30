@@ -24,12 +24,28 @@ The window has four parts:
 
 | Part | What it holds |
 |---|---|
-| **Top bar** | The draft's title (click it for your drafts), whether it's saved and its version; one search box; Export; Settings. |
+| **Top bar** | The draft's title (click it for your drafts), whether it's saved and its version; one search box; Export; Focus mode; Settings. |
 | **Rail** (left) | The three places in the app: **Write**, **Library** and **Network**. One fills the window at a time. |
 | **Main area** | The place you picked. In Write, the draft with the writing tools beside it. |
 | **Status bar** (bottom) | Live counts for the draft: words, citations verified, duplication, and how much it changed since the last version. Click any of them to open the matching tool. |
 
 **One search box.** In Write, the box searches everything (sources, drafts, folders) and runs any action; Ctrl K opens it from anywhere. In the Library it filters your sources, and in the Network it finds papers about a topic. The green chip in the box says which one it's doing. Esc clears it, and Ctrl K still searches everything.
+
+### Open and close the writing tools
+
+The **»** at the end of the tabs, or `Ctrl+\`, closes the writing tools and gives the page the room. A slim strip of their icons stays on the right, with their counts (citations to confirm, duplication, change since the last version):
+
+![The writing tools closed to a strip of icons](images/tools-closed.png)
+
+Click an icon to open that tab, or **«** to open the panel as it was. Anything that needs a tool opens it by itself: clicking a citation or a cite marker, a count in the status bar, or an action from Ctrl K. The app remembers whether you left it open; Settings can make it always start open or closed.
+
+### Focus mode
+
+The **⛶** button in the top bar, or Ctrl+Shift+F, hides everything but the page and its toolbar:
+
+![Focus mode: only the page and its toolbar](images/focus.png)
+
+The save state stays in the corner. Esc, or **Exit focus**, brings the rest back.
 
 ## 1. Add your sources
 
@@ -57,6 +73,7 @@ Your files stay where they are. The library keeps its own index in `~/.research-
 - **Sort:** click a column header (Title, Authors, Year, Type, Added). Click again to reverse.
 - **Open a paper:** click its row. Its details open on the right: summary, folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
 - **Correct its details:** **Edit details** fixes the title, authors, year, journal, DOI or link. Reference lists are built from these, and your corrections are kept if the file is added again.
+- **Read the whole PDF:** **Open PDF** in its details shows it in the app's PDF viewer, with search, zoom, thumbnails and print. **Show in folder** finds the file on disk.
 - **Remove it:** **Remove from library** at the bottom of its details. The file on disk isn't touched.
 
 ### Subject folders
@@ -123,9 +140,15 @@ Click a marker to open the **Citations** tab with what was found. **Use this sou
 
 Click any citation in the draft. The **Citations** tab shows its passage highlighted on the page, and a dashed line joins the citation to the quote:
 
-![A citation and its quote, joined by a dashed line](images/citation-source.png)
+![A citation and its quote highlighted on the PDF page, joined by a dashed line](images/citation-source.png)
 
-The page line gives both numbers when they differ: the printed page (p. 342) and the PDF page (2 of 2). The arrows turn pages. **‹ Back** returns to the tab you came from.
+For a PDF you see the page as it's printed, with the quote highlighted on it. **Text** switches to the text read from the page (handy for small print, and what other kinds of source always show); **Page** switches back, and the app remembers your pick. If a quote can't be placed on the page image (a scan, say), the text is shown instead, with a note.
+
+The page line gives both numbers when they differ: the printed page (p. 342) and the PDF page (2 of 2). The arrows turn pages. **Open the whole PDF at this page** opens the full viewer:
+
+![The whole PDF in the app's viewer](images/pdf-viewer.png)
+
+Esc closes it. **‹ Back** returns to the tab you came from.
 
 ### Reference list
 
@@ -170,18 +193,51 @@ Esc returns to the draft.
 | Ctrl N | New draft |
 | Ctrl O | Import a Word file |
 | Ctrl Shift C | Cite the sentence at the cursor |
+| Ctrl \ | Open or close the writing tools |
+| Ctrl Shift F | Focus mode on or off |
 | Ctrl Z / Ctrl Y | Undo / redo in the draft |
-| Esc | Clear the search box; close a menu; leave the Library or Network for the draft |
+| Esc | Leave focus mode; close the PDF viewer or a menu; clear the search box; leave the Library or Network for the draft |
 | ↑ ↓ | Move between papers in the library table (when it has focus) |
 
 On a Mac, use Cmd in place of Ctrl.
 
 ## Settings
 
-The gear in the top bar sets:
+The gear in the top bar opens Settings. Changes apply as you make them and are kept in your library, so they follow it.
+
+![Settings](images/settings.png)
+
+**Appearance & editor**
 
 - **Theme:** Light, Dark, or System (follows your computer).
-- **Citation style:** APA 7, MLA 9 or IEEE. It's used by the References tab and by Export.
+- **Page width**, **Text size** and **Draft font** (Charter, Georgia or sans serif): how the draft looks on screen. Fonts and sizes you set on text in the toolbar keep theirs, and Word export uses the toolbar's.
+- **Spelling:** underline misspelled words, or not.
+- **Writing tools at start:** as you left them, always open, or always closed.
+
+**Writing & citations**
+
+- **Citation style:** APA 7, MLA 9 or IEEE, for the References tab and Export.
+- **Passages the Assistant reads** (3 to 20, default 8): fewer is faster and sticks to the closest matches; more covers more ground.
+- **Cite markers search:** the sources ticked in the Library (all of them when none are ticked), or always the whole library.
+
+**Review & history**
+
+- **Duplication sensitivity** (30–90%, default 50%): a sentence is flagged when at least this share of its wording is found in a source. Lower catches more paraphrase; higher flags only near-copies. It applies from the next check.
+- **Re-check automatically** while the Review tab is open.
+- **Automatic snapshots:** at most every N minutes (default 10), and **Snapshots to keep** (default 40). Versions you name are always kept.
+
+**Library**
+
+- **New folders start at** a similarity of N% (default 50%).
+- **Contact email** (optional): sent to OpenAlex and Semantic Scholar when finding free copies of cited papers.
+
+**AI model**
+
+- **Model:** Muse, or the offline mock (no key; rough results). **Save and switch** changes it at once, with no restart.
+- **Meta Model API key:** paste a key to save or replace it. It's written to the `.env` file in your data folder and never shown again; only its last four characters are, so you can tell which one it is.
+- **Reasoning effort:** how much Muse thinks before answering, from *minimal* (fastest) to *xhigh* (most thorough). *low* is the default.
+
+If one of these is also set as a system environment variable, Settings says so: that value wins the next time the app starts.
 
 ## Troubleshooting
 
@@ -192,4 +248,5 @@ The gear in the top bar sets:
 | *Restart the app to finish updating* | The backend is older than the window. Close and reopen the app. |
 | *no summary yet* on papers | Muse was unavailable when they were added. Click **Try again** in the Library. |
 | A citation turns red with "no longer in your library" | Its file was removed, or re-added with different text. Cite the sentence again. |
-| Summaries look rough | You're on the offline mock model. See [Using Muse](../README.md#using-muse) to switch to Muse. |
+| Summaries look rough | You're on the offline mock model. Switch to Muse in **Settings → AI model**. |
+| A cited PDF page shows *Loading the page…* or falls back to text | The file was moved or deleted since it was added (Open PDF says where it was expected), or it's a scan with no text layer. |

@@ -15,9 +15,10 @@ import { Icon, type IconName } from './components/Icon'
 import { LibraryPanel } from './components/LibraryPanel'
 import { ago, toneOf } from './components/Meters'
 import { MissingPapersDialog } from './components/MissingPapersDialog'
+import { PdfViewerDialog } from './components/PdfViewerDialog'
 import { ReferencesPanel } from './components/ReferencesPanel'
 import { ReviewPanel } from './components/ReviewPanel'
-import { SettingsDialog } from './components/SettingsDialog'
+import { DEFAULT_SETTINGS, SettingsDialog } from './components/SettingsDialog'
 import { WordImportDialog, convertedSummary, simplifiedNotes } from './components/WordImportDialog'
 import { applyTheme, cacheTheme, cachedTheme, watchSystemTheme } from './theme'
 import { SourceViewer, type SourceTarget } from './components/SourceViewer'
@@ -75,6 +76,16 @@ function modelLine(h: Health): string {
   const embedder = model.replace(/-en-v[\d.]+$/, '').replace(/^bge/, 'BGE').replace('-m3', '-M3')
   const device = h.embedder_device === 'cuda' ? ' (GPU)' : ''
   return `${PROVIDER_NAMES[h.provider] ?? h.provider} · ${embedder}${device}`
+}
+
+// Whether the writing tools are open beside the draft; Settings can override it at launch.
+const TOOLS_KEY = 'rc.toolsOpen'
+function storedToolsOpen(): boolean {
+  try {
+    return localStorage.getItem(TOOLS_KEY) !== '0'
+  } catch {
+    return true
+  }
 }
 
 const GUIDE_KEY = 'rc.gettingStartedHidden'
@@ -138,7 +149,7 @@ export default function App() {
   const [draftsOpen, setDraftsOpen] = useState(false) // the drafts menu under the title
   const [draftsBusy, setDraftsBusy] = useState<string | null>(null)
   const [hideGuide, setHideGuide] = useState(guideHidden)
-  const [settings, setSettings] = useState<Settings>({ theme: cachedTheme(), citation_style: 'apa' })
+  const [settings, setSettings] = useState<Settings>({ ...DEFAULT_SETTINGS, theme: cachedTheme() })
   const [showSettings, setShowSettings] = useState(false)
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
   const [citeMarks, setCiteMarks] = useState<CiteMarkAttrs[]>([]) // "cite" markers in the draft, searching or waiting
@@ -146,6 +157,10 @@ export default function App() {
   const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
   const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [pdfView, setPdfView] = useState<{ doc: Doc; page: number } | null>(null) // a PDF in the app's viewer
+  const openPdf = useCallback((doc: Doc, page = 1) => setPdfView({ doc, page }), [])
+  const [toolsOpen, setToolsOpen] = useState(storedToolsOpen) // the writing tools beside the draft
+  const [focusMode, setFocusMode] = useState(false) // only the page and its toolbar
   const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 })
   const [title, setTitle] = useState('Untitled')
   const [saveState, setSaveState] = useState<SaveState>({ state: 'idle' })
@@ -182,20 +197,45 @@ export default function App() {
     setLibFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
   }, [])
 
-  /** Show a tab of the panel beside the draft. */
-  const showTab = useCallback((t: Tab) => {
+  useEffect(() => {
+    try {
+      localStorage.setItem(TOOLS_KEY, toolsOpen ? '1' : '0')
+    } catch {
+      /* storage unavailable */
+    }
+  }, [toolsOpen])
+
+  /** Bring the writing tools into view: back to the draft, out of focus mode, panel open. */
+  const revealTools = useCallback(() => {
     setMode('write')
-    setTab(t)
-    setSourceFrom(null)
+    setFocusMode(false)
+    setToolsOpen(true)
   }, [])
+
+  /** Show a tab of the panel beside the draft. */
+  const showTab = useCallback(
+    (t: Tab) => {
+      revealTools()
+      setTab(t)
+      setSourceFrom(null)
+    },
+    [revealTools],
+  )
 
   /** Show a cited passage on its page, in the Citations tab; "back" returns to `from`. */
   function showSource(target: SourceTarget & { cid?: string }, from: Tab = tab) {
     setSource(target)
     setSourceFrom(sourceFrom ?? from)
-    setMode('write')
+    revealTools()
     setTab('citations')
   }
+
+  const toggleFocus = useCallback(() => {
+    setFocusMode((f) => {
+      if (!f) setMode('write')
+      return !f
+    })
+  }, [])
 
   const pickWord = useCallback(() => wordInput.current?.click(), [])
 
@@ -211,15 +251,23 @@ export default function App() {
       } else if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         newDraftRef.current()
-      } else if (e.key === 'Escape' && !paletteOpen && !importing) {
-        if (draftsOpen) setDraftsOpen(false)
+      } else if (mod && !e.shiftKey && e.key === '\\') {
+        e.preventDefault()
+        if (mode === 'write' && !focusMode) setToolsOpen((o) => !o)
+        else revealTools()
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        toggleFocus()
+      } else if (e.key === 'Escape' && !paletteOpen && !importing && !pdfView) {
+        if (focusMode) setFocusMode(false)
+        else if (draftsOpen) setDraftsOpen(false)
         // Esc on the page itself (not in a field or the library table) goes back to the draft.
         else if (mode !== 'write' && e.target === document.body) setMode('write')
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [paletteOpen, importing, pickWord, draftsOpen, mode])
+  }, [paletteOpen, importing, pdfView, pickWord, draftsOpen, mode, focusMode, revealTools, toggleFocus])
 
   // The drafts menu closes on a click anywhere else.
   useEffect(() => {
@@ -236,6 +284,14 @@ export default function App() {
     cacheTheme(settings.theme)
     return watchSystemTheme(settings.theme)
   }, [settings.theme])
+
+  // The page's width, text size and font (styles.css reads these from <html>).
+  useEffect(() => {
+    const root = document.documentElement.dataset
+    root.pageWidth = settings.page_width
+    root.textSize = settings.text_size
+    root.docFont = settings.doc_font
+  }, [settings.page_width, settings.text_size, settings.doc_font])
 
   async function changeSettings(changes: Partial<Settings>) {
     const previous = settings
@@ -493,7 +549,10 @@ export default function App() {
           setHealth(await api.health())
           api
             .settings()
-            .then(setSettings)
+            .then((s) => {
+              setSettings(s)
+              if (s.tools_at_start !== 'last') setToolsOpen(s.tools_at_start === 'open')
+            })
             .catch((e) => onError(`Could not load settings: ${e instanceof Error ? e.message : e}`))
           // An import still running from before a reload keeps showing its progress.
           api
@@ -581,10 +640,10 @@ export default function App() {
       runCheck()
       return
     }
-    if (!dup.stale) return
+    if (!dup.stale || !settings.auto_recheck) return
     const t = window.setTimeout(runCheck, 4000)
     return () => window.clearTimeout(t)
-  }, [reviewing, dup.stale, dup.report, dup.busy, dup.error, runCheck])
+  }, [reviewing, dup.stale, dup.report, dup.busy, dup.error, runCheck, settings.auto_recheck])
 
   // Leaving the tab forgets a failed check, so opening it again tries once more.
   useEffect(() => {
@@ -698,7 +757,9 @@ export default function App() {
         /* storage unavailable */
       }
     } },
-    { group: 'DO', name: 'Settings', hint: 'theme, citation style', run: () => setShowSettings(true) },
+    { group: 'DO', name: toolsOpen ? 'Close the writing tools' : 'Open the writing tools', hint: 'Ctrl+\\', run: () => (toolsOpen ? setToolsOpen(false) : revealTools()) },
+    { group: 'DO', name: 'Focus mode', hint: 'only the page · Ctrl+Shift+F', run: toggleFocus },
+    { group: 'DO', name: 'Settings', hint: 'appearance, writing, review, library, AI model', run: () => setShowSettings(true) },
   ]
 
   const running = jobs.filter((j) => j.finished_at == null)
@@ -717,11 +778,35 @@ export default function App() {
     return null
   }
 
+  /** A tab (or strip icon) was clicked. Clicking Citations again goes back to the list of markers. */
+  function pickTab(t: Tab) {
+    if (t === 'citations') showCitations(tab === 'citations' && toolsOpen ? null : citeFocus)
+    else showTab(t)
+  }
+
+  function tabBadge(t: Tab) {
+    const badge = badgeFor(t)
+    if (!badge) return null
+    return (
+      <em className="tab-badge" style={t === 'review' && dupPct != null ? { background: toneOf(dupPct, 'risk') } : undefined}>
+        {badge}
+      </em>
+    )
+  }
+
   const query = mode === 'library' ? libQuery : netQuery
   const setQuery = mode === 'library' ? setLibQuery : setNetQuery
 
   return (
-    <div className="app">
+    <div className={`app${focusMode ? ' focus' : ''}`}>
+      {focusMode && (
+        <div className="focus-exit">
+          <span className={`save-state save-${saveState.state}`}>{saveText(saveState)}</span>
+          <button onClick={() => setFocusMode(false)} title="Show the rail, the writing tools and the status bar again">
+            Exit focus <kbd>Esc</kbd>
+          </button>
+        </div>
+      )}
       <header className="app-bar">
         <div className="doc-id" ref={draftsMenu}>
           <span className="logo" aria-hidden="true">rc</span>
@@ -820,6 +905,9 @@ export default function App() {
               if (f) importWord(f)
             }}
           />
+          <button className="icon-button" onClick={toggleFocus} title="Focus: only the page and its toolbar (Ctrl+Shift+F)" aria-label="Focus mode">
+            <Icon name="focus" size={18} />
+          </button>
           <button className="icon-button" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings">
             <Icon name="settings" size={18} />
           </button>
@@ -843,7 +931,7 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="view write-view" hidden={mode !== 'write'}>
+        <div className={`view write-view${toolsOpen ? '' : ' tools-closed'}`} hidden={mode !== 'write'}>
           <main className="writing">
             <WritingEditor
               ref={editor}
@@ -873,42 +961,59 @@ export default function App() {
               onCitationClick={openChip}
               onCiteMarkClick={(cid) => showCitations(cid)}
               onCiteMarks={setCiteMarks}
-              getScope={() => (selected.size ? [...selected] : null)}
+              getScope={() => (settings.cite_scope === 'library' || !selected.size ? null : [...selected])}
+              spellcheck={settings.spellcheck}
               onError={onError}
             />
           </main>
 
           <aside className="panel side-panel" aria-label="Writing tools">
-            <div className="tabs" role="tablist" aria-label="Writing tools">
-              {TABS.map((t) => {
-                const badge = badgeFor(t.tab)
-                return (
+            {toolsOpen ? (
+              <>
+                <div className="tabs" role="tablist" aria-label="Writing tools">
+                  {TABS.map((t) => (
+                    <button
+                      key={t.tab}
+                      role="tab"
+                      aria-selected={tab === t.tab}
+                      className={`tab${tab === t.tab ? ' on' : ''}`}
+                      onClick={() => pickTab(t.tab)}
+                      title={t.hint}
+                    >
+                      <Icon name={t.icon} size={18} />
+                      <span>{t.label}</span>
+                      {tabBadge(t.tab)}
+                    </button>
+                  ))}
                   <button
-                    key={t.tab}
-                    role="tab"
-                    aria-selected={tab === t.tab}
-                    className={`tab${tab === t.tab ? ' on' : ''}`}
-                    onClick={() => (t.tab === 'citations' ? showCitations(tab === 'citations' ? null : citeFocus) : showTab(t.tab))}
-                    title={t.hint}
+                    className="tabs-close"
+                    onClick={() => setToolsOpen(false)}
+                    title="Close the writing tools (Ctrl+\)"
+                    aria-label="Close the writing tools"
                   >
-                    <Icon name={t.icon} size={18} />
-                    <span>{t.label}</span>
-                    {badge && (
-                      <em
-                        className="tab-badge"
-                        style={t.tab === 'review' && dupPct != null ? { background: toneOf(dupPct, 'risk') } : undefined}
-                      >
-                        {badge}
-                      </em>
-                    )}
+                    »
                   </button>
-                )
-              })}
-            </div>
-            <p className="tab-hint">{TAB[tab].hint}</p>
-            <div className="tab-body">
+                </div>
+                <p className="tab-hint">{TAB[tab].hint}</p>
+              </>
+            ) : (
+              <nav className="tool-strip" aria-label="Writing tools">
+                {TABS.map((t) => (
+                  <button key={t.tab} className="strip-btn" onClick={() => pickTab(t.tab)} title={`${t.label}: ${t.hint}`} aria-label={t.label}>
+                    <Icon name={t.icon} size={20} />
+                    {tabBadge(t.tab)}
+                  </button>
+                ))}
+                <button className="strip-btn strip-open" onClick={() => setToolsOpen(true)} title="Open the writing tools (Ctrl+\)" aria-label="Open the writing tools">
+                  «
+                </button>
+              </nav>
+            )}
+            {/* Kept mounted while closed, so a draft from the Assistant or a cite search's results survive. */}
+            <div className="tab-body" hidden={!toolsOpen}>
               <div hidden={tab !== 'assistant'}>
                 <AssistantPanel
+                  passages={settings.assistant_passages}
                   scope={[...selected]}
                   sourceCount={docs.length}
                   onChooseSources={openLibrary}
@@ -924,7 +1029,7 @@ export default function App() {
                   <button className="link cite-back" onClick={() => showTab(sourceFrom)}>
                     ‹ Back to {sourceFrom === 'citations' ? 'citations to confirm' : TAB[sourceFrom].label}
                   </button>
-                  <SourceViewer target={source} doc={docs.find((d) => d.id === source?.docId)} />
+                  <SourceViewer target={source} doc={docs.find((d) => d.id === source?.docId)} onOpenPdf={openPdf} />
                 </>
               )}
               {/* Kept mounted (hidden) so results survive a look at a source. */}
@@ -985,7 +1090,7 @@ export default function App() {
             </div>
           </aside>
 
-          <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={mode === 'write' && showingSource} />
+          <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={mode === 'write' && toolsOpen && !focusMode && showingSource} />
         </div>
 
         <div className="view library-view" hidden={mode !== 'library'}>
@@ -1006,6 +1111,8 @@ export default function App() {
             onFindDuplicates={findDuplicateFiles}
             onCitedPapers={setCitedFor}
             onFindMissing={findMissing}
+            folderSimilarity={settings.folder_similarity}
+            onOpenPdf={openPdf}
             cited={citedIds}
           />
         </div>
@@ -1110,8 +1217,15 @@ export default function App() {
         />
       )}
 
+      {pdfView && <PdfViewerDialog doc={pdfView.doc} page={pdfView.page} onClose={() => setPdfView(null)} />}
+
       {showSettings && (
-        <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setShowSettings(false)} />
+        <SettingsDialog
+          settings={settings}
+          onChange={changeSettings}
+          onModelChanged={() => api.health().then(setHealth).catch(() => {})}
+          onClose={() => setShowSettings(false)}
+        />
       )}
 
       {importing && (

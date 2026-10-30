@@ -227,10 +227,39 @@ export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
 export type DocxStyle = Exclude<RefStyle, 'bibtex'>
 export type ThemePref = 'system' | 'light' | 'dark'
 
-/** Preferences from the Settings panel, stored in the library database. */
+/** Preferences from the Settings window, stored in the library database (USER_SETTINGS in
+ * backend/app/library.py lists the allowed values). */
 export interface Settings {
+  // Appearance and editor
   theme: ThemePref
+  page_width: 'normal' | 'narrow' | 'wide'
+  text_size: 'normal' | 'small' | 'large'
+  doc_font: 'charter' | 'georgia' | 'sans'
+  spellcheck: boolean
+  tools_at_start: 'last' | 'open' | 'closed'
+  // Writing and citations
   citation_style: DocxStyle
+  assistant_passages: number
+  cite_scope: 'ticked' | 'library'
+  // Review and history
+  duplicate_sensitivity: number
+  auto_recheck: boolean
+  snapshot_minutes: number
+  snapshots_kept: number
+  // Library
+  folder_similarity: number
+  contact_email: string
+}
+
+/** The language model in use. The API key is never sent back, only whether there is one. */
+export interface ModelSettings {
+  provider: 'muse' | 'mock'
+  has_key: boolean
+  key_hint: string // its last four characters
+  model: string
+  reasoning_effort: string
+  efforts: string[]
+  env_locked: string[] // set in the environment, which wins over the app's .env at the next start
 }
 
 /** A draft in the drafts menu (without its content). */

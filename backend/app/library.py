@@ -1,7 +1,9 @@
 """The knowledge base: ingestion, search, topics, cited drafting and verification."""
 
+import dataclasses
 import json
 import logging
+import mimetypes
 import os
 import re
 import threading
@@ -20,18 +22,11 @@ from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
 from .retrieval import Reranker, fts_query, make_reranker, reciprocal_rank_fusion
-from .settings import Settings
+from .settings import Settings, write_env_file
 from .text_utils import sentence_spans
 from .topics import choose_k, jaccard, kmeans
 
 log = logging.getLogger(__name__)
-
-# Preferences set in the Settings panel: allowed values per key, first one is the default.
-USER_SETTINGS_CHOICES = {
-    "theme": ("system", "light", "dark"),
-    "citation_style": ("apa", "mla", "ieee"),
-}
-USER_SETTINGS_DEFAULTS = {k: v[0] for k, v in USER_SETTINGS_CHOICES.items()}
 
 
 _FROM_SETTINGS = object()
@@ -61,6 +56,48 @@ SOURCE_COPIED = 0.85  # copied nearly word for word
 # Only picks candidates; shared passages and metadata decide what's shown.
 DUP_DOC_COS = 0.9
 
+# Preferences set in the Settings window, stored in the library so they follow it. Each is either
+# a tuple of the allowed values (the first is the default), or (range of whole numbers, default),
+# or (str, default). The appearance ones are only read by the window.
+USER_SETTINGS: dict[str, tuple] = {
+    # Appearance and editor
+    "theme": ("system", "light", "dark"),
+    "page_width": ("normal", "narrow", "wide"),
+    "text_size": ("normal", "small", "large"),
+    "doc_font": ("charter", "georgia", "sans"),
+    "spellcheck": (True, False),
+    "tools_at_start": ("last", "open", "closed"),  # the writing tools beside the draft
+    # Writing and citations
+    "citation_style": ("apa", "mla", "ieee"),
+    "assistant_passages": (range(3, 21), 8),  # passages the Assistant drafts from
+    "cite_scope": ("ticked", "library"),  # cite markers search the ticked sources, or always all
+    # Review and history
+    "duplicate_sensitivity": (range(30, 91), round(SOURCE_MATCH * 100)),  # % of a sentence's wording
+    "auto_recheck": (True, False),  # re-check duplication after edits while Review is open
+    "snapshot_minutes": (range(2, 61), AUTO_VERSION_MINUTES),
+    "snapshots_kept": (range(10, 201), MAX_AUTO_VERSIONS),
+    # Library
+    "folder_similarity": (range(0, 101), 50),  # what a new folder starts at
+    "contact_email": (str, ""),  # for OpenAlex and Semantic Scholar; RC_CONTACT_EMAIL when empty
+}
+EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+MODEL_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
+
+
+def _setting_default(spec: tuple):
+    return spec[1] if spec[0] is str or isinstance(spec[0], range) else spec[0]
+
+
+def _setting_ok(key: str, spec: tuple, value) -> bool:
+    if spec[0] is str:
+        return isinstance(value, str) and len(value) <= 200 and (key != "contact_email" or not value or bool(EMAIL.match(value)))
+    if isinstance(spec[0], range):
+        return type(value) is int and value in spec[0]
+    return any(type(value) is type(v) and value == v for v in spec)
+
+
+USER_SETTINGS_DEFAULTS = {k: _setting_default(v) for k, v in USER_SETTINGS.items()}
+
 
 class Library:
     def __init__(self, settings: Settings, provider: LLMProvider | None = None, embedder: Embedder | None = None,
@@ -76,6 +113,8 @@ class Library:
             make_reranker(settings.reranker, settings.data_dir / "models") if reranker is _FROM_SETTINGS else reranker
         )
         self.open_access = open_access or openaccess.OpenAccess(settings.contact_email)
+        if self.pref("contact_email"):
+            self.open_access.set_contact(self.pref("contact_email"))
         self._ids: np.ndarray | None = None  # in-memory vector index, rebuilt lazily
         self._docs: np.ndarray | None = None
         self._mat: np.ndarray | None = None
@@ -1373,15 +1412,80 @@ class Library:
 
     def update_settings(self, changes: dict) -> dict:
         for key, value in changes.items():
-            allowed = USER_SETTINGS_CHOICES.get(key)
-            if allowed is None:
+            spec = USER_SETTINGS.get(key)
+            if spec is None:
                 raise ValueError(f"Unknown setting {key!r}")
-            if value not in allowed:
-                raise ValueError(f"{key} must be one of {', '.join(allowed)}")
+            if not _setting_ok(key, spec, value):
+                if key == "contact_email":
+                    raise ValueError("That doesn't look like an email address")
+                if isinstance(spec[0], range):
+                    raise ValueError(f"{key} must be a whole number from {spec[0].start} to {spec[0].stop - 1}")
+                raise ValueError(f"{key} must be one of {', '.join(map(str, spec))}")
         merged = {**self.get_settings(), **changes}
         with self.lock, self.conn:
             db.set_meta(self.conn, "settings", json.dumps(merged))
+        if "contact_email" in changes:
+            self.open_access.set_contact(merged["contact_email"] or self.settings.contact_email)
         return merged
+
+    def pref(self, key: str):
+        """One preference from the Settings window, or its default."""
+        return self.get_settings()[key]
+
+    # ---------- the language model ----------
+
+    def model_settings(self) -> dict:
+        """Which model the app uses, for the Settings window. The key itself is never sent back."""
+        s = self.settings
+        names = ("RC_PROVIDER", "MUSE_API_KEY", "MODEL_API_KEY", "MUSE_REASONING_EFFORT")
+        return {
+            "provider": self.provider.name,
+            "has_key": bool(s.muse_api_key),
+            "key_hint": s.muse_api_key[-4:] if len(s.muse_api_key) >= 12 else "",
+            "model": s.muse_model,
+            "reasoning_effort": s.muse_reasoning_effort,
+            "efforts": list(MODEL_EFFORTS),
+            # Set in the environment, these win over the data folder's .env at the next start.
+            "env_locked": [n for n in names if os.environ.get(n)],
+        }
+
+    def update_model(self, provider: str | None = None, api_key: str | None = None,
+                     reasoning_effort: str | None = None) -> dict:
+        """Switch between Muse and the offline mock, set the key or the reasoning effort. Takes
+        effect at once, and is written to the data folder's .env so the next start uses it too."""
+        if provider is not None and provider not in ("muse", "mock"):
+            raise ValueError("provider must be muse or mock")
+        if reasoning_effort is not None and reasoning_effort not in MODEL_EFFORTS:
+            raise ValueError(f"reasoning_effort must be one of {', '.join(MODEL_EFFORTS)}")
+        if api_key is not None:
+            api_key = api_key.strip()
+            if not api_key or len(api_key) > 400 or any(c.isspace() or c in "\"'#" for c in api_key):
+                raise ValueError("That doesn't look like an API key")
+        new = dataclasses.replace(
+            self.settings,
+            provider=provider or self.settings.provider,
+            muse_api_key=api_key if api_key is not None else self.settings.muse_api_key,
+            muse_reasoning_effort=reasoning_effort or self.settings.muse_reasoning_effort,
+        )
+        if new.provider == "muse" and not new.muse_api_key:
+            raise ValueError("Add your Meta Model API key to use Muse")
+        model = make_provider(new)
+        updates = {"RC_PROVIDER": new.provider, "MUSE_REASONING_EFFORT": new.muse_reasoning_effort}
+        if api_key is not None:
+            updates["MUSE_API_KEY"] = api_key
+        write_env_file(new.data_dir / ".env", updates)
+        self.settings, self.provider = new, model
+        return self.model_settings()
+
+    def document_file(self, doc_id: int) -> tuple[Path, str]:
+        """The file on disk behind a library document, and its media type (to show a PDF in the app)."""
+        source = self.get_document(doc_id)["source"]
+        if re.match(r"https?://", source, re.I):
+            raise ValueError("This source is a web page, not a file")
+        path = Path(source)
+        if not path.is_file():
+            raise LookupError(f"The file is no longer at {source}")
+        return path, mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
     # ---------- drafts ----------
 
@@ -1459,10 +1563,11 @@ class Library:
             latest = self._latest_version(draft_id)
         if not new_text.strip():
             return
+        minutes = self.pref("snapshot_minutes")
         with self.lock:
             fresh = latest is not None and self.conn.execute(
                 "SELECT 1 FROM draft_versions WHERE id = ? AND created_at > datetime('now', ?)",
-                (latest["id"], f"-{AUTO_VERSION_MINUTES} minutes"),
+                (latest["id"], f"-{minutes} minutes"),
             ).fetchone()
         if not fresh and (latest is None or latest["text"] != new_text):
             self._add_version(draft_id, "auto", "", title, content)
@@ -1478,6 +1583,7 @@ class Library:
         text = draft_review.plain_text(content)
         latest = self._latest_version(draft_id)
         change = draft_review.change_pct(latest["text"], text) if latest else 100
+        kept = self.pref("snapshots_kept")
         with self.lock, self.conn:
             vid = self.conn.execute(
                 "INSERT INTO draft_versions (draft_id, kind, label, title, content, text, words, change) "
@@ -1488,7 +1594,7 @@ class Library:
             self.conn.execute(
                 "DELETE FROM draft_versions WHERE draft_id = ? AND kind = 'auto' AND id NOT IN "
                 "(SELECT id FROM draft_versions WHERE draft_id = ? AND kind = 'auto' ORDER BY id DESC LIMIT ?)",
-                (draft_id, draft_id, MAX_AUTO_VERSIONS),
+                (draft_id, draft_id, kept),
             )
         return vid
 
@@ -1594,6 +1700,7 @@ class Library:
 
         matches = []
         flagged: dict[int, bool] = {}  # sentence index -> cited
+        threshold = self.pref("duplicate_sensitivity") / 100  # share of a sentence's wording found in a source
         for k in checked:
             s = sents[k]
             grams = draft_review.shingles(s.tokens)
@@ -1602,7 +1709,7 @@ class Library:
                 c = draft_review.containment(grams, chunk_grams.get(cid, set()))
                 if c > score:
                     best, score = cid, c
-            if best is None or score < SOURCE_MATCH:
+            if best is None or score < threshold:
                 continue
             hit = self._hit(best, score)
             if not hit:

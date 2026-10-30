@@ -75,11 +75,14 @@ def _doi(value: str | None) -> str:
 class OpenAccess:
     def __init__(self, contact_email: str = "", transport: httpx.BaseTransport | None = None,
                  timeout: float = 30.0, retry_wait: float = 2.0):
-        self.mailto = contact_email
         self.retry_wait = retry_wait
-        agent = "ResearchCompanion/1.0" + (f" (mailto:{contact_email})" if contact_email else "")
-        self.client = httpx.Client(timeout=timeout, follow_redirects=True, transport=transport,
-                                   headers={"User-Agent": agent})
+        self.client = httpx.Client(timeout=timeout, follow_redirects=True, transport=transport)
+        self.set_contact(contact_email)
+
+    def set_contact(self, contact_email: str) -> None:
+        """The email the indexes may write to about our requests (their polite pool)."""
+        self.mailto = contact_email
+        self.client.headers["User-Agent"] = "ResearchCompanion/1.0" + (f" (mailto:{contact_email})" if contact_email else "")
 
     def _get(self, url: str, params: dict | None = None) -> httpx.Response | None:
         """GET with one retry on rate limits and gateway errors; None when the work isn't there."""

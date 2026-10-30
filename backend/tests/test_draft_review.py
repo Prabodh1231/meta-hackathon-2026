@@ -3,7 +3,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app import draft_review, library as library_module
+from app import draft_review
 from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
@@ -139,9 +139,11 @@ def test_large_edit_keeps_the_draft_as_it_was(client):
     assert json.loads(client.get(f"/drafts/1/versions/{versions[0]['id']}").json()["content"]) == edited
 
 
-def test_auto_version_once_the_newest_is_old(client, monkeypatch):
+def test_auto_version_once_the_newest_is_old(client):
     client.put("/drafts/1", json={"title": "t", "content": json.dumps(doc(("p", "One.")))})
-    monkeypatch.setattr(library_module, "AUTO_VERSION_MINUTES", 0)  # any version from before now counts as old
+    lib = client.app.state.library
+    with lib.conn:  # the newest version is older than the snapshot interval
+        lib.conn.execute("UPDATE draft_versions SET created_at = datetime('now', '-1 hour')")
     client.put("/drafts/1", json={"title": "t", "content": json.dumps(doc(("p", "Two.")))})
     assert [v["number"] for v in client.get("/drafts/1/versions").json()["versions"]] == [2, 1]
 

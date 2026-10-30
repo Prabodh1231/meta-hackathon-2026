@@ -112,7 +112,7 @@ RC_PROVIDER=muse
 MUSE_API_KEY=<your Meta Model API key>
 ```
 
-Restart the app. The backend reads that file on start; real environment variables override it. Defaults: `MUSE_API_BASE=https://api.meta.ai/v1`, `MUSE_MODEL=muse-spark-1.3`, `MUSE_REASONING_EFFORT=low`. Without the file, or with `RC_PROVIDER=mock`, everything runs offline on the mock.
+Restart the app. Or open **Settings → AI model**, paste the key and click **Save and switch**: it writes the same file and switches at once, with no restart. The backend reads that file on start; real environment variables override it. Defaults: `MUSE_API_BASE=https://api.meta.ai/v1`, `MUSE_MODEL=muse-spark-1.3`, `MUSE_REASONING_EFFORT=low`. Without the file, or with `RC_PROVIDER=mock`, everything runs offline on the mock.
 
 `backend/app/providers/muse.py` uses Meta's OpenAI-compatible Chat Completions with strict JSON schemas. Muse's hidden reasoning counts against the output limit (a one-line verdict used ~500 tokens), so every call gets 4,096 tokens of headroom. A reply that's still cut off raises an error rather than returning half a JSON object. Rate limits and gateway timeouts are retried with backoff. Only text chunks, and images that need OCR, are sent to the API.
 
@@ -121,4 +121,4 @@ Restart the app. The backend reads that file on start; real environment variable
 - **Documents imported on the mock** keep its rough metadata, summaries and tags until they're re-imported with Muse on.
 - **Packaging:** the Python backend still needs bundling with PyInstaller and shipping as an Electron `extraResources` binary. Today `main.cjs` runs `backend/.venv`.
 - **Import jobs live in memory:** if the backend restarts mid-import, the files already added stay, but the rest of that import has to be started again.
-- **Source viewer:** shows extracted page text. Rendering the PDF page itself with pdf.js would make highlights match the original layout.
+- **PDF viewer download name:** Chromium's viewer shows and downloads the file under a random blob name; Show in folder finds the original.

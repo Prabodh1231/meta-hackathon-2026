@@ -49,6 +49,22 @@ class Settings:
         )
 
 
+def write_env_file(path: Path, updates: dict[str, str]) -> None:
+    """Set KEY=value lines in a .env file, keeping its other lines and comments as they are."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    left = dict(updates)
+    out = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip() if "=" in line and not line.lstrip().startswith("#") else None
+        out.append(f"{key}={left.pop(key)}" if key in left else line)
+    out += [f"{k}={v}" for k, v in left.items()]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
 def read_env_file(path: Path) -> dict[str, str]:
     """KEY=value lines; blank lines and # comments skipped, surrounding quotes removed."""
     try:

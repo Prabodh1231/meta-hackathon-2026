@@ -219,6 +219,8 @@ interface Props {
   draftId: number
   /** Shown above the page, e.g. the getting-started steps. */
   banner?: React.ReactNode
+  /** Underline misspelled words (Settings). */
+  spellcheck?: boolean
   onStats?: (stats: DraftStats) => void
   onSaveState?: (s: SaveState) => void
   onCitationClick: (chip: ChipAttrs) => void
@@ -232,7 +234,7 @@ interface Props {
 }
 
 export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function WritingEditor(
-  { draftId, banner, onCitationClick, onCiteMarkClick, onCiteMarks, getScope, onError, onStats, onSaveState },
+  { draftId, banner, spellcheck = true, onCitationClick, onCiteMarkClick, onCiteMarks, getScope, onError, onStats, onSaveState },
   ref,
 ) {
   const saveTimer = useRef<number | undefined>(undefined)
@@ -379,6 +381,10 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   }, [editor, draftId])
 
   editorRef.current = editor
+
+  useEffect(() => {
+    if (editor) editor.view.dom.setAttribute('spellcheck', String(spellcheck))
+  }, [editor, spellcheck])
 
   // Cite: put a grey "cite" marker at the end of the sentence at once and look for sources in
   // the background, so writing never waits. The cursor stays where it was.

@@ -18,6 +18,7 @@ import type {
   Health,
   IngestJob,
   IngestResult,
+  ModelSettings,
   PageText,
   RefStyle,
   ResolvedCitation,
@@ -37,7 +38,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 7
+export const API_VERSION = 8
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -136,8 +137,8 @@ export const api = {
 
   graph: (q = '') => request<CitationGraph>('GET', `/graph${q ? `?q=${encodeURIComponent(q)}` : ''}`),
 
-  draft: (instruction: string, context: string, docIds: number[] | null) =>
-    request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds }),
+  draft: (instruction: string, context: string, docIds: number[] | null, k?: number) =>
+    request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds, k }),
   verify: (claim: string, chunkId: number, quote: string) =>
     request<Citation>('POST', '/citations/verify', { claim, chunk_id: chunkId, quote }),
   suggestCitations: (claim: string, docIds: number[] | null) =>
@@ -149,6 +150,12 @@ export const api = {
 
   settings: () => request<Settings>('GET', '/settings'),
   updateSettings: (changes: Partial<Settings>) => request<Settings>('PATCH', '/settings', changes),
+  modelSettings: () => request<ModelSettings>('GET', '/settings/model'),
+  /** Switch model, set the API key or the reasoning effort; left-out fields stay as they are. */
+  updateModel: (changes: { provider?: string; api_key?: string; reasoning_effort?: string }) =>
+    request<ModelSettings>('PUT', '/settings/model', changes),
+  /** A library document's file, e.g. a PDF to show in the app. */
+  documentFile: async (docId: number) => (await send('GET', `/documents/${docId}/file`)).arrayBuffer(),
 
   exportDocx: async (content: unknown, style: DocxStyle, title: string) =>
     (await send('POST', '/export/docx', { content, style, title })).arrayBuffer(),

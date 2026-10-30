@@ -30,7 +30,7 @@ export function CitationWire({ cid, status, active }: { cid: string | undefined;
     let lit: HTMLElement | null = null
     const tick = () => {
       const chip = document.querySelector<HTMLElement>(`.cite[data-cid="${CSS.escape(cid)}"]`)
-      const mark = document.querySelector<HTMLElement>('.side-panel .page-text mark')
+      const mark = document.querySelector<HTMLElement>('.side-panel .page-text mark, .side-panel .pdf-hit')
       const pane = document.querySelector<HTMLElement>('.side-panel .tab-body')
       if (chip !== lit) {
         lit?.classList.remove('cite-active')

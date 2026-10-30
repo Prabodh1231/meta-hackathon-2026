@@ -63,7 +63,9 @@ All JSON. Main groups (see `main.py` for the full list):
 | Writing | `POST /write/draft`, `POST /citations/verify`, `POST /citations/suggest`, `POST /citations/resolve`, `POST /references` |
 | Drafts | `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `POST /drafts/import`, `POST /drafts/convert-docx`, `POST /drafts/check-duplicates` |
 | Versions | `GET/POST /drafts/{id}/versions`, `GET/PATCH/DELETE /drafts/{id}/versions/{v}`, `POST …/compare`, `POST …/restore` |
-| Other | `GET/PATCH /settings`, `POST /export/docx`, `GET /search` |
+| Settings | `GET/PATCH /settings` (preferences, validated against `USER_SETTINGS` in `library.py`), `GET/PUT /settings/model` (Muse or mock, key, reasoning effort; the key is never returned) |
+| Files | `GET /documents/{id}/file`: a library document's file, for the PDF viewer and pdf.js. Only files the library holds. |
+| Other | `POST /export/docx`, `GET /search` |
 
 ## Data
 
@@ -72,7 +74,8 @@ Everything lives in `~/.research-companion/` (or `RC_DATA_DIR`):
 - `library.db`: SQLite. Documents, their pages (the unit a citation points to), chunks with embeddings and character offsets, tags, folders and scores, parsed reference lists, drafts and their versions, settings.
 - The embedding model cache.
 - `logs/backend.log`.
-- `.env`: optional settings and the Muse key (`RC_PROVIDER`, `MUSE_API_KEY`, `MUSE_MODEL`, `RC_EMBEDDER`, `RC_RERANKER`, `RC_CONTACT_EMAIL`). Real environment variables override it.
+- `.env`: optional settings and the Muse key (`RC_PROVIDER`, `MUSE_API_KEY`, `MUSE_MODEL`, `MUSE_REASONING_EFFORT`, `RC_EMBEDDER`, `RC_RERANKER`, `RC_CONTACT_EMAIL`). Real environment variables override it. **Settings → AI model** rewrites the provider, key and effort lines here (keeping the rest) and swaps the provider without a restart.
+- Preferences from the Settings window live in the database (`meta` table, key `settings`), so they follow the library.
 
 Library files are never copied or moved; documents store their source path or URL.
 
@@ -85,10 +88,15 @@ React 19 with Tiptap 3, built by Vite. Entry: [desktop/src/App.tsx](../desktop/s
 - the **app bar**: the title (opening the drafts menu, `DraftsPanel`), save state and version, the search box, `ExportControl`, Settings;
 - the **rail**, which sets `mode`: `write`, `library` or `network`;
 - one **view** per mode:
-  - *Write:* `WritingEditor` and the side panel. Its tabs are `AssistantPanel`, Citations (`CitePanel`, or `SourceViewer` while a cited passage is open), `ReferencesPanel`, `ReviewPanel` and `HistoryPanel`. `CitationWire` draws the line from a citation to its quote.
+  - *Write:* `WritingEditor` and the side panel. Its tabs are `AssistantPanel`, Citations (`CitePanel`, or `SourceViewer` while a cited passage is open), `ReferencesPanel`, `ReviewPanel` and `HistoryPanel`. `CitationWire` draws the line from a citation to its quote. Closed, the panel is a strip of the tabs' icons (`toolsOpen`); focus mode (`focusMode`) hides the rail, panel, app bar and dock.
   - *Library:* `LibraryPanel`: folders, a sortable table and the open paper's details.
   - *Network:* `NetworkView`, which loads Cytoscape only when it's first opened.
-- the **dock** (status bar) and the dialogs: `CommandPalette` (Ctrl K), `WordImportDialog`, `DuplicateFilesDialog`, `CitedPapersDialog`, `MissingPapersDialog`, `SettingsDialog`.
+- the **dock** (status bar) and the dialogs: `CommandPalette` (Ctrl K), `WordImportDialog`, `DuplicateFilesDialog`, `CitedPapersDialog`, `MissingPapersDialog`, `SettingsDialog`, `PdfViewerDialog`.
+
+**PDFs** ([pdf.ts](../desktop/src/pdf.ts)) are fetched once per document with the app's token and shared:
+
+- `PdfViewerDialog` shows the whole file in Chromium's own PDF viewer, from a `blob:` URL, so the token never appears in an address. The page's Content-Security-Policy ([index.html](../desktop/index.html)) allows `blob:` frames for this.
+- `SourceViewer` draws a cited page with pdf.js (loaded on first use: about 430 KB, plus a 1.3 MB worker) and places the quote on it: the backend's matched text is compared with pdf.js's text items with case, spacing, ligatures and curly quotes folded away, and each item it covers gets a highlight box. When the quote can't be placed, it falls back to the extracted text.
 
 **The search box** is the palette launcher in Write, and a filter whose text `App` passes down as `query` in the Library and Network.
 
@@ -103,6 +111,8 @@ React 19 with Tiptap 3, built by Vite. Entry: [desktop/src/App.tsx](../desktop/s
 Autosave runs 0.8 s after the last edit. Saves are queued one at a time, so an older copy can't land after a newer one. `flush()` saves at once; it runs before switching drafts and before restoring a version.
 
 **API client** ([api.ts](../desktop/src/api.ts)) adds the token, and tells three cases apart: the backend can't be reached (it's restarting), an endpoint is missing (the backend is older than the UI), and a real error.
+
+**Settings** are loaded once the backend is up and applied in `App`: the page's width, text size and font are `data-page-width`, `data-text-size` and `data-doc-font` on `<html>`, which [styles.css](../desktop/src/styles.css) turns into `--page-w`, `--page-size` and `--page-font`. Until they arrive, `DEFAULT_SETTINGS` in `SettingsDialog.tsx` applies.
 
 **Styles** are one sheet, [styles.css](../desktop/src/styles.css), built on CSS variables. Light and dark themes switch `data-theme` on the root ([theme.ts](../desktop/src/theme.ts)).
 

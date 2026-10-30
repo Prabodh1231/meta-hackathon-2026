@@ -3,7 +3,7 @@ import logging
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .export_docx import export_docx
@@ -26,6 +26,12 @@ class IngestPathsIn(BaseModel):
 
 class FillMissingIn(BaseModel):
     doc_ids: list[int] | None = None  # every document with missing parts when left out
+
+
+class ModelIn(BaseModel):
+    provider: str | None = None  # muse | mock
+    api_key: str | None = None  # write-only; left out keeps the stored key
+    reasoning_effort: str | None = None
 
 
 class IngestUrlIn(BaseModel):
@@ -114,7 +120,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 7
+API_VERSION = 8
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -357,6 +363,19 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.patch("/settings")
     def update_settings(body: dict):
         return lib.update_settings(body)
+
+    @app.get("/settings/model")
+    def get_model():
+        return lib.model_settings()
+
+    @app.put("/settings/model")
+    def set_model(body: ModelIn):
+        return lib.update_model(body.provider, body.api_key, body.reasoning_effort)
+
+    @app.get("/documents/{doc_id}/file")
+    def document_file(doc_id: int):
+        path, media_type = lib.document_file(doc_id)
+        return FileResponse(path, media_type=media_type)  # no filename: shown inline, not downloaded
 
     @app.post("/export/docx")
     def export(body: ExportIn):
