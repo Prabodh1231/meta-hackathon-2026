@@ -52,7 +52,7 @@ function citeMarks(editor: Editor): CiteMarkAttrs[] {
 const MAX_SEARCHES = 3
 let activeSearches = 0
 const waitingSearches: (() => void)[] = []
-const searching = new Set<string>()
+const searching = new Map<string, Promise<void>>()
 async function limited<T>(fn: () => Promise<T>): Promise<T> {
   if (activeSearches >= MAX_SEARCHES) await new Promise<void>((r) => waitingSearches.push(r))
   activeSearches++
@@ -106,6 +106,16 @@ export interface ChipAttrs {
   reason: string
 }
 
+/** What a "Recheck all citations" run did. `checked` holds each chip's new attributes. */
+export interface RecheckSummary {
+  citations: number
+  verified: number
+  flagged: number // weak, unsupported or quote not found
+  failed: number // the check didn't finish; the chip keeps its earlier result
+  markers: number
+  checked: Map<string, Partial<ChipAttrs>>
+}
+
 /** Live numbers for the status dock. */
 export interface DraftStats {
   words: number
@@ -144,6 +154,9 @@ export interface WritingEditorHandle {
   confirmCite: (cid: string, c: Citation) => boolean
   /** Search again for a marker, for its sentence as it reads now. */
   recheckCite: (cid: string) => void
+  /** Check every citation again against its sentence as it reads now (after finding its
+   * quote in the library as it is now), and search again for every cite marker. */
+  recheckAll: () => Promise<RecheckSummary>
   removeCite: (cid: string) => void
   /** Select a marker and scroll it into view. */
   showCite: (cid: string) => void
@@ -192,6 +205,17 @@ function sentenceBefore(editor: Editor, pos: number): string {
   const text = editor.state.doc.textBetween($pos.start(), pos, ' ', LEAF).split(LEAF).join('')
   const sentences = text.match(/[^.!?]+[.!?]*["')\]]*/g) ?? []
   return (sentences.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean).at(-1) ?? '').trim()
+}
+
+/** The sentence a chip at `pos` cites now: the one it was made for while that's still in its
+ * paragraph (a matrix cell's whole answer, say), else the sentence just before it. */
+function claimAt(editor: Editor, pos: number, stored: string): string {
+  const $pos = editor.state.doc.resolve(pos)
+  if (!$pos.parent.isTextblock) return stored
+  const norm = (t: string) => t.split(LEAF).join('').replace(/\s+/g, ' ').trim()
+  const para = norm(editor.state.doc.textBetween($pos.start(), $pos.end(), ' ', LEAF))
+  if (stored && para.includes(norm(stored))) return stored
+  return sentenceBefore(editor, pos) || stored
 }
 
 /** The text to cite and where its chip goes: the selection, or else the sentence around
@@ -253,10 +277,10 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   const editorRef = useRef<Editor | null>(null)
 
   /** Find sources for a marker's sentence in the background, then recolour the marker. */
-  function searchFor(cid: string, claim: string) {
-    if (searching.has(cid)) return
-    searching.add(cid)
-    limited(() => api.suggestCitations(claim, scopeRef.current()))
+  function searchFor(cid: string, claim: string): Promise<void> {
+    const already = searching.get(cid)
+    if (already) return already
+    const run = limited(() => api.suggestCitations(claim, scopeRef.current()))
       .then((results) => {
         // The writer may have moved to another draft meanwhile: then this marker isn't in the
         // editor, stays "searching" in its draft, and is searched again when that draft opens.
@@ -266,6 +290,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         if (editorRef.current) patchChips(editorRef.current, new Map([[cid, { state: 'error' as const }]]))
       })
       .finally(() => searching.delete(cid))
+    searching.set(cid, run)
+    return run
   }
 
   const editor = useEditor({
@@ -448,6 +474,55 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         const claim = sentenceBefore(editor, pos) || editor.state.doc.nodeAt(pos)!.attrs.claim
         patchChips(editor, new Map([[cid, { state: 'searching' as const, results: [], claim }]]))
         searchFor(cid, claim)
+      },
+
+      async recheckAll() {
+        const summary: RecheckSummary = { citations: 0, verified: 0, flagged: 0, failed: 0, markers: 0, checked: new Map() }
+        if (!editor) return summary
+        const work: Promise<void>[] = []
+
+        for (const m of citeMarks(editor)) {
+          const pos = findCid(editor, m.cid)
+          if (pos == null) continue
+          const claim = sentenceBefore(editor, pos) || m.claim
+          patchChips(editor, new Map([[m.cid, { state: 'searching' as const, results: [], claim }]]))
+          summary.markers++
+          work.push(searchFor(m.cid, claim))
+        }
+
+        // Find each quote where it is now first: a re-added file has new chunk ids.
+        const located = await repairChips(editor)
+        const chips = new Map<string, { pos: number; attrs: ChipAttrs }>()
+        editor.state.doc.descendants((node, pos) => {
+          if (node.type.name === 'citation' && node.attrs.cid && !chips.has(node.attrs.cid)) chips.set(node.attrs.cid, { pos, attrs: node.attrs as ChipAttrs })
+        })
+        summary.citations = chips.size
+        for (const [cid, { pos, attrs }] of chips) {
+          if (located.get(cid)?.status === 'quote_not_found') {
+            summary.flagged++
+            summary.checked.set(cid, located.get(cid)!)
+            continue
+          }
+          const claim = claimAt(editor, pos, attrs.claim)
+          const before = { status: attrs.status, reason: attrs.reason }
+          patchChips(editor, new Map([[cid, { status: 'pending' as const, reason: '', claim }]]))
+          work.push(
+            limited(() => api.verify(claim, attrs.chunkId, attrs.quote))
+              .then((v) => {
+                const patch = { status: v.status, reason: v.reason, start: v.start, end: v.end }
+                summary.checked.set(cid, patch)
+                if (v.status === 'verified') summary.verified++
+                else summary.flagged++
+                if (editorRef.current) patchChips(editorRef.current, new Map([[cid, patch]]))
+              })
+              .catch(() => {
+                summary.failed++
+                if (editorRef.current) patchChips(editorRef.current, new Map([[cid, before]]))
+              }),
+          )
+        }
+        await Promise.all(work)
+        return summary
       },
 
       removeCite(cid) {

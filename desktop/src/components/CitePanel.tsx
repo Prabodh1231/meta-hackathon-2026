@@ -10,6 +10,10 @@ interface Props {
   onFocus: (cid: string | null) => void
   onConfirm: (cid: string, c: Citation) => void
   onRecheck: (cid: string) => void
+  /** Citation chips in the draft, for the Recheck all button. */
+  citations: number
+  rechecking: boolean
+  onRecheckAll: () => void
   onRemove: (cid: string) => void
   onOpenSource: (c: Citation) => void
 }
@@ -24,7 +28,7 @@ const HEADLINE: Record<CiteMarkState, string> = {
 }
 
 /** Cite markers waiting for the writer: what each search found, and confirming a source. */
-export function CitePanel({ marks, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource }: Props) {
+export function CitePanel({ marks, citations, rechecking, onRecheckAll, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource }: Props) {
   const mark = focus ? marks.find((m) => m.cid === focus) : undefined
 
   if (!mark) {
@@ -37,6 +41,18 @@ export function CitePanel({ marks, focus, onFocus, onConfirm, onRecheck, onRemov
           <span className="cite-mark cite-mark-weak">cite</span> for partial support, and{' '}
           <span className="cite-mark cite-mark-unsupported">cite</span> when nothing does. Click it to confirm a source.
         </p>
+        {citations + marks.length > 0 && (
+          <div className="cite-recheck">
+            <button onClick={onRecheckAll} disabled={rechecking}>
+              {rechecking ? 'Rechecking…' : 'Recheck all citations'}
+            </button>
+            <span className="hint">
+              {rechecking
+                ? 'Each citation shows as grey until its check finishes. Keep writing.'
+                : 'Checks every citation against its sentence as it reads now, and searches again for every marker.'}
+            </span>
+          </div>
+        )}
         {marks.length > 0 && (
           <>
             <h4 className="eyebrow">Waiting for you · {marks.length}</h4>

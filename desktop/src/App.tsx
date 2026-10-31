@@ -164,6 +164,7 @@ export default function App() {
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
   const [citeMarks, setCiteMarks] = useState<CiteMarkAttrs[]>([]) // "cite" markers in the draft, searching or waiting
   const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker the Citations tab is showing
+  const [recheckingAll, setRecheckingAll] = useState(false)
   const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
   const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
   const [citingFor, setCitingFor] = useState<number | null>(null) // paper whose citing works are listed
@@ -746,11 +747,41 @@ export default function App() {
         const v = await api.verify(it.claim, it.chunkId, it.quote)
         editor.current?.updateCitation(it.cid, { status: v.status, reason: v.reason, start: v.start, end: v.end })
       } catch {
-        /* stays "pending": the chip can be checked again from its source */
+        /* stays "pending": Recheck all citations checks it again */
       }
       return one()
     }
     for (let i = 0; i < Math.min(4, items.length); i++) one()
+  }
+
+  /** Check every citation in the draft again, and search again for every cite marker. */
+  async function recheckAll() {
+    if (recheckingAll) return
+    if (!stats.citations && !citeMarks.length) {
+      setNotice('This draft has no citations or cite markers to check yet.')
+      return
+    }
+    setRecheckingAll(true)
+    setNotice(null)
+    try {
+      const r = await editor.current?.recheckAll()
+      if (!r) return
+      setSource((s) => {
+        const patch = s?.cid ? r.checked.get(s.cid) : undefined
+        return s && patch ? { ...s, ...patch } : s
+      })
+      const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
+      const parts: string[] = []
+      if (r.citations) {
+        parts.push(`${plural(r.citations, 'citation')}: ${r.verified} verified, ${r.flagged} flagged${r.failed ? `, ${r.failed} not checked (the backend didn't answer)` : ''}`)
+      }
+      if (r.markers) parts.push(`searched again for ${plural(r.markers, 'cite marker')}`)
+      setNotice(`Rechecked ${parts.join('; ')}.`)
+    } catch (e) {
+      onError(`Could not recheck citations: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setRecheckingAll(false)
+    }
   }
 
   /** A review matrix as a table in the draft; its cells' citations are then checked. */
@@ -811,6 +842,15 @@ export default function App() {
       name: 'Citations to confirm',
       hint: citeMarks.length ? `${citeMarks.length} waiting` : 'Ctrl+Shift+C marks a sentence',
       run: () => showCitations(),
+    },
+    {
+      group: 'DO',
+      name: 'Recheck all citations',
+      hint: recheckingAll ? 'checking…' : `${stats.citations} in the draft${citeMarks.length ? `, ${citeMarks.length} marker${citeMarks.length === 1 ? '' : 's'}` : ''}`,
+      run: () => {
+        showCitations()
+        recheckAll()
+      },
     },
     { group: 'DO', name: 'Show references', hint: settings.citation_style.toUpperCase(), run: () => showTab('references') },
     { group: 'DO', name: 'Check for duplication', hint: 'repeats and text matching sources', run: () => showTab('review') },
@@ -1106,6 +1146,9 @@ export default function App() {
               <div hidden={tab !== 'citations' || showingSource}>
                 <CitePanel
                   marks={citeMarks}
+                  citations={stats.citations}
+                  rechecking={recheckingAll}
+                  onRecheckAll={recheckAll}
                   focus={citeFocus}
                   onFocus={(cid) => {
                     setCiteFocus(cid)
