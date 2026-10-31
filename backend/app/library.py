@@ -1018,6 +1018,24 @@ class Library:
             w["first_author"] = first
         return {**out, "total": total, "works": works}
 
+    def similar_works(self, query: str, limit: int = 15) -> list[dict]:
+        """Published works close to a research question (OpenAlex search), each marked with the
+        library's copy when there is one: has someone already done this study?"""
+        query = " ".join(query.split())[:300]
+        if not query:
+            raise ValueError("There's nothing to search for")
+        try:
+            works = self.open_access.search(query, limit)
+        except httpx.HTTPError as exc:
+            raise ValueError(f"Couldn't reach OpenAlex: {exc}") from exc
+        with self.lock:
+            docs = self._docs_brief()
+        for w in works:
+            first = w["authors"][0].split()[-1] if w["authors"] else ""
+            m = match_reference(Reference(raw=w["title"], year=w["year"], doi=w["doi"], title=w["title"], first_author=first), docs)
+            w["in_library"] = m.doc_id if m else None
+        return works
+
     def works_info(self, dois: list[str]) -> dict:
         """Citations worldwide and the abstract of each DOI OpenAlex knows: {doi: {...}}."""
         try:

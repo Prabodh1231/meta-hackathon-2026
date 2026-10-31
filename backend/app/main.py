@@ -10,6 +10,7 @@ from .export_docx import export_docx
 from .jobs import IngestJobs
 from .library import INGEST_WORKERS, Library
 from .matrix import DETAIL_FIELDS, Matrices, default_columns
+from .proposal import ROLES, Proposals
 from .parent_watch import exit_with_parent
 from .settings import Settings
 
@@ -77,6 +78,29 @@ class CellIn(BaseModel):
 class RerunIn(BaseModel):
     doc_id: int | None = None
     column: str | None = None
+
+
+class ProposalSourcesIn(BaseModel):
+    matrix_ids: list[int] = []
+    finding_ids: list[int] = []  # gaps; each brings its matrix
+    focus: str = ""
+
+
+class ProposalVariable(BaseModel):
+    name: str
+    role: str = Field(pattern="^(" + "|".join(ROLES) + ")$")
+    measure: str = ""
+
+
+class ProposalIn(ProposalSourcesIn):
+    variables: list[ProposalVariable] = []
+    exclusions: str = ""  # what the writer rules out
+    resources: str = ""  # what they have to work with
+    avoid: list[dict] = []  # exclusions the last draft broke, when writing it again
+
+
+class NoveltyIn(BaseModel):
+    query: str = Field(min_length=1)
 
 
 class FindingCheckIn(BaseModel):
@@ -246,6 +270,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     jobs = IngestJobs(lib, INGEST_WORKERS)
     app.state.jobs = jobs
     matrices = Matrices(lib)
+    proposals = Proposals(lib, matrices)
     app.state.matrices = matrices
 
     @app.middleware("http")
@@ -583,6 +608,22 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def check_finding(fid: int, body: FindingCheckIn):
         """Check a sentence written from a finding against its matrix."""
         return matrices.check_finding(fid, body.claim)
+
+    @app.post("/proposals/variables")
+    def proposal_variables(body: ProposalSourcesIn):
+        """Variables a study addressing the chosen gaps would use, with suggested roles."""
+        return proposals.variables(body.matrix_ids, body.finding_ids, body.focus)
+
+    @app.post("/proposals")
+    def write_proposal(body: ProposalIn):
+        """A research proposal addressing the chosen gaps, as content for a new draft."""
+        return proposals.write(body.matrix_ids, body.finding_ids, [v.model_dump() for v in body.variables],
+                               body.focus, body.exclusions, body.resources, body.avoid)
+
+    @app.post("/proposals/novelty")
+    def proposal_novelty(body: NoveltyIn):
+        """Published work close to a research question: has this study been done?"""
+        return {"works": lib.similar_works(body.query)}
 
     @app.get("/matrices/{mid}/table")
     def matrix_table(mid: int, columns: str = ""):

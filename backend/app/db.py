@@ -1,6 +1,29 @@
 import sqlite3
 from pathlib import Path
 
+FINDINGS_TABLE = """
+-- What a matrix produced, kept for the draft: each gap Find gaps names, each passage Write from
+-- this matrix writes, and each research proposal written from gaps. `snapshot` holds the matrix
+-- rows it was based on ([{doc_id, label, title, values: [{key, label, value, quote}]}]), so its
+-- citations can be checked against the matrix as it was, and the app can tell when the matrix
+-- has changed since, or was deleted. A proposal can draw on several matrices (`matrix_ids`);
+-- `matrix_id` is then the first of them.
+CREATE TABLE IF NOT EXISTS matrix_findings (
+  id INTEGER PRIMARY KEY,
+  matrix_id INTEGER REFERENCES matrices(id) ON DELETE SET NULL,
+  matrix_name TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL CHECK (kind IN ('gap', 'synthesis', 'proposal')),
+  title TEXT NOT NULL DEFAULT '', -- a gap's title; the instruction a passage was written to; a proposal's title
+  text TEXT NOT NULL DEFAULT '', -- a gap's detail; a passage's sentences; a proposal's research questions
+  sentences TEXT NOT NULL DEFAULT '[]', -- a passage's sentences with their citations, as written
+  columns TEXT NOT NULL DEFAULT '[]', -- the column keys the snapshot holds
+  snapshot TEXT NOT NULL DEFAULT '[]',
+  matrix_ids TEXT NOT NULL DEFAULT '[]', -- a proposal's matrices
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS matrix_findings_matrix ON matrix_findings(matrix_id);
+"""
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
@@ -209,24 +232,7 @@ CREATE TABLE IF NOT EXISTS matrix_cells (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (matrix_id, doc_id, col)
 );
--- What a matrix produced, kept for the draft: each gap Find gaps names, and each passage Write
--- from this matrix writes. `snapshot` holds the matrix rows it was based on ([{doc_id, label,
--- title, values: [{key, label, value, quote}]}]), so its citations can be checked against the
--- matrix as it was, and the app can tell when the matrix has changed since, or was deleted.
-CREATE TABLE IF NOT EXISTS matrix_findings (
-  id INTEGER PRIMARY KEY,
-  matrix_id INTEGER REFERENCES matrices(id) ON DELETE SET NULL,
-  matrix_name TEXT NOT NULL DEFAULT '',
-  kind TEXT NOT NULL CHECK (kind IN ('gap', 'synthesis')),
-  title TEXT NOT NULL DEFAULT '', -- a gap's title; the instruction a passage was written to
-  text TEXT NOT NULL DEFAULT '', -- a gap's detail; a passage's sentences
-  sentences TEXT NOT NULL DEFAULT '[]', -- a passage's sentences with their citations, as written
-  columns TEXT NOT NULL DEFAULT '[]', -- the column keys the snapshot holds
-  snapshot TEXT NOT NULL DEFAULT '[]',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS matrix_findings_matrix ON matrix_findings(matrix_id);
-"""
+""" + FINDINGS_TABLE
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -278,6 +284,15 @@ _ADDED_COLUMNS = [
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
+    # Findings from before proposals: the table's CHECK allowed only gaps and passages, and a CHECK
+    # can't be altered, so the table is rebuilt with its rows.
+    sql = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'matrix_findings'").fetchone()
+    if sql and "'proposal'" not in sql["sql"]:
+        cols = "id, matrix_id, matrix_name, kind, title, text, sentences, columns, snapshot, created_at"
+        conn.executescript(
+            "BEGIN; ALTER TABLE matrix_findings RENAME TO matrix_findings_old; DROP INDEX IF EXISTS matrix_findings_matrix;"
+            + FINDINGS_TABLE
+            + f"INSERT INTO matrix_findings ({cols}) SELECT {cols} FROM matrix_findings_old; DROP TABLE matrix_findings_old; COMMIT;")
     for table, column, definition in _ADDED_COLUMNS:
         if column not in {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")

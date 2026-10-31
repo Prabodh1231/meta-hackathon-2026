@@ -110,6 +110,29 @@ class LLMProvider(ABC):
             out["verdict"] = "unsupported"
         return out
 
+    def propose_variables(self, tables: str, gaps: str, focus: str) -> list[dict]:
+        """Variables a study addressing these gaps would use: [{name, role, why, measures: [{study, how}]}]."""
+        user = (f"Gaps to address:\n{gaps}\n\n" + (f"The writer's focus: {focus}\n\n" if focus else "")
+                + f"Review matrices:\n{tables[:60000]}")
+        return self._json(prompts.VARIABLES_SYSTEM, user, prompts.VARIABLES_SCHEMA, max_tokens=2000).get("variables", [])
+
+    def write_proposal(self, tables: str, gaps: str, focus: str, variables: str, exclusions: str, resources: str,
+                       avoid: str = "") -> dict:
+        """A research proposal (PROPOSAL_SCHEMA) for a study addressing the gaps."""
+        user = (f"Gaps to address:\n{gaps}\n\n"
+                + (f"The writer's focus: {focus}\n\n" if focus else "")
+                + f"Variables and their roles:\n{variables or '(choose them)'}\n\n"
+                + f"The writer rules out (strict):\n{exclusions or '(nothing)'}\n\n"
+                + f"What the writer has to work with:\n{resources or '(not said)'}\n\n"
+                + (f"A previous draft broke these exclusions; do not repeat them:\n{avoid}\n\n" if avoid else "")
+                + f"Review matrices:\n{tables[:60000]}")
+        return self._json(prompts.PROPOSAL_SYSTEM, user, prompts.PROPOSAL_SCHEMA, max_tokens=5000)
+
+    def check_exclusions(self, exclusions: str, proposal: str) -> list[dict]:
+        """Where a proposal breaks what the writer ruled out: [{rule, section, why}]."""
+        user = f"The writer rules out:\n{exclusions}\n\nThe proposal:\n{proposal[:30000]}"
+        return self._json(prompts.EXCLUSIONS_SYSTEM, user, prompts.EXCLUSIONS_SCHEMA, max_tokens=1200).get("violations", [])
+
     def judge_support(self, claim: str, passage: str) -> dict:
         user = f"Claim: {claim}\n\nSource passage:\n{passage}"
         out = self._json(prompts.JUDGE_SYSTEM, user, prompts.JUDGE_SCHEMA, max_tokens=200)

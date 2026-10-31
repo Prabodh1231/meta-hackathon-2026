@@ -246,15 +246,7 @@ Edit the answer and **Save answer** (it keeps its quote as evidence), **Read aga
 - **Find gaps:** Muse reads the finished matrix and names what the studies leave out (populations, places, periods, methods) and where their findings conflict, naming the studies each gap rests on. **Insert into draft** beside a gap puts it in the draft, citing every paper in the matrix.
 - **Write from this matrix:** Muse writes a comparison of the studies from the matrix's quotes, each sentence citing them. Tick the sentences to keep and insert them into the draft.
 - **Kept for the draft:** every gap and every written passage is kept with the matrix, with a copy of the rows it came from. Running Find gaps again on an unchanged matrix doesn't add copies. The list shows when the matrix has changed since one was written, and you can insert one again or delete it.
-
-**Citations from the matrix are blue.** A gap or a written passage often compares several studies or says what none of them covers. One quote can't back a sentence like that, so its citations aren't checked against their quotes. Muse checks the sentence against the whole matrix: each study's answers and the quotes behind them. Blue means the matrix supports it; amber or red means it doesn't, with the reason. Click a blue citation to see:
-
-- the gap or passage it came from, and the matrix rows it rests on;
-- a note if the matrix has changed since, or was deleted (checks then use the copy kept with it);
-- **Check against the matrix**, which uses the sentence as it reads now, and **Open matrix**;
-- for a written passage, **View quote** and **Check against the quote…**, which warns first that one passage will probably show weak or no support for a sentence written from the whole matrix.
-
-**Recheck all citations** checks blue citations against the matrix too. In the Word export, a gap's citations name each paper without a page, the papers join the reference list, and blue citations get no comment.
+- **Write a proposal:** plans a study that addresses the gaps (see [Write a research proposal](#write-a-research-proposal)).
 - **Insert into draft:** the matrix as a table at the cursor, with the columns you choose. Each cell cites its quote, so the paper joins the reference list and the Word export; the citations are checked in the background, like the Assistant's. In the draft, **−Row**, **−Col** and **×Table** appear in the toolbar while the cursor is in a table.
 - **Export:** an *Excel workbook* or *CSV* (each column's answer, then its evidence: page and quote), or a *Word table* whose cells cite their sources in your citation style, with a reference list.
 
@@ -265,6 +257,26 @@ Edit the answer and **Save answer** (it keeps its quote as evidence), **Read aga
 - They're used too: **Find gaps** and **Write from this matrix** are told each study's details (e.g. that no study is after 2018, or that the most cited one disagrees), though only quotes are cited. The Excel, CSV and Word exports and **Insert into draft** include them as plain columns.
 
 Matrices are saved with your library; **⋯ → Delete this matrix** removes one (the papers stay).
+
+**Citations from the matrix are blue.** A gap or a written passage often compares several studies or says what none of them covers. One quote can't back a sentence like that, so its citations aren't checked against their quotes. Muse checks the sentence against the whole matrix: each study's answers and the quotes behind them. Blue means the matrix supports it; amber or red means it doesn't, with the reason. Click a blue citation to see:
+
+- the gap or passage it came from, and the matrix rows it rests on;
+- a note if the matrix has changed since, or was deleted (checks then use the copy kept with it);
+- **Check against the matrix**, which uses the sentence as it reads now, and **Open matrix**;
+- for a written passage, **View quote** and **Check against the quote…**, which warns first that one passage will probably show weak or no support for a sentence written from the whole matrix.
+
+**Recheck all citations** checks blue citations against the matrix too. In the Word export, a gap's citations name each paper without a page, the papers join the reference list, and blue citations get no comment.
+
+### Write a research proposal
+
+**Write a proposal** above a matrix (or *Write a research proposal* in Ctrl K) plans one study that addresses the gaps you found, in four steps:
+
+1. **Gaps:** tick the gaps to address, from one matrix or several. Ticking more than one matrix draws on several reviews, and a paper in two of them counts once. You can also say what the study should focus on, or write a focus instead of ticking gaps.
+2. **Variables:** Muse suggests the variables such a study would use, each with a likely role and how the reviewed studies measured it. Give each a role (independent, dependent, mediator, moderator or control) or mark it *Not used*, add your own, and say how you'd measure it if you know.
+3. **Limits:** what you don't want (one per line, e.g. *No randomised trials*), which Muse treats as strict rules, and what you have to work with (data, time, budget, skills). Both start with your last answers.
+4. **Proposal:** Muse writes it and checks it against what you ruled out. If it breaks a rule you see where, with **Write it again without these**. **Has this been done?** searches OpenAlex for published studies close to the first research question, marking any already in your library. **Open as a new draft** opens it in the editor.
+
+The draft has a title and Background, The gap, Research questions, Hypotheses, Variables (a table: the role, how the reviewed studies measured each variable and how this study will), Design, Data, Analysis, Contribution, Limitations and Timeline. Only what describes the reviewed studies cites them (background, the gap and the earlier measures), with blue citations checked against the matrices. Everything from the research questions on is proposed for your study, so it cites no one. A note under the title says so, to delete when you no longer need it.
 
 ## Keyboard shortcuts
 

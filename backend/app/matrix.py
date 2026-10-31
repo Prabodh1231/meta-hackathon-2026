@@ -165,6 +165,22 @@ def _table_text(rows: list[dict], quotes: bool = False) -> str:
                      for r in rows)
 
 
+def union_snapshot(parts: list[tuple[int, str, list[dict]]]) -> list[dict]:
+    """Rows of several matrices ((id, name, snapshot) each) as one list, each paper once. With more
+    than one matrix, each value's key and label say which matrix it comes from."""
+    if len(parts) == 1:
+        return parts[0][2]
+    out: dict[int, dict] = {}
+    for mid, name, rows in parts:
+        for r in rows:
+            values = [{**v, "key": f"{mid}:{v['key']}", "label": f"{name} · {v['label']}"} for v in r["values"]]
+            if r["doc_id"] in out:
+                out[r["doc_id"]]["values"].extend(values)
+            else:
+                out[r["doc_id"]] = {**r, "values": values}
+    return list(out.values())
+
+
 def _content(rows: list[dict]) -> list:
     """What a snapshot says, without names that can change (a paper's label, a column's label)."""
     return [(r["doc_id"], [(v["key"], v["value"], v["quote"]) for v in r["values"]]) for r in rows]
@@ -540,7 +556,7 @@ class Matrices:
     # ---------- findings: gaps and passages kept for the draft ----------
 
     def _save_finding(self, mid: int, name: str, kind: str, title: str, text: str, sentences: list,
-                      keys: list[str] | None, snap: list[dict]) -> int:
+                      keys: list[str] | None, snap: list[dict], matrix_ids: list[int] | None = None) -> int:
         """Call holding the library lock, in a transaction. The same gap or passage, from the same
         rows, is kept once: running Find gaps again on an unchanged matrix adds nothing."""
         cols = keys if keys is not None else [v["key"] for v in (snap[0]["values"] if snap else [])]
@@ -550,9 +566,10 @@ class Matrices:
         if same:
             return same["id"]
         return self.lib.conn.execute(
-            "INSERT INTO matrix_findings (matrix_id, matrix_name, kind, title, text, sentences, columns, snapshot) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (mid, name, kind, title, text, json.dumps(sentences), json.dumps(cols), json.dumps(snap))).lastrowid
+            "INSERT INTO matrix_findings (matrix_id, matrix_name, kind, title, text, sentences, columns, snapshot, "
+            "matrix_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (mid, name, kind, title, text, json.dumps(sentences), json.dumps(cols), json.dumps(snap),
+             json.dumps(matrix_ids or [mid]))).lastrowid
 
     def _finding_row(self, fid: int):
         with self.lib.lock:
@@ -561,14 +578,29 @@ class Matrices:
             raise LookupError("This finding was deleted")
         return row
 
+    def _ids(self, row) -> list[int]:
+        ids = json.loads(row["matrix_ids"] or "[]")
+        return ids if row["kind"] == "proposal" else [row["matrix_id"]]
+
     def _current(self, row) -> list[dict] | None:
-        """The finding's columns of its matrix as the matrix is now; None if the matrix was deleted."""
-        if row["matrix_id"] is None:
+        """The finding's columns of its matrix (a proposal's matrices) as it is now; None once a
+        matrix it came from was deleted."""
+        ids = self._ids(row)
+        if not ids or None in ids:
             return None
         try:
-            return _snapshot(self.get(row["matrix_id"]), json.loads(row["columns"]))
+            if row["kind"] == "proposal":
+                return union_snapshot([(m["id"], m["name"], _snapshot(m)) for m in (self.get(i) for i in ids)])
+            return _snapshot(self.get(ids[0]), json.loads(row["columns"]))
         except LookupError:
             return None
+
+    def _names(self, row) -> str:
+        """The finding's matrix name (names, for a proposal) as it is now, or as kept."""
+        try:
+            return ", ".join(self._matrix(i)["name"] for i in self._ids(row))
+        except (LookupError, TypeError):
+            return row["matrix_name"]
 
     def _summary(self, row, current: list[dict] | None, matrix_name: str | None = None) -> dict:
         snap = json.loads(row["snapshot"])
@@ -583,8 +615,9 @@ class Matrices:
         """A matrix's kept gaps and passages, newest first."""
         m = self.get(mid)
         with self.lib.lock:
-            rows = self.lib.conn.execute(
-                "SELECT * FROM matrix_findings WHERE matrix_id = ? ORDER BY id DESC", (mid,)).fetchall()
+            rows = self.lib.conn.execute(  # proposals live in their drafts
+                "SELECT * FROM matrix_findings WHERE matrix_id = ? AND kind != 'proposal' ORDER BY id DESC",
+                (mid,)).fetchall()
         out = []
         for row in rows:
             current = _snapshot(m, json.loads(row["columns"]))
@@ -595,10 +628,8 @@ class Matrices:
         """One finding with what it rests on: the matrix rows as they were, and its sentences."""
         row = self._finding_row(fid)
         current = self._current(row)
-        name = None
-        if current is not None:
-            name = self._matrix(row["matrix_id"])["name"]
-        return {**self._summary(row, current, name), "matrix_exists": current is not None,
+        return {**self._summary(row, current, self._names(row) if current is not None else None),
+                "matrix_exists": current is not None, "matrix_ids": [i for i in self._ids(row) if i is not None],
                 "sentences": json.loads(row["sentences"]), "snapshot": json.loads(row["snapshot"])}
 
     def delete_finding(self, fid: int) -> None:
@@ -616,12 +647,12 @@ class Matrices:
         row = self._finding_row(fid)
         current = self._current(row)
         rows, against = json.loads(row["snapshot"]), "saved"
-        if current is not None and not self.get(row["matrix_id"])["pending"]:
+        if current is not None and not any(self.get(i)["pending"] for i in self._ids(row)):
             rows, against = current, "matrix"
         table = _table_text(rows, quotes=True)
         if len(table) > MAX_TABLE:  # a large matrix: its answers, without the quotes behind them
             table = _table_text(rows)
-        name = self._matrix(row["matrix_id"])["name"] if current is not None else row["matrix_name"]
+        name = self._names(row) if current is not None else row["matrix_name"]
         verdict = self.lib.provider.judge_against_matrix(claim, name, table)
         return {"status": VERDICT_STATUS[verdict["verdict"]], "reason": str(verdict.get("reason", "")).strip(),
                 "against": against,
