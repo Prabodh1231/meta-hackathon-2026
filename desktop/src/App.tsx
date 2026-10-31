@@ -16,6 +16,7 @@ import { Icon, type IconName } from './components/Icon'
 import { LibraryPanel } from './components/LibraryPanel'
 import { ago, toneOf } from './components/Meters'
 import { MatrixView } from './components/MatrixView'
+import { FindingView } from './components/FindingView'
 import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { CitingPapersDialog } from './components/CitingPapersDialog'
 import { PdfViewerDialog } from './components/PdfViewerDialog'
@@ -139,6 +140,8 @@ function saveText(s: SaveState): string {
   return 'Loading…'
 }
 
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
+
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [docs, setDocs] = useState<Doc[]>([])
@@ -148,6 +151,9 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('assistant')
   const [source, setSource] = useState<(SourceTarget & { cid?: string }) | null>(null)
   const [sourceFrom, setSourceFrom] = useState<Tab | null>(null) // showing `source`, opened from this tab
+  // A citation written from a review matrix, shown with its finding (its quote, if asked, in `source`).
+  const [findingChip, setFindingChip] = useState<ChipAttrs | null>(null)
+  const [openMatrix, setOpenMatrix] = useState<{ id: number; at: number } | null>(null)
   const [libQuery, setLibQuery] = useState('')
   const [netQuery, setNetQuery] = useState('')
   const [matQuery, setMatQuery] = useState('')
@@ -237,12 +243,14 @@ export default function App() {
       revealTools()
       setTab(t)
       setSourceFrom(null)
+      setFindingChip(null)
     },
     [revealTools],
   )
 
   /** Show a cited passage on its page, in the Citations tab; "back" returns to `from`. */
   function showSource(target: SourceTarget & { cid?: string }, from: Tab = tab) {
+    setFindingChip(null)
     setSource(target)
     setSourceFrom(sourceFrom ?? from)
     revealTools()
@@ -716,6 +724,15 @@ export default function App() {
   }
 
   async function openChip(a: ChipAttrs) {
+    if (a.finding != null) {
+      // Written from a review matrix: show the gap or passage it came from, not one quote.
+      setSource(null)
+      setFindingChip(a)
+      setSourceFrom(sourceFrom ?? tab)
+      revealTools()
+      setTab('citations')
+      return
+    }
     showSource({ ...a })
     // The file may have been re-added since this chip was written; jump to where the quote is now.
     try {
@@ -736,6 +753,60 @@ export default function App() {
   useEffect(() => {
     if (mode === 'matrix') setMatrixSeen(true)
   }, [mode])
+
+  /** Check the open matrix citation again, against its matrix or its own quote. */
+  async function checkFindingChip(how: 'matrix' | 'quote') {
+    const chip = findingChip
+    if (!chip) return
+    try {
+      const patch = await editor.current?.checkCitation(chip.cid, how)
+      if (patch) setFindingChip((c) => (c?.cid === chip.cid ? { ...c, ...patch } : c))
+      else if (patch === null) onError('That citation was deleted from the draft.')
+    } catch (e) {
+      onError(`Could not check the citation: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
+  /** Sentences written from a matrix finding: check each against the matrix, a few at a time. */
+  function checkFromMatrix(firstCids: string[]) {
+    let next = 0
+    const one = async (): Promise<void> => {
+      const cid = firstCids[next++]
+      if (!cid) return
+      try {
+        await editor.current?.checkCitation(cid, 'matrix')
+      } catch {
+        /* stays "pending": Recheck all citations checks it again */
+      }
+      return one()
+    }
+    for (let i = 0; i < Math.min(4, firstCids.length); i++) one()
+  }
+
+  /** A gap or a passage a matrix produced, put into the draft citing the matrix. */
+  async function insertFinding(id: number) {
+    try {
+      const f = await api.finding(id)
+      if (f.kind === 'synthesis') {
+        insertMatrixSentences(f.sentences, f.id)
+        return
+      }
+      const stamp = Date.now().toString(36)
+      const title = f.title.trim()
+      const text = `${title && !/[.!?]$/.test(title) ? `${title}.` : title} ${f.text}`.trim()
+      // A gap is about the studies as a set: it cites every paper in the matrix, as a whole.
+      const citations = f.snapshot.map((r) => ({
+        cid: `gap-${f.id}-${r.doc_id}-${stamp}`, chunk_id: null, doc_id: r.doc_id, page: null, page_label: null,
+        quote: '', start: null, end: null, match: 0, label: r.label, status: 'pending', reason: '', finding: f.id,
+      })) as unknown as Citation[]
+      revealTools()
+      editor.current?.insertDraft([{ text, citations }])
+      setNotice(`Inserted the gap, citing the ${plural(citations.length, 'paper')} in “${f.matrix_name}”; checking it against the matrix.`)
+      if (citations.length) checkFromMatrix([citations[0].cid!])
+    } catch (e) {
+      onError(`Could not insert it: ${e instanceof Error ? e.message : e}`)
+    }
+  }
 
   /** Check citations put into the draft from a matrix, a few at a time, and recolour their chips. */
   function verifyInDraft(items: { cid: string; claim: string; chunkId: number; quote: string }[]) {
@@ -770,7 +841,10 @@ export default function App() {
         const patch = s?.cid ? r.checked.get(s.cid) : undefined
         return s && patch ? { ...s, ...patch } : s
       })
-      const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
+      setFindingChip((c) => {
+        const patch = c ? r.checked.get(c.cid) : undefined
+        return c && patch ? { ...c, ...patch } : c
+      })
       const parts: string[] = []
       if (r.citations) {
         parts.push(`${plural(r.citations, 'citation')}: ${r.verified} verified, ${r.flagged} flagged${r.failed ? `, ${r.failed} not checked (the backend didn't answer)` : ''}`)
@@ -804,16 +878,18 @@ export default function App() {
     verifyInDraft(items)
   }
 
-  /** Sentences written from a matrix into the draft; their citations are then checked. */
-  function insertMatrixSentences(sentences: DraftSentence[]) {
+  /** Sentences written from a matrix into the draft. Kept as a finding, they're checked against the
+   * matrix (they compare studies, so one quote rarely backs a whole sentence); else each against its quote. */
+  function insertMatrixSentences(sentences: DraftSentence[], finding: number | null = null) {
     const stamp = Date.now().toString(36)
     const withIds = sentences.map((s, i) => ({
       ...s,
-      citations: s.citations.map((c, j) => ({ ...c, cid: `ms-${stamp}-${i}-${j}` })),
+      citations: s.citations.map((c, j) => ({ ...c, cid: `ms-${stamp}-${i}-${j}`, finding, status: 'pending' as const, reason: '' })),
     }))
     revealTools()
     editor.current?.insertDraft(withIds)
-    verifyInDraft(withIds.flatMap((s) => s.citations.map((c) => ({ cid: c.cid!, claim: s.text, chunkId: c.chunk_id, quote: c.quote }))))
+    if (finding != null) checkFromMatrix(withIds.filter((s) => s.citations.length).map((s) => s.citations[0].cid))
+    else verifyInDraft(withIds.flatMap((s) => s.citations.map((c) => ({ cid: c.cid!, claim: s.text, chunkId: c.chunk_id, quote: c.quote }))))
   }
 
   function showCitations(focus: string | null = null) {
@@ -1136,10 +1212,28 @@ export default function App() {
               </div>
               {tab === 'citations' && sourceFrom && (
                 <>
-                  <button className="link cite-back" onClick={() => showTab(sourceFrom)}>
-                    ‹ Back to {sourceFrom === 'citations' ? 'citations to confirm' : TAB[sourceFrom].label}
-                  </button>
-                  <SourceViewer target={source} doc={docs.find((d) => d.id === source?.docId)} onOpenPdf={openPdf} />
+                  {findingChip && source ? (
+                    <button className="link cite-back" onClick={() => setSource(null)}>
+                      ‹ Back to the matrix finding
+                    </button>
+                  ) : (
+                    <button className="link cite-back" onClick={() => showTab(sourceFrom)}>
+                      ‹ Back to {sourceFrom === 'citations' ? 'citations to confirm' : TAB[sourceFrom].label}
+                    </button>
+                  )}
+                  {findingChip && !source ? (
+                    <FindingView
+                      chip={findingChip}
+                      onCheck={checkFindingChip}
+                      onOpenMatrix={(id) => {
+                        setOpenMatrix({ id, at: Date.now() })
+                        setMode('matrix')
+                      }}
+                      onViewQuote={() => setSource({ ...findingChip })}
+                    />
+                  ) : (
+                    <SourceViewer target={source} doc={docs.find((d) => d.id === source?.docId)} onOpenPdf={openPdf} />
+                  )}
                 </>
               )}
               {/* Kept mounted (hidden) so results survive a look at a source. */}
@@ -1243,6 +1337,8 @@ export default function App() {
               onOpenPdf={openPdf}
               onInsertTable={insertMatrixTable}
               onInsertSentences={insertMatrixSentences}
+              onInsertFinding={insertFinding}
+              openRequest={openMatrix}
             />
           </div>
         )}

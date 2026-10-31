@@ -49,7 +49,7 @@ export function CitePanel({ marks, citations, rechecking, onRecheckAll, focus, o
             <span className="hint">
               {rechecking
                 ? 'Each citation shows as grey until its check finishes. Keep writing.'
-                : 'Checks every citation against its sentence as it reads now, and searches again for every marker.'}
+                : 'Checks every citation against its sentence as it reads now (blue ones, written from a review matrix, against the matrix), and searches again for every marker.'}
             </span>
           </div>
         )}

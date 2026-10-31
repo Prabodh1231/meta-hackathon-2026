@@ -209,6 +209,23 @@ CREATE TABLE IF NOT EXISTS matrix_cells (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (matrix_id, doc_id, col)
 );
+-- What a matrix produced, kept for the draft: each gap Find gaps names, and each passage Write
+-- from this matrix writes. `snapshot` holds the matrix rows it was based on ([{doc_id, label,
+-- title, values: [{key, label, value, quote}]}]), so its citations can be checked against the
+-- matrix as it was, and the app can tell when the matrix has changed since, or was deleted.
+CREATE TABLE IF NOT EXISTS matrix_findings (
+  id INTEGER PRIMARY KEY,
+  matrix_id INTEGER REFERENCES matrices(id) ON DELETE SET NULL,
+  matrix_name TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL CHECK (kind IN ('gap', 'synthesis')),
+  title TEXT NOT NULL DEFAULT '', -- a gap's title; the instruction a passage was written to
+  text TEXT NOT NULL DEFAULT '', -- a gap's detail; a passage's sentences
+  sentences TEXT NOT NULL DEFAULT '[]', -- a passage's sentences with their citations, as written
+  columns TEXT NOT NULL DEFAULT '[]', -- the column keys the snapshot holds
+  snapshot TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS matrix_findings_matrix ON matrix_findings(matrix_id);
 """
 
 

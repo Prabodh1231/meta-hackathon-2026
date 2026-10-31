@@ -123,6 +123,16 @@ JUDGE_SCHEMA = {
     "additionalProperties": False,
 }
 
+MATRIX_JUDGE_SYSTEM = (
+    "Decide whether a literature review matrix supports a sentence written from it. The matrix has "
+    "one line per study: its details, and for each column a short answer with the quote it rests on. "
+    "The sentence may compare studies, generalise across them, or name what none of them covers; "
+    "judge it against the whole table. 'supported' means the table states or directly implies it; "
+    "'partial' means it backs only part, or the sentence overstates it (a claim about all studies that "
+    "holds for most); 'unsupported' means the table does not back it or contradicts it. "
+    "Give a one-sentence reason naming the studies that matter."
+)
+
 MATRIX_SYSTEM = (
     "You fill one row of a literature review matrix for a single research paper, using ONLY the "
     "numbered passages from it. For each column, write a short, specific answer (at most 35 words: "

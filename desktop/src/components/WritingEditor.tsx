@@ -77,6 +77,7 @@ async function repairChips(editor: Editor, only?: ChipAttrs[]): Promise<Map<stri
     chips = [...seen.values()]
   }
   const patches = new Map<string, Partial<ChipAttrs>>()
+  chips = chips.filter((c) => c.quote) // a gap's citations name whole papers: there's no passage to find
   if (!chips.length) return patches
   const resolved = await api.resolveCitations(chips.map((c) => ({ doc_id: c.docId, page: c.page, quote: c.quote })))
   chips.forEach((c, i) => {
@@ -104,6 +105,8 @@ export interface ChipAttrs {
   label: string
   status: Citation['status']
   reason: string
+  /** Written from a review matrix: the kept finding it's checked against (see Citation.finding). */
+  finding: number | null
 }
 
 /** What a "Recheck all citations" run did. `checked` holds each chip's new attributes. */
@@ -157,6 +160,9 @@ export interface WritingEditorHandle {
   /** Check every citation again against its sentence as it reads now (after finding its
    * quote in the library as it is now), and search again for every cite marker. */
   recheckAll: () => Promise<RecheckSummary>
+  /** Check one citation again, for its sentence as it reads now: against its review matrix (with
+   * the other citations of that sentence from the same finding), or against its own quote. */
+  checkCitation: (cid: string, how: 'matrix' | 'quote') => Promise<Partial<ChipAttrs> | null>
   removeCite: (cid: string) => void
   /** Select a marker and scroll it into view. */
   showCite: (cid: string) => void
@@ -193,6 +199,7 @@ function chipFromCitation(c: Citation, claim: string): ChipAttrs {
     label: c.label,
     status: c.status,
     reason: c.reason,
+    finding: c.finding ?? null,
   }
 }
 
@@ -208,13 +215,15 @@ function sentenceBefore(editor: Editor, pos: number): string {
 }
 
 /** The sentence a chip at `pos` cites now: the one it was made for while that's still in its
- * paragraph (a matrix cell's whole answer, say), else the sentence just before it. */
-function claimAt(editor: Editor, pos: number, stored: string): string {
+ * paragraph (a matrix cell's whole answer, say), else the sentence just before it, or with
+ * `paragraph` (a gap, which cites the matrix for all it says) the paragraph's text up to it. */
+function claimAt(editor: Editor, pos: number, stored: string, paragraph = false): string {
   const $pos = editor.state.doc.resolve(pos)
   if (!$pos.parent.isTextblock) return stored
   const norm = (t: string) => t.split(LEAF).join('').replace(/\s+/g, ' ').trim()
   const para = norm(editor.state.doc.textBetween($pos.start(), $pos.end(), ' ', LEAF))
   if (stored && para.includes(norm(stored))) return stored
+  if (paragraph) return norm(editor.state.doc.textBetween($pos.start(), pos, ' ', LEAF)) || stored
   return sentenceBefore(editor, pos) || stored
 }
 
@@ -292,6 +301,14 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       .finally(() => searching.delete(cid))
     searching.set(cid, run)
     return run
+  }
+
+  /** Check a sentence written from a review matrix against that matrix, and recolour its chips. */
+  async function checkAgainstMatrix(finding: number, claim: string, cids: string[]): Promise<Partial<ChipAttrs>> {
+    const v = await api.checkFinding(finding, claim)
+    const patch = { status: v.status, reason: v.reason }
+    if (editorRef.current) patchChips(editorRef.current, new Map(cids.map((cid) => [cid, patch])))
+    return patch
   }
 
   const editor = useEditor({
@@ -497,6 +514,32 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
           if (node.type.name === 'citation' && node.attrs.cid && !chips.has(node.attrs.cid)) chips.set(node.attrs.cid, { pos, attrs: node.attrs as ChipAttrs })
         })
         summary.citations = chips.size
+        // Written from a review matrix: checked against the matrix, once per sentence.
+        const fromMatrix = new Map<string, { finding: number; claim: string; chips: ChipAttrs[] }>()
+        for (const [cid, { pos, attrs }] of chips) {
+          if (!attrs.finding) continue
+          chips.delete(cid)
+          const claim = claimAt(editor, pos, attrs.claim, !attrs.quote)
+          const key = `${attrs.finding}\n${claim}`
+          if (!fromMatrix.has(key)) fromMatrix.set(key, { finding: attrs.finding, claim, chips: [] })
+          fromMatrix.get(key)!.chips.push(attrs)
+          patchChips(editor, new Map([[cid, { status: 'pending' as const, reason: '', claim }]]))
+        }
+        for (const { finding, claim, chips: group } of fromMatrix.values()) {
+          work.push(
+            limited(() => checkAgainstMatrix(finding, claim, group.map((c) => c.cid)))
+              .then((patch) => {
+                for (const c of group) summary.checked.set(c.cid, patch)
+                if (patch.status === 'verified') summary.verified += group.length
+                else summary.flagged += group.length
+              })
+              .catch(() => {
+                summary.failed += group.length
+                if (editorRef.current) patchChips(editorRef.current, new Map(group.map((c) => [c.cid, { status: c.status, reason: c.reason }])))
+              }),
+          )
+        }
+
         for (const [cid, { pos, attrs }] of chips) {
           if (located.get(cid)?.status === 'quote_not_found') {
             summary.flagged++
@@ -523,6 +566,41 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         }
         await Promise.all(work)
         return summary
+      },
+
+      async checkCitation(cid, how) {
+        const pos = editor ? findCid(editor, cid) : null
+        if (!editor || pos == null) return null
+        const attrs = editor.state.doc.nodeAt(pos)!.attrs as ChipAttrs
+        const claim = claimAt(editor, pos, attrs.claim, !attrs.quote)
+        if (how === 'matrix') {
+          if (!attrs.finding) return null
+          const group: ChipAttrs[] = []
+          editor.state.doc.descendants((node, p) => {
+            const a = node.attrs as ChipAttrs
+            if (node.type.name === 'citation' && a.finding === attrs.finding && claimAt(editor, p, a.claim, !a.quote) === claim) group.push(a)
+          })
+          patchChips(editor, new Map(group.map((c) => [c.cid, { status: 'pending' as const, reason: '', claim }])))
+          try {
+            return { ...(await checkAgainstMatrix(attrs.finding, claim, group.map((c) => c.cid))), claim }
+          } catch (e) {
+            patchChips(editor, new Map(group.map((c) => [c.cid, { status: c.status, reason: c.reason }])))
+            throw e
+          }
+        }
+        if (!attrs.quote) return null
+        patchChips(editor, new Map([[cid, { status: 'pending' as const, reason: '', claim }]]))
+        try {
+          const located = (await repairChips(editor, [attrs])).get(cid)
+          if (located?.status === 'quote_not_found') return { ...located, claim }
+          const v = await api.verify(claim, located?.chunkId ?? attrs.chunkId, attrs.quote)
+          const patch = { status: v.status, reason: v.reason, start: v.start, end: v.end }
+          if (editorRef.current) patchChips(editorRef.current, new Map([[cid, patch]]))
+          return { ...patch, claim }
+        } catch (e) {
+          patchChips(editor, new Map([[cid, { status: attrs.status, reason: attrs.reason }]]))
+          throw e
+        }
       },
 
       removeCite(cid) {

@@ -17,6 +17,9 @@ import type {
   FetchResult,
   MissingWorks,
   FileDuplicateReport,
+  Finding,
+  FindingCheck,
+  FindingSummary,
   Matrix,
   MatrixColumn,
   MatrixDetailField,
@@ -35,6 +38,7 @@ import type {
   ResolvedCitation,
   Settings,
   Suggestion,
+  SynthesisResult,
   Topic,
   VersionList,
 } from './types'
@@ -242,7 +246,13 @@ export const api = {
     request<Matrix>('POST', `/matrices/${id}/rerun`, scope),
   matrixGaps: (id: number) => request<Matrix>('POST', `/matrices/${id}/gaps`),
   matrixSynthesis: (id: number, instruction = '', columns?: string[]) =>
-    request<DraftResult>('POST', `/matrices/${id}/synthesis`, { instruction, columns }),
+    request<SynthesisResult>('POST', `/matrices/${id}/synthesis`, { instruction, columns }),
+  /** Gaps and passages a matrix produced, kept for the draft, newest first. */
+  matrixFindings: (id: number) => request<FindingSummary[]>('GET', `/matrices/${id}/findings`),
+  finding: (id: number) => request<Finding>('GET', `/findings/${id}`),
+  deleteFinding: (id: number) => request<{ ok: boolean }>('DELETE', `/findings/${id}`),
+  /** Check a sentence written from a finding against its matrix (not against one quote). */
+  checkFinding: (id: number, claim: string) => request<FindingCheck>('POST', `/findings/${id}/check`, { claim }),
   /** The matrix as editor content: a table whose cells cite their quotes. */
   matrixTable: (id: number, columns: string[]) =>
     request<{ type: 'doc'; content: unknown[] }>('GET', `/matrices/${id}/table?columns=${encodeURIComponent(columns.join(','))}`),

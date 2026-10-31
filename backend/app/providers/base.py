@@ -102,6 +102,14 @@ class LLMProvider(ABC):
         out = self._json(prompts.GAPS_SYSTEM, f"Topic: {topic}\n\n{table[:60000]}", prompts.GAPS_SCHEMA, max_tokens=1200)
         return out.get("gaps", [])
 
+    def judge_against_matrix(self, claim: str, topic: str, table: str) -> dict:
+        """Does a review matrix (as text, one line per study) support a sentence written from it?"""
+        user = f"Sentence: {claim}\n\nMatrix: {topic}\n{table[:60000]}"
+        out = self._json(prompts.MATRIX_JUDGE_SYSTEM, user, prompts.JUDGE_SCHEMA, max_tokens=300)
+        if out.get("verdict") not in ("supported", "partial", "unsupported"):
+            out["verdict"] = "unsupported"
+        return out
+
     def judge_support(self, claim: str, passage: str) -> dict:
         user = f"Claim: {claim}\n\nSource passage:\n{passage}"
         out = self._json(prompts.JUDGE_SYSTEM, user, prompts.JUDGE_SCHEMA, max_tokens=200)

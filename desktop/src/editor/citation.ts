@@ -23,6 +23,7 @@ export const CitationNode = Node.create({
       label: attr(''),
       status: attr('pending'),
       reason: attr(''),
+      finding: attr(null), // written from a review matrix: the kept finding it's checked against
     }
   },
 
@@ -31,14 +32,16 @@ export const CitationNode = Node.create({
   },
 
   renderHTML({ node, HTMLAttributes }) {
-    const { status, label, reason, quote, cid } = node.attrs
+    const { status, label, reason, quote, cid, finding } = node.attrs
+    const from = finding ? 'From your review matrix. ' : ''
+    const quoted = quote ? `“${quote}”` : ''
     return [
       'span',
       mergeAttributes(HTMLAttributes, {
         'data-citation': '',
         'data-cid': cid ?? '',
-        class: `cite cite-${status}`,
-        title: reason ? `${reason}\n\n“${quote}”` : `“${quote}”`,
+        class: `cite cite-${status}${finding ? ' cite-matrix' : ''}`,
+        title: [from + reason, quoted].filter((t) => t.trim()).join('\n\n'),
       }),
       label,
     ]

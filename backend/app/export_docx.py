@@ -48,6 +48,7 @@ class Cite:
     status: str
     reason: str
     quote: str
+    matrix: bool = False  # written from a review matrix and checked against it
 
 
 def export_docx(library, content: dict, style: str, title: str = "", flag_pending: bool = True,
@@ -79,6 +80,15 @@ class _Writer:
 
     def _resolve(self, attrs: dict) -> Cite:
         status, reason = attrs.get("status") or "pending", attrs.get("reason") or ""
+        if attrs.get("finding") and not attrs.get("quote"):
+            # A gap from a review matrix cites each of the matrix's papers as a whole: no quote, no page.
+            try:
+                doc = self.lib.get_document(attrs.get("docId") or 0)
+            except LookupError:
+                return Cite(None, None, "quote_not_found", "The paper is no longer in your library.", "")
+            if doc["id"] not in self.order:
+                self.order.append(doc["id"])
+            return Cite(doc, None, status, reason, "", True)
         r = self.lib.resolve_citation(attrs.get("docId") or 0, attrs.get("page") or 1, attrs.get("quote") or "",
                                       _cache=self._pages)
         if not r:
@@ -87,7 +97,8 @@ class _Writer:
         doc = self.lib.get_document(r["doc_id"])
         if r["doc_id"] not in self.order:
             self.order.append(r["doc_id"])
-        return Cite(doc, _locator(doc, r["page"], r["page_label"]), status, reason, attrs.get("quote") or "")
+        return Cite(doc, _locator(doc, r["page"], r["page_label"]), status, reason, attrs.get("quote") or "",
+                    bool(attrs.get("finding")))
 
     def _in_text(self, cites: list[Cite]) -> str:
         if self.style == "ieee":
@@ -232,7 +243,10 @@ class _Writer:
                 run = last_run = para.add_run(self._in_text(cites))
                 for c in cites:
                     if c.status in FLAGS and (self.flag_pending or c.status != "pending"):
-                        note = FLAGS[c.status] + (f" {c.reason}" if c.reason else "") + f"\nQuoted: “{c.quote}”"
+                        flag = FLAGS[c.status]
+                        if c.matrix:
+                            flag = flag.replace("the source", "the review matrix")
+                        note = flag + (f" {c.reason}" if c.reason else "") + (f"\nQuoted: “{c.quote}”" if c.quote else "")
                         self.doc.add_comment(run, text=note, author=COMMENT_AUTHOR, initials="RC")
                 if suffix:
                     para.add_run(suffix)

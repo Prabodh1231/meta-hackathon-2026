@@ -129,6 +129,9 @@ export interface Citation {
   label: string
   status: CitationStatus
   reason: string
+  /** Written from a review matrix (a gap, or a passage from Write from this matrix): the id of
+   * the kept finding, which the citation is checked against instead of its quote. */
+  finding?: number | null
 }
 
 /** A candidate source for a sentence the user wrote, already checked. */
@@ -154,6 +157,44 @@ export interface DraftSentence {
 export interface DraftResult {
   sentences: DraftSentence[]
   passages: { pid: string; chunk_id: number; label: string }[]
+}
+
+/** Write from this matrix: the sentences, kept as a finding (null when nothing was written). */
+export type SynthesisResult = DraftResult & { finding: number | null }
+
+/** A gap or a written passage a review matrix produced, kept so the draft can cite it. */
+export interface FindingSummary {
+  id: number
+  kind: 'gap' | 'synthesis'
+  matrix_id: number | null // null once the matrix is deleted
+  matrix_name: string
+  title: string // a gap's title; the instruction a passage was written to ('' for the standard one)
+  text: string // a gap's detail; a passage's sentences
+  created_at: string
+  papers: number
+  matrix_changed: boolean // the matrix's rows differ from what this was written from
+}
+
+export interface FindingRow {
+  doc_id: number
+  label: string
+  title: string
+  values: { key: string; label: string; value: string; quote: string }[]
+}
+
+export interface Finding extends FindingSummary {
+  matrix_exists: boolean
+  sentences: DraftSentence[]
+  /** The matrix rows it was written from. */
+  snapshot: FindingRow[]
+}
+
+/** A sentence checked against a finding's matrix. */
+export interface FindingCheck {
+  status: CitationStatus
+  reason: string
+  against: 'matrix' | 'saved' // the matrix as it is now, or the copy kept with the finding
+  matrix_changed: boolean
 }
 
 /** One file in a background import. */
@@ -516,7 +557,7 @@ export interface Matrix {
   name: string
   columns: MatrixColumn[]
   rows: MatrixRow[]
-  gaps: { title: string; detail: string }[] | null
+  gaps: { id: number; title: string; detail: string }[] | null
   pending: number // cells still being read
   cells: number
   updated_at: string
