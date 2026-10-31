@@ -128,7 +128,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 10
+API_VERSION = 11
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -264,9 +264,28 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         return lib.update_document(doc_id, body.model_dump(exclude_unset=True))
 
     @app.delete("/documents/{doc_id}")
-    def delete_document(doc_id: int):
-        lib.delete_document(doc_id)
+    def delete_document(doc_id: int, reason: str = "removed", duplicate_of: int | None = None, trashed: bool = False):
+        """Removes it, keeping what it was in the removal log (`reason`: removed | duplicate)."""
+        lib.delete_document(doc_id, reason, duplicate_of, trashed)
         return {"ok": True}
+
+    @app.get("/library/removed")
+    def list_removed():
+        return lib.list_removed()
+
+    @app.post("/library/removed/{removed_id}/restore")
+    def restore_removed(removed_id: int):
+        return lib.restore_removed(removed_id)
+
+    @app.delete("/library/removed/{removed_id}")
+    def forget_removed(removed_id: int):
+        lib.forget_removed(removed_id)
+        return {"ok": True}
+
+    @app.post("/library/publication-dates")
+    def fill_publication_dates():
+        """Full publication dates from OpenAlex for the papers not yet looked up."""
+        return lib.fill_publication_dates()
 
     @app.get("/documents/{doc_id}/pages/{page}")
     def get_page(doc_id: int, page: int):

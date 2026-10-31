@@ -16,6 +16,7 @@ import type {
   FileDuplicateReport,
   Folder,
   Health,
+  RemovedDoc,
   IngestJob,
   IngestResult,
   ModelSettings,
@@ -39,7 +40,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 10
+export const API_VERSION = 11
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -111,7 +112,19 @@ export const api = {
 
   documents: () => request<Doc[]>('GET', '/documents'),
   updateDocument: (id: number, patch: Partial<Doc>) => request<Doc>('PATCH', `/documents/${id}`, patch),
-  deleteDocument: (id: number) => request<{ ok: boolean }>('DELETE', `/documents/${id}`),
+  /** Remove from the library; what it was is kept in the removal log (Removed). */
+  deleteDocument: (id: number, why?: { reason: 'removed' | 'duplicate'; duplicateOf?: number; trashed?: boolean }) => {
+    const q = new URLSearchParams({ reason: why?.reason ?? 'removed', trashed: String(!!why?.trashed) })
+    if (why?.duplicateOf != null) q.set('duplicate_of', String(why.duplicateOf))
+    return request<{ ok: boolean }>('DELETE', `/documents/${id}?${q}`)
+  },
+  removed: () => request<RemovedDoc[]>('GET', '/library/removed'),
+  /** Add a removed source back from its file, under its old id and added date. */
+  restoreRemoved: (id: number) => request<Doc>('POST', `/library/removed/${id}/restore`),
+  forgetRemoved: (id: number) => request<{ ok: boolean }>('DELETE', `/library/removed/${id}`),
+  /** Full publication dates from OpenAlex for the papers not yet looked up. */
+  fillPublicationDates: () =>
+    request<{ checked: number; found: number; failed: number }>('POST', '/library/publication-dates'),
   duplicateFiles: (cited: number[]) => request<FileDuplicateReport>('POST', '/library/duplicates', { cited }),
   page: (docId: number, page: number) => request<PageText>('GET', `/documents/${docId}/pages/${page}`),
 

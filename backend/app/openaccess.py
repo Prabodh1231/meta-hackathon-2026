@@ -31,6 +31,7 @@ class Work:
     pdf_urls: list[str] = field(default_factory=list)  # open-access PDF links, best first
     landing_url: str = ""  # a free page to read it on, when there is one
     is_oa: bool = False
+    published: str = ""  # "YYYY-MM-DD" (or "YYYY-MM") when the index knows more than the year
 
 
 @dataclass
@@ -68,6 +69,12 @@ def file_name(ref: Reference, work: Work | None) -> str:
     return re.sub(r"\s+", " ", stem).strip(" .")[:110] + ".pdf"
 
 
+def _date(value: str | None) -> str:
+    """'2004-06-01' or '2004-06' as given; anything else (a bare year, junk) is ''."""
+    m = re.match(r"^(\d{4}-\d{2}(?:-\d{2})?)", value or "")
+    return m.group(1) if m else ""
+
+
 def _doi(value: str | None) -> str:
     return re.sub(r"^https?://(dx\.)?doi\.org/", "", value or "", flags=re.I).lower()
 
@@ -100,7 +107,7 @@ class OpenAccess:
     # ---------- finding the work ----------
 
     def _openalex(self, ref: Reference) -> Work | None:
-        params = {"select": "doi,title,publication_year,open_access,best_oa_location,locations"}
+        params = {"select": "doi,title,publication_year,publication_date,open_access,best_oa_location,locations"}
         if self.mailto:
             params["mailto"] = self.mailto
         if ref.doi:
@@ -124,11 +131,11 @@ class OpenAccess:
             return Work(title, year, _doi(w.get("doi")) or ref.doi, "OpenAlex",
                         pdf_urls=list(dict.fromkeys(u for u in pdfs if u)),
                         landing_url=best.get("landing_page_url") or oa.get("oa_url") or "",
-                        is_oa=bool(oa.get("is_oa")))
+                        is_oa=bool(oa.get("is_oa")), published=_date(w.get("publication_date")))
         return None
 
     def _semantic_scholar(self, ref: Reference) -> Work | None:
-        params = {"fields": "title,year,externalIds,openAccessPdf"}
+        params = {"fields": "title,year,publicationDate,externalIds,openAccessPdf"}
         if ref.doi:
             res = self._get(f"{SEMANTIC_SCHOLAR}/paper/DOI:{ref.doi}", params)
             hit = res.json() if res else None
@@ -144,7 +151,17 @@ class OpenAccess:
         pdfs = list(dict.fromkeys(u for u in pdfs if u))
         return Work(hit.get("title") or "", hit.get("year"), _doi(ids.get("DOI")) or ref.doi, "Semantic Scholar",
                     pdf_urls=pdfs, landing_url=f"https://arxiv.org/abs/{ids['ArXiv']}" if ids.get("ArXiv") else "",
-                    is_oa=bool(pdfs))
+                    is_oa=bool(pdfs), published=_date(hit.get("publicationDate")))
+
+    def publication_date(self, doi: str, title: str, year: int | None) -> tuple[str, int | None] | None:
+        """A library paper's full publication date and year from OpenAlex, found by DOI or by title
+        and year. None when it isn't found or the index only knows the year. Raises
+        httpx.HTTPError when OpenAlex can't be reached, so the caller can try again later."""
+        ref = Reference(raw=title, doi=_doi(doi), title=title, year=year)
+        if not searchable(ref):
+            return None
+        work = self._openalex(ref)
+        return (work.published, work.year) if work and work.published else None
 
     # ---------- downloading ----------
 

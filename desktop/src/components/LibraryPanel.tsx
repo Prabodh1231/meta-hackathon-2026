@@ -1,7 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
-import type { Doc, Folder, IngestJob } from '../types'
+import type { Doc, Folder, IngestJob, RemovedDoc } from '../types'
+import {
+  type TimeField, type TimeWindow, buildAxis, docSpan, fmtDay, fmtPublished, gotAt, inWindow, posLabel, removedSince,
+} from '../timeline'
 import { ImportProgress, owedText } from './ImportProgress'
+import { Timeline } from './Timeline'
 
 interface Props {
   docs: Doc[]
@@ -49,7 +53,7 @@ const FILTERS: { id: Doc['kind']; label: string }[] = [
 ]
 
 /** 'Okafor & Raman', 'Chen et al.': surnames, as a reference list shows them. */
-function authorsShort(d: Doc): string {
+function authorsShort(d: { authors: string[] }): string {
   const surname = (a: string) => (a.includes(',') ? a.split(',')[0] : a.split(' ').pop() ?? a).trim()
   if (d.authors.length > 2) return `${surname(d.authors[0])} et al.`
   return d.authors.map(surname).join(' & ')
@@ -58,7 +62,13 @@ function authorsShort(d: Doc): string {
 type Run = (label: string, fn: () => Promise<unknown>) => Promise<void>
 type SortKey = 'title' | 'authors' | 'year' | 'type' | 'added' | 'pages' | 'match'
 type Sort = { key: SortKey; dir: 1 | -1 }
-type Scope = 'all' | 'none' | number // every file, files with no folder, or one folder
+type Scope = 'all' | 'none' | 'removed' | number // every file, files with no folder, the removal log, or one folder
+
+/** "Removed on 3 Oct 2026 as a duplicate of “…”, and its file went to the Recycle Bin." */
+function removalText(r: { removed_at: string; reason: string; duplicate_of_title: string; file_trashed?: boolean }): string {
+  const why = r.reason === 'duplicate' ? ` as a duplicate${r.duplicate_of_title ? ` of “${r.duplicate_of_title}”` : ''}` : ''
+  return `Removed on ${fmtDay(r.removed_at)}${why}${r.file_trashed ? ', and its file went to the Recycle Bin' : ''}.`
+}
 
 /** The folders a document is filed under. Editable: take it out of one, or add it to another. */
 function FolderChips({ doc: d, editable, run }: { doc: Doc; editable: boolean; run: Run }) {
@@ -301,7 +311,7 @@ const COLUMNS: { key: SortKey; label: string; first: 1 | -1 }[] = [
 ]
 
 /** The expanded library: every source as a row, sortable by any column. */
-function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle, onToggleAll, onOpen }: {
+function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle, onToggleAll, onOpen, ghosts, ghostsSince, openGhost, onOpenGhost }: {
   rows: Doc[]
   selected: Set<number>
   cited: Set<number>
@@ -312,6 +322,11 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
   onToggle: (id: number) => void
   onToggleAll: () => void
   onOpen: (id: number | null) => void
+  /** The timeline's "as of" view: sources in the library then that were removed since, greyed. */
+  ghosts: RemovedDoc[]
+  ghostsSince: string
+  openGhost: number | null
+  onOpenGhost: (id: number) => void
 }) {
   const allOn = rows.length > 0 && rows.every((d) => selected.has(d.id))
   const columns = folder ? [...COLUMNS.slice(0, 4), { key: 'match' as SortKey, label: 'Match', first: -1 as const }] : COLUMNS
@@ -382,8 +397,186 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
           </tr>
         ))}
       </tbody>
+      {ghosts.length > 0 && (
+        <tbody className="lib-ghosts">
+          {/* A cell per column, not one spanning them: columns hidden at narrow widths stay hidden. */}
+          <tr className="lib-ghost-head">
+            <td className="c-pick" />
+            {columns.map((c) => (
+              <td key={c.key} className={`c-${c.key}`}>
+                {c.key === 'title' && `Removed since ${ghostsSince} (${ghosts.length})`}
+              </td>
+            ))}
+            {!folder && <td className="c-folders" />}
+          </tr>
+          {ghosts.map((r) => (
+            <tr
+              key={`ghost-${r.id}`}
+              className={`ghost-row${openGhost === r.id ? ' active' : ''}`}
+              title={removalText(r)}
+              onClick={() => onOpenGhost(r.id)}
+            >
+              <td className="c-pick" />
+              <td className="c-title"><span className="lib-cell-title">{r.title}</span></td>
+              <td className="c-authors">{authorsShort(r)}</td>
+              <td className="c-year">{r.year ?? ''}</td>
+              <td className="c-type"><span className={`kind kind-${r.kind}`}>{KIND_LABEL[r.kind]}</span></td>
+              {folder ? (
+                <td className="c-match" />
+              ) : (
+                <>
+                  <td className="c-added">{r.added_at.slice(0, 10)}</td>
+                  <td className="c-folders">removed {r.removed_at.slice(0, 10)}</td>
+                </>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      )}
     </table>
     </div>
+  )
+}
+
+/** The removal log: every source removed from the library, most recent first. */
+function RemovedTable({ entries, open, onOpen }: { entries: RemovedDoc[]; open: number | null; onOpen: (id: number | null) => void }) {
+  return (
+    <div className="lib-table-wrap">
+      <table className="lib-table" aria-label="Removed sources">
+        <thead>
+          <tr>
+            <th className="c-title rm-first"><span className="th-label">Title</span></th>
+            <th className="c-why"><span className="th-label">Why</span></th>
+            <th className="c-added"><span className="th-label">Added</span></th>
+            <th className="c-added"><span className="th-label">Removed</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((r) => (
+            <tr key={r.id} className={open === r.id ? 'active' : ''} aria-selected={open === r.id} onClick={() => onOpen(open === r.id ? null : r.id)}>
+              <td className="c-title rm-first">
+                <span className="lib-cell-title">{r.title}</span>
+                {r.back_in_library != null ? (
+                  <span className="cited-mark" title="You added this file again">Added again</span>
+                ) : (
+                  !r.restorable && <span className="lb-row-owed" title={`Not at ${r.source} any more`}>file gone</span>
+                )}
+              </td>
+              <td className="c-why">{r.reason === 'duplicate' ? 'Duplicate' : 'Removed'}{r.file_trashed ? ' · Recycle Bin' : ''}</td>
+              <td className="c-added">{r.added_at.slice(0, 10)}</td>
+              <td className="c-added">{r.removed_at.slice(0, 10)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** What a removed source was, its history, and bringing it back. */
+function RemovedDetails({ entry: r, hasDoc, onShowDoc, onClose, run }: {
+  entry: RemovedDoc
+  hasDoc: (id: number) => boolean
+  onShowDoc: (id: number) => void
+  onClose: () => void
+  run: Run
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const isFile = r.file_exists !== null
+  const facts = [r.year, r.venue].filter(Boolean).join(' · ')
+  // Opened once the library has reloaded with it, or it would be closed as missing.
+  const restore = async () => {
+    let id: number | undefined
+    await run('Restoring…', async () => {
+      id = (await api.restoreRemoved(r.id)).id
+    })
+    if (id !== undefined) onShowDoc(id)
+  }
+  return (
+    <section className="lib-detail" aria-label="Removed source">
+      <div className="lib-detail-top">
+        <span className={`kind kind-${r.kind}`}>{KIND_LABEL[r.kind]}</span>
+        <span className="removed-badge">Removed</span>
+        <span className="spacer" />
+        <button className="icon" onClick={onClose} aria-label="Close details" title="Close (Esc)">×</button>
+      </div>
+      <h3 className="lib-detail-title">{r.title}</h3>
+      {r.authors.length > 0 && <p className="lib-detail-authors">{r.authors.join(r.authors.some((a) => a.includes(',')) ? '; ' : ', ')}</p>}
+      {facts && <p className="lib-detail-facts">{facts}</p>}
+      <p className="lib-detail-note">
+        {removalText(r)}
+        {r.reason === 'duplicate' && r.duplicate_of != null && hasDoc(r.duplicate_of) && (
+          <>
+            {' '}
+            <button className="link" onClick={() => onShowDoc(r.duplicate_of!)}>Show the copy kept</button>
+          </>
+        )}
+      </p>
+
+      <div className="lib-detail-actions">
+        {r.back_in_library != null ? (
+          <button className="primary" onClick={() => onShowDoc(r.back_in_library!)}>Show it in your library</button>
+        ) : (
+          <button className="primary" onClick={restore} disabled={!r.restorable}>Restore</button>
+        )}
+      </div>
+      <p className="muted lib-detail-hint">
+        {r.back_in_library != null
+          ? 'You added this file again, so it is back in your library.'
+          : r.restorable
+            ? `Reads the ${isFile ? 'file' : 'page'} again and brings it back with its old added date${Object.keys(r.edited_fields).length ? ', your corrections' : ''}${r.folders.length ? ' and folders' : ''}. Drafts that cite it work again.`
+            : `The file is no longer at its old location${r.file_trashed ? '. It went to the Recycle Bin: put it back from there, then restore it here' : ''}.`}
+      </p>
+
+      <h4 className="lib-doc-label">History</h4>
+      <dl className="lib-detail-meta">
+        {r.file_date && gotAt(r) !== r.added_at && (
+          <>
+            <dt>On this computer</dt>
+            <dd>{fmtDay(r.file_date)}</dd>
+          </>
+        )}
+        <dt>Added</dt>
+        <dd>{fmtDay(r.added_at)}</dd>
+        <dt>Removed</dt>
+        <dd>{fmtDay(r.removed_at)}</dd>
+        {r.published && (
+          <>
+            <dt>Published</dt>
+            <dd>{fmtPublished(r.published)}</dd>
+          </>
+        )}
+        {r.doi && (
+          <>
+            <dt>DOI</dt>
+            <dd><a className="link" href={`https://doi.org/${r.doi}`} target="_blank" rel="noreferrer">{r.doi}</a></dd>
+          </>
+        )}
+        {r.folders.length > 0 && (
+          <>
+            <dt>Folders</dt>
+            <dd>{r.folders.join(', ')}</dd>
+          </>
+        )}
+        <dt>{isFile ? 'Location' : 'Page'}</dt>
+        <dd>
+          {isFile ? <code title={r.source}>{r.source}</code> : <a className="link" href={r.source} target="_blank" rel="noreferrer">{r.source}</a>}
+          {isFile && !r.file_exists && <span className="muted"> (not there now)</span>}
+        </dd>
+      </dl>
+
+      <div className="lib-detail-remove">
+        {confirming ? (
+          <>
+            <span>Forget “{r.title}”? Its record is cleared, and the timeline stops showing it.</span>
+            <button className="danger" onClick={() => run('Forgetting…', () => api.forgetRemoved(r.id))}>Forget</button>
+            <button onClick={() => setConfirming(false)}>Keep</button>
+          </>
+        ) : (
+          <button className="link danger-link" onClick={() => setConfirming(true)}>Forget this record</button>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -468,6 +661,11 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, on
           )}
           {facts && <p className="lib-detail-facts">{facts}</p>}
           {cited && <p className="lib-detail-cited">Your draft cites this</p>}
+          {d.previously_removed && (
+            <p className="lib-detail-note">
+              You removed this file once: {removalText(d.previously_removed).replace(/^Removed/, 'removed')} You added it again on {fmtDay(d.added_at)}.
+            </p>
+          )}
           {d.missing.length > 0 && (
             <div className="lb-owed lib-detail-owed">
               <span>Muse couldn't write its {owedText(d.missing)} when it was added. It's searchable and citable meanwhile.</span>
@@ -526,8 +724,20 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, on
             <dd><a className="link" href={d.url} target="_blank" rel="noreferrer">{d.url.replace(/^https?:\/\/(www\.)?/, '')}</a></dd>
           </>
         )}
+        {d.published && (
+          <>
+            <dt>Published</dt>
+            <dd>{fmtPublished(d.published)}</dd>
+          </>
+        )}
+        {d.file_date && gotAt(d) !== d.added_at && (
+          <>
+            <dt>On this computer</dt>
+            <dd title="The file's own date: the earlier of when it was created and last changed">{fmtDay(d.file_date)}</dd>
+          </>
+        )}
         <dt>Added</dt>
-        <dd>{d.added_at.slice(0, 10)}</dd>
+        <dd>{fmtDay(d.added_at)}</dd>
         <dt>{isFile ? 'Location' : 'Page'}</dt>
         <dd>
           {isFile ? <code title={d.source}>{d.source}</code> : <a className="link" href={d.source} target="_blank" rel="noreferrer">{d.source}</a>}
@@ -540,7 +750,7 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, on
       <div className="lib-detail-remove">
         {confirming ? (
           <>
-            <span>Remove “{d.title}” from your library? The file stays where it is.</span>
+            <span>Remove “{d.title}” from your library? The file stays where it is, and you can restore it from Removed.</span>
             <button className="danger" onClick={() => run('Removing…', () => api.deleteDocument(d.id))}>Remove</button>
             <button onClick={() => setConfirming(false)}>Keep</button>
           </>
@@ -656,6 +866,10 @@ export const LibraryPanel = memo(function LibraryPanel({
   const [sort, setSort] = useState<Sort>({ key: 'title', dir: 1 })
   const [dropOn, setDropOn] = useState<Scope | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [removed, setRemoved] = useState<RemovedDoc[]>([]) // the removal log
+  const [openRemoved, setOpenRemoved] = useState<number | null>(null) // removed source whose details are showing
+  const [timeline, setTimeline] = useState<TimeWindow | null>(null) // the date slider, when open
+  const [lookupNote, setLookupNote] = useState('')
   const moreRef = useRef<HTMLDivElement>(null)
   const closeMore = useCallback(() => setMoreOpen(false), [])
   useDismiss(moreOpen, closeMore, moreRef)
@@ -706,6 +920,8 @@ export const LibraryPanel = memo(function LibraryPanel({
     setScope('all')
     onQuery('')
     setKind('all')
+    setTimeline(null)
+    setOpenRemoved(null)
     setOpen(focus.id)
     const t = window.setTimeout(() => document.getElementById(`lib-doc-${focus.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350)
     return () => window.clearTimeout(t)
@@ -719,6 +935,49 @@ export const LibraryPanel = memo(function LibraryPanel({
     if (open !== null && !docs.some((d) => d.id === open)) setOpen(null) // the open paper was removed
   }, [docs, open])
 
+  // The removal log changes whenever the library does (removed here, in Duplicate files, restored).
+  useEffect(() => {
+    api.removed().then(setRemoved).catch(() => {}) // an older backend has none: nothing to show
+  }, [docs])
+
+  useEffect(() => {
+    if (openRemoved !== null && !removed.some((r) => r.id === openRemoved)) setOpenRemoved(null)
+    if (scope === 'removed' && removed.length === 0) setScope('all')
+  }, [removed, openRemoved, scope])
+
+  /** Bring a source in the library into view (from a removed one's details). */
+  const showDoc = (id: number) => {
+    setOpenRemoved(null)
+    setScope('all')
+    setTimeline(null)
+    setOpen(id)
+    window.setTimeout(() => document.getElementById(`lib-doc-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
+  }
+  const openDoc = (id: number | null) => {
+    setOpenRemoved(null)
+    setOpen(id)
+  }
+  const openGhost = (id: number | null) => {
+    setOpen(null)
+    setOpenRemoved(id)
+  }
+
+  /** The date slider over every date there is, going by `field`. */
+  const openTimeline = (field: TimeField) => {
+    const a = buildAxis(field, docs, removed)
+    setLookupNote('')
+    setTimeline(a ? { field, mode: 'range', lo: a.start, hi: a.end } : { field, mode: 'range', lo: 0, hi: 0 })
+  }
+  const lookUpDates = () =>
+    run('Looking up publication dates…', async () => {
+      setLookupNote('')
+      const r = await api.fillPublicationDates()
+      setLookupNote(
+        `Found ${r.found} exact date${r.found === 1 ? '' : 's'} for ${r.checked} paper${r.checked === 1 ? '' : 's'}.` +
+          (r.failed ? ` Couldn't reach OpenAlex for ${r.failed}; try again later.` : ''),
+      )
+    })
+
   useEffect(() => {
     if (sort.key === 'match' && typeof scope !== 'number') setSort({ key: 'title', dir: 1 })
   }, [scope, sort.key])
@@ -726,6 +985,14 @@ export const LibraryPanel = memo(function LibraryPanel({
   const needle = query.trim().toLowerCase()
   const openFolder = typeof scope === 'number' ? folders.find((f) => f.id === scope) : undefined
   const citedSet = useMemo(() => new Set(cited), [cited])
+  // The timeline's window, kept inside the dates there are now (sources come and go under it).
+  const axis = useMemo(() => (timeline ? buildAxis(timeline.field, docs, removed) : null), [timeline?.field, docs, removed])
+  const tl = useMemo<TimeWindow | null>(() => {
+    if (!timeline || !axis) return null
+    const clamp = (v: number) => Math.max(axis.start, Math.min(axis.end, v))
+    return { ...timeline, lo: clamp(timeline.lo), hi: clamp(timeline.hi) }
+  }, [timeline, axis])
+  const narrowed = !!tl && !!axis && (tl.mode === 'asof' || tl.lo > axis.start || tl.hi < axis.end || tl.field === 'published')
   const rows = useMemo(() => {
     const shown = docs.filter(
       (d) =>
@@ -734,7 +1001,8 @@ export const LibraryPanel = memo(function LibraryPanel({
         (!needle ||
           `${d.title} ${d.authors.join(' ')} ${d.venue} ${d.tags.join(' ')} ${d.keywords.join(' ')} ${d.jel_codes.map((j) => j.code).join(' ')} ${d.summary}`
             .toLowerCase()
-            .includes(needle)),
+            .includes(needle)) &&
+        (!tl || !axis || ((s) => !!s && inWindow(axis, tl, s))(docSpan(tl.field, d))),
     )
     const fit = (d: Doc) => d.folders.find((f) => f.id === scope)?.score ?? (d.folders.some((f) => f.id === scope) ? 101 : -1)
     const value = (d: Doc): string | number =>
@@ -747,12 +1015,29 @@ export const LibraryPanel = memo(function LibraryPanel({
         : d.page_count
     const byTitle = (a: Doc, b: Doc) => a.title.localeCompare(b.title)
     return shown.sort((a, b) => (value(a) > value(b) ? 1 : value(a) < value(b) ? -1 : byTitle(a, b) * sort.dir) * sort.dir)
-  }, [docs, kind, needle, scope, sort])
+  }, [docs, kind, needle, scope, sort, tl, axis])
+
+  // "As of" a date: what was in the library then and has been removed since, greyed below.
+  const ghosts = useMemo(
+    () =>
+      tl && axis && tl.mode === 'asof' && scope === 'all'
+        ? removed.filter(
+            (r) =>
+              removedSince(axis, tl, r) &&
+              (kind === 'all' || r.kind === kind) &&
+              (!needle || `${r.title} ${r.authors.join(' ')} ${r.venue}`.toLowerCase().includes(needle)),
+          )
+        : [],
+    [tl, axis, scope, removed, kind, needle],
+  )
 
   const unfiled = docs.filter((d) => d.folders.length === 0).length
   const kinds = FILTERS.filter((f) => docs.some((d) => d.kind === f.id))
-  const filtering = kind !== 'all' || needle !== ''
+  const filtering = kind !== 'all' || needle !== '' || narrowed
   const current = open !== null ? docs.find((d) => d.id === open) : undefined
+  const currentRemoved = openRemoved !== null ? removed.find((r) => r.id === openRemoved) : undefined
+  const showingRemoved = scope === 'removed'
+  const docIds = useMemo(() => new Set(docs.map((d) => d.id)), [docs])
 
   const toggleMany = (members: Doc[]) => {
     const allOn = members.every((d) => selected.has(d.id))
@@ -765,7 +1050,13 @@ export const LibraryPanel = memo(function LibraryPanel({
       <button
         key={String(id)}
         className={`lib-nav-item${scope === id ? ' on' : ''}${dropOn === id ? ' drop' : ''}`}
-        onClick={() => setScope(id)}
+        onClick={() => {
+          setScope(id)
+          if ((id === 'removed') !== (scope === 'removed')) {
+            setOpen(null)
+            setOpenRemoved(null)
+          }
+        }}
         title={folder ? `${folder.similarity}% similarity · drop a paper here to file it` : undefined}
         onDragOver={(e) => {
           if (!folder) return
@@ -780,7 +1071,7 @@ export const LibraryPanel = memo(function LibraryPanel({
         }}
       >
         <span className="lib-nav-ico" aria-hidden="true">
-          {id === 'all' ? '◫' : id === 'none' ? '◌' : '▣'}
+          {id === 'all' ? '◫' : id === 'none' ? '◌' : id === 'removed' ? '↺' : '▣'}
         </span>
         <span className="lib-nav-name">{name}</span>
         {hint && <span className="lib-nav-hint">{hint}</span>}
@@ -790,7 +1081,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   }
 
   return (
-    <section className={`panel library${current ? ' has-pane' : ''}`} aria-label="Library">
+    <section className={`panel library${current || currentRemoved ? ' has-pane' : ''}`} aria-label="Library">
       <header className="lib-head">
         <div className="lib-title">
           <h2>Library</h2>
@@ -882,6 +1173,7 @@ export const LibraryPanel = memo(function LibraryPanel({
           <div className="lib-nav-label">Browse</div>
           {navItem('all', 'All sources', docs.length)}
           {unfiled > 0 && navItem('none', 'Unfiled', unfiled)}
+          {removed.length > 0 && navItem('removed', 'Removed', removed.length)}
           {folders.length > 0 && <div className="lib-nav-label">Subject folders</div>}
           {folders.map((f) => navItem(f.id, f.name, f.doc_count, `${f.similarity}%`))}
           <button className="lib-nav-item lib-nav-new" onClick={() => setCreating((c) => !c)} title="Make a folder for a subject you choose">
@@ -904,8 +1196,25 @@ export const LibraryPanel = memo(function LibraryPanel({
             )}
             {openFolder && <FolderBar folder={openFolder} run={run} />}
 
-            {docs.length > 0 && (
+            {showingRemoved && (
               <div className="lib-tools">
+                <span className="muted">
+                  {removed.length} removed source{removed.length === 1 ? '' : 's'}. What each was is kept here; open one to restore it.
+                </span>
+              </div>
+            )}
+            {showingRemoved && <RemovedTable entries={removed} open={openRemoved} onOpen={openGhost} />}
+
+            {docs.length > 0 && !showingRemoved && (
+              <div className="lib-tools">
+                <button
+                  className={`ghost lib-tl-btn${timeline ? ' on' : ''}`}
+                  aria-pressed={!!timeline}
+                  onClick={() => (timeline ? setTimeline(null) : openTimeline('added'))}
+                  title="Narrow the library to when you got each source or when it was published"
+                >
+                  ◷ Timeline
+                </button>
                 {kinds.length > 1 && (
                   <select className="lib-kind" aria-label="Type" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
                     <option value="all">All types</option>
@@ -936,7 +1245,38 @@ export const LibraryPanel = memo(function LibraryPanel({
               </div>
             )}
 
-            {rows.length > 0 && (
+            {timeline && !showingRemoved && docs.length > 0 && (
+              tl && axis ? (
+                <Timeline
+                  docs={docs}
+                  axis={axis}
+                  window={tl}
+                  onChange={setTimeline}
+                  onField={openTimeline}
+                  onClose={() => setTimeline(null)}
+                  shown={rows.length}
+                  ghosts={ghosts.length}
+                  undated={docs.filter((d) => !docSpan(tl.field, d)).length}
+                  toLookUp={docs.filter((d) => !d.published_checked).length}
+                  lookupNote={lookupNote}
+                  busy={!!busy}
+                  onLookUp={lookUpDates}
+                />
+              ) : (
+                <section className="tl tl-empty">
+                  <span>No source has a publication year yet.</span>
+                  {docs.some((d) => !d.published_checked) && (
+                    <button className="link" onClick={lookUpDates} disabled={!!busy}>Look up dates in OpenAlex</button>
+                  )}
+                  <button className="link" onClick={() => openTimeline('added')}>Go by date added</button>
+                  {lookupNote && <span className="muted">{lookupNote}</span>}
+                  <span className="spacer" />
+                  <button className="icon" onClick={() => setTimeline(null)} aria-label="Close timeline">×</button>
+                </section>
+              )
+            )}
+
+            {!showingRemoved && (rows.length > 0 || ghosts.length > 0) && (
               <DocTable
                 rows={rows}
                 selected={selected}
@@ -947,11 +1287,15 @@ export const LibraryPanel = memo(function LibraryPanel({
                 onSort={setSort}
                 onToggle={onToggle}
                 onToggleAll={() => toggleMany(rows)}
-                onOpen={setOpen}
+                onOpen={openDoc}
+                ghosts={ghosts}
+                ghostsSince={tl && axis ? `the end of ${posLabel(axis, tl.hi)}` : ''}
+                openGhost={openRemoved}
+                onOpenGhost={openGhost}
               />
             )}
 
-            {docs.length === 0 && (
+            {docs.length === 0 && !showingRemoved && (
               <div className="lib-empty">
                 <div className="lib-empty-title">Your library is empty</div>
                 <p>Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.</p>
@@ -962,7 +1306,7 @@ export const LibraryPanel = memo(function LibraryPanel({
                 </ol>
               </div>
             )}
-            {docs.length > 0 && rows.length === 0 && (
+            {docs.length > 0 && rows.length === 0 && ghosts.length === 0 && !showingRemoved && (
               <div className="lib-empty">
                 <div className="lib-empty-title">{filtering ? 'No matches' : 'This folder is empty'}</div>
                 {filtering ? (
@@ -971,9 +1315,10 @@ export const LibraryPanel = memo(function LibraryPanel({
                     onClick={() => {
                       onQuery('')
                       setKind('all')
+                      setTimeline(null)
                     }}
                   >
-                    Clear the search and type filter
+                    {narrowed ? 'Clear the search, type filter and timeline' : 'Clear the search and type filter'}
                   </button>
                 ) : (
                   <p>Lower the similarity above to take in looser matches, or drag a paper onto the folder.</p>
@@ -995,6 +1340,18 @@ export const LibraryPanel = memo(function LibraryPanel({
               onCited={() => onCitedPapers(current.id)}
               onRetry={() => retry([current.id])}
               onOpenPdf={() => onOpenPdf(current)}
+              run={run}
+            />
+          </div>
+        )}
+        {currentRemoved && !current && (
+          <div className="lib-pane">
+            <RemovedDetails
+              key={`removed-${currentRemoved.id}`}
+              entry={currentRemoved}
+              hasDoc={(id) => docIds.has(id)}
+              onShowDoc={showDoc}
+              onClose={() => setOpenRemoved(null)}
               run={run}
             />
           </div>

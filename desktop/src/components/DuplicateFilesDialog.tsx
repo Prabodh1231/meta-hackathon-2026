@@ -68,13 +68,15 @@ export function DuplicateFilesDialog({ getCited, onChanged, onClose, onError }: 
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  async function act(d: DuplicateDoc, action: Pending['action']) {
+  async function act(d: DuplicateDoc, action: Pending['action'], g: DuplicateGroup) {
     setPending(null)
+    // The copy it duplicates: the one suggested to keep, or another when that's the one removed.
+    const original = d.id !== g.keep ? g.keep : g.docs.find((x) => x.id !== d.id)?.id
     setBusy(action === 'trash' ? 'Moving to the Recycle Bin…' : 'Removing from the library…')
     try {
       // The file goes first: if that fails, the library entry stays and nothing is lost.
       if (action === 'trash') await window.rc!.trashFile!(d.source)
-      await api.deleteDocument(d.id)
+      await api.deleteDocument(d.id, { reason: 'duplicate', duplicateOf: original, trashed: action === 'trash' })
       setDone(
         action === 'trash'
           ? `Moved “${d.title}” to the Recycle Bin and removed it from your library.`
@@ -181,7 +183,7 @@ function Group({
   canTrash: boolean
   pending: Pending | null
   setPending: (p: Pending | null) => void
-  act: (d: DuplicateDoc, action: Pending['action']) => void
+  act: (d: DuplicateDoc, action: Pending['action'], g: DuplicateGroup) => void
   disabled: boolean
 }) {
   return (
@@ -265,7 +267,7 @@ function Group({
                   {d.cited && <p className="warn">Your draft cites this document; those citations will show “quote not found”.</p>}
                   {keep && <p className="warn">This is the copy we suggested keeping.</p>}
                   <div className="df-actions">
-                    <button className="danger" onClick={() => act(d, confirm)} disabled={disabled}>
+                    <button className="danger" onClick={() => act(d, confirm, g)} disabled={disabled}>
                       {confirm === 'trash' ? 'Move to Recycle Bin' : 'Remove from library'}
                     </button>
                     <button onClick={() => setPending(null)}>Cancel</button>

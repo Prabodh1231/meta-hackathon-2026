@@ -23,6 +23,50 @@ export interface Doc {
   folders: DocFolder[]
   label: string
   added_at: string // "YYYY-MM-DD HH:MM:SS", UTC
+  /** When the file reached this computer (earlier of its created and modified times); null for web pages. */
+  file_date: string | null
+  sha256: string
+  /** Full publication date from OpenAlex, "YYYY-MM-DD" or "YYYY-MM"; '' when only `year` is known. */
+  published: string
+  published_checked: boolean // OpenAlex was asked already
+  /** This same file was removed once before it was added again. */
+  previously_removed: {
+    id: number
+    title: string
+    removed_at: string
+    reason: RemovalReason
+    duplicate_of: number | null
+    duplicate_of_title: string
+  } | null
+}
+
+export type RemovalReason = 'removed' | 'duplicate'
+
+/** A source removed from the library, as the removal log keeps it (metadata only). */
+export interface RemovedDoc {
+  id: number // its id when it was in the library; a restore brings it back under the same one
+  source: string
+  kind: Doc['kind']
+  title: string
+  authors: string[]
+  year: number | null
+  venue: string
+  doi: string
+  url: string
+  published: string
+  sha256: string
+  file_date: string | null
+  edited_fields: Record<string, unknown> // the user's corrections, restored with it
+  folders: string[] // folders the user had filed it in
+  added_at: string
+  removed_at: string
+  reason: RemovalReason
+  duplicate_of: number | null
+  duplicate_of_title: string
+  file_trashed: boolean
+  back_in_library: number | null // added again since, as this document
+  file_exists: boolean | null // null for a web page
+  restorable: boolean
 }
 
 /** A virtual folder a document is filed under: 'auto' was the classifier's call, 'user' was added by hand. */

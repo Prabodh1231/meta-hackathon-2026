@@ -135,6 +135,32 @@ CREATE TABLE IF NOT EXISTS file_hashes (
   mtime REAL NOT NULL,
   sha256 TEXT NOT NULL
 );
+-- What a removed document was, so the library's history survives it: the timeline can show the
+-- library as it was on a past date, a removed paper added again is recognised, and one whose file
+-- is still there can be restored under its old id (ids are never reused, so drafts citing it work
+-- again). Metadata only: the text and vectors go with the document.
+CREATE TABLE IF NOT EXISTS removed_documents (
+  id INTEGER PRIMARY KEY, -- the document's own id
+  source TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  authors TEXT NOT NULL DEFAULT '[]',
+  year INTEGER,
+  venue TEXT NOT NULL DEFAULT '',
+  doi TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL DEFAULT '',
+  published TEXT NOT NULL DEFAULT '',
+  sha256 TEXT NOT NULL DEFAULT '',
+  file_date TEXT,
+  edited_fields TEXT NOT NULL DEFAULT '{}', -- the user's corrections, with their values, restored with it
+  folders TEXT NOT NULL DEFAULT '[]', -- names of folders the user filed it in by hand
+  added_at TEXT NOT NULL,
+  removed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reason TEXT NOT NULL DEFAULT 'removed' CHECK (reason IN ('removed', 'duplicate')),
+  duplicate_of INTEGER, -- the copy kept, for a duplicate
+  duplicate_of_title TEXT NOT NULL DEFAULT '',
+  file_trashed INTEGER NOT NULL DEFAULT 0 -- the file went to the Recycle Bin too
+);
 """
 
 
@@ -164,6 +190,13 @@ _ADDED_COLUMNS = [
     # Model work that failed when the document was added ("metadata", "title", "summary", "tags"),
     # to be retried; the document is stored and searchable meanwhile.
     ("documents", "missing", "TEXT NOT NULL DEFAULT '[]'"),
+    # When the file reached this computer: the earlier of its creation and modification times
+    # (a copy keeps the second, a download sets both). NULL for web pages. "YYYY-MM-DD HH:MM:SS", UTC.
+    ("documents", "file_date", "TEXT"),
+    ("documents", "sha256", "TEXT NOT NULL DEFAULT ''"),  # of the file when it was read
+    # Full publication date from OpenAlex ("YYYY-MM-DD" or "YYYY-MM"); `year` alone when empty.
+    ("documents", "published", "TEXT NOT NULL DEFAULT ''"),
+    ("documents", "published_checked", "INTEGER NOT NULL DEFAULT 0"),  # 1 once OpenAlex was asked
 ]
 
 

@@ -9,8 +9,10 @@ import re
 import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 import numpy as np
 
 from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
@@ -56,6 +58,8 @@ SOURCE_COPIED = 0.85  # copied nearly word for word
 # Duplicate files: documents whose mean chunk embeddings are this close are compared in detail.
 # Only picks candidates; shared passages and metadata decide what's shown.
 DUP_DOC_COS = 0.9
+DATE_LOOKUP_WORKERS = 4  # OpenAlex lookups for publication dates at once; it asks for a polite pace
+REMOVAL_REASONS = ("removed", "duplicate")
 
 # Preferences set in the Settings window, stored in the library so they follow it. Each is either
 # a tuple of the allowed values (the first is the default), or (range of whole numbers, default),
@@ -85,6 +89,29 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MODEL_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
 SEARCH_PLACES = ("auto", "local", "baseten")  # where embeddings and reranking run
 MUSE_ROUTES = ("baseten-first", "meta", "baseten")  # where Muse requests go
+
+
+def _utc(ts: float) -> str:
+    """A file time as the database stores dates: "YYYY-MM-DD HH:MM:SS", UTC."""
+    return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _is_web(source: str) -> bool:
+    return bool(re.match(r"^https?://", source, re.I))
+
+
+def file_date(source: str) -> str | None:
+    """When a file reached this computer: the earlier of its creation and modification times.
+    A download sets both; a copy gets a new creation time but keeps the modification time.
+    None for a web page or a file that isn't there."""
+    if _is_web(source):
+        return None
+    try:
+        st = os.stat(source)
+    except OSError:
+        return None
+    created = getattr(st, "st_birthtime", None) or (st.st_ctime if os.name == "nt" else None)
+    return _utc(min(t for t in (created, st.st_mtime) if t))
 
 
 def _setting_default(spec: tuple):
@@ -127,6 +154,7 @@ class Library:
         self._name_vectors: dict[tuple[str, str], np.ndarray] = {}  # (embedder id, folder name) -> vector
         self._reembed_if_needed()
         self._backfill_keywords()
+        self._backfill_file_dates()
 
     # ---------- ingestion ----------
 
@@ -239,7 +267,8 @@ class Library:
             done = list(pool.map(one, rows))
         return {"filled": sum(done), "still_missing": len(done) - sum(done)}
 
-    def _store(self, parsed: ParsedDocument, source: str, on_stage=None) -> dict:
+    def _store(self, parsed: ParsedDocument, source: str, on_stage=None, restore: dict | None = None) -> dict:
+        """`restore`: a removed document coming back, stored under its old `id` and `added_at`."""
         full_text = "\n\n".join(parsed.pages)
         if not full_text.strip():
             raise ValueError("No text could be extracted")
@@ -316,6 +345,7 @@ class Library:
             "venue": meta["venue"], "doi": meta["doi"], "url": meta["url"], "summary": summary,
             "page_count": len(parsed.pages), "page_numbering": parsed.page_numbering,
             "keywords": json.dumps(keywords), "jel_codes": json.dumps(jel_codes),
+            "file_date": file_date(source), "sha256": self._file_info(source)["sha256"] or "",
         }
         with self.lock, self.conn:
             existing = self.conn.execute(
@@ -346,8 +376,10 @@ class Library:
                 self.conn.execute("UPDATE documents SET refs_parsed = 0 WHERE id = ?", (doc_id,))
             else:
                 fields["missing"] = json.dumps(missing)
+                if restore:
+                    fields["added_at"] = restore["added_at"]
                 cols = ", ".join(fields)
-                [doc_id] = self._allocate_ids("documents", 1)
+                [doc_id] = [restore["id"]] if restore else self._allocate_ids("documents", 1)
                 self.conn.execute(
                     f"INSERT INTO documents (id, source, {cols}) VALUES (?, ?, {', '.join('?' * len(fields))})",
                     (doc_id, source, *fields.values()),
@@ -420,6 +452,16 @@ class Library:
                     (json.dumps(keywords), json.dumps(jel_codes), row["id"]),
                 )
             db.set_meta(self.conn, "keywords_backfill", "1")
+
+    def _backfill_file_dates(self) -> None:
+        """Once, for a library from before file dates were kept: read them from the files still there."""
+        with self.lock, self.conn:
+            if db.get_meta(self.conn, "file_dates_backfill") == "1":
+                return
+            rows = self.conn.execute("SELECT id, source FROM documents WHERE file_date IS NULL").fetchall()
+            self.conn.executemany("UPDATE documents SET file_date = ? WHERE id = ?",
+                                  [(file_date(r["source"]), r["id"]) for r in rows])
+            db.set_meta(self.conn, "file_dates_backfill", "1")
 
     # ---------- citation network ----------
 
@@ -569,10 +611,12 @@ class Library:
         # The index matched the work by DOI or by title and year, so its title is the right one; a
         # PDF's own title is often a file name ("Microsoft Word - final3.docx"), which would also
         # keep the next look-up from seeing the paper is already here. DOI, year and URL fill gaps.
-        known = {"url": got.url, "doi": got.work.doi, "year": got.work.year}
+        known = {"url": got.url, "doi": got.work.doi, "year": got.work.year, "published": got.work.published}
         fill = {k: v for k, v in known.items() if v and not added[k]}
         if got.work.title:
             fill["title"] = got.work.title
+        if got.work.published:
+            fill["published_checked"] = 1
         if fill:
             with self.lock, self.conn:
                 cols = ", ".join(f"{k} = ?" for k in fill)
@@ -599,6 +643,7 @@ class Library:
             ids,
         ):
             folders[r["doc_id"]].append({k: r[k] for k in ("id", "name", "state", "score")})
+        removals = self._removals_by_file()
         numbered = [r["id"] for r in rows if r["page_numbering"] != "index"]
         labels: dict[int, list[str]] = defaultdict(list)
         if numbered:
@@ -620,8 +665,35 @@ class Library:
             d["folders"] = folders[d["id"]]
             d["label"] = short_label(d)
             d["page_range"] = page_range(labels[d["id"]])
+            d["previously_removed"] = self._earlier_removal(d, removals)
+            d["published_checked"] = bool(d["published_checked"])
             out.append(d)
         return out
+
+    def _removals_by_file(self) -> dict[str, list[dict]]:
+        """Removal log entries keyed by source path and by file hash. Call under the lock."""
+        out: dict[str, list[dict]] = defaultdict(list)
+        for r in self.conn.execute(
+            "SELECT id, source, sha256, title, removed_at, reason, duplicate_of, duplicate_of_title "
+            "FROM removed_documents ORDER BY removed_at"
+        ):
+            r = dict(r)
+            out["src:" + r["source"]].append(r)
+            if r["sha256"]:
+                out["sha:" + r["sha256"]].append(r)
+        return out
+
+    @staticmethod
+    def _earlier_removal(doc: dict, removals: dict[str, list[dict]]) -> dict | None:
+        """The latest removal of this same file (by path or content) before the document was
+        added: the user removed it once and added it again. A copy that was in the library while
+        its duplicate was removed doesn't count."""
+        found = [r for key in ("src:" + doc["source"], "sha:" + (doc.get("sha256") or "")) for r in removals.get(key, [])
+                 if r["removed_at"] <= doc["added_at"]]
+        if not found:
+            return None
+        r = max(found, key=lambda r: r["removed_at"])
+        return {k: r[k] for k in ("id", "title", "removed_at", "reason", "duplicate_of", "duplicate_of_title")}
 
     def _doc_dict(self, row) -> dict:
         return self._doc_dicts([row])[0]
@@ -643,6 +715,8 @@ class Library:
         metadata = {"title", "authors", "year", "venue", "doi", "url"}
         updates = {k: (json.dumps(v) if k == "authors" else v) for k, v in fields.items() if k in metadata | {"topic_id"}}
         edited = set(doc["edited_fields"]) | (metadata & updates.keys())
+        if "year" in updates and doc["published"] and not doc["published"].startswith(str(updates["year"])):
+            updates["published"] = ""  # looked up for the year that was wrong
         if edited != set(doc["edited_fields"]):
             updates["edited_fields"] = json.dumps(sorted(edited))
         with self.lock, self.conn:
@@ -657,11 +731,136 @@ class Library:
                 )
         return self.get_document(doc_id)
 
-    def delete_document(self, doc_id: int) -> None:
-        with self.lock, self.conn:
-            if not self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,)).rowcount:
+    def delete_document(self, doc_id: int, reason: str = "removed", duplicate_of: int | None = None,
+                        trashed: bool = False) -> None:
+        """Remove a document, keeping a record of what it was in the removal log. `reason` is
+        'removed' or 'duplicate' (of `duplicate_of`, the copy kept); `trashed`: its file went to
+        the Recycle Bin as well."""
+        if reason not in REMOVAL_REASONS:
+            raise ValueError(f"Unknown reason {reason!r}")
+        with self.lock:
+            row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
+            if not row:
                 raise LookupError(f"Document {doc_id} not found")
+        # The file's hash, to recognise it if it's added again. Documents from before hashes were
+        # kept use the duplicate finder's cache when the file is already in the Recycle Bin.
+        sha = row["sha256"] or self._file_info(row["source"])["sha256"] or ""
+        with self.lock, self.conn:
+            if not sha:
+                cached = self.conn.execute("SELECT sha256 FROM file_hashes WHERE path = ?", (row["source"],)).fetchone()
+                sha = cached["sha256"] if cached else ""
+            edited = {k: (json.loads(row[k]) if k == "authors" else row[k]) for k in json.loads(row["edited_fields"])}
+            folders = [r["name"] for r in self.conn.execute(
+                "SELECT f.name FROM doc_folders df JOIN folders f ON f.id = df.folder_id "
+                "WHERE df.doc_id = ? AND df.state = 'user' ORDER BY f.name COLLATE NOCASE", (doc_id,))]
+            kept = self.conn.execute("SELECT title FROM documents WHERE id = ?", (duplicate_of,)).fetchone() if duplicate_of else None
+            self.conn.execute(
+                "INSERT OR REPLACE INTO removed_documents (id, source, kind, title, authors, year, venue, doi, url, published, "
+                "sha256, file_date, edited_fields, folders, added_at, reason, duplicate_of, duplicate_of_title, file_trashed) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (doc_id, row["source"], row["kind"], row["title"], row["authors"], row["year"], row["venue"], row["doi"],
+                 row["url"], row["published"], sha, row["file_date"], json.dumps(edited), json.dumps(folders),
+                 row["added_at"], reason, duplicate_of if kept else None, kept["title"] if kept else "", int(trashed)),
+            )
+            self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
             self._invalidate_index()
+
+    # ---------- removal log ----------
+
+    def list_removed(self) -> list[dict]:
+        """Every removed document, most recently removed first, with whether it can be restored:
+        a web page always can (it's fetched again), a file while it's still on disk."""
+        with self.lock:
+            rows = [dict(r) for r in self.conn.execute("SELECT * FROM removed_documents ORDER BY removed_at DESC, id DESC")]
+            current = [dict(r) for r in self.conn.execute("SELECT id, source, sha256, added_at FROM documents")]
+        by_source = {d["source"]: d for d in current}
+        out = []
+        for r in rows:
+            r["authors"] = json.loads(r["authors"])
+            r["edited_fields"] = json.loads(r["edited_fields"])
+            r["folders"] = json.loads(r["folders"])
+            r["file_trashed"] = bool(r["file_trashed"])
+            # Added again since: the same path, or the same file added after this one was removed.
+            back = by_source.get(r["source"]) or next(
+                (d for d in current if r["sha256"] and d["sha256"] == r["sha256"] and d["added_at"] >= r["removed_at"]), None)
+            r["back_in_library"] = back["id"] if back else None
+            web = _is_web(r["source"])
+            r["file_exists"] = None if web else Path(r["source"]).is_file()
+            r["restorable"] = back is None and bool(web or r["file_exists"])
+            out.append(r)
+        return out
+
+    def restore_removed(self, removed_id: int) -> dict:
+        """Add a removed document back from its file (or page), under its old id and added date,
+        with the corrections the user had made and the folders they had filed it in."""
+        entry = next((r for r in self.list_removed() if r["id"] == removed_id), None)
+        if not entry:
+            raise LookupError(f"Removed document {removed_id} not found")
+        if entry["back_in_library"]:
+            raise ValueError("It's already back in your library")
+        if not entry["restorable"]:
+            raise LookupError(f"The file is no longer at {entry['source']}")
+        source = entry["source"]
+        parsed = parse_url(source) if _is_web(source) else parse_file(Path(source), self.provider.transcribe_image)
+        doc = self._store(parsed, source, restore={"id": entry["id"], "added_at": entry["added_at"]})
+        if entry["edited_fields"]:
+            doc = self.update_document(doc["id"], entry["edited_fields"])
+        for name in entry["folders"]:
+            try:
+                doc = self.add_to_folder_named(doc["id"], name)
+            except LookupError:  # that folder was deleted meanwhile
+                pass
+        if entry["published"] and not doc["published"] and str(doc["year"] or "") == entry["published"][:4]:
+            with self.lock, self.conn:
+                self.conn.execute("UPDATE documents SET published = ?, published_checked = 1 WHERE id = ?",
+                                  (entry["published"], doc["id"]))
+        with self.lock, self.conn:
+            self.conn.execute("DELETE FROM removed_documents WHERE id = ?", (removed_id,))
+        return self.get_document(doc["id"])
+
+    def forget_removed(self, removed_id: int) -> None:
+        """Clear one entry from the removal log."""
+        with self.lock, self.conn:
+            if not self.conn.execute("DELETE FROM removed_documents WHERE id = ?", (removed_id,)).rowcount:
+                raise LookupError(f"Removed document {removed_id} not found")
+
+    # ---------- publication dates ----------
+
+    def fill_publication_dates(self) -> dict:
+        """Look up the full publication date (not just the year) of every paper not yet looked
+        up, in OpenAlex, by DOI or by title and year. A paper whose lookup failed (OpenAlex
+        unreachable) is tried again next time; one it doesn't know isn't."""
+        with self.lock:
+            rows = [dict(r) for r in self.conn.execute(
+                "SELECT id, title, year, doi, edited_fields FROM documents WHERE published_checked = 0")]
+
+        def one(r: dict):
+            try:
+                return r, self.open_access.publication_date(r["doi"], r["title"], r["year"]), None
+            except (httpx.HTTPError, ValueError) as exc:  # ValueError: a reply that isn't JSON
+                log.info("Publication date lookup failed for document %s", r["id"], exc_info=True)
+                return r, None, exc
+
+        found = failed = 0
+        if rows:
+            with ThreadPoolExecutor(max_workers=min(DATE_LOOKUP_WORKERS, len(rows))) as pool:
+                results = list(pool.map(one, rows))
+            with self.lock, self.conn:
+                for r, got, error in results:
+                    if error:
+                        failed += 1
+                        continue
+                    updates: dict = {"published_checked": 1}
+                    date, year = got or ("", None)
+                    # A date from another year is another version (a preprint): the year shown wins.
+                    if date and (r["year"] is None or str(r["year"]) == date[:4]):
+                        updates["published"] = date
+                        if r["year"] is None and "year" not in json.loads(r["edited_fields"]):
+                            updates["year"] = int(date[:4])
+                        found += 1
+                    cols = ", ".join(f"{k} = ?" for k in updates)
+                    self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*updates.values(), r["id"]))
+        return {"checked": len(rows) - failed, "found": found, "failed": failed}
 
     # ---------- duplicate files ----------
 

@@ -1068,3 +1068,53 @@ a.link { text-decoration: none; }
 .pdf-view-head h2 { margin: 0; min-width: 0; font: 600 15px/1.3 var(--doc-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pdf-view-frame { flex: 1; width: 100%; border: 0; background: #525659; }
 .pdf-view-note { margin: 24px; }
+
+/* Library timeline: a date slider over a bar per month (or year) of sources */
+.lib-tl-btn { font-size: 12.5px; padding: 3px 10px; }
+.lib-tl-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.lib-tl-btn.on:hover:not(:disabled) { background: var(--accent); }
+.tl { position: relative; margin: 0 20px 10px; padding: 10px 36px 8px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); flex: none; }
+.tl-empty { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: 12.5px; color: var(--muted); }
+.tl-close { position: absolute; top: 9px; right: 6px; }
+.tl-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.tl-seg button { padding: 2px 10px; font-size: 12px; }
+.tl-summary { font-size: 12.5px; min-width: 0; }
+.tl-chart { position: relative; height: 72px; margin-top: 8px; overflow: hidden; }
+.tl-bars { position: absolute; top: 0; height: 52px; overflow: visible; }
+.tl-hit { fill: transparent; cursor: pointer; }
+.tl-exact { fill: var(--border); }
+.tl-spread { fill: var(--border); opacity: 0.55; }
+.tl-bin.on .tl-exact, .tl-bin.on .tl-spread { fill: var(--accent); }
+.tl-bin.on .tl-spread { opacity: 0.4; }
+.tl-bin:hover .tl-exact, .tl-bin:hover .tl-spread { fill: color-mix(in srgb, var(--accent) 70%, var(--text)); }
+.tl-track { position: absolute; left: 7px; right: 7px; bottom: 9px; height: 3px; border-radius: 2px; background: var(--border); }
+.tl-track-on { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--accent); }
+/* Two range inputs on one track: only their thumbs take the pointer. */
+.tl-range { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 20px; margin: 0; background: transparent; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.tl-range:focus { outline: none; }
+.tl-range::-webkit-slider-runnable-track { height: 20px; background: transparent; }
+.tl-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 14px; height: 14px; margin-top: 3px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--accent); cursor: grab; }
+.tl-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent); }
+.tl-range::-moz-range-track { background: transparent; }
+.tl-range::-moz-range-thumb { pointer-events: auto; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); cursor: grab; }
+.tl-ends { display: flex; justify-content: space-between; font-size: 11px; padding: 0 2px; }
+.tl-note { margin: 4px 0 0; font-size: 12px; }
+.tl-note .link { padding: 0; }
+
+/* "As of" a date: sources removed since, greyed under the library's rows */
+.lib-ghost-head td.c-title { overflow: visible; }
+.lib-ghost-head td { padding-top: 14px !important; font: 700 11px/1 system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--bg) !important; cursor: default; }
+.lib-table tr.ghost-row td { opacity: 0.55; font-style: italic; }
+.lib-table tr.ghost-row:hover td, .lib-table tr.ghost-row.active td { opacity: 0.85; }
+.lib-table tr.ghost-row .lib-cell-title { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+
+/* Removed: the removal log */
+.lib-table th .th-label { display: block; padding: 8px; }
+.lib-table th.rm-first .th-label { padding-left: 0; }
+.lib-table .c-why { width: 170px; }
+.lib-table td.c-title .lb-row-owed { margin-left: 6px; font-size: 11px; }
+.lib-table td.c-title .cited-mark { margin-left: 6px; }
+.removed-badge { font: 700 10px/1.5 system-ui, sans-serif; color: var(--bad); background: var(--bad-bg); border-radius: 999px; padding: 0 7px; }
+.lib-detail-note { margin: 0; font-size: 12.5px; color: var(--text); background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; }
+.lib-detail-note .link { padding: 0; font-size: 12.5px; }
+.lib-detail-hint { margin: 0; font-size: 12px; }
