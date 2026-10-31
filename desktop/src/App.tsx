@@ -17,6 +17,7 @@ import { LibraryPanel } from './components/LibraryPanel'
 import { ago, toneOf } from './components/Meters'
 import { MatrixView } from './components/MatrixView'
 import { FindingView } from './components/FindingView'
+import { ProposalDialog } from './components/ProposalDialog'
 import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { CitingPapersDialog } from './components/CitingPapersDialog'
 import { PdfViewerDialog } from './components/PdfViewerDialog'
@@ -43,6 +44,7 @@ import type {
   Folder,
   Health,
   IngestJob,
+  ProposalResult,
   Settings,
   SourceMatch,
   VersionList,
@@ -154,6 +156,8 @@ export default function App() {
   // A citation written from a review matrix, shown with its finding (its quote, if asked, in `source`).
   const [findingChip, setFindingChip] = useState<ChipAttrs | null>(null)
   const [openMatrix, setOpenMatrix] = useState<{ id: number; at: number } | null>(null)
+  // Write a research proposal: open, from this matrix (or none).
+  const [proposalFrom, setProposalFrom] = useState<{ matrixId: number | null } | null>(null)
   const [libQuery, setLibQuery] = useState('')
   const [netQuery, setNetQuery] = useState('')
   const [matQuery, setMatQuery] = useState('')
@@ -808,6 +812,25 @@ export default function App() {
     }
   }
 
+  /** A research proposal, as a new draft that opens in the editor. */
+  async function openProposal(r: ProposalResult) {
+    setProposalFrom(null)
+    setDraftsBusy('Creating the proposal draft…')
+    try {
+      await editor.current?.flush()
+      const d = await api.createDraft(r.title)
+      await api.saveDraft(d.id, r.title, JSON.stringify(r.doc))
+      await refreshDrafts()
+      setMode('write')
+      setDraftId(d.id)
+      setNotice(`Opened the proposal as a new draft. Its blue citations are checked against ${r.matrices.includes(',') ? 'the matrices' : `“${r.matrices}”`}.`)
+    } catch (e) {
+      onError(`Could not create the draft: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setDraftsBusy(null)
+    }
+  }
+
   /** Check citations put into the draft from a matrix, a few at a time, and recolour their chips. */
   function verifyInDraft(items: { cid: string; claim: string; chunkId: number; quote: string }[]) {
     let next = 0
@@ -929,6 +952,7 @@ export default function App() {
       },
     },
     { group: 'DO', name: 'Show references', hint: settings.citation_style.toUpperCase(), run: () => showTab('references') },
+    { group: 'DO', name: 'Write a research proposal', hint: 'from the gaps in your review matrices', run: () => setProposalFrom({ matrixId: null }) },
     { group: 'DO', name: 'Check for duplication', hint: 'repeats and text matching sources', run: () => showTab('review') },
     { group: 'DO', name: 'Version history', hint: 'save, compare and restore versions', run: () => showTab('history') },
     { group: 'DO', name: 'New draft', hint: 'a blank page · Ctrl+N', run: () => newDraft() },
@@ -1338,6 +1362,7 @@ export default function App() {
               onInsertTable={insertMatrixTable}
               onInsertSentences={insertMatrixSentences}
               onInsertFinding={insertFinding}
+              onWriteProposal={(id) => setProposalFrom({ matrixId: id })}
               openRequest={openMatrix}
             />
           </div>
@@ -1415,6 +1440,9 @@ export default function App() {
       </footer>
 
       {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
+      {proposalFrom && (
+        <ProposalDialog matrixId={proposalFrom.matrixId} onCreate={openProposal} onClose={() => setProposalFrom(null)} onError={onError} />
+      )}
 
       {dupFilesOpen && (
         <DuplicateFilesDialog

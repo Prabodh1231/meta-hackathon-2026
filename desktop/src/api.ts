@@ -37,8 +37,13 @@ import type {
   RefStyle,
   ResolvedCitation,
   Settings,
+  ProposalResult,
+  ProposalViolation,
+  SimilarWork,
+  SuggestedVariable,
   Suggestion,
   SynthesisResult,
+  VariableRole,
   Topic,
   VersionList,
 } from './types'
@@ -251,6 +256,20 @@ export const api = {
   matrixFindings: (id: number) => request<FindingSummary[]>('GET', `/matrices/${id}/findings`),
   finding: (id: number) => request<Finding>('GET', `/findings/${id}`),
   deleteFinding: (id: number) => request<{ ok: boolean }>('DELETE', `/findings/${id}`),
+  /** Variables a study addressing these gaps would use, with suggested roles. */
+  proposalVariables: (src: { matrix_ids: number[]; finding_ids: number[]; focus: string }) =>
+    request<SuggestedVariable[]>('POST', '/proposals/variables', src),
+  writeProposal: (body: {
+    matrix_ids: number[]
+    finding_ids: number[]
+    focus: string
+    variables: { name: string; role: VariableRole; measure: string }[]
+    exclusions: string
+    resources: string
+    avoid: ProposalViolation[]
+  }) => request<ProposalResult>('POST', '/proposals', body),
+  /** Published work close to a research question: has this been done? */
+  proposalNovelty: (query: string) => request<{ works: SimilarWork[] }>('POST', '/proposals/novelty', { query }),
   /** Check a sentence written from a finding against its matrix (not against one quote). */
   checkFinding: (id: number, claim: string) => request<FindingCheck>('POST', `/findings/${id}/check`, { claim }),
   /** The matrix as editor content: a table whose cells cite their quotes. */

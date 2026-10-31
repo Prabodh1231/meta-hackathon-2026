@@ -57,6 +57,8 @@ export function FindingView({ chip, onCheck, onOpenMatrix, onViewQuote }: Props)
 
   const status = busy ? 'pending' : chip.status
   const gap = finding?.kind === 'gap'
+  const proposal = finding?.kind === 'proposal'
+  const KIND = { gap: 'Gap', synthesis: 'Written from the matrix', proposal: 'Research proposal' }
   const studies = finding?.snapshot.length ?? 0
 
   return (
@@ -78,12 +80,25 @@ export function FindingView({ chip, onCheck, onOpenMatrix, onViewQuote }: Props)
       {finding && (
         <section className="finding-source">
           <h4 className="eyebrow">
-            {gap ? 'Gap' : 'Written from the matrix'} · {finding.matrix_name} · {ago(finding.created_at)}
+            {KIND[finding.kind]} · {finding.matrix_name} · {ago(finding.created_at)}
           </h4>
           {gap ? (
             <p>
               <b>{finding.title}</b> {finding.text}
             </p>
+          ) : proposal ? (
+            <>
+              <p>
+                <b>{finding.title}</b>
+              </p>
+              {finding.text && (
+                <ol className="proposal-rqs">
+                  {finding.text.split('\n').map((q, i) => (
+                    <li key={i}>{q}</li>
+                  ))}
+                </ol>
+              )}
+            </>
           ) : (
             <p className="finding-passage">
               {finding.sentences.map((s, i) => (
@@ -94,10 +109,16 @@ export function FindingView({ chip, onCheck, onOpenMatrix, onViewQuote }: Props)
             </p>
           )}
           {!finding.matrix_exists && (
-            <p className="warn">The matrix was deleted. Checks use the copy of its rows kept with this finding.</p>
+            <p className="warn">
+              {proposal ? 'One of its matrices was deleted.' : 'The matrix was deleted.'} Checks use the copy of the rows kept
+              with this {proposal ? 'proposal' : 'finding'}.
+            </p>
           )}
           {finding.matrix_exists && finding.matrix_changed && (
-            <p className="warn">The matrix has changed since this was written. A check uses the matrix as it is now.</p>
+            <p className="warn">
+              The {proposal && finding.matrix_ids.length > 1 ? 'matrices have' : 'matrix has'} changed since this was written. A
+              check uses {proposal && finding.matrix_ids.length > 1 ? 'them' : 'it'} as {proposal && finding.matrix_ids.length > 1 ? 'they are' : 'it is'} now.
+            </p>
           )}
           <details className="finding-rows">
             <summary>
@@ -140,8 +161,8 @@ export function FindingView({ chip, onCheck, onOpenMatrix, onViewQuote }: Props)
           <button className="primary" onClick={() => check('matrix')} disabled={busy || missing}>
             {busy ? 'Checking…' : 'Check against the matrix'}
           </button>
-          {finding?.matrix_exists && finding.matrix_id != null && (
-            <button onClick={() => onOpenMatrix(finding.matrix_id!)}>Open matrix</button>
+          {finding?.matrix_exists && finding.matrix_ids.length > 0 && (
+            <button onClick={() => onOpenMatrix(finding.matrix_ids[0])}>{finding.matrix_ids.length > 1 ? 'Open the first matrix' : 'Open matrix'}</button>
           )}
         </div>
         {chip.quote && (

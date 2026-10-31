@@ -165,7 +165,7 @@ export type SynthesisResult = DraftResult & { finding: number | null }
 /** A gap or a written passage a review matrix produced, kept so the draft can cite it. */
 export interface FindingSummary {
   id: number
-  kind: 'gap' | 'synthesis'
+  kind: 'gap' | 'synthesis' | 'proposal'
   matrix_id: number | null // null once the matrix is deleted
   matrix_name: string
   title: string // a gap's title; the instruction a passage was written to ('' for the standard one)
@@ -184,9 +184,51 @@ export interface FindingRow {
 
 export interface Finding extends FindingSummary {
   matrix_exists: boolean
+  matrix_ids: number[] // a proposal can draw on several matrices
   sentences: DraftSentence[]
   /** The matrix rows it was written from. */
   snapshot: FindingRow[]
+}
+
+export type VariableRole = 'independent' | 'dependent' | 'mediator' | 'moderator' | 'control'
+
+/** A variable a proposed study would use, as Muse suggests it. */
+export interface SuggestedVariable {
+  name: string
+  role: VariableRole
+  why: string
+  measures: { doc_id: number; label: string; how: string }[] // how the reviewed studies measured it
+}
+
+/** A broken exclusion: what the writer ruled out, and where the proposal does it anyway. */
+export interface ProposalViolation {
+  rule: string
+  section: string
+  why: string
+}
+
+export interface ProposalResult {
+  finding: number
+  title: string
+  doc: { type: 'doc'; content: unknown[] }
+  research_questions: string[]
+  hypotheses: string[]
+  violations: ProposalViolation[]
+  matrices: string
+  citations: { verified: number; flagged: number }
+}
+
+/** Published work close to a research question (OpenAlex). */
+export interface SimilarWork {
+  openalex_id: string
+  doi: string
+  title: string
+  authors: string[]
+  year: number | null
+  venue: string
+  cited_by_count: number | null
+  abstract: string
+  in_library: number | null
 }
 
 /** A sentence checked against a finding's matrix. */

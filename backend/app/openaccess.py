@@ -383,6 +383,12 @@ class OpenAccess:
         body = res.json()
         return (body.get("meta") or {}).get("count") or 0, [listed_work(w) for w in body.get("results") or []]
 
+    def search(self, query: str, limit: int = 15) -> list[dict]:
+        """Works matching a free-text query (title, abstract and full text), most relevant first."""
+        res = self._get(f"{OPENALEX}/works", self._params(
+            select=LIST_FIELDS + ",abstract_inverted_index", search=query, **{"per-page": str(limit)}))
+        return [listed_work(w) for w in (res.json().get("results") or [])] if res else []
+
     def record(self, doi: str, title: str, year: int | None) -> Record | None:
         """What the indexes know about a library paper, found by its DOI, or by a DOI Crossref has
         for its title and year, or by OpenAlex's title search. None when neither OpenAlex nor

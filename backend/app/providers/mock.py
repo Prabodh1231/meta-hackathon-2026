@@ -127,6 +127,77 @@ class MockProvider(LLMProvider):
         out["reason"] = out["reason"].replace("in the source", "in the matrix")
         return out
 
+    # ---------- research proposals ----------
+
+    _STUDY = re.compile(r"^\[(S\d+)\] (.+?) \((.*?)\): (.*)$")
+
+    def _studies(self, tables: str) -> list[tuple[str, str, list[tuple[str, str]]]]:
+        """(id, label, [(column, answer)]) for each study line of a proposal's matrix text."""
+        out = []
+        for line in tables.splitlines():
+            m = self._STUDY.match(line.strip())
+            if not m:
+                continue
+            values = []
+            for part in m.group(4).split(" | "):
+                col, _, val = part.partition(": ")
+                val = val.split(' ["')[0].strip()  # the answer, without the quote behind it
+                values.append((col.strip(), val))
+            out.append((m.group(1), m.group(2), values))
+        return out
+
+    def propose_variables(self, tables: str, gaps: str, focus: str) -> list[dict]:
+        # Offline: each column the studies answer is a variable; findings are the outcome.
+        studies = self._studies(tables)
+        columns = list(dict.fromkeys(col for _, _, vals in studies for col, _ in vals))
+        out = []
+        for col in columns:
+            low = col.lower()
+            if any(w in low for w in ("year", "journal", "cited", "author", "doi", "publisher", "pages", "volume")):
+                continue
+            role = "dependent" if "finding" in low else "control" if any(w in low for w in ("sample", "setting")) else "independent"
+            measures = [{"study": sid, "how": val[:80]} for sid, _, vals in studies for c, val in vals
+                        if c == col and val and val not in ("not reported", "unknown")]
+            out.append({"name": col, "role": role, "why": f"Mock: the matrices' {col.lower()} column.", "measures": measures})
+        return out[:8]
+
+    def write_proposal(self, tables: str, gaps: str, focus: str, variables: str, exclusions: str, resources: str,
+                       avoid: str = "") -> dict:
+        studies = self._studies(tables)
+        gap_lines = [re.sub(r"\s*\(from “.*”\)$", "", g.lstrip("- ")).strip() for g in gaps.splitlines() if g.strip()]
+        vars_ = [re.match(r"- (.+?) \((\w+)\)(?:; measured as: (.*))?$", v.strip()) for v in variables.splitlines()]
+        vars_ = [v for v in vars_ if v]
+        iv = next((v.group(1) for v in vars_ if v.group(2) == "independent"), "the exposure")
+        dv = next((v.group(1) for v in vars_ if v.group(2) == "dependent"), "the outcome")
+        ids = [sid for sid, _, _ in studies]
+        first = lambda vals: next((f"{c.lower()}: {v}" for c, v in vals if v and v not in ("not reported", "unknown")), "little")  # noqa: E731
+        return {
+            "title": f"Addressing {gap_lines[0].split('.')[0].lower() if gap_lines else 'the gaps'}: a proposed study",
+            "background": [{"text": f"{label} reports {first(vals)}.", "studies": [sid]} for sid, label, vals in studies[:4]],
+            "gap": [{"text": g, "studies": ids} for g in gap_lines] or [{"text": "The reviewed studies leave gaps.", "studies": ids}],
+            "research_questions": [f"How is {iv} related to {dv}?"] + ([f"Within this, {focus}?"] if focus else []),
+            "hypotheses": [f"{iv} is associated with {dv}."],
+            "variables": [{"name": v.group(1), "role": v.group(2), "measure": v.group(3) or "To be chosen.",
+                           "earlier": []} for v in vars_],
+            "design": [f"A design fitted to what is available: {resources}." if resources else "A design to be fitted to the data available."],
+            "data": ["Data on the variables above for a new sample."],
+            "analysis": [f"Estimate the association between {iv} and {dv}, adjusting for the controls."],
+            "contribution": ["Evidence where the reviewed studies have none."],
+            "limitations": ["Mock proposal: written offline from the matrix alone."],
+            "timeline": [{"when": "Months 1–3", "what": "Data"}, {"when": "Months 4–6", "what": "Analysis"},
+                         {"when": "Months 7–8", "what": "Writing"}],
+        }
+
+    def check_exclusions(self, exclusions: str, proposal: str) -> list[dict]:
+        # Offline: a rule is broken when every content word of it appears in the proposal.
+        words = set(tokenize(proposal))
+        out = []
+        for rule in re.split(r"[\n;]+", exclusions):
+            content = [w for w in tokenize(rule) if w not in {"no", "not", "avoid", "without", "don", "any", "use"}]
+            if content and all(w in words for w in content):
+                out.append({"rule": rule.strip(), "section": "proposal", "why": "Mock: its words appear in the proposal."})
+        return out
+
     def judge_support(self, claim: str, passage: str) -> dict:
         claim_words = set(tokenize(claim))
         if not claim_words:

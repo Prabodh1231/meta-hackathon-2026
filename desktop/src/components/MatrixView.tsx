@@ -24,6 +24,8 @@ interface Props {
   onInsertSentences: (sentences: DraftSentence[], finding: number | null) => void
   /** Put a kept gap or passage into the draft, citing the matrix. */
   onInsertFinding: (id: number) => void
+  /** Write a research proposal addressing this matrix's gaps. */
+  onWriteProposal: (matrixId: number) => void
   /** Open this matrix (a citation in the draft asked for it); `at` makes each request new. */
   openRequest?: { id: number; at: number } | null
 }
@@ -529,7 +531,7 @@ async function save(name: string, data: ArrayBuffer, ext: string) {
   return file
 }
 
-export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences, onInsertFinding, openRequest }: Props) {
+export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences, onInsertFinding, onWriteProposal, openRequest }: Props) {
   const [list, setList] = useState<MatrixSummary[] | null>(null)
   const [matrix, setMatrix] = useState<Matrix | null>(null)
   const [creating, setCreating] = useState(false)
@@ -751,6 +753,9 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                 </button>
                 <button onClick={() => setDialog('synthesis')} disabled={!!matrix.pending}>
                   Write from this matrix
+                </button>
+                <button onClick={() => onWriteProposal(matrix.id)} disabled={!!matrix.pending} title="A research proposal for a study that addresses this review's gaps">
+                  Write a proposal
                 </button>
                 <button onClick={() => setDialog('insert')} disabled={!!matrix.pending}>
                   Insert into draft

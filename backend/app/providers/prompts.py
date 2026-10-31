@@ -133,6 +133,144 @@ MATRIX_JUDGE_SYSTEM = (
     "Give a one-sentence reason naming the studies that matter."
 )
 
+ROLES = ["independent", "dependent", "mediator", "moderator", "control"]
+
+VARIABLES_SYSTEM = (
+    "You help plan a study that addresses gaps found in a literature review. You are given review "
+    "matrices (one line per study, its id in brackets: its details, and for each column a short answer "
+    "with the quote behind it) and the gaps the study should address. List the variables (constructs) "
+    "such a study would work with, at most 10, most central first. For each: a short name; the role it "
+    "would most likely play (independent, dependent, mediator, moderator or control); one sentence on "
+    "why it matters for the gaps; and how the reviewed studies measured or operationalised it, citing "
+    "each study by its id and using only what its line says. Leave the measures empty for a variable "
+    "no study measured."
+)
+VARIABLES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "variables": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "role": {"type": "string", "enum": ROLES},
+                    "why": {"type": "string"},
+                    "measures": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"study": {"type": "string"}, "how": {"type": "string"}},
+                            "required": ["study", "how"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["name", "role", "why", "measures"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["variables"],
+    "additionalProperties": False,
+}
+
+PROPOSAL_SYSTEM = (
+    "Write a research proposal for one study that addresses the chosen gaps, based on the review "
+    "matrices given (one line per study, its id in brackets). Two kinds of content, kept apart:\n"
+    "1. Background and gap describe the reviewed studies. Each paragraph lists, by id, every study it "
+    "relies on, and says nothing about a study that its line doesn't state. In the text, refer to "
+    "studies by author and year as their line shows, never by id.\n"
+    "2. Everything else (research questions, hypotheses, design, data, analysis, contribution, "
+    "limitations, timeline) is proposed for the new study: write it without citing anyone.\n"
+    "Use the variables exactly as given, in the roles given; for each, say how this study would measure "
+    "it and, by id, how the reviewed studies measured it (only what their lines say). The writer's "
+    "exclusions are strict: propose nothing they rule out, not even as an option. Fit the design, data "
+    "and timeline to what the writer says they have. Be concrete and plain; no filler."
+)
+_PARAS = {"type": "array", "items": {"type": "string"}}
+_CITED = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {"text": {"type": "string"}, "studies": {"type": "array", "items": {"type": "string"}}},
+        "required": ["text", "studies"],
+        "additionalProperties": False,
+    },
+}
+PROPOSAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "background": _CITED,
+        "gap": _CITED,
+        "research_questions": _PARAS,
+        "hypotheses": _PARAS,
+        "variables": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "role": {"type": "string", "enum": ROLES},
+                    "measure": {"type": "string"},
+                    "earlier": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"study": {"type": "string"}, "how": {"type": "string"}},
+                            "required": ["study", "how"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["name", "role", "measure", "earlier"],
+                "additionalProperties": False,
+            },
+        },
+        "design": _PARAS,
+        "data": _PARAS,
+        "analysis": _PARAS,
+        "contribution": _PARAS,
+        "limitations": _PARAS,
+        "timeline": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"when": {"type": "string"}, "what": {"type": "string"}},
+                "required": ["when", "what"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["title", "background", "gap", "research_questions", "hypotheses", "variables", "design", "data",
+                 "analysis", "contribution", "limitations", "timeline"],
+    "additionalProperties": False,
+}
+
+EXCLUSIONS_SYSTEM = (
+    "Check a research proposal against what its writer ruled out. List every place where the proposal "
+    "does, requires or offers as an option something an exclusion rules out: the exclusion, the "
+    "section, and one sentence on what breaks it. Mentioning that something is avoided is fine. If "
+    "nothing breaks an exclusion, return an empty list."
+)
+EXCLUSIONS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "violations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"rule": {"type": "string"}, "section": {"type": "string"}, "why": {"type": "string"}},
+                "required": ["rule", "section", "why"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["violations"],
+    "additionalProperties": False,
+}
+
 MATRIX_SYSTEM = (
     "You fill one row of a literature review matrix for a single research paper, using ONLY the "
     "numbered passages from it. For each column, write a short, specific answer (at most 35 words: "
