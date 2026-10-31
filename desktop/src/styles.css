@@ -1287,18 +1287,19 @@ tr:hover .mx-row-actions, .mx-row-actions:focus-within { opacity: 1; }
 .dd.open .dd-chev { transform: rotate(180deg); }
 .dd.open .dd-trigger { border-color: var(--accent); }
 .dd-list {
-  position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; min-width: 100%; max-height: 300px; overflow-y: auto;
+  /* 4px left of the button, so each option's text lines up with the button's (list border + padding + option padding = 9px). */
+  position: absolute; top: calc(100% + 4px); left: -4px; z-index: 40; min-width: calc(100% + 8px); max-height: 300px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 1px; padding: 4px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 18px 44px -12px rgb(0 0 0 / 0.35);
 }
-.dd-option { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 12px 6px 6px; border: none; border-radius: 7px; background: none; color: var(--text); font-size: 13px; text-align: left; white-space: nowrap; }
+.dd-option { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border: none; border-radius: 7px; background: none; color: var(--text); font-size: 13px; text-align: left; white-space: nowrap; }
 .dd-option.dd-hot { background: var(--hover); }
 .dd-option[aria-selected="true"] { color: var(--accent); }
-.dd-check { width: 14px; flex: none; text-align: center; font-size: 12px; color: var(--accent); }
+.dd-check { order: 2; width: 14px; flex: none; margin-left: auto; padding-left: 10px; box-sizing: content-box; text-align: right; font-size: 12px; color: var(--accent); }
 /* In the writing toolbar: borderless like its buttons, and the list's rows aren't toolbar buttons. */
 .format-toolbar .dd-trigger { justify-content: space-between; border-color: transparent; background: transparent; }
 .format-toolbar .dd-trigger:hover:not(:disabled), .format-toolbar .dd.open .dd-trigger { background: var(--hover); }
-.format-toolbar .dd-option { justify-content: flex-start; min-width: 0; min-height: 0; padding: 6px 12px 6px 6px; }
+.format-toolbar .dd-option { justify-content: flex-start; min-width: 0; min-height: 0; padding: 6px 8px; }
 .fonts-pop .dd-trigger { border-color: var(--border); background: var(--panel); }
 
 /* Network start screen: nothing is drawn until a topic, the ticked papers or the whole library is chosen */
