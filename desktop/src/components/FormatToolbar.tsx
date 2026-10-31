@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
 import { useEditorState } from '@tiptap/react'
+import { type DropOption, Dropdown } from './Dropdown'
 
 // Values are CSS, stored on the text as-is; Word export maps them to Word fonts/sizes.
 export const FONT_FAMILIES = [
@@ -14,13 +15,16 @@ export const FONT_FAMILIES = [
 ]
 export const FONT_SIZES = ['10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '24pt', '32pt']
 
-// Paragraph styles, as in a word processor. Word export maps headings to Word's Heading styles.
-const STYLES = [
-  { value: 'p', label: 'Normal text' },
-  { value: '1', label: 'Heading 1' },
-  { value: '2', label: 'Heading 2' },
-  { value: '3', label: 'Heading 3' },
+// Paragraph styles, as in a word processor, each shown in the list as it looks. Word export maps
+// headings to Word's Heading styles.
+const STYLES: DropOption[] = [
+  { value: 'p', label: 'Normal text', style: { fontSize: 13 } },
+  { value: '1', label: 'Heading 1', style: { fontSize: 19, fontWeight: 700 } },
+  { value: '2', label: 'Heading 2', style: { fontSize: 16, fontWeight: 700 } },
+  { value: '3', label: 'Heading 3', style: { fontSize: 14, fontWeight: 600 } },
 ]
+const FONT_OPTIONS: DropOption[] = FONT_FAMILIES.map((f) => ({ value: f.value, label: f.label, style: f.value ? { fontFamily: f.value } : undefined }))
+const SIZE_OPTIONS: DropOption[] = [{ value: '', label: 'Default size' }, ...FONT_SIZES.map((s) => ({ value: s, label: s.replace('pt', ' pt') }))]
 
 const ICONS = {
   bullets: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
@@ -81,23 +85,13 @@ export function FormatToolbar({ editor, onCite }: { editor: Editor | null; onCit
 
   return (
     <div className="format-toolbar" role="toolbar" aria-label="Text formatting">
-      <select
+      <Dropdown
         className="style-select"
-        aria-label="Paragraph style"
-        title="Paragraph style"
+        label="Paragraph style"
         value={state.heading ? String(state.heading) : 'p'}
-        onChange={(e) => {
-          const v = e.target.value
-          if (v === 'p') chain().setParagraph().run()
-          else chain().setHeading({ level: Number(v) as 1 | 2 | 3 }).run()
-        }}
-      >
-        {STYLES.map((s) => (
-          <option key={s.value} value={s.value}>
-            {s.label}
-          </option>
-        ))}
-      </select>
+        options={STYLES}
+        onChange={(v) => (v === 'p' ? chain().setParagraph().run() : chain().setHeading({ level: Number(v) as 1 | 2 | 3 }).run())}
+      />
       <span className="sep" />
       {toggle('Bold', 'Ctrl+B', state.bold, () => chain().toggleBold().run(), <b>B</b>)}
       {toggle('Italic', 'Ctrl+I', state.italic, () => chain().toggleItalic().run(), <i>I</i>)}
@@ -127,29 +121,20 @@ export function FormatToolbar({ editor, onCite }: { editor: Editor | null; onCit
         </button>
         {fontsOpen && (
           <div className="fonts-pop" role="group" aria-label="Font and size">
-            <select
-              aria-label="Font"
+            <span className="fonts-label">Font</span>
+            <Dropdown
+              label="Font"
               value={FONT_FAMILIES.some((f) => f.value === state.fontFamily) ? state.fontFamily : ''}
-              onChange={(e) => (e.target.value ? chain().setFontFamily(e.target.value).run() : chain().unsetFontFamily().run())}
-            >
-              {FONT_FAMILIES.map((f) => (
-                <option key={f.label} value={f.value} style={{ fontFamily: f.value || undefined }}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Font size"
+              options={FONT_OPTIONS}
+              onChange={(v) => (v ? chain().setFontFamily(v).run() : chain().unsetFontFamily().run())}
+            />
+            <span className="fonts-label">Size</span>
+            <Dropdown
+              label="Font size"
               value={FONT_SIZES.includes(state.fontSize) ? state.fontSize : ''}
-              onChange={(e) => (e.target.value ? chain().setFontSize(e.target.value).run() : chain().unsetFontSize().run())}
-            >
-              <option value="">Default size</option>
-              {FONT_SIZES.map((s) => (
-                <option key={s} value={s}>
-                  {s.replace('pt', ' pt')}
-                </option>
-              ))}
-            </select>
+              options={SIZE_OPTIONS}
+              onChange={(v) => (v ? chain().setFontSize(v).run() : chain().unsetFontSize().run())}
+            />
           </div>
         )}
       </div>

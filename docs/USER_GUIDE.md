@@ -189,14 +189,20 @@ The **History** tab keeps versions of the draft. Snapshots are taken automatical
 
 ## The citation network
 
-**Network** in the rail shows your library as a graph:
+**Network** in the rail shows your papers as a graph. It starts by asking what to show, since laying out a whole library at once can keep the window busy for a long time:
+
+- **Map this topic:** type a topic there or in the search box at the top. You get the papers about it and the works they cite that you don't have.
+- **Map the ticked papers:** the papers ticked in the Library.
+- **Map the whole library:** every paper. Above 60 papers it warns that this can take a while.
+
+**Change** next to the counts goes back to choosing.
 
 ![The citation network](images/network.png)
 
 - An arrow from A to B means A cites B. Grey lines join papers that share references, and dashed amber lines (Shared keywords) join papers with keywords in common. The checkboxes at the top turn each kind on or off.
 - Dashed circles are works that several of your papers cite but that aren't in your library.
 - Click a paper to highlight its neighbours and list what it cites, what cites it, and what it shares. **Open in library** jumps to it.
-- Type a topic in the search box to show only the papers about it, and the works they cite that you don't have. **Rank and download…** lists those works with free copies to fetch.
+- **Rank and download…** lists the works the papers shown cite but you don't have, with free copies to fetch. Clearing the search box goes back to choosing what to show.
 
 Esc returns to the draft.
 

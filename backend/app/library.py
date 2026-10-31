@@ -588,7 +588,9 @@ class Library:
             "total": len(works), "cited_twice": sum(1 for w in works if w["cited_by"] >= 2), "works": works[:limit],
         }
 
-    def citation_graph(self, query: str = "") -> dict:
+    def citation_graph(self, query: str = "", doc_ids: list[int] | None = None) -> dict:
+        """Who cites whom: among the papers about a topic, among `doc_ids` (the papers the user
+        ticked), or across the whole library when neither is given."""
         with self.lock:
             docs, refs = self._graph_inputs()
             tags = self._all_tags()
@@ -596,6 +598,11 @@ class Library:
                      for r in self.conn.execute("SELECT id, keywords FROM documents")}
             matches = self._topic_matches(query) if query.strip() else None
         graph = build_graph(docs, refs)
+        if doc_ids is not None:
+            chosen = set(doc_ids) & {d["id"] for d in docs}
+            graph = focus(graph, chosen, keyword_links({i: terms[i] for i in chosen}))
+            graph["doc_ids"] = sorted(chosen)
+            return graph
         if matches is None:
             graph["keyword"] = keyword_links(terms, min_shared=2)
             return graph

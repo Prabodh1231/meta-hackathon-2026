@@ -170,7 +170,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 15
+API_VERSION = 16
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -423,8 +423,14 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         return lib.set_folder_membership(doc_id, folder_id, body.member)
 
     @app.get("/graph")
-    def citation_graph(q: str = ""):
-        return lib.citation_graph(q)
+    def citation_graph(q: str = "", ids: str = ""):
+        """The citation network for a topic (`q`), for chosen papers (`ids`, comma-separated), or
+        for the whole library when both are empty."""
+        try:
+            doc_ids = [int(i) for i in ids.split(",") if i.strip()] if ids.strip() else None
+        except ValueError:
+            raise ValueError("ids must be paper ids separated by commas") from None
+        return lib.citation_graph(q, doc_ids)
 
     @app.get("/missing")
     def missing_works(q: str = "", limit: int = 100):

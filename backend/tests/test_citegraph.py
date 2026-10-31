@@ -117,3 +117,24 @@ def test_an_unmatched_or_blank_search_is_harmless(lib, tmp_path):
     assert lib.citation_graph("zzzqqq")["nodes"] == []
     assert lib.citation_graph('"')["nodes"] == []
     assert len(lib.citation_graph("")["nodes"]) >= 1
+
+
+def test_the_graph_can_be_drawn_for_chosen_papers(lib, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    trust = add(lib, tmp_path, "t.txt", paper("Trusting the stock market and its many hidden risks", FILLER, year=2008))
+    a = add(lib, tmp_path, "a.txt", paper("First study of household finance", [TRUST, HONG, *FILLER]))
+    b = add(lib, tmp_path, "b.txt", paper("Second study of household finance", [TRUST, HONG, *FILLER]))
+    client = TestClient(create_app(lib.settings, lib))
+
+    graph = client.get("/graph", params={"ids": f"{a},{b},999"}).json()  # 999: no such paper, left out
+    assert graph["doc_ids"] == sorted([a, b])
+    assert {n["doc_id"] for n in graph["nodes"] if n["kind"] == "paper"} == {a, b}  # the paper they cite isn't chosen
+    assert any(m["title"].startswith("Social interaction") for m in graph["missing"])  # what both cite still shows
+    assert any({c["source"], c["target"]} == {f"doc:{a}", f"doc:{b}"} for c in graph["coupling"])
+
+    whole = client.get("/graph").json()
+    assert {n["doc_id"] for n in whole["nodes"] if n["kind"] == "paper"} == {trust, a, b}
+    assert client.get("/graph", params={"ids": "a,b"}).status_code == 400

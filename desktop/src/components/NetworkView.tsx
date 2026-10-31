@@ -6,11 +6,19 @@ import type { CitationGraph, GraphNode } from '../types'
 interface Props {
   /** The topic typed in the app bar's search box. */
   query: string
+  /** Papers ticked in the Library: one thing the network can show. */
+  ticked: Set<number>
+  librarySize: number
   onOpenPaper: (docId: number) => void
   onCitedPapers: (docId: number) => void
   onFindMissing: (topic: string) => void
   onError: (message: string) => void
 }
+
+/** What the network shows. Nothing is drawn until one is chosen: laying out a whole library at
+ *  once can keep the window busy for a long time. */
+type Scope = { kind: 'topic'; topic: string } | { kind: 'ticked'; ids: number[] } | { kind: 'all' }
+const LARGE = 60 // a whole library bigger than this gets a warning before it's drawn
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
@@ -20,28 +28,40 @@ function byline(n: GraphNode): string {
 
 /** The library as a network: papers, who cites whom, who shares references, and the works
  *  several papers cite that the library lacks. */
-export function NetworkView({ query, onOpenPaper, onCitedPapers, onFindMissing, onError }: Props) {
+export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPapers, onFindMissing, onError }: Props) {
   const [graph, setGraph] = useState<CitationGraph | null>(null)
   const [showShared, setShowShared] = useState(true)
   const [showMissing, setShowMissing] = useState(true)
   const [showKeywords, setShowKeywords] = useState(false)
-  const [topic, setTopic] = useState(query.trim()) // the search the graph is showing
+  const [scope, setScope] = useState<Scope | null>(query.trim() ? { kind: 'topic', topic: query.trim() } : null)
+  const [typed, setTyped] = useState('') // the topic typed on the start screen
   const [picked, setPicked] = useState<string | null>(null)
   const box = useRef<HTMLDivElement>(null)
   const cy = useRef<Core | null>(null)
+  const topic = scope?.kind === 'topic' ? scope.topic : ''
 
   useEffect(() => {
+    setGraph(null)
+    setPicked(null)
+    if (!scope) return
     let current = true
-    api.graph(topic).then((g) => current && setGraph(g)).catch((e) => onError(`Could not build the network: ${e instanceof Error ? e.message : e}`))
+    api.graph(topic, scope.kind === 'ticked' ? scope.ids : undefined)
+      .then((g) => current && setGraph(g))
+      .catch((e) => onError(`Could not build the network: ${e instanceof Error ? e.message : e}`))
     return () => { current = false }
-  }, [topic, onError])
+  }, [scope, onError]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The app bar's search box maps a topic; clearing it goes back to choosing.
   useEffect(() => {
-    const t = setTimeout(() => setTopic(query.trim()), 350) // wait for the typing to pause
+    const t = setTimeout(() => {
+      const q = query.trim()
+      if (q) setScope((s) => (s?.kind === 'topic' && s.topic === q ? s : { kind: 'topic', topic: q }))
+      else setScope((s) => (s?.kind === 'topic' ? null : s))
+    }, 350) // wait for the typing to pause
     return () => clearTimeout(t)
   }, [query])
 
-  useEffect(() => { if (topic) setShowKeywords(true) }, [topic])
+  useEffect(() => { if (scope && scope.kind !== 'all') setShowKeywords(true) }, [scope])
 
   const nodes = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, n])), [graph])
 
@@ -123,15 +143,69 @@ export function NetworkView({ query, onOpenPaper, onCitedPapers, onFindMissing, 
   const papers = graph?.nodes.filter((n) => n.kind === 'paper').length ?? 0
   const noList = graph?.nodes.filter((n) => n.kind === 'paper' && !n.parsed).length ?? 0
 
+  const what = !scope ? '' : scope.kind === 'topic' ? `about “${topic}”` : scope.kind === 'ticked' ? 'ticked in the Library' : 'in your library'
+
+  if (!scope) {
+    return (
+      <div className="network" aria-label="Citation network">
+        <header className="network-head">
+          <h2>Citation network</h2>
+        </header>
+        <div className="network-start">
+          <h3>What should the network show?</h3>
+          <p className="muted">
+            Who cites whom, which papers share references, and the works several of them cite that you don't have. Start from a
+            topic or from papers you picked: drawing a whole library at once can take a long time.
+          </p>
+          <form
+            className="network-start-topic"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (typed.trim()) setScope({ kind: 'topic', topic: typed.trim() })
+            }}
+          >
+            <input
+              autoFocus
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder="A topic, e.g. financial literacy"
+              aria-label="Topic to map"
+            />
+            <button className="primary" disabled={!typed.trim()}>Map this topic</button>
+          </form>
+          <div className="network-start-row">
+            <button disabled={ticked.size === 0} onClick={() => setScope({ kind: 'ticked', ids: [...ticked] })}>
+              Map the {ticked.size || ''} ticked paper{ticked.size === 1 ? '' : 's'}
+            </button>
+            {ticked.size === 0 && <span className="muted">Tick papers in the Library to map just those.</span>}
+          </div>
+          <div className="network-start-row">
+            <button className="link" onClick={() => setScope({ kind: 'all' })} disabled={librarySize === 0}>
+              Map the whole library ({librarySize} paper{librarySize === 1 ? '' : 's'})
+            </button>
+            {librarySize > LARGE && (
+              <span className="network-warn">
+                With {librarySize} papers this can take a while, and the window may not respond until it's drawn.
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="network" aria-label="Citation network">
       <header className="network-head">
         <h2>Citation network</h2>
         {graph && (
           <span className="network-count">
-            {topic ? `${papers} paper${papers === 1 ? '' : 's'} about “${topic}” · ` : `${papers} papers · `}{graph.citations.filter((e) => e.target.startsWith('doc:')).length} citations in the library · {graph.coupling.length} pairs share references
+            {`${papers} paper${papers === 1 ? '' : 's'} ${what} · `}{graph.citations.filter((e) => e.target.startsWith('doc:')).length} citations among them · {graph.coupling.length} pairs share references
           </span>
         )}
+        <button className="link" onClick={() => setScope(null)} title="Map a topic, the ticked papers or the whole library instead">
+          Change
+        </button>
         <div className="spacer" />
         <label><input type="checkbox" checked={showKeywords} onChange={(e) => setShowKeywords(e.target.checked)} /> Shared keywords</label>
         <label><input type="checkbox" checked={showShared} onChange={(e) => setShowShared(e.target.checked)} /> Shared references</label>
@@ -167,7 +241,7 @@ export function NetworkView({ query, onOpenPaper, onCitedPapers, onFindMissing, 
           ) : (
             <>
               {topic && graph && graph.nodes.length === 0 && <p className="muted">No paper in your library is about “{topic}”.</p>}
-              <h3>{topic ? `Works these papers cite but you don't have` : `Works you cite but don't have`}</h3>
+              <h3>{scope.kind === 'all' ? `Works you cite but don't have` : `Works these papers cite but you don't have`}</h3>
               <div className="network-actions">
                 <button onClick={() => onFindMissing(topic)} title="Every missing work ranked by how many papers cite it, with free copies to download">
                   Rank and download…

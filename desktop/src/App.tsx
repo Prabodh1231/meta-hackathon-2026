@@ -1209,6 +1209,8 @@ export default function App() {
             <Suspense fallback={<p className="network-note">Loading the network…</p>}>
               <NetworkView
                 query={netQuery}
+                ticked={selected}
+                librarySize={docs.length}
                 onOpenPaper={showPaper}
                 onCitedPapers={setCitedFor}
                 onFindMissing={setMissingQuery}
