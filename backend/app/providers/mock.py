@@ -117,6 +117,16 @@ class MockProvider(LLMProvider):
         return [{"title": f"Little on {name.lower()}", "detail": f"{n} of {len(lines)} studies don't report it."}
                 for name, n in missing.most_common(6) if n]
 
+    # Words a sentence about the studies as a set uses (a gap, a comparison) that no table cell does.
+    _ACROSS = {"little", "studies", "study", "don", "doesn", "didn", "report", "reports", "reported", "none", "few",
+               "both", "all", "most", "while", "whereas", "across", "compared"}
+
+    def judge_against_matrix(self, claim: str, topic: str, table: str) -> dict:
+        words = [w for w in tokenize(claim) if w not in self._ACROSS]
+        out = self.judge_support(" ".join(words), table) if words else self.judge_support(claim, table)
+        out["reason"] = out["reason"].replace("in the source", "in the matrix")
+        return out
+
     def judge_support(self, claim: str, passage: str) -> dict:
         claim_words = set(tokenize(claim))
         if not claim_words:

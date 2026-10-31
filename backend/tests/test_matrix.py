@@ -268,3 +268,93 @@ def test_what_a_new_matrix_starts_with(setup):
     assert [c["key"] for c in cols if c["kind"] == "detail"] == ["@year", "@venue", "@cited_by_count"]
     assert len([c for c in cols if c["kind"] == "question"]) == 5
     assert {"field": "abstract", "label": "Abstract"} in client.get("/matrices/details").json()
+
+
+def test_gaps_and_passages_are_kept_as_findings(setup):
+    client, lib, ids = setup
+    mid = client.post("/matrices", json={"name": "Digital finance", "doc_ids": list(ids.values())}).json()["id"]
+    wait(client, mid)
+    gaps = client.post(f"/matrices/{mid}/gaps").json()["gaps"]
+    assert gaps and all(isinstance(g["id"], int) for g in gaps)
+    written = client.post(f"/matrices/{mid}/synthesis", json={"columns": ["sample", "findings"]}).json()
+    assert isinstance(written["finding"], int)
+
+    assert [g["id"] for g in client.post(f"/matrices/{mid}/gaps").json()["gaps"]] == [g["id"] for g in gaps]  # kept once
+
+    kept = client.get(f"/matrices/{mid}/findings").json()
+    assert [f["kind"] for f in kept] == ["synthesis"] + ["gap"] * len(gaps)  # newest first
+    assert kept[0]["text"] == " ".join(s["text"] for s in written["sentences"])
+    assert not any(f["matrix_changed"] for f in kept)
+
+    gap = client.get(f"/findings/{gaps[0]['id']}").json()
+    assert gap["title"] == gaps[0]["title"] and gap["text"] == gaps[0]["detail"] and gap["matrix_exists"]
+    assert sorted(r["doc_id"] for r in gap["snapshot"]) == sorted(ids.values())  # what a gap cites: every paper
+    passage = client.get(f"/findings/{written['finding']}").json()
+    assert [v["key"] for v in passage["snapshot"][0]["values"]] == ["sample", "findings"]  # the columns it used
+    assert passage["sentences"] == written["sentences"]
+
+    # Checked against the matrix, quotes included, not against one passage.
+    seen = {}
+    def judge(claim, topic, table):
+        seen.update(claim=claim, topic=topic, table=table)
+        return {"verdict": "partial", "reason": "Only Kenya reports it."}
+    lib.provider.judge_against_matrix = judge
+    out = client.post(f"/findings/{written['finding']}/check", json={"claim": "  Savings rose  in Kenya. "}).json()
+    assert out == {"status": "weak", "reason": "Only Kenya reports it.", "against": "matrix", "matrix_changed": False}
+    assert seen["claim"] == "Savings rose in Kenya." and seen["topic"] == "Digital finance"
+    assert "412 farmers" in seen["table"] and '["' in seen["table"]
+    assert client.post(f"/findings/{written['finding']}/check", json={"claim": " "}).status_code == 400
+
+
+def test_a_finding_outlives_changes_to_its_matrix(setup):
+    client, lib, ids = setup
+    mid = client.post("/matrices", json={"name": "Digital finance", "doc_ids": list(ids.values())}).json()["id"]
+    wait(client, mid)
+    fid = client.post(f"/matrices/{mid}/gaps").json()["gaps"][0]["id"]
+
+    client.put(f"/matrices/{mid}/cells/{ids['kenya.md']}/sample", json={"answer": "500 traders"})
+    assert client.get(f"/findings/{fid}").json()["matrix_changed"]
+    assert client.get(f"/matrices/{mid}/findings").json()[0]["matrix_changed"]
+
+    client.delete(f"/matrices/{mid}")
+    gone = client.get(f"/findings/{fid}").json()
+    assert not gone["matrix_exists"] and gone["matrix_id"] is None and gone["matrix_name"] == "Digital finance"
+    assert len(gone["snapshot"]) == 2
+    out = client.post(f"/findings/{fid}/check", json={"claim": "Few studies report limitations."}).json()
+    assert out["against"] == "saved" and out["status"] in ("verified", "weak", "unsupported")
+
+    assert client.delete(f"/findings/{fid}").json() == {"ok": True}
+    assert client.get(f"/findings/{fid}").status_code == 404
+
+
+def test_gaps_found_before_findings_were_kept_get_ids(setup):
+    client, lib, ids = setup
+    mid = client.post("/matrices", json={"name": "M", "doc_ids": list(ids.values())}).json()["id"]
+    wait(client, mid)
+    with lib.conn:
+        lib.conn.execute("UPDATE matrices SET gaps = ? WHERE id = ?", ('[{"title": "Old", "detail": "From before."}]', mid))
+    gaps = client.get(f"/matrices/{mid}").json()["gaps"]
+    assert gaps[0]["title"] == "Old" and isinstance(gaps[0]["id"], int)
+    assert client.get(f"/matrices/{mid}").json()["gaps"] == gaps  # saved once, not on every read
+
+
+def test_a_gap_in_the_draft_exports_citing_every_paper(setup):
+    client, lib, ids = setup
+    def chip(doc_id, status):
+        return {"type": "citation", "attrs": {"cid": f"g{doc_id}", "docId": doc_id, "chunkId": None, "page": None,
+                                              "quote": "", "finding": 1, "status": status, "reason": "Too broad."}}
+    para = {"type": "paragraph", "content": [{"type": "text", "text": "No study looks beyond one country. "},
+                                             chip(ids["kenya.md"], "verified"), {"type": "text", "text": " "},
+                                             chip(ids["india.md"], "verified")]}
+    flagged = {"type": "paragraph", "content": [{"type": "text", "text": "Every study is recent. "},
+                                                chip(ids["kenya.md"], "weak")]}
+    data = client.post("/export/docx", json={"content": {"type": "doc", "content": [para, flagged]}, "style": "apa"}).content
+    word = docx.Document(io.BytesIO(data))
+    text = "\n".join(p.text for p in word.paragraphs)
+    assert "missing source" not in text and "p." not in text.split("References")[0]
+    # One in-text citation naming both papers (by title: the test papers have no authors), and both in the references.
+    assert "(“Mobile money and savings…”, 2015; “Digital payments in Indian…”, 2020)." in text
+    assert text.split("References")[1].count("(20") == 2
+    comments = [c.text for c in word.comments]
+    assert len(comments) == 1  # none for the verified (blue) ones
+    assert "review matrix only partly supports" in comments[0] and "Quoted" not in comments[0]

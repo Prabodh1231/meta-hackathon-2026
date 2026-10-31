@@ -20,6 +20,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+from .citations import VERDICT_STATUS
 from .export_docx import export_docx
 from .providers import Passage
 
@@ -133,6 +134,42 @@ def detail_text(field: str, value) -> str:
     return str(value)
 
 
+MAX_TABLE = 60000  # characters of matrix text sent to the model
+
+
+def _snapshot(m: dict, keys: list[str] | None = None) -> list[dict]:
+    """The matrix's rows as plain values, for the model and for keeping with a finding."""
+    cols = [c for c in m["columns"] if keys is None or c["key"] in keys]
+    out = []
+    for r in m["rows"]:
+        values = []
+        for c in cols:
+            if c["kind"] == "detail":
+                values.append({"key": c["key"], "label": c["label"], "quote": "",
+                               "value": detail_text(c["field"], r["details"][c["field"]])[:600]})
+            else:
+                cell = r["cells"].get(c["key"]) or {}
+                found = cell.get("status") in ("found", "unverified")
+                values.append({"key": c["key"], "label": c["label"], "value": cell.get("answer") or "",
+                               "quote": (cell.get("quote") or "") if found else ""})
+        out.append({"doc_id": r["doc_id"], "label": r["label"], "title": r["title"], "values": values})
+    return out
+
+
+def _table_text(rows: list[dict], quotes: bool = False) -> str:
+    """One line per study. With `quotes`, each answer is followed by the quote it rests on."""
+    def val(v: dict) -> str:
+        text = v["value"] or ("unknown" if v["key"].startswith("@") else "not reported")
+        return f'{text} ["{v["quote"][:400]}"]' if quotes and v["quote"] else text
+    return "\n".join(f"{r['label']} ({r['title'][:90]}): " + " | ".join(f"{v['label']}: {val(v)}" for v in r["values"])
+                     for r in rows)
+
+
+def _content(rows: list[dict]) -> list:
+    """What a snapshot says, without names that can change (a paper's label, a column's label)."""
+    return [(r["doc_id"], [(v["key"], v["value"], v["quote"]) for v in r["values"]]) for r in rows]
+
+
 class Matrices:
     def __init__(self, lib, workers: int = WORKERS):
         self.lib = lib
@@ -184,10 +221,24 @@ class Matrices:
         columns = [{"kind": "question", **c} for c in json.loads(m["columns"])]  # matrices from before details
         return {
             "id": m["id"], "name": m["name"], "columns": columns, "rows": papers,
-            "gaps": json.loads(m["gaps"]) if m["gaps"] else None,
+            "gaps": self._gaps_with_ids(m, papers, columns),
             "pending": sum(1 for c in cells if c["status"] == "pending"), "cells": len(cells),
             "updated_at": m["updated_at"],
         }
+
+    def _gaps_with_ids(self, m, papers: list[dict], columns: list[dict]) -> list[dict] | None:
+        """The latest gaps, each with the id of its saved finding. Gaps found before findings were
+        kept are saved now, with the matrix as it is (the closest there is to what they came from)."""
+        gaps = json.loads(m["gaps"]) if m["gaps"] else None
+        if not gaps or all("id" in g for g in gaps):
+            return gaps
+        snap = _snapshot({"columns": columns, "rows": papers})
+        with self.lib.lock, self.lib.conn:
+            for g in gaps:
+                if "id" not in g:
+                    g["id"] = self._save_finding(m["id"], m["name"], "gap", g["title"], g["detail"], [], None, snap)
+            self.lib.conn.execute("UPDATE matrices SET gaps = ? WHERE id = ?", (json.dumps(gaps), m["id"]))
+        return gaps
 
     def papers_for(self, folder_id: int | None = None, topic: str = "") -> list[dict]:
         """Papers to build a matrix from: a folder's, or those about a topic (best evidence first)."""
@@ -444,17 +495,12 @@ class Matrices:
         m = self.get(mid)
         if m["pending"]:
             raise ValueError("Wait for the matrix to finish reading its papers")
-        def value(r: dict, c: dict) -> str:
-            if c["kind"] == "detail":
-                return detail_text(c["field"], r["details"][c["field"]])[:600] or "unknown"
-            return (r["cells"].get(c["key"]) or {}).get("answer") or "not reported"
-
-        table = "\n".join(
-            f"{r['label']} ({r['title'][:90]}): " + " | ".join(f"{c['label']}: {value(r, c)}" for c in m["columns"])
-            for r in m["rows"])
-        gaps = self.lib.provider.find_gaps(m["name"], table)
+        snap = _snapshot(m)
+        gaps = self.lib.provider.find_gaps(m["name"], _table_text(snap))
         gaps = [{"title": str(g.get("title", "")).strip(), "detail": str(g.get("detail", "")).strip()} for g in gaps][:6]
         with self.lib.lock, self.lib.conn:
+            for g in gaps:  # each kept, so it can go into a draft and be checked against this matrix later
+                g["id"] = self._save_finding(mid, m["name"], "gap", g["title"], g["detail"], [], None, snap)
             self.lib.conn.execute("UPDATE matrices SET gaps = ? WHERE id = ?", (json.dumps(gaps), mid))
         return self.get(mid)
 
@@ -481,7 +527,105 @@ class Matrices:
         task = (instruction or DEFAULT_SYNTHESIS).strip()
         if context.strip():  # background for the comparison, in the task: the draft's context is text already written
             task += f"\n\nAbout the studies, from their records (use them, but cite only the passages):\n{context}"
-        return self.lib.draft_from(task, "", passages[:80])
+        result = self.lib.draft_from(task, "", passages[:80])
+        result["finding"] = None
+        if result["sentences"]:  # kept, so its sentences can be checked against the matrix once in a draft
+            keys = [c["key"] for c in m["columns"] if c["key"] in keep]
+            with self.lib.lock, self.lib.conn:
+                result["finding"] = self._save_finding(
+                    mid, m["name"], "synthesis", instruction.strip(), " ".join(s["text"] for s in result["sentences"]),
+                    result["sentences"], keys, _snapshot(m, keys))
+        return result
+
+    # ---------- findings: gaps and passages kept for the draft ----------
+
+    def _save_finding(self, mid: int, name: str, kind: str, title: str, text: str, sentences: list,
+                      keys: list[str] | None, snap: list[dict]) -> int:
+        """Call holding the library lock, in a transaction. The same gap or passage, from the same
+        rows, is kept once: running Find gaps again on an unchanged matrix adds nothing."""
+        cols = keys if keys is not None else [v["key"] for v in (snap[0]["values"] if snap else [])]
+        same = self.lib.conn.execute(
+            "SELECT id FROM matrix_findings WHERE matrix_id = ? AND kind = ? AND title = ? AND text = ? AND snapshot = ?",
+            (mid, kind, title, text, json.dumps(snap))).fetchone()
+        if same:
+            return same["id"]
+        return self.lib.conn.execute(
+            "INSERT INTO matrix_findings (matrix_id, matrix_name, kind, title, text, sentences, columns, snapshot) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (mid, name, kind, title, text, json.dumps(sentences), json.dumps(cols), json.dumps(snap))).lastrowid
+
+    def _finding_row(self, fid: int):
+        with self.lib.lock:
+            row = self.lib.conn.execute("SELECT * FROM matrix_findings WHERE id = ?", (fid,)).fetchone()
+        if not row:
+            raise LookupError("This finding was deleted")
+        return row
+
+    def _current(self, row) -> list[dict] | None:
+        """The finding's columns of its matrix as the matrix is now; None if the matrix was deleted."""
+        if row["matrix_id"] is None:
+            return None
+        try:
+            return _snapshot(self.get(row["matrix_id"]), json.loads(row["columns"]))
+        except LookupError:
+            return None
+
+    def _summary(self, row, current: list[dict] | None, matrix_name: str | None = None) -> dict:
+        snap = json.loads(row["snapshot"])
+        return {
+            "id": row["id"], "kind": row["kind"], "matrix_id": row["matrix_id"],
+            "matrix_name": matrix_name or row["matrix_name"], "title": row["title"], "text": row["text"],
+            "created_at": row["created_at"], "papers": len(snap),
+            "matrix_changed": current is not None and _content(current) != _content(snap),
+        }
+
+    def findings(self, mid: int) -> list[dict]:
+        """A matrix's kept gaps and passages, newest first."""
+        m = self.get(mid)
+        with self.lib.lock:
+            rows = self.lib.conn.execute(
+                "SELECT * FROM matrix_findings WHERE matrix_id = ? ORDER BY id DESC", (mid,)).fetchall()
+        out = []
+        for row in rows:
+            current = _snapshot(m, json.loads(row["columns"]))
+            out.append(self._summary(row, current, m["name"]))
+        return out
+
+    def finding(self, fid: int) -> dict:
+        """One finding with what it rests on: the matrix rows as they were, and its sentences."""
+        row = self._finding_row(fid)
+        current = self._current(row)
+        name = None
+        if current is not None:
+            name = self._matrix(row["matrix_id"])["name"]
+        return {**self._summary(row, current, name), "matrix_exists": current is not None,
+                "sentences": json.loads(row["sentences"]), "snapshot": json.loads(row["snapshot"])}
+
+    def delete_finding(self, fid: int) -> None:
+        with self.lib.lock, self.lib.conn:
+            if not self.lib.conn.execute("DELETE FROM matrix_findings WHERE id = ?", (fid,)).rowcount:
+                raise LookupError("This finding was already deleted")
+
+    def check_finding(self, fid: int, claim: str) -> dict:
+        """Is a sentence written from a finding (a gap, or a passage written from the matrix) backed
+        by the matrix? Checked against the matrix as it is now, or, once the matrix is deleted or
+        while it is being read again, against the copy kept with the finding."""
+        claim = " ".join(claim.split())
+        if not claim:
+            raise ValueError("There's no sentence to check")
+        row = self._finding_row(fid)
+        current = self._current(row)
+        rows, against = json.loads(row["snapshot"]), "saved"
+        if current is not None and not self.get(row["matrix_id"])["pending"]:
+            rows, against = current, "matrix"
+        table = _table_text(rows, quotes=True)
+        if len(table) > MAX_TABLE:  # a large matrix: its answers, without the quotes behind them
+            table = _table_text(rows)
+        name = self._matrix(row["matrix_id"])["name"] if current is not None else row["matrix_name"]
+        verdict = self.lib.provider.judge_against_matrix(claim, name, table)
+        return {"status": VERDICT_STATUS[verdict["verdict"]], "reason": str(verdict.get("reason", "")).strip(),
+                "against": against,
+                "matrix_changed": current is not None and _content(current) != _content(json.loads(row["snapshot"]))}
 
     def table_doc(self, mid: int, columns: list[str] | None = None, heading: bool = False) -> dict:
         """The matrix as editor content: a table whose cells cite their quotes (citation chips),

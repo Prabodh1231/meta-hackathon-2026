@@ -79,6 +79,10 @@ class RerunIn(BaseModel):
     column: str | None = None
 
 
+class FindingCheckIn(BaseModel):
+    claim: str
+
+
 class SynthesisIn(BaseModel):
     instruction: str = ""
     columns: list[str] | None = None
@@ -560,6 +564,25 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/matrices/{mid}/synthesis")
     def matrix_synthesis(mid: int, body: SynthesisIn):
         return matrices.synthesis(mid, body.instruction, body.columns)
+
+    @app.get("/matrices/{mid}/findings")
+    def matrix_findings(mid: int):
+        """Gaps and passages the matrix produced, kept for the draft."""
+        return matrices.findings(mid)
+
+    @app.get("/findings/{fid}")
+    def get_finding(fid: int):
+        return matrices.finding(fid)
+
+    @app.delete("/findings/{fid}")
+    def delete_finding(fid: int):
+        matrices.delete_finding(fid)
+        return {"ok": True}
+
+    @app.post("/findings/{fid}/check")
+    def check_finding(fid: int, body: FindingCheckIn):
+        """Check a sentence written from a finding against its matrix."""
+        return matrices.check_finding(fid, body.claim)
 
     @app.get("/matrices/{mid}/table")
     def matrix_table(mid: int, columns: str = ""):

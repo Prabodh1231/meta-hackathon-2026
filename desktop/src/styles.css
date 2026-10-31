@@ -15,6 +15,8 @@
   --bad-bg: #fbe3df;
   --pending: #93a396;
   --pending-bg: #e8eee7;
+  --matrix: #2f6db5; /* citations written from a review matrix */
+  --matrix-bg: #e1ecf9;
   --mark: #ffe27a;
   --doc-font: Charter, "Bitstream Charter", Georgia, serif;
   --ins: #d6f0dd;
@@ -53,6 +55,8 @@
   --bad-bg: #2d1614;
   --pending: #8b9b90;
   --pending-bg: #232c25;
+  --matrix: #7fb2f0;
+  --matrix-bg: #15233a;
   --mark: #6b5a14;
   --ins: #183a24;
   --del: #45201b;
@@ -391,6 +395,10 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .cite-unsupported::before, .cite-quote_not_found::before { background: var(--bad); }
 .cite-quote_not_found { border-style: dashed; }
 .ProseMirror-selectednode.cite { outline: 2px solid var(--accent); }
+/* Written from a review matrix and checked against it: blue, and a square mark instead of a dot. */
+.cite-matrix::before { border-radius: 2px; }
+.cite-matrix.cite-verified { border-color: var(--matrix); }
+.cite-matrix.cite-verified::before { background: var(--matrix); }
 
 /* Sidebar */
 .tab-body { flex: 1; overflow-y: auto; padding: 14px 16px 24px; }
@@ -1032,6 +1040,21 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .cite-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
 .flag.to-confirm { color: var(--warn); }
 
+/* A citation written from a review matrix: the gap or passage behind it */
+.finding-view .cite-head .cite { flex: none; }
+.finding-view .reason { margin: 0 0 10px; }
+.finding-source { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--matrix-bg); border-left: 3px solid var(--matrix); font-size: 13.5px; line-height: 1.55; }
+.finding-source .eyebrow { margin: 0 0 6px; color: var(--matrix); }
+.finding-source p { margin: 0 0 8px; }
+.finding-passage .finding-this { background: color-mix(in srgb, var(--matrix) 22%, transparent); border-radius: 3px; }
+.finding-rows summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+.finding-rows ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+.finding-value { padding-left: 10px; }
+.finding-warn { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border)); font-size: 13px; }
+.finding-warn p { margin: 0 0 8px; }
+.finding-view .cite-foot { flex-direction: column; align-items: stretch; }
+.finding-view .cite-foot .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
 /* Cited papers: a paper's reference list, with free copies fetched into the library */
 .modal.cited { width: min(860px, calc(100vw - 32px)); }
 .cited-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -1185,6 +1208,14 @@ a.link { text-decoration: none; }
 .mx-gaps ul { margin: 0; padding: 0 16px 10px 32px; font-size: 13px; line-height: 1.55; }
 .mx-gaps li + li { margin-top: 4px; }
 .mx-nogaps { margin: 10px 20px 0; }
+.mx-insert-gap { font-size: 12px; padding: 0 2px; }
+.mx-kept { border-color: color-mix(in srgb, var(--matrix) 40%, var(--border)); border-left-color: var(--matrix); background: var(--matrix-bg); }
+.mx-kept ul { list-style: none; padding-left: 12px; }
+.mx-kept li + li { margin-top: 8px; }
+.mx-kept-kind { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--matrix); }
+.mx-kept-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mx-kept-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.mx-kept-meta .link { font-size: 12px; padding: 0; }
 .mx-body { flex: 1; min-height: 0; display: flex; }
 .mx-table-wrap { flex: 1; min-width: 0; overflow: auto; }
 .mx-table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-width: 100%; }

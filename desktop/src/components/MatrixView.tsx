@@ -3,7 +3,7 @@ import { api } from '../api'
 import {
   type DetailFilter, type DetailSort, NUMERIC, detailColumn, detailText, filterText, isDetail, passes, sortRows,
 } from '../matrixDetails'
-import type { Doc, DocxStyle, DraftSentence, Folder, Matrix, MatrixCell, MatrixColumn, MatrixDetailField, MatrixPaper, MatrixSummary } from '../types'
+import type { Doc, DocxStyle, DraftSentence, FindingSummary, Folder, Matrix, MatrixCell, MatrixColumn, MatrixDetailField, MatrixPaper, MatrixSummary } from '../types'
 import { ago } from './Meters'
 import { SourceViewer, type SourceTarget } from './SourceViewer'
 import { StatusBadge } from './StatusBadge'
@@ -20,8 +20,12 @@ interface Props {
   onOpenPdf: (doc: Doc, page: number) => void
   /** Put a table (editor content whose cells cite their quotes) into the draft. */
   onInsertTable: (doc: { type: 'doc'; content: unknown[] }) => void
-  /** Put sentences written from the matrix into the draft. */
-  onInsertSentences: (sentences: DraftSentence[]) => void
+  /** Put sentences written from the matrix into the draft; `finding` is the kept passage they came from. */
+  onInsertSentences: (sentences: DraftSentence[], finding: number | null) => void
+  /** Put a kept gap or passage into the draft, citing the matrix. */
+  onInsertFinding: (id: number) => void
+  /** Open this matrix (a citation in the draft asked for it); `at` makes each request new. */
+  openRequest?: { id: number; at: number } | null
 }
 
 const STATUS_TEXT: Record<MatrixCell['status'], string> = {
@@ -354,13 +358,14 @@ function CellPane({ matrix, docId, col, docs, onSaved, onRerun, onClose, onOpenP
 
 function SynthesisDialog({ matrix, onInsert, onClose, onError }: {
   matrix: Matrix
-  onInsert: (sentences: DraftSentence[]) => void
+  onInsert: (sentences: DraftSentence[], finding: number | null) => void
   onClose: () => void
   onError: (msg: string) => void
 }) {
   const [instruction, setInstruction] = useState('')
   const [cols, setCols] = useState<Set<string>>(new Set(matrix.columns.map((c) => c.key)))
   const [sentences, setSentences] = useState<DraftSentence[] | null>(null)
+  const [finding, setFinding] = useState<number | null>(null)
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
 
@@ -370,6 +375,7 @@ function SynthesisDialog({ matrix, onInsert, onClose, onError }: {
     try {
       const res = await api.matrixSynthesis(matrix.id, instruction.trim(), [...cols])
       setSentences(res.sentences)
+      setFinding(res.finding)
       setPicked(new Set(res.sentences.map((_, i) => i)))
     } catch (e) {
       onError(message(e))
@@ -438,13 +444,15 @@ function SynthesisDialog({ matrix, onInsert, onClose, onError }: {
                 className="primary"
                 disabled={!picked.size}
                 onClick={() => {
-                  onInsert(sentences.filter((_, i) => picked.has(i)))
+                  onInsert(sentences.filter((_, i) => picked.has(i)), finding)
                   onClose()
                 }}
               >
                 Insert {picked.size} into the draft
               </button>
-              <span className="muted">Each citation is checked against its source after it's inserted.</span>
+              <span className="muted">
+                Kept with the matrix. In the draft its citations show in blue and are checked against the matrix.
+              </span>
             </div>
           </>
         )}
@@ -521,7 +529,7 @@ async function save(name: string, data: ArrayBuffer, ext: string) {
   return file
 }
 
-export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences }: Props) {
+export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences, onInsertFinding, openRequest }: Props) {
   const [list, setList] = useState<MatrixSummary[] | null>(null)
   const [matrix, setMatrix] = useState<Matrix | null>(null)
   const [creating, setCreating] = useState(false)
@@ -532,6 +540,8 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   const [renaming, setRenaming] = useState(false)
   const [editingCol, setEditingCol] = useState<{ index: number; label: string; instruction: string } | null>(null)
   const [showGaps, setShowGaps] = useState(true)
+  const [kept, setKept] = useState<FindingSummary[] | null>(null) // gaps and passages kept for the draft
+  const [showKept, setShowKept] = useState(false)
   const [fields, setFields] = useState<MatrixDetailField[]>([])
   const [panel, setPanel] = useState<'details' | 'filter' | null>(null)
   const [sort, setSort] = useState<DetailSort | null>(null)
@@ -569,7 +579,36 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
     return () => window.removeEventListener('mousedown', close)
   }, [menu])
 
+  // Kept findings follow the matrix: a new run of Find gaps or Write adds to them, an edit can make them outdated.
+  useEffect(() => {
+    if (!matrix || matrix.pending) return
+    let live = true
+    api
+      .matrixFindings(matrix.id)
+      .then((f) => live && setKept(f))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [matrix, dialog])
+
+  useEffect(() => {
+    if (openRequest) open(openRequest.id)
+  }, [openRequest]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function removeKept(f: FindingSummary) {
+    const what = f.kind === 'gap' ? `the gap “${f.title}”` : 'this written passage'
+    if (!window.confirm(`Delete ${what}? Citations to it in your drafts keep their colour but can no longer be checked against the matrix.`)) return
+    try {
+      await api.deleteFinding(f.id)
+      setKept((k) => k?.filter((x) => x.id !== f.id) ?? null)
+    } catch (e) {
+      onError(message(e))
+    }
+  }
+
   async function open(id: number) {
+    setKept(null)
     setCreating(false)
     setCellAt(null)
     setSort(null)
@@ -888,7 +927,10 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                   <ul>
                     {matrix.gaps.map((g, i) => (
                       <li key={i}>
-                        <b>{g.title}</b> {g.detail}
+                        <b>{g.title}</b> {g.detail}{' '}
+                        <button className="link mx-insert-gap" onClick={() => onInsertFinding(g.id)} title="Insert into the draft, citing every paper in this matrix">
+                          Insert into draft
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -896,6 +938,41 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
               </section>
             )}
             {matrix.gaps && matrix.gaps.length === 0 && <p className="muted mx-nogaps">No gaps stood out across these studies.</p>}
+
+            {kept && kept.length > 0 && (
+              <section className="mx-gaps mx-kept">
+                <button className="mx-gaps-head" onClick={() => setShowKept((s) => !s)} aria-expanded={showKept}>
+                  <b>Kept for the draft</b>
+                  <span className="muted">{showKept ? 'Hide' : `Show ${kept.length}`}</span>
+                </button>
+                {showKept && (
+                  <ul>
+                    {kept.map((f) => (
+                      <li key={f.id}>
+                        <span className="mx-kept-kind">{f.kind === 'gap' ? 'Gap' : 'Written'}</span>{' '}
+                        {f.kind === 'gap' ? (
+                          <>
+                            <b>{f.title}</b> {f.text}
+                          </>
+                        ) : (
+                          <span className="mx-kept-text">{f.text}</span>
+                        )}
+                        <div className="mx-kept-meta muted">
+                          {ago(f.created_at)}
+                          {f.matrix_changed && <em className="flag"> · the matrix has changed since</em>}
+                          <button className="link" onClick={() => onInsertFinding(f.id)}>
+                            Insert into draft
+                          </button>
+                          <button className="link danger-link" onClick={() => removeKept(f)}>
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
 
             <div className="mx-body">
               <div className="mx-table-wrap">
