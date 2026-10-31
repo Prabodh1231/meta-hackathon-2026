@@ -151,6 +151,10 @@ The marker turns green when a source supports the sentence, amber for partial su
 
 Click a marker to open the **Citations** tab with what was found. **Use this source** turns the marker into a citation (Ctrl+Z undoes it). You can also search again for a reworded sentence, or **Remove marker**. With no marker open, the tab lists every marker still waiting.
 
+### Recheck every citation
+
+After rewording sentences, or adding and removing sources, press **Recheck all citations** in the **Citations** tab, or pick it from Ctrl K. Each citation's quote is found in your library as it is now and checked again against its sentence as it reads now. Every `cite` marker searches again. Citations turn grey while they're checked and you can keep writing. When it's done, a note says how many were verified and how many were flagged. If the backend didn't answer for a citation, it keeps its earlier result.
+
 ### See the quote on its page
 
 Click any citation in the draft. The **Citations** tab shows its passage highlighted on the page, and a dashed line joins the citation to the quote:
