@@ -186,6 +186,7 @@ class MockProvider(LLMProvider):
             "limitations": ["Mock proposal: written offline from the matrix alone."],
             "timeline": [{"when": "Months 1–3", "what": "Data"}, {"when": "Months 4–6", "what": "Analysis"},
                          {"when": "Months 7–8", "what": "Writing"}],
+            "left_out": [],
         }
 
     def check_exclusions(self, exclusions: str, proposal: str) -> list[dict]:

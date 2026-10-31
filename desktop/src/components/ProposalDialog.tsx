@@ -162,7 +162,8 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
           <section>
             <p className="muted">
               Tick the gaps the study should address. Tick more than one matrix to draw on several reviews; a paper in two
-              of them counts once.
+              of them counts once. The proposal is for one study: gaps that don't fit it with the others are left out, and
+              you'll see which and why.
             </p>
             {matrices === null && <p className="busy">Loading your matrices…</p>}
             {matrices?.length === 0 && <p className="warn">Make a review matrix and run Find gaps first.</p>}
@@ -304,6 +305,37 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
                   to the reviewed studies are backed by the matrices
                   {result.citations.flagged ? '; the others show amber or red in the draft' : ''}.
                 </p>
+                {result.left_out.length > 0 && (
+                  <div className="proposal-note">
+                    <b>Left out, to keep it one study:</b>
+                    <ul>
+                      {result.left_out.map((g, i) => (
+                        <li key={i}>
+                          <b>{g.gap}</b>: {g.why}
+                        </li>
+                      ))}
+                    </ul>
+                    <span className="muted small">Untick the gaps you don't need, or write a proposal for these separately.</span>
+                  </div>
+                )}
+                {result.flagged.length > 0 && (
+                  <details className="proposal-flagged">
+                    <summary>
+                      {result.flagged.length} claim{result.flagged.length === 1 ? '' : 's'} about the reviewed studies the matrices don't
+                      fully back
+                    </summary>
+                    <ul>
+                      {result.flagged.map((f, i) => (
+                        <li key={i}>
+                          <span className={`badge badge-${f.status}`}>{f.status === 'weak' ? 'partly' : 'not backed'}</span>{' '}
+                          <span className="muted">{f.section}:</span> {f.claim}
+                          {f.reason && <div className="muted small">{f.reason}</div>}
+                        </li>
+                      ))}
+                    </ul>
+                    <span className="muted small">Reword or remove these in the draft; their citations show amber or red there.</span>
+                  </details>
+                )}
                 {result.violations.length > 0 ? (
                   <div className="finding-warn">
                     <p>

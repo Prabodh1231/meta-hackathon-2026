@@ -216,6 +216,10 @@ export interface ProposalResult {
   violations: ProposalViolation[]
   matrices: string
   citations: { verified: number; flagged: number }
+  /** Chosen gaps the one study doesn't take on, and why. */
+  left_out: { gap: string; why: string }[]
+  /** Claims about the reviewed studies the matrices don't back (amber or red in the draft). */
+  flagged: { section: string; claim: string; status: CitationStatus; reason: string; studies: string[] }[]
 }
 
 /** Published work close to a research question (OpenAlex). */

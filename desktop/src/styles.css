@@ -1375,3 +1375,8 @@ tr:hover .mx-row-actions, .mx-row-actions:focus-within { opacity: 1; }
 .finding-warn ul { margin: 0 0 8px; padding-left: 18px; }
 .proposal-vars td:nth-child(2) { width: 132px; }
 .proposal-vars td:nth-child(4) { width: 190px; }
+.proposal-note { margin: 10px 0; padding: 10px 12px; border-radius: 10px; background: var(--matrix-bg); border-left: 3px solid var(--matrix); font-size: 13px; }
+.proposal-note ul, .proposal-flagged ul { margin: 6px 0; padding-left: 18px; line-height: 1.5; }
+.proposal-flagged { margin: 10px 0; font-size: 13px; }
+.proposal-flagged summary { cursor: pointer; color: var(--warn); }
+.proposal-flagged li + li { margin-top: 6px; }
