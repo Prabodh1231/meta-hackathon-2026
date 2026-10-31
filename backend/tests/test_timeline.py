@@ -8,27 +8,11 @@ from fastapi.testclient import TestClient
 from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
-from app.openaccess import Dated, OpenAccess
+from app.openaccess import Record
 from app.providers import MockProvider
 from app.settings import Settings
 from tests.test_dupfiles import prose
-
-
-class FakeDates:
-    """Stands in for OpenAccess.publication_date: DOI -> Dated, or an exception to raise."""
-    def __init__(self, dates: dict):
-        self.dates = dates
-        self.asked: list[str] = []
-
-    def set_contact(self, _):
-        pass
-
-    def publication_date(self, doi, title, year):
-        self.asked.append(doi)
-        got = self.dates.get(doi)
-        if isinstance(got, Exception):
-            raise got
-        return got
+from tests.test_enrich import FakeIndex
 
 
 @pytest.fixture
@@ -164,47 +148,30 @@ def test_a_removed_file_added_again_is_recognised(client, lib, tmp_path):
     assert client.post(f"/library/removed/{dup['id']}/restore").status_code == 400
 
 
-def test_publication_dates_are_looked_up_once_and_must_match_the_year(tmp_path):
-    dates = FakeDates({
-        "10.1/known": Dated("2024-03-02"),
-        "10.1/preprint": Dated("2019-11-01"),  # the paper says 2020: a different version
-        "10.1/noyear": Dated("2018-06"),
-        "10.1/down": httpx.ConnectError("offline"),
+def test_publication_dates_must_match_the_year(tmp_path):
+    index = FakeIndex({
+        "10.1/known": Record(published="2024-03-02"),
+        "10.1/preprint": Record(published="2019-11-01"),  # the paper says 2020: a different version
+        "10.1/noyear": Record(published="2018-06", year=2018),
+        "10.1/yearonly": Record(published="", year=2022),
     })
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder(), open_access=dates)
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder(), open_access=index)
     client = TestClient(create_app(lib.settings, lib))
     ids = {}
-    for i, (doi, year) in enumerate([("10.1/known", 2024), ("10.1/preprint", 2020), ("10.1/noyear", None),
-                                     ("10.1/down", 2021), ("10.1/unknown", 2022)]):
+    for i, (doi, year) in enumerate([("10.1/known", 2024), ("10.1/preprint", 2020), ("10.1/noyear", None), ("10.1/yearonly", 2022)]):
         f = tmp_path / f"p{i}.md"
         f.write_text(prose(10 + i), encoding="utf-8")
         d = add(client, f)
-        client.patch(f"/documents/{d['id']}", json={"doi": doi, **({"year": year} if year else {})})
-        with lib.conn:  # the doi patch marks it edited; a year from the file is what's tested here
-            lib.conn.execute("UPDATE documents SET year = ?, edited_fields = '[]' WHERE id = ?", (year, d["id"]))
+        with lib.conn:
+            lib.conn.execute("UPDATE documents SET doi = ?, year = ? WHERE id = ?", (doi, year, d["id"]))
         ids[doi] = d["id"]
 
-    assert client.post("/library/publication-dates").json() == {"checked": 4, "found": 2, "dois": 0, "failed": 1}
+    assert client.post("/library/enrich", json={}).json()["dates"] == 2
     doc = lambda doi: client.get(f"/documents/{ids[doi]}").json()  # noqa: E731
     assert doc("10.1/known")["published"] == "2024-03-02"
     assert doc("10.1/preprint")["published"] == ""
     assert doc("10.1/noyear")["published"] == "2018-06" and doc("10.1/noyear")["year"] == 2018
-    assert doc("10.1/known")["published_checked"] is True
-
-    dates.asked.clear()
-    dates.dates["10.1/down"] = Dated("2021-09-30")
-    assert client.post("/library/publication-dates").json() == {"checked": 1, "found": 1, "dois": 0, "failed": 0}
-    assert dates.asked == ["10.1/down"]  # only the one that failed is asked again
+    assert doc("10.1/yearonly")["published"] == "" and doc("10.1/yearonly")["published_checked"] is True
 
     # Correcting the year drops a date looked up for the wrong one.
     assert client.patch(f"/documents/{ids['10.1/known']}", json={"year": 2023}).json()["published"] == ""
-
-
-def test_openalex_gives_the_full_publication_date():
-    def handler(req: httpx.Request) -> httpx.Response:
-        assert "publication_date" in req.url.params["select"]
-        return httpx.Response(200, json={"doi": "https://doi.org/10.1/x", "title": "A study of savings groups",
-                                         "publication_year": 2024, "publication_date": "2024-03-02"})
-    oa = OpenAccess(transport=httpx.MockTransport(handler), retry_wait=0)
-    assert oa.publication_date("10.1/x", "A study of savings groups", 2024) == Dated("2024-03-02")
-    assert oa.publication_date("", "Notes", None) is None  # nothing to search by

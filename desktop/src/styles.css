@@ -1239,3 +1239,17 @@ tr:hover .mx-row-actions, .mx-row-actions:focus-within { opacity: 1; }
 .mx-cite { display: inline-flex; align-items: center; gap: 5px; }
 
 .format-toolbar .table-btn { font-size: 12px; padding: 3px 7px; min-width: 0; }
+
+/* What the scholarly indexes add: abstracts, citation counts, references only OpenAlex lists */
+.abstract p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.abstract.open p { display: block; }
+.abstract .link { padding: 0; font-size: 12px; }
+.cited-main .abstract { margin-top: 4px; }
+.cited-count { font-size: 11.5px; margin-top: 2px; }
+.from-index { margin-left: 6px; font: 600 10px/1.5 system-ui, sans-serif; color: var(--accent); background: var(--hover); border-radius: 999px; padding: 0 6px; }
+.lib-table .c-citations { width: 70px; text-align: right; }
+.lib-table th.c-citations button { justify-content: flex-end; }
+.library.has-pane .lib-table .c-citations { display: none; }
+@media (max-width: 1120px) { .lib-table .c-citations { display: none; } }
+.lib-note { font-size: 12px; }
+.lib-note .link { padding: 0; font-size: 12px; }

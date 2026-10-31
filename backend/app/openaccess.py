@@ -1,8 +1,9 @@
-"""Free copies of cited works: look a reference up in open scholarly indexes (OpenAlex, then
+"""The open scholarly indexes. Free copies of cited works: look a reference up (OpenAlex, then
 Semantic Scholar, then CORE when the user has a key) and download a PDF from the open-access
 locations they list (arXiv, institutional repositories, open-access publishers). A reference without
 a DOI gets one from Crossref first, so the indexes are asked by DOI. Paywalled works are reported,
-never worked around."""
+never worked around. And what the indexes know about a library paper: the publisher's metadata,
+its abstract, its reference list, how often it is cited and by which works."""
 
 import dataclasses
 import logging
@@ -25,6 +26,11 @@ CORE = "https://api.core.ac.uk/v3"  # repositories' full texts; needs a free key
 MAX_PDF_BYTES = 60 * 1024 * 1024
 MIN_TITLE_WORDS = 4  # shorter parsed titles ("Introduction", a journal name) find the wrong work
 TITLE_MATCH = 0.88  # how close an index's title must be to the reference's own
+# What a library paper's lookup asks OpenAlex for, in one request.
+RECORD_FIELDS = ("id,doi,title,publication_year,publication_date,authorships,primary_location,biblio,"
+                 "abstract_inverted_index,cited_by_count,referenced_works")
+LIST_FIELDS = "id,doi,title,publication_year,authorships,primary_location,cited_by_count"
+IDS_PER_REQUEST = 50  # OpenAlex takes up to this many ids in one filter
 
 
 @dataclass
@@ -50,11 +56,78 @@ class Fetched:
 
 
 @dataclass
-class Dated:
-    """What a lookup learned about a library paper: its full publication date ("YYYY-MM-DD" or
-    "YYYY-MM", '' when only the year is known) and the DOI Crossref found for it ('' if none)."""
-    published: str
+class Record:
+    """What the indexes know about one library paper: OpenAlex's record, with the publisher's own
+    (Crossref) for the publisher, volume, issue, pages and authors."""
+    title: str = ""
+    authors: list[str] = field(default_factory=list)
+    year: int | None = None
+    published: str = ""  # "YYYY-MM-DD" or "YYYY-MM"; '' when only the year is known
     doi: str = ""
+    doi_found: bool = False  # Crossref found the DOI by title: the paper didn't carry one
+    venue: str = ""
+    volume: str = ""
+    issue: str = ""
+    pages: str = ""  # "341–355"
+    publisher: str = ""
+    abstract: str = ""
+    openalex_id: str = ""  # "W2741809807"
+    cited_by_count: int | None = None  # citations worldwide, as OpenAlex counts them
+    references: list[Reference] = field(default_factory=list)  # its reference list, in order
+
+
+def titles_agree(a: str, b: str) -> bool:
+    """Two titles name the same work: nearly the same, or one is the other without its subtitle."""
+    return same_work(Reference(raw=a, title=a), b, None)
+
+
+def _abstract(inverted: dict | None) -> str:
+    """OpenAlex keeps abstracts as {word: [positions]}; the text back in order."""
+    if not inverted:
+        return ""
+    return " ".join(w for _, w in sorted((i, w) for w, places in inverted.items() for i in places))
+
+
+def _jats(text: str | None) -> str:
+    """Crossref abstracts are JATS XML: the text without tags or a leading "Abstract"."""
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text or "")).strip()
+    text = re.sub(r"\s+([.,;:)])", r"\1", text)  # where a closing tag stood before punctuation
+    return re.sub(r"^abstract\b[:.]?\s*", "", text, flags=re.I)
+
+
+def _short_id(url: str | None) -> str:
+    return (url or "").rsplit("/", 1)[-1]
+
+
+def _authors(w: dict) -> list[str]:
+    return [a["author"]["display_name"] for a in w.get("authorships") or [] if (a.get("author") or {}).get("display_name")]
+
+
+def _venue(w: dict) -> str:
+    return ((w.get("primary_location") or {}).get("source") or {}).get("display_name") or ""
+
+
+def _pages(first: str | None, last: str | None) -> str:
+    first, last = (str(first or "").strip(), str(last or "").strip())
+    return f"{first}–{last}" if first and last and last != first else first
+
+
+def listed_work(w: dict) -> dict:
+    """An OpenAlex work as the app lists it (a citing paper, a cited one)."""
+    return {
+        "openalex_id": _short_id(w.get("id")), "doi": _doi(w.get("doi")), "title": w.get("title") or "",
+        "authors": _authors(w), "year": w.get("publication_year"), "venue": _venue(w),
+        "cited_by_count": w.get("cited_by_count"), "abstract": _abstract(w.get("abstract_inverted_index")),
+    }
+
+
+def as_reference(w: dict) -> Reference:
+    """An OpenAlex work as an entry in a reference list."""
+    item = listed_work(w)
+    first = item["authors"][0].split()[-1] if item["authors"] else ""
+    who = item["authors"][0] + (" et al." if len(item["authors"]) > 1 else "") if item["authors"] else ""
+    raw = " ".join(p for p in (who, f"({item['year']})." if item["year"] else "", f"{item['title']}.", item["venue"]) if p)
+    return Reference(raw=raw, year=item["year"], doi=item["doi"], title=item["title"], first_author=first)
 
 
 def searchable(ref: Reference) -> bool:
@@ -189,11 +262,6 @@ class OpenAccess:
                 return _doi(item.get("DOI")), date
         return None
 
-    def _crossref_date(self, doi: str) -> str:
-        """A DOI's publication date as Crossref records it; '' when it isn't registered there."""
-        res = self._get(f"{CROSSREF}/works/{quote(doi, safe='/:;()')}", {"mailto": self.mailto} if self.mailto else None)
-        return _crossref_date((res.json().get("message") or {})) if res else ""
-
     def _with_doi(self, ref: Reference) -> tuple[Reference, str]:
         """The reference with the DOI Crossref has for it, when it had none, and Crossref's date.
         Best effort: Crossref being down only means asking the indexes by title."""
@@ -245,22 +313,113 @@ class OpenAccess:
                     pdf_urls=pdfs, landing_url=f"https://arxiv.org/abs/{ids['ArXiv']}" if ids.get("ArXiv") else "",
                     is_oa=bool(pdfs), published=_date(hit.get("publicationDate")))
 
-    def publication_date(self, doi: str, title: str, year: int | None) -> Dated | None:
-        """A library paper's full publication date, and its DOI when it had none. Crossref finds the
-        DOI of a paper without one; OpenAlex, then Crossref, give the date. None when nothing was
-        learned. Raises httpx.HTTPError when OpenAlex can't be reached, so the caller can try again."""
-        ref, crossref_date = self._with_doi(Reference(raw=title, doi=_doi(doi), title=title, year=year))
+    # ---------- what the indexes know about a paper ----------
+
+    def _params(self, **more) -> dict:
+        return {**({"mailto": self.mailto} if self.mailto else {}), **more}
+
+    def _openalex_work(self, ref: Reference, select: str) -> dict | None:
+        """OpenAlex's record of the work: by DOI, or the search hit with the same title and year."""
+        if ref.doi:
+            res = self._get(f"{OPENALEX}/works/doi:{ref.doi}", self._params(select=select))
+            return res.json() if res else None
+        params = self._params(select=select, search=norm(ref.title), **{"per-page": "5"})
+        if ref.year:
+            params["filter"] = f"publication_year:{ref.year - 1}-{ref.year + 1}"
+        res = self._get(f"{OPENALEX}/works", params)
+        hits = (res.json().get("results") or []) if res else []
+        return next((w for w in hits if same_work(ref, w.get("title") or "", w.get("publication_year"))), None)
+
+    def _crossref_work(self, doi: str) -> dict:
+        """The publisher's record of a DOI in Crossref; {} when it isn't there or Crossref is down."""
+        try:
+            res = self._get(f"{CROSSREF}/works/{quote(doi, safe='/:;()')}", self._params())
+            return (res.json().get("message") or {}) if res else {}
+        except (httpx.HTTPError, ValueError):
+            log.info("Crossref lookup failed for %s", doi, exc_info=True)
+            return {}
+
+    def _s2_abstract(self, doi: str) -> str:
+        """Semantic Scholar's abstract, for papers whose publisher withholds it from the others."""
+        try:
+            res = self._get(f"{SEMANTIC_SCHOLAR}/paper/DOI:{doi}", {"fields": "abstract"})
+            return ((res.json() or {}).get("abstract") or "") if res else ""
+        except (httpx.HTTPError, ValueError):
+            log.info("Semantic Scholar abstract lookup failed for %s", doi, exc_info=True)
+            return ""
+
+    def works_by_id(self, ids: list[str], select: str = LIST_FIELDS) -> dict[str, dict]:
+        """OpenAlex works by id ("W123"), a batch per request."""
+        out: dict[str, dict] = {}
+        for i in range(0, len(ids), IDS_PER_REQUEST):
+            batch = ids[i:i + IDS_PER_REQUEST]
+            res = self._get(f"{OPENALEX}/works", self._params(
+                select=select, filter="openalex:" + "|".join(batch), **{"per-page": str(len(batch))}))
+            for w in (res.json().get("results") or []) if res else []:
+                out[_short_id(w.get("id"))] = w
+        return out
+
+    def works_by_doi(self, dois: list[str]) -> dict[str, dict]:
+        """How often each DOI is cited worldwide, and its abstract: {doi: listed work}."""
+        out: dict[str, dict] = {}
+        dois = list(dict.fromkeys(_doi(d) for d in dois if d))
+        for i in range(0, len(dois), IDS_PER_REQUEST):
+            batch = dois[i:i + IDS_PER_REQUEST]
+            res = self._get(f"{OPENALEX}/works", self._params(
+                select=LIST_FIELDS + ",abstract_inverted_index", filter="doi:" + "|".join(batch),
+                **{"per-page": str(len(batch))}))
+            for w in (res.json().get("results") or []) if res else []:
+                out[_doi(w.get("doi"))] = listed_work(w)
+        return out
+
+    def citing(self, openalex_id: str, sort: str = "cited", limit: int = 25) -> tuple[int, list[dict]]:
+        """Works that cite this one, the most cited (or the newest) first, and how many there are."""
+        order = "publication_date:desc" if sort == "recent" else "cited_by_count:desc"
+        res = self._get(f"{OPENALEX}/works", self._params(
+            select=LIST_FIELDS + ",abstract_inverted_index", filter=f"cites:{openalex_id}", sort=order,
+            **{"per-page": str(limit)}))
+        if not res:
+            return 0, []
+        body = res.json()
+        return (body.get("meta") or {}).get("count") or 0, [listed_work(w) for w in body.get("results") or []]
+
+    def record(self, doi: str, title: str, year: int | None) -> Record | None:
+        """What the indexes know about a library paper, found by its DOI, or by a DOI Crossref has
+        for its title and year, or by OpenAlex's title search. None when neither OpenAlex nor
+        Crossref knows it. Raises httpx.HTTPError when OpenAlex can't be reached, so the caller can
+        try again later; Crossref and Semantic Scholar only fill gaps, so their failures don't."""
+        ref, _ = self._with_doi(Reference(raw=title, doi=_doi(doi), title=title, year=year))
         if not searchable(ref):
             return None
-        found_doi = ref.doi if ref.doi != _doi(doi) else ""
-        work = self._openalex(ref)
-        published = (work.published if work else "") or _date(crossref_date)
-        if not published and ref.doi and not crossref_date:
-            try:
-                published = _date(self._crossref_date(ref.doi))
-            except (httpx.HTTPError, ValueError):
-                log.info("Crossref date lookup failed for %s", ref.doi, exc_info=True)
-        return Dated(published, found_doi) if published or found_doi else None
+        w = self._openalex_work(ref, RECORD_FIELDS) or {}
+        found = ref.doi or _doi(w.get("doi"))
+        cr = self._crossref_work(found) if found else {}
+        if not w and not cr:
+            return None
+        biblio = w.get("biblio") or {}
+        cr_authors = [" ".join(p for p in (a.get("given"), a.get("family")) if p) for a in cr.get("author") or []]
+        published = _date(w.get("publication_date")) or _date(_crossref_date(cr))
+        rec = Record(
+            title=w.get("title") or (cr.get("title") or [""])[0],
+            # The publisher's own author list, in its order and spelling; OpenAlex's otherwise.
+            authors=[a for a in cr_authors if a] or _authors(w),
+            year=w.get("publication_year") or (int(_crossref_date(cr)[:4]) if _crossref_date(cr) else None),
+            published=published, doi=found, doi_found=bool(ref.doi) and ref.doi != _doi(doi),
+            venue=(cr.get("container-title") or [""])[0] or _venue(w),
+            volume=str(biblio.get("volume") or cr.get("volume") or ""),
+            issue=str(biblio.get("issue") or cr.get("issue") or ""),
+            pages=_pages(biblio.get("first_page"), biblio.get("last_page")) or (cr.get("page") or "").replace("-", "–"),
+            publisher=cr.get("publisher") or "",
+            abstract=_abstract(w.get("abstract_inverted_index")) or _jats(cr.get("abstract")),
+            openalex_id=_short_id(w.get("id")), cited_by_count=w.get("cited_by_count"),
+        )
+        ids = [_short_id(u) for u in w.get("referenced_works") or []]
+        if ids:
+            works = self.works_by_id(ids)
+            rec.references = [as_reference(works[i]) for i in ids if i in works]
+        if not rec.abstract and rec.doi:
+            rec.abstract = self._s2_abstract(rec.doi)
+        return rec
 
     # ---------- downloading ----------
 

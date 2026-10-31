@@ -7,10 +7,11 @@ from fastapi.testclient import TestClient
 from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
-from app.openaccess import Dated, OpenAccess
+from app.openaccess import OpenAccess, Record
 from app.providers import MockProvider
 from app.settings import Settings
 from tests.test_dupfiles import prose
+from tests.test_enrich import FakeIndex
 from tests.test_openaccess import HONG_DOI, HONG_TITLE, PDF, hong, openalex_work
 
 KEY = "core-key-0123456789abcd"
@@ -93,38 +94,18 @@ def test_a_core_look_alike_is_skipped_and_the_reason_names_core(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_publication_date_brings_the_doi_crossref_found():
-    oa = routed({
-        "api.crossref.org/works": httpx.Response(200, json={"message": {"items": [crossref_hit()]}}),
-        f"api.openalex.org/works/doi:{HONG_DOI}": httpx.Response(200, json={**openalex_work(), "publication_date": "2004-06-14"}),
-    })
-    assert oa.publication_date("", HONG_TITLE, 2004) == Dated("2004-06-14", HONG_DOI)
-
-
-def test_crossref_gives_the_date_when_openalex_has_none():
-    oa = routed({f"api.crossref.org/works/{HONG_DOI}": httpx.Response(200, json={"message": crossref_hit(month=9)})})
-    assert oa.publication_date(HONG_DOI, HONG_TITLE, 2004) == Dated("2004-09")
-
-
-def test_dates_lookup_fills_in_a_missing_doi(tmp_path):
-    class Finder:
-        def set_contact(self, _):
-            pass
-
-        def publication_date(self, doi, title, year):
-            return Dated("2004-06-14", HONG_DOI) if not doi else None
-
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder(), open_access=Finder())
+def test_a_lookup_fills_in_a_missing_doi(tmp_path):
+    index = FakeIndex({"Mobile money and household savings": Record(title="", doi=HONG_DOI, doi_found=True)})
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder(), open_access=index)
     client = TestClient(create_app(lib.settings, lib))
     f = tmp_path / "hong.md"
-    f.write_text(prose(30), encoding="utf-8")
+    f.write_text("Mobile money and household savings\n\n" + prose(30), encoding="utf-8")
     [res] = client.post("/ingest/path", json={"path": str(f)}).json()["results"]
-    doc_id = res["document"]["id"]
     with lib.conn:
-        lib.conn.execute("UPDATE documents SET doi = '', year = 2004 WHERE id = ?", (doc_id,))
-    assert client.post("/library/publication-dates").json() == {"checked": 1, "found": 1, "dois": 1, "failed": 0}
-    doc = client.get(f"/documents/{doc_id}").json()
-    assert (doc["doi"], doc["published"]) == (HONG_DOI, "2004-06-14")
+        lib.conn.execute("UPDATE documents SET doi = '', title = 'Mobile money and household savings' WHERE id = ?",
+                         (res["document"]["id"],))
+    assert client.post("/library/enrich", json={}).json()["dois"] == 1
+    assert client.get(f"/documents/{res['document']['id']}").json()["doi"] == HONG_DOI
 
 
 @pytest.fixture

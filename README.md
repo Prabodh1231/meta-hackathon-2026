@@ -103,6 +103,17 @@ Only open-access copies those indexes list are downloaded: open-access journals,
 
 Only the reference's DOI or title is sent to OpenAlex and Semantic Scholar. Set `RC_CONTACT_EMAIL=you@example.org` in the `.env` below to join OpenAlex's faster "polite pool"; it's optional.
 
+## What the scholarly indexes add
+
+After an import, each paper is looked up in **OpenAlex** by its DOI, or by a DOI **Crossref** finds for its title and year, or by OpenAlex's title search. One lookup brings:
+
+- **The publisher's metadata:** journal, volume, issue, pages and publisher, and the authors as the publisher lists them (from Crossref when it has the DOI). Reference lists in every style then carry volume, issue and pages. A title Muse couldn't read is replaced too; one it did read is kept.
+- **The authors' abstract**, shown above Muse's summary. It comes from OpenAlex, or Crossref, or Semantic Scholar when the publisher withholds it from the others.
+- **The reference list as OpenAlex has it**, with a DOI for most entries. It's merged with the list read from the PDF: an entry read from the text gains the DOI of the same work, and works only OpenAlex lists are added (marked "from OpenAlex"). The citation network and the most-cited-missing list use the merged lists, so more citations are matched, by DOI rather than by title.
+- **Citations worldwide** (the table's Cited column) and the **papers citing it**: a paper's **Citing papers…** lists them, the most cited or the newest first, with their abstracts and free copies to add.
+
+A field you corrected under Edit details is never changed. When the DOI printed on a paper belongs to a different work in OpenAlex (often a paper it cites), nothing is taken from the lookup and its details say so. Only the DOI or title is sent. Turn it off in Settings → Library; **⋯ → Look up papers in scholarly indexes** does it on demand, and refreshes citation counts once every paper is done.
+
 ## Using Muse
 
 Put the key in `~/.research-companion/.env`, the app's data folder, outside the repository:

@@ -18,12 +18,11 @@ const LABEL: Record<FetchStatus | 'working', string> = {
 
 export type FetchState = FetchResult | 'working'
 
-/** A reference entry to fetch a work by: the citing paper and the entry's place in its list. */
-export interface FetchTarget {
-  key: string
-  docId: number
-  idx: number
-}
+/** What to fetch: an entry in a library paper's reference list (the paper and the entry's place
+ *  in it), or any work by its title and DOI (one citing a library paper, say). */
+export type FetchTarget =
+  | { key: string; docId: number; idx: number }
+  | { key: string; work: { title: string; doi: string; year: number | null; first_author: string } }
 
 /** Results per key, and fetching one work or a queue of them (a few at a time, stoppable). */
 export function useFetcher(onChanged: () => Promise<void>) {
@@ -32,11 +31,12 @@ export function useFetcher(onChanged: () => Promise<void>) {
   const stop = useRef(false)
   useEffect(() => () => { stop.current = true }, []) // closing stops a batch after the downloads in progress
 
-  async function fetchOne({ key, docId, idx }: FetchTarget) {
+  async function fetchOne(t: FetchTarget) {
+    const key = t.key
     setResults((r) => ({ ...r, [key]: 'working' }))
     let res: FetchResult
     try {
-      res = await api.fetchCitedWork(docId, idx)
+      res = 'work' in t ? await api.fetchWork(t.work) : await api.fetchCitedWork(t.docId, t.idx)
     } catch (e) {
       res = { status: 'failed', reason: e instanceof Error ? e.message : String(e) }
     }

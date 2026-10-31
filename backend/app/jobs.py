@@ -128,6 +128,15 @@ class IngestJobs:
                     for e in job["files"]:
                         if e["document_id"] in still:
                             e["missing"] = still[e["document_id"]]
+            # What the scholarly indexes know: the publisher's metadata, abstract, references, citations.
+            added = [e["document_id"] for e in job["files"] if e["state"] == "done"]
+            if added and not job["cancelled"] and self.lib.pref("index_lookup"):
+                with self.lock:
+                    job["state"] = "looking_up"
+                try:
+                    self.lib.enrich_documents(added)
+                except Exception:  # the papers are stored; they can be looked up later
+                    log.exception("Index lookup failed after import job %s", job_id)
             with self.lock:
                 job["incomplete"] = sum(1 for e in job["files"] if e["state"] == "done" and e["missing"])
                 job["state"] = "cancelled" if job["cancelled"] else "done"

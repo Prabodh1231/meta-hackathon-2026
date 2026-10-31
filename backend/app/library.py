@@ -18,7 +18,7 @@ import numpy as np
 from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
 from .citegraph import build_graph, focus, keyword_links, missing_works
-from .refparse import Reference, match_reference, parse_references
+from .refparse import Reference, match_reference, norm, parse_references
 from . import embeddings as embeddings_module
 from .embeddings import Embedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, clean_page_label, is_supported, parse_file, parse_url
@@ -58,7 +58,7 @@ SOURCE_COPIED = 0.85  # copied nearly word for word
 # Duplicate files: documents whose mean chunk embeddings are this close are compared in detail.
 # Only picks candidates; shared passages and metadata decide what's shown.
 DUP_DOC_COS = 0.9
-DATE_LOOKUP_WORKERS = 4  # OpenAlex lookups for publication dates at once; it asks for a polite pace
+INDEX_LOOKUP_WORKERS = 4  # papers looked up in OpenAlex at once; it asks for a polite pace
 REMOVAL_REASONS = ("removed", "duplicate")
 
 # Preferences set in the Settings window, stored in the library so they follow it. Each is either
@@ -84,6 +84,7 @@ USER_SETTINGS: dict[str, tuple] = {
     # Library
     "folder_similarity": (range(0, 101), 50),  # what a new folder starts at
     "contact_email": (str, ""),  # for OpenAlex and Semantic Scholar; RC_CONTACT_EMAIL when empty
+    "index_lookup": (True, False),  # look new papers up in OpenAlex and Crossref after an import
 }
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MODEL_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
@@ -535,10 +536,41 @@ class Library:
             {"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
             for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents ORDER BY id")
         ]
-        refs: dict[int, list[Reference]] = defaultdict(list)
-        for r in self.conn.execute("SELECT * FROM doc_refs ORDER BY doc_id, idx"):
-            refs[r["doc_id"]].append(Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"]))
-        return docs, refs
+        return docs, defaultdict(list, self._reference_lists())
+
+    def _reference_lists(self, doc_id: int | None = None) -> dict[int, list[Reference]]:
+        """Each paper's reference list (an entry's idx is its place in it): the entries read from
+        its text, given the DOI OpenAlex has for the same work, then the works only OpenAlex lists.
+        Call under the lock, after _parse_references."""
+        where, args = ("WHERE doc_id = ?", (doc_id,)) if doc_id is not None else ("", ())
+        text: dict[int, list[Reference]] = defaultdict(list)
+        index: dict[int, list[Reference]] = defaultdict(list)
+        for r in self.conn.execute(f"SELECT * FROM doc_refs {where} ORDER BY doc_id, idx", args):
+            text[r["doc_id"]].append(Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"]))
+        for r in self.conn.execute(f"SELECT * FROM index_refs {where} ORDER BY doc_id, idx", args):
+            index[r["doc_id"]].append(Reference(r["raw"], None, r["year"], r["doi"], r["title"], r["first_author"]))
+        out: dict[int, list[Reference]] = {}
+        for d in text.keys() | index.keys():
+            refs = list(text[d])
+            # The same work in both lists: by DOI, or by title (compared only among entries whose
+            # titles start alike, so a long list isn't compared all against all).
+            by_doi = {t.doi: k for k, t in enumerate(refs) if t.doi}
+            by_start: dict[str, list[int]] = defaultdict(list)
+            for k, t in enumerate(refs):
+                if t.title:
+                    by_start[" ".join(norm(t.title).split()[:2])].append(k)
+            extra = []
+            for ir in index[d]:
+                k = by_doi.get(ir.doi) if ir.doi else None
+                if k is None:
+                    k = next((j for j in by_start.get(" ".join(norm(ir.title).split()[:2]), [])
+                              if openaccess.same_work(refs[j], ir.title, ir.year)), None)
+                if k is None:
+                    extra.append(ir)
+                elif ir.doi and not refs[k].doi:
+                    refs[k] = dataclasses.replace(refs[k], doi=ir.doi, year=refs[k].year or ir.year)
+            out[d] = refs + extra
+        return out
 
     def missing_works(self, query: str = "", limit: int = 100) -> dict:
         """What the papers about a topic (every paper, with no topic) cite that the library lacks,
@@ -580,8 +612,7 @@ class Library:
         with self.lock:
             self._parse_references()
             doc = self.get_document(doc_id)
-            refs = [Reference(r["raw"], r["number"], r["year"], r["doi"], r["title"], r["first_author"])
-                    for r in self.conn.execute("SELECT * FROM doc_refs WHERE doc_id = ? ORDER BY idx", (doc_id,))]
+            refs = self._reference_lists(doc_id).get(doc_id, [])
             docs = [{"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
                     for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents")]
         return doc, refs, docs
@@ -589,12 +620,15 @@ class Library:
     def cited_works(self, doc_id: int) -> dict:
         """A paper's reference list, each entry with the library document it matches, if any."""
         doc, refs, docs = self._refs_and_docs(doc_id)
+        with self.lock:
+            from_text = self.conn.execute("SELECT COUNT(*) FROM doc_refs WHERE doc_id = ?", (doc_id,)).fetchone()[0]
         entries = []
         for i, ref in enumerate(refs):
             m = match_reference(ref, docs, doc["year"], doc_id)
             entries.append({
                 "idx": i, "raw": ref.raw, "number": ref.number, "title": ref.title, "first_author": ref.first_author,
                 "year": ref.year, "doi": ref.doi, "in_library": m.doc_id if m else None, "searchable": openaccess.searchable(ref),
+                "from_index": i >= from_text,  # listed by OpenAlex, not found in the paper's own text
             })
         return {"doc_id": doc_id, "title": doc["title"], "references": entries}
 
@@ -607,6 +641,25 @@ class Library:
         m = match_reference(ref, docs, doc["year"], doc_id)
         if m:  # already here, perhaps fetched for another paper's reference list
             return {"status": "in_library", "doc_id": m.doc_id}
+        return self._download_and_add(ref)
+
+    def fetch_work(self, title: str, doi: str = "", year: int | None = None, first_author: str = "") -> dict:
+        """Find a free copy of any work (one citing a library paper, say) and add it to the library."""
+        ref = Reference(raw=title, year=year, doi=openaccess._doi(doi), title=title, first_author=first_author)
+        with self.lock:
+            docs = self._docs_brief()
+        m = match_reference(ref, docs)
+        if m:
+            return {"status": "in_library", "doc_id": m.doc_id}
+        return self._download_and_add(ref)
+
+    def _docs_brief(self) -> list[dict]:
+        """Every document as reference matching needs it. Call under the lock."""
+        return [{"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
+                for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents")]
+
+    def _download_and_add(self, ref: Reference) -> dict:
+        """Download a free copy of the work and import it, with what the index knows about it."""
         got = self.open_access.fetch(ref, self.settings.data_dir / "papers")
         out = {"status": got.status, "url": got.url, "reason": got.reason, "found_in": got.work.source if got.work else ""}
         if got.status != "downloaded":
@@ -629,6 +682,7 @@ class Library:
             with self.lock, self.conn:
                 cols = ", ".join(f"{k} = ?" for k in fill)
                 self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*fill.values(), added["id"]))
+        self._enrich_quietly([added["id"]])
         return {**out, "doc_id": added["id"], "document": self.get_document(added["id"])}
 
     # ---------- documents ----------
@@ -672,7 +726,7 @@ class Library:
             d["tags"] = tags[d["id"]]
             d["folders"] = folders[d["id"]]
             d["label"] = short_label(d)
-            d["page_range"] = page_range(labels[d["id"]])
+            d["page_range"] = d["page_span"] or page_range(labels[d["id"]])
             d["previously_removed"] = self._earlier_removal(d, removals)
             d["published_checked"] = bool(d["published_checked"])
             out.append(d)
@@ -824,6 +878,7 @@ class Library:
                                   (entry["published"], doc["id"]))
         with self.lock, self.conn:
             self.conn.execute("DELETE FROM removed_documents WHERE id = ?", (removed_id,))
+        self._enrich_quietly([doc["id"]])
         return self.get_document(doc["id"])
 
     def forget_removed(self, removed_id: int) -> None:
@@ -832,48 +887,136 @@ class Library:
             if not self.conn.execute("DELETE FROM removed_documents WHERE id = ?", (removed_id,)).rowcount:
                 raise LookupError(f"Removed document {removed_id} not found")
 
-    # ---------- publication dates ----------
+    # ---------- what the scholarly indexes know ----------
 
-    def fill_publication_dates(self) -> dict:
-        """Look up the full publication date (not just the year) of every paper not yet looked
-        up, in OpenAlex and Crossref, and the DOI of a paper without one (Crossref, by title and
-        year). A paper whose lookup failed (OpenAlex unreachable) is tried again next time; one
-        the indexes don't know isn't."""
+    def enrich_documents(self, doc_ids: list[int] | None = None, refresh: bool = False) -> dict:
+        """Look papers up in the scholarly indexes (OpenAlex, with the publisher's record in
+        Crossref): metadata, the authors' abstract, the reference list and the citation count.
+        `doc_ids`: only these; `refresh`: papers looked up before too (citation counts change).
+        A field the user corrected is never changed. When the DOI printed on a paper belongs to a
+        different work (often one it cites), nothing is taken from it ('mismatch'). Lookups that
+        failed because OpenAlex couldn't be reached are tried again next time."""
         with self.lock:
             rows = [dict(r) for r in self.conn.execute(
-                "SELECT id, title, year, doi, edited_fields FROM documents WHERE published_checked = 0")]
+                "SELECT id, source, title, authors, year, doi, published, missing, edited_fields, enriched FROM documents")]
+        if doc_ids is not None:
+            wanted = set(doc_ids)
+            rows = [r for r in rows if r["id"] in wanted]
+        if not refresh:
+            rows = [r for r in rows if not r["enriched"]]
 
         def one(r: dict):
             try:
-                return r, self.open_access.publication_date(r["doi"], r["title"], r["year"]), None
+                return r, self.open_access.record(r["doi"], r["title"], r["year"]), None
             except (httpx.HTTPError, ValueError) as exc:  # ValueError: a reply that isn't JSON
-                log.info("Publication date lookup failed for document %s", r["id"], exc_info=True)
+                log.info("Index lookup failed for document %s", r["id"], exc_info=True)
                 return r, None, exc
 
-        found = failed = dois = 0
-        if rows:
-            with ThreadPoolExecutor(max_workers=min(DATE_LOOKUP_WORKERS, len(rows))) as pool:
-                results = list(pool.map(one, rows))
-            with self.lock, self.conn:
-                for r, got, error in results:
-                    if error:
-                        failed += 1
-                        continue
-                    updates: dict = {"published_checked": 1}
-                    date = got.published if got else ""
-                    edited = json.loads(r["edited_fields"])
-                    if got and got.doi and not r["doi"] and "doi" not in edited:
-                        updates["doi"] = got.doi
-                        dois += 1
-                    # A date from another year is another version (a preprint): the year shown wins.
-                    if date and (r["year"] is None or str(r["year"]) == date[:4]):
-                        updates["published"] = date
-                        if r["year"] is None and "year" not in edited:
-                            updates["year"] = int(date[:4])
-                        found += 1
-                    cols = ", ".join(f"{k} = ?" for k in updates)
-                    self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*updates.values(), r["id"]))
-        return {"checked": len(rows) - failed, "found": found, "dois": dois, "failed": failed}
+        counts = {"checked": 0, "found": 0, "dates": 0, "dois": 0, "mismatched": 0, "failed": 0}
+        if not rows:
+            return counts
+        with ThreadPoolExecutor(max_workers=min(INDEX_LOOKUP_WORKERS, len(rows))) as pool:
+            results = list(pool.map(one, rows))
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        with self.lock, self.conn:
+            for r, rec, error in results:
+                if error:
+                    counts["failed"] += 1
+                    continue
+                counts["checked"] += 1
+                if not self.conn.execute("SELECT 1 FROM documents WHERE id = ?", (r["id"],)).fetchone():
+                    continue  # removed meanwhile
+                updates = self._record_updates(r, rec, now)
+                counts["found"] += updates["enriched"] == "found"
+                counts["mismatched"] += updates["enriched"] == "mismatch"
+                counts["dates"] += "published" in updates
+                counts["dois"] += "doi" in updates
+                cols = ", ".join(f"{k} = ?" for k in updates)
+                self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*updates.values(), r["id"]))
+                if updates["enriched"] == "found":
+                    self.conn.execute("DELETE FROM index_refs WHERE doc_id = ?", (r["id"],))
+                    self.conn.executemany(
+                        "INSERT INTO index_refs (doc_id, idx, raw, year, doi, title, first_author) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        [(r["id"], i, x.raw, x.year, x.doi, x.title, x.first_author) for i, x in enumerate(rec.references)],
+                    )
+        return counts
+
+    @staticmethod
+    def _record_updates(r: dict, rec: "openaccess.Record | None", now: str) -> dict:
+        """The columns a lookup changes for one paper (see enrich_documents)."""
+        updates: dict = {"enriched_at": now, "published_checked": 1, "index_title": ""}
+        if rec is None:
+            return {**updates, "enriched": "not_found"}
+        edited = set(json.loads(r["edited_fields"]))
+        missing = json.loads(r["missing"])
+        # A title Muse couldn't read (or the file name standing in for one) gives way to the index's.
+        unread = not r["title"].strip() or "title" in missing or r["title"] == Path(r["source"]).stem
+        if r["doi"] and rec.title and not unread and not openaccess.titles_agree(r["title"], rec.title):
+            return {**updates, "enriched": "mismatch", "index_title": rec.title}
+        updates.update(enriched="found", openalex_id=rec.openalex_id, cited_by_count=rec.cited_by_count)
+
+        def take(key: str, value, only_if_empty: bool = False) -> None:
+            if value in (None, "", []) or key in edited or (only_if_empty and r.get(key)):
+                return
+            updates[key] = value
+
+        for key in ("abstract", "volume", "issue", "publisher", "venue"):
+            take(key, getattr(rec, key))
+        take("page_span", rec.pages)
+        take("authors", json.dumps(rec.authors) if rec.authors else "")
+        take("doi", rec.doi, only_if_empty=True)
+        take("year", rec.year, only_if_empty=True)
+        if unread:
+            take("title", rec.title)
+        # A date from another year is another version (a preprint): the year shown wins.
+        year = updates.get("year", r["year"])
+        if len(rec.published) >= 7 and (year is None or str(year) == rec.published[:4]) and rec.published != r["published"]:
+            take("published", rec.published)
+        if rec.title and rec.authors and {"metadata", "title"} & set(missing):
+            updates["missing"] = json.dumps([m for m in missing if m not in ("metadata", "title")])  # no need to ask Muse
+        return updates
+
+    def _enrich_quietly(self, doc_ids: list[int]) -> None:
+        """Look just-added papers up, when the user has that on; a failure leaves them for later."""
+        if not self.pref("index_lookup"):
+            return
+        try:
+            self.enrich_documents(doc_ids)
+        except Exception:
+            log.exception("Index lookup failed for %s", doc_ids)
+
+    def citing_works(self, doc_id: int, sort: str = "cited") -> dict:
+        """Works that cite a library paper, as OpenAlex knows them: the most cited first, or the
+        newest. Each marks the library paper it is, if any."""
+        if sort not in ("cited", "recent"):
+            raise ValueError("sort must be cited or recent")
+        doc = self.get_document(doc_id)
+        if not doc["openalex_id"] and doc["enriched"] in ("", "not_found"):
+            self.enrich_documents([doc_id], refresh=True)
+            doc = self.get_document(doc_id)
+        out = {"doc_id": doc_id, "title": doc["title"], "found": bool(doc["openalex_id"]), "total": 0, "works": [],
+               "cited_by_count": doc["cited_by_count"]}
+        if not doc["openalex_id"]:
+            return out
+        try:
+            total, works = self.open_access.citing(doc["openalex_id"], sort)
+        except httpx.HTTPError as exc:
+            raise ValueError(f"Couldn't reach OpenAlex: {exc}") from exc
+        with self.lock:
+            docs = self._docs_brief()
+        for w in works:
+            first = w["authors"][0].split()[-1] if w["authors"] else ""
+            m = match_reference(Reference(raw=w["title"], year=w["year"], doi=w["doi"], title=w["title"], first_author=first), docs)
+            w["in_library"] = m.doc_id if m else None
+            w["first_author"] = first
+        return {**out, "total": total, "works": works}
+
+    def works_info(self, dois: list[str]) -> dict:
+        """Citations worldwide and the abstract of each DOI OpenAlex knows: {doi: {...}}."""
+        try:
+            return self.open_access.works_by_doi(dois[:200])
+        except httpx.HTTPError as exc:
+            raise ValueError(f"Couldn't reach OpenAlex: {exc}") from exc
 
     # ---------- duplicate files ----------
 

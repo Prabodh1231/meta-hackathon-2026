@@ -105,6 +105,19 @@ CREATE TABLE IF NOT EXISTS doc_refs (
   first_author TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (doc_id, idx)
 );
+-- The same paper's reference list as OpenAlex has it, with a DOI for most entries. Merged with
+-- doc_refs when the graph is built (see Library._reference_lists); kept apart so re-reading the
+-- PDF, which replaces doc_refs, doesn't lose it.
+CREATE TABLE IF NOT EXISTS index_refs (
+  doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  idx INTEGER NOT NULL,
+  raw TEXT NOT NULL,
+  year INTEGER,
+  doi TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  first_author TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (doc_id, idx)
+);
 CREATE TABLE IF NOT EXISTS drafts (
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL DEFAULT 'Untitled',
@@ -232,6 +245,18 @@ _ADDED_COLUMNS = [
     # Full publication date from OpenAlex ("YYYY-MM-DD" or "YYYY-MM"); `year` alone when empty.
     ("documents", "published", "TEXT NOT NULL DEFAULT ''"),
     ("documents", "published_checked", "INTEGER NOT NULL DEFAULT 0"),  # 1 once OpenAlex was asked
+    # What the scholarly indexes know about the paper (Library.enrich_documents).
+    ("documents", "abstract", "TEXT NOT NULL DEFAULT ''"),  # the authors' own
+    ("documents", "volume", "TEXT NOT NULL DEFAULT ''"),
+    ("documents", "issue", "TEXT NOT NULL DEFAULT ''"),
+    ("documents", "page_span", "TEXT NOT NULL DEFAULT ''"),  # "341–355", the publisher's pages
+    ("documents", "publisher", "TEXT NOT NULL DEFAULT ''"),
+    ("documents", "openalex_id", "TEXT NOT NULL DEFAULT ''"),
+    ("documents", "cited_by_count", "INTEGER"),  # citations worldwide; NULL when not looked up
+    # '' not looked up | found | not_found | mismatch (the paper's DOI is another work's)
+    ("documents", "enriched", "TEXT NOT NULL DEFAULT ''"),
+    ("documents", "enriched_at", "TEXT"),
+    ("documents", "index_title", "TEXT NOT NULL DEFAULT ''"),  # the other work's title, for a mismatch
 ]
 
 

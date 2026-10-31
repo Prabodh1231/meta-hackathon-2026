@@ -95,7 +95,7 @@ Tick the box in front of a paper to have the Assistant and the cite searches use
 
 - **Added** goes by when you got each file: its date on this computer, or the day you added it here if that is earlier. Drag the two handles to a range, or click a bar to jump to that month.
 - **As of** uses one handle and shows your library as it was at the end of that month. Sources removed since then are listed greyed out at the bottom. Open one to restore it.
-- **Published** goes by publication date. Papers known only by year show as lighter bars spread across that year. **Look up exact dates** asks OpenAlex and Crossref (by DOI, or by title and year) for the full date, and fills in the DOI of papers that have none.
+- **Published** goes by publication date. Papers known only by year show as lighter bars spread across that year. **Look up exact dates** looks the papers up in OpenAlex and Crossref (see below), which gives the full date and fills in the DOI of papers that have none.
 
 ### Removed sources
 
@@ -105,7 +105,9 @@ Removing a source, yourself or from Find duplicate files, keeps a record of it u
 
 - **Find duplicate files:** copies of the same paper, with what you could free up. It suggests what to keep and can move a copy to the Recycle Bin; it never deletes outright.
 - **Most-cited papers you don't have:** what your papers on a topic cite most that isn't in your library, with free copies to download where one exists.
-- A paper's **Cited papers…** button lists the works it cites and downloads free copies of them.
+- A paper's **Cited papers…** button lists the works it cites and downloads free copies of them. Entries marked "from OpenAlex" weren't found in the paper's own reference list.
+- A paper's **Citing papers…** button lists newer works that cite it (from OpenAlex), the most cited or the newest first, with their abstracts and free copies to add.
+- **Look up papers in scholarly indexes:** fetches the publisher's details (journal, volume, issue, pages), the authors' abstract, the reference list and the citation count for every paper not looked up yet; once all are, it refreshes them. New imports are looked up automatically unless you turn that off in Settings → Library. What you corrected yourself is never changed. If the DOI on a paper belongs to another work, nothing is taken and its details tell you.
 
 ## 3. Write a draft
 
@@ -282,6 +284,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 - **New folders start at** a similarity of N% (default 50%).
 - **Contact email** (optional): sent to OpenAlex, Semantic Scholar and Crossref when finding free copies of cited papers.
+- **Look papers up in scholarly indexes** (on by default): after an import, each paper's DOI or title is sent to OpenAlex and Crossref for its journal details, abstract, reference list and citation count.
 - **CORE API key** (optional): with a key (free from core.ac.uk/services/api), free copies are also searched for in CORE, which gathers full texts from university repositories. The key is checked with CORE before it's saved.
 
 **Search & embeddings**

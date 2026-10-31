@@ -168,7 +168,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 13
+API_VERSION = 14
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -200,6 +200,22 @@ class NewDraftIn(BaseModel):
 class ImportDocxIn(BaseModel):
     filename: str = ""
     data: str = Field(max_length=70_000_000)  # base64 of the .docx (about 50 MB at most)
+
+
+class EnrichIn(BaseModel):
+    doc_ids: list[int] | None = None  # every paper not yet looked up when left out
+    refresh: bool = False  # look up again papers done before (fresh citation counts)
+
+
+class WorkIn(BaseModel):
+    title: str = Field(min_length=1, max_length=1000)
+    doi: str = Field("", max_length=300)
+    year: int | None = None
+    first_author: str = Field("", max_length=200)
+
+
+class WorksInfoIn(BaseModel):
+    dois: list[str] = Field(max_length=200)
 
 
 class SourcesIn(BaseModel):
@@ -328,10 +344,25 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         lib.forget_removed(removed_id)
         return {"ok": True}
 
-    @app.post("/library/publication-dates")
-    def fill_publication_dates():
-        """Full publication dates from OpenAlex for the papers not yet looked up."""
-        return lib.fill_publication_dates()
+    @app.post("/library/enrich")
+    def enrich(body: EnrichIn):
+        """Look papers up in OpenAlex and Crossref: metadata, abstracts, reference lists, citation counts."""
+        return lib.enrich_documents(body.doc_ids, body.refresh)
+
+    @app.get("/documents/{doc_id}/citing")
+    def citing_works(doc_id: int, sort: str = "cited"):
+        """Works that cite this paper (OpenAlex), the most cited or the newest first."""
+        return lib.citing_works(doc_id, sort)
+
+    @app.post("/library/fetch-work")
+    def fetch_work(body: WorkIn):
+        """Find a free copy of any work and add it to the library."""
+        return lib.fetch_work(body.title, body.doi, body.year, body.first_author)
+
+    @app.post("/works/info")
+    def works_info(body: WorksInfoIn):
+        """Citations worldwide and abstracts for works by DOI."""
+        return lib.works_info(body.dois)
 
     @app.get("/documents/{doc_id}/pages/{page}")
     def get_page(doc_id: int, page: int):

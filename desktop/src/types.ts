@@ -29,6 +29,16 @@ export interface Doc {
   /** Full publication date from OpenAlex, "YYYY-MM-DD" or "YYYY-MM"; '' when only `year` is known. */
   published: string
   published_checked: boolean // OpenAlex was asked already
+  // What the scholarly indexes (OpenAlex, Crossref) know about it; see `enriched`.
+  abstract: string // the authors' own
+  volume: string
+  issue: string
+  publisher: string
+  openalex_id: string
+  cited_by_count: number | null // citations worldwide
+  /** '' not looked up yet, 'not_found', 'mismatch' (the DOI on the paper is another work's: see index_title). */
+  enriched: '' | 'found' | 'not_found' | 'mismatch'
+  index_title: string
   /** This same file was removed once before it was added again. */
   previously_removed: {
     id: number
@@ -161,7 +171,7 @@ export interface IngestFile {
 /** Files and folders being added in the background (POST /ingest/jobs). */
 export interface IngestJob {
   id: number
-  state: 'queued' | 'listing' | 'running' | 'retrying' | 'done' | 'cancelled' | 'failed'
+  state: 'queued' | 'listing' | 'running' | 'retrying' | 'looking_up' | 'done' | 'cancelled' | 'failed'
   paths: string[]
   files: IngestFile[]
   total: number
@@ -216,6 +226,7 @@ export interface CitedWork {
   doi: string
   in_library: number | null
   searchable: boolean // has a DOI or a title long enough to look up
+  from_index: boolean // listed by OpenAlex, not read from the paper's own text
 }
 
 export interface CitedWorks {
@@ -294,15 +305,46 @@ export interface Settings {
   // Library
   folder_similarity: number
   contact_email: string
+  index_lookup: boolean // look new papers up in OpenAlex and Crossref
 }
 
-/** Where embeddings and reranking run. The Baseten key is never sent back, only whether there is one. */
+/** A work as OpenAlex lists it: one citing a library paper, or a work the library lacks. */
+export interface IndexWork {
+  openalex_id: string
+  doi: string
+  title: string
+  authors: string[]
+  year: number | null
+  venue: string
+  cited_by_count: number | null
+  abstract: string
+}
+
+export interface CitingWorks {
+  doc_id: number
+  title: string
+  found: boolean // OpenAlex knows the paper
+  total: number // works citing it, of which `works` are the first
+  cited_by_count: number | null
+  works: (IndexWork & { in_library: number | null; first_author: string })[]
+}
+
+export interface EnrichResult {
+  checked: number
+  found: number
+  dates: number
+  dois: number
+  mismatched: number
+  failed: number // OpenAlex couldn't be reached; tried again next time
+}
+
 /** Where free copies of papers are searched for: CORE only with the user's own key. */
 export interface SourceSettings {
   has_core_key: boolean
   core_key_hint: string // last 4 characters of the saved key
 }
 
+/** Where embeddings and reranking run. The Baseten key is never sent back, only whether there is one. */
 export interface SearchSettings {
   where: 'auto' | 'local' | 'baseten'
   embedder: string

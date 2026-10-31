@@ -95,8 +95,15 @@ export function CitedPapersDialog({ docId, onOpenPaper, onChanged, onClose, onEr
               <li key={r.idx} className="cited-item">
                 <div className="cited-main">
                   <div className="lib-doc-title">{r.title || r.raw}</div>
-                  {byline(r) && <div className="lib-doc-by">{byline(r)}</div>}
-                  {r.title && <div className="cited-raw" title={r.raw}>{r.raw}</div>}
+                  {(byline(r) || r.from_index) && (
+                    <div className="lib-doc-by">
+                      {byline(r)}
+                      {r.from_index && (
+                        <span className="from-index" title="Listed by OpenAlex; not found in the paper's own reference list">from OpenAlex</span>
+                      )}
+                    </div>
+                  )}
+                  {r.title && !r.from_index && <div className="cited-raw" title={r.raw}>{r.raw}</div>}
                   {fetchReason(st) && <div className="cited-reason">{fetchReason(st)}</div>}
                   {!st && !r.searchable && <div className="cited-reason">No DOI and too short a title to look up automatically</div>}
                 </div>

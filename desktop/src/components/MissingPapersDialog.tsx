@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { MissingWork, MissingWorks } from '../types'
+import type { IndexWork, MissingWork, MissingWorks } from '../types'
+import { Abstract } from './CitingPapersDialog'
 import { FetchActions, fetchReason, useFetcher } from './fetching'
 
 const TOP = 10 // "Download top N" fetches this many of the works not tried yet
@@ -24,6 +25,7 @@ export function MissingPapersDialog({ initialQuery, onOpenPaper, onChanged, onCl
   const [topic, setTopic] = useState(initialQuery.trim()) // the search the list is showing
   const [data, setData] = useState<MissingWorks | null>(null)
   const [loading, setLoading] = useState(true)
+  const [info, setInfo] = useState<Record<string, IndexWork>>({}) // by DOI: citations worldwide, abstract
   const fetcher = useFetcher(onChanged)
 
   useEffect(() => {
@@ -40,6 +42,15 @@ export function MissingPapersDialog({ initialQuery, onOpenPaper, onChanged, onCl
       .finally(() => current && setLoading(false))
     return () => { current = false }
   }, [topic])
+
+  // What OpenAlex knows about the works with a DOI: extra, so the list never waits for it.
+  useEffect(() => {
+    const dois = (data?.works ?? []).map((w) => w.doi.toLowerCase()).filter((d) => d && !info[d])
+    if (!dois.length) return
+    let current = true
+    api.worksInfo(dois.slice(0, 200)).then((got) => current && setInfo((old) => ({ ...old, ...got }))).catch(() => {})
+    return () => { current = false }
+  }, [data])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -126,6 +137,7 @@ export function MissingPapersDialog({ initialQuery, onOpenPaper, onChanged, onCl
           {works.map((w, i) => {
             const st = fetcher.results[w.id] ?? null
             const more = w.citers.length - SHOWN_CITERS
+            const about = w.doi ? info[w.doi.toLowerCase()] : undefined
             return (
               <li key={w.id} className="cited-item">
                 <span className="missing-rank">{i + 1}</span>
@@ -142,6 +154,10 @@ export function MissingPapersDialog({ initialQuery, onOpenPaper, onChanged, onCl
                     ))}
                     {more > 0 && <span className="muted"> and {more} more</span>}
                   </div>
+                  {about?.cited_by_count != null && (
+                    <div className="muted cited-count">Cited {about.cited_by_count.toLocaleString()} times worldwide</div>
+                  )}
+                  <Abstract text={about?.abstract ?? ''} />
                   {fetchReason(st) && <div className="cited-reason">{fetchReason(st)}</div>}
                 </div>
                 <FetchActions

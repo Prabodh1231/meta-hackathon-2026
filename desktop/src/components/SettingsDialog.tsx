@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS: Settings = {
   snapshots_kept: 40,
   folder_similarity: 50,
   contact_email: '',
+  index_lookup: true,
 }
 
 const FONTS: { value: Settings['doc_font']; label: string; family: string }[] = [
@@ -617,6 +618,12 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose 
                 hint="Sent to OpenAlex, Semantic Scholar and Crossref when finding free copies of cited papers, so they can write to you instead of slowing down heavy use."
               >
                 <EmailField value={s.contact_email} onChange={(v) => onChange({ contact_email: v })} />
+              </Setting>
+              <Setting
+                title="Look papers up in scholarly indexes"
+                hint="After an import, each paper's DOI or title is sent to OpenAlex and Crossref for the publisher's details (journal, volume, issue, pages), the authors' abstract, its reference list and how often it is cited. Nothing else about your files is sent. What you correct yourself is never changed."
+              >
+                <Toggle label="Look new papers up after they're added" checked={s.index_lookup} onChange={(v) => onChange({ index_lookup: v })} />
               </Setting>
               <CoreKeySetting />
             </>

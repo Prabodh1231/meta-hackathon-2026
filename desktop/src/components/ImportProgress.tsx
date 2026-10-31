@@ -21,6 +21,7 @@ function headline(j: IngestJob): string {
   if (j.state === 'queued' || j.state === 'listing') return 'Looking for files…'
   if (j.state === 'running') return `Adding ${files}`
   if (j.state === 'retrying') return 'Asking Muse again for what failed…'
+  if (j.state === 'looking_up') return 'Looking the papers up in OpenAlex and Crossref…'
   if (j.state === 'failed') return 'The import stopped'
   if (j.state === 'cancelled') return `Stopped: added ${j.done} of ${files}`
   return j.failed ? `Added ${j.done} of ${files}` : `Added ${files}`
@@ -85,7 +86,7 @@ export function ImportProgress({ job, onCancel, onDismiss }: { job: IngestJob; o
           </button>
         )}
       </div>
-      <div className={`ij-bar${job.state === 'listing' || job.state === 'queued' || job.state === 'retrying' ? ' busy' : ''}`} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+      <div className={`ij-bar${job.state === 'listing' || job.state === 'queued' || job.state === 'retrying' || job.state === 'looking_up' ? ' busy' : ''}`} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
         <span style={{ width: `${pct}%` }} />
       </div>
       {job.files.length > 0 && (

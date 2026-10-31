@@ -4,6 +4,7 @@ import type { Doc, Folder, IngestJob, RemovedDoc } from '../types'
 import {
   type TimeField, type TimeWindow, buildAxis, docSpan, fmtDay, fmtPublished, gotAt, inWindow, posLabel, removedSince,
 } from '../timeline'
+import { Abstract } from './CitingPapersDialog'
 import { ImportProgress, owedText } from './ImportProgress'
 import { Timeline } from './Timeline'
 
@@ -21,6 +22,8 @@ interface Props {
   focus?: { id: number; n: number } | null
   onFindDuplicates: () => void
   onCitedPapers: (docId: number) => void
+  /** List the works that cite a paper (OpenAlex). */
+  onCitingPapers: (docId: number) => void
   onFindMissing: () => void
   cited: number[] // documents the draft cites
   /** Where a new folder's similarity starts (Settings). */
@@ -60,7 +63,7 @@ function authorsShort(d: { authors: string[] }): string {
 }
 
 type Run = (label: string, fn: () => Promise<unknown>) => Promise<void>
-type SortKey = 'title' | 'authors' | 'year' | 'type' | 'added' | 'pages' | 'match'
+type SortKey = 'title' | 'authors' | 'year' | 'type' | 'added' | 'pages' | 'match' | 'citations'
 type Sort = { key: SortKey; dir: 1 | -1 }
 type Scope = 'all' | 'none' | 'removed' | number // every file, files with no folder, the removal log, or one folder
 
@@ -308,6 +311,7 @@ const COLUMNS: { key: SortKey; label: string; first: 1 | -1 }[] = [
   { key: 'year', label: 'Year', first: -1 },
   { key: 'type', label: 'Type', first: 1 },
   { key: 'added', label: 'Added', first: -1 },
+  { key: 'citations', label: 'Cited', first: -1 },
 ]
 
 /** The expanded library: every source as a row, sortable by any column. */
@@ -391,6 +395,9 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
             ) : (
               <>
                 <td className="c-added">{d.added_at.slice(0, 10)}</td>
+                <td className="c-citations" title={d.cited_by_count != null ? 'Citations worldwide, as OpenAlex counts them' : undefined}>
+                  {d.cited_by_count != null ? d.cited_by_count.toLocaleString() : ''}
+                </td>
                 <td className="c-folders">{d.folders.map((f) => f.name).join(', ')}</td>
               </>
             )}
@@ -426,6 +433,7 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
               ) : (
                 <>
                   <td className="c-added">{r.added_at.slice(0, 10)}</td>
+                  <td className="c-citations" />
                   <td className="c-folders">removed {r.removed_at.slice(0, 10)}</td>
                 </>
               )}
@@ -627,7 +635,7 @@ function EditDetails({ doc: d, run, onDone }: { doc: Doc; run: Run; onDone: () =
 }
 
 /** Everything about one source, and what can be done with it. */
-function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, onOpenPdf, run }: {
+function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onCiting, onRetry, onOpenPdf, run }: {
   doc: Doc
   on: boolean
   cited: boolean
@@ -635,6 +643,7 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, on
   onToggle: () => void
   onClose: () => void
   onCited: () => void
+  onCiting: () => void
   onRetry: () => void // ask Muse again for what it couldn't write when this was added
   run: Run
 }) {
@@ -642,7 +651,8 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, on
   const [confirming, setConfirming] = useState(false)
   const isFile = !/^https?:\/\//i.test(d.source)
   const terms = [...new Set([...d.keywords, ...d.tags].map((t) => t.toLowerCase()))]
-  const facts = [d.year, d.venue, d.page_range ? `pp. ${d.page_range}` : ''].filter(Boolean).join(' · ')
+  const volume = d.volume ? `vol. ${d.volume}${d.issue ? `(${d.issue})` : ''}` : d.issue ? `no. ${d.issue}` : ''
+  const facts = [d.year, d.venue, volume, d.page_range ? `pp. ${d.page_range}` : ''].filter(Boolean).join(' · ')
   return (
     <section className="lib-detail" aria-label="Source details">
       <div className="lib-detail-top">
@@ -661,6 +671,12 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, on
           )}
           {facts && <p className="lib-detail-facts">{facts}</p>}
           {cited && <p className="lib-detail-cited">Your draft cites this</p>}
+          {d.enriched === 'mismatch' && (
+            <p className="lib-detail-note">
+              The DOI on this paper belongs to another work in OpenAlex, “{d.index_title}”, so nothing was taken from it.
+              It may be a paper this one cites: check the DOI under Edit details.
+            </p>
+          )}
           {d.previously_removed && (
             <p className="lib-detail-note">
               You removed this file once: {removalText(d.previously_removed).replace(/^Removed/, 'removed')} You added it again on {fmtDay(d.added_at)}.
@@ -685,14 +701,24 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, on
               <input type="checkbox" checked={on} onChange={onToggle} /> Use for drafting
             </label>
             <button onClick={onCited} title="List the works this paper cites and download free copies of them">Cited papers…</button>
+            <button onClick={onCiting} title="Newer works that cite this paper, from OpenAlex">
+              Citing papers{d.cited_by_count ? ` (${d.cited_by_count.toLocaleString()})` : ''}…
+            </button>
             <button onClick={() => setEditing(true)} title="Correct the title, authors, year, journal, DOI or link">Edit details</button>
           </div>
         </>
       )}
 
+      {d.abstract && (
+        <>
+          <h4 className="lib-doc-label">Abstract</h4>
+          <Abstract text={d.abstract} />
+        </>
+      )}
+
       {d.summary && (
         <>
-          <h4 className="lib-doc-label">Summary</h4>
+          <h4 className="lib-doc-label">{d.abstract ? "Muse's summary" : 'Summary'}</h4>
           <p className="lib-doc-summary">{d.summary}</p>
         </>
       )}
@@ -716,6 +742,18 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onRetry, on
           <>
             <dt>DOI</dt>
             <dd><a className="link" href={`https://doi.org/${d.doi}`} target="_blank" rel="noreferrer">{d.doi}</a></dd>
+          </>
+        )}
+        {d.publisher && (
+          <>
+            <dt>Publisher</dt>
+            <dd>{d.publisher}</dd>
+          </>
+        )}
+        {d.cited_by_count != null && (
+          <>
+            <dt>Cited</dt>
+            <dd>{d.cited_by_count.toLocaleString()} times worldwide (OpenAlex)</dd>
           </>
         )}
         {d.url && d.url !== d.source && (
@@ -855,7 +893,7 @@ function AddSources({ disabled, onFiles, onFolder, onLink }: {
  * source's details on the right. The app bar's search box filters it. Memoized: the app redraws
  * at every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
-  docs, folders, query, onQuery, selected, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onFindMissing, cited,
+  docs, folders, query, onQuery, selected, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
   folderSimilarity, onOpenPdf,  jobs, onAddPaths, onCancelJob, onDismissJob,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
@@ -968,16 +1006,19 @@ export const LibraryPanel = memo(function LibraryPanel({
     setLookupNote('')
     setTimeline(a ? { field, mode: 'range', lo: a.start, hi: a.end } : { field, mode: 'range', lo: 0, hi: 0 })
   }
-  const lookUpDates = () =>
-    run('Looking up publication dates…', async () => {
+  /** Look papers up in OpenAlex and Crossref: those not yet looked up, or (`refresh`) every one. */
+  const lookUp = (refresh = false) =>
+    run(refresh ? 'Looking every paper up again…' : 'Looking papers up in OpenAlex and Crossref…', async () => {
       setLookupNote('')
-      const r = await api.fillPublicationDates()
+      const r = await api.enrich(undefined, refresh)
+      const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
       setLookupNote(
-        `Found ${r.found} exact date${r.found === 1 ? '' : 's'} for ${r.checked} paper${r.checked === 1 ? '' : 's'}` +
-          (r.dois ? `, and ${r.dois} missing DOI${r.dois === 1 ? '' : 's'}.` : '.') +
+        `Found ${r.found} of ${plural(r.checked, 'paper')}: ${plural(r.dates, 'exact date')}, ${plural(r.dois, 'missing DOI')}.` +
+          (r.mismatched ? ` ${r.mismatched} carr${r.mismatched === 1 ? 'ies' : 'y'} another work's DOI: see ${r.mismatched === 1 ? 'its' : 'their'} details.` : '') +
           (r.failed ? ` Couldn't reach OpenAlex for ${r.failed}; try again later.` : ''),
       )
     })
+  const notLookedUp = docs.filter((d) => !d.enriched).length
 
   useEffect(() => {
     if (sort.key === 'match' && typeof scope !== 'number') setSort({ key: 'title', dir: 1 })
@@ -1012,6 +1053,7 @@ export const LibraryPanel = memo(function LibraryPanel({
         : sort.key === 'type' ? KIND_LABEL[d.kind]
         : sort.key === 'year' ? (d.year ?? 0)
         : sort.key === 'added' ? `${d.added_at}${String(d.id).padStart(9, '0')}`
+        : sort.key === 'citations' ? (d.cited_by_count ?? -1)
         : sort.key === 'match' ? fit(d)
         : d.page_count
     const byTitle = (a: Doc, b: Doc) => a.title.localeCompare(b.title)
@@ -1138,6 +1180,17 @@ export const LibraryPanel = memo(function LibraryPanel({
                   <b>Re-file papers into folders</b>
                   <span>{folders.length ? 'Score every paper against your folders again. Your own changes are kept.' : 'Make a folder first'}</span>
                 </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    lookUp(notLookedUp === 0)
+                  }}
+                  disabled={!!busy}
+                >
+                  <b>{notLookedUp ? `Look up ${notLookedUp} paper${notLookedUp === 1 ? '' : 's'} in scholarly indexes` : 'Refresh details from scholarly indexes'}</b>
+                  <span>Journal, volume, issue and pages, abstracts, reference lists and citation counts from OpenAlex and Crossref</span>
+                </button>
               </div>
             )}
           </div>
@@ -1230,6 +1283,12 @@ export const LibraryPanel = memo(function LibraryPanel({
                   {filtering ? `${rows.length} of ${docs.length} shown` : `${rows.length} shown`}
                   {needle && <> matching “{query.trim()}”</>}
                 </span>
+                {lookupNote && !timeline && (
+                  <span className="muted lib-note" role="status">
+                    {lookupNote}{' '}
+                    <button className="link" onClick={() => setLookupNote('')}>OK</button>
+                  </span>
+                )}
                 <span className="spacer" />
                 <span className={`lib-scope${selected.size ? ' some' : ''}`} title="Tick sources to have the Assistant and cite searches use only them">
                   {selected.size === 0 ? (
@@ -1258,16 +1317,16 @@ export const LibraryPanel = memo(function LibraryPanel({
                   shown={rows.length}
                   ghosts={ghosts.length}
                   undated={docs.filter((d) => !docSpan(tl.field, d)).length}
-                  toLookUp={docs.filter((d) => !d.published_checked).length}
+                  toLookUp={notLookedUp}
                   lookupNote={lookupNote}
                   busy={!!busy}
-                  onLookUp={lookUpDates}
+                  onLookUp={() => lookUp()}
                 />
               ) : (
                 <section className="tl tl-empty">
                   <span>No source has a publication year yet.</span>
-                  {docs.some((d) => !d.published_checked) && (
-                    <button className="link" onClick={lookUpDates} disabled={!!busy}>Look up dates in OpenAlex</button>
+                  {notLookedUp > 0 && (
+                    <button className="link" onClick={() => lookUp()} disabled={!!busy}>Look up dates in OpenAlex</button>
                   )}
                   <button className="link" onClick={() => openTimeline('added')}>Go by date added</button>
                   {lookupNote && <span className="muted">{lookupNote}</span>}
@@ -1339,6 +1398,7 @@ export const LibraryPanel = memo(function LibraryPanel({
               onToggle={() => onToggle(current.id)}
               onClose={() => setOpen(null)}
               onCited={() => onCitedPapers(current.id)}
+              onCiting={() => onCitingPapers(current.id)}
               onRetry={() => retry([current.id])}
               onOpenPdf={() => onOpenPdf(current)}
               run={run}

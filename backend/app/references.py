@@ -43,6 +43,14 @@ def _pp(doc: dict) -> str:
     return f"pp. {rng}" if "–" in rng else f"p. {rng}"
 
 
+def _vol(doc: dict, style: str) -> list[str]:
+    """Volume and issue as each style writes them: APA "12(3)", the others "vol. 12" and "no. 3"."""
+    vol, issue = str(doc.get("volume") or ""), str(doc.get("issue") or "")
+    if style == "apa":
+        return [vol + (f"({issue})" if issue else "")] if vol else [f"({issue})"] if issue else []
+    return [x for x in (vol and f"vol. {vol}", issue and f"no. {issue}") if x]
+
+
 def _title(doc: dict) -> str:
     return (doc.get("title") or "Untitled").rstrip(".")
 
@@ -57,8 +65,7 @@ def apa(doc: dict) -> str:
     year = doc.get("year") or "n.d."
     parts = [f"{who} ({year}).", f"{_title(doc)}." if authors else ""]
     if doc.get("venue"):
-        pages = f", {doc['page_range']}" if doc.get("page_range") else ""
-        parts.append(f"{doc['venue']}{pages}.")
+        parts.append(", ".join([doc["venue"], *_vol(doc, "apa"), *([doc["page_range"]] if doc.get("page_range") else [])]) + ".")
     parts.append(_link(doc))
     return " ".join(p for p in parts if p)
 
@@ -74,7 +81,7 @@ def mla(doc: dict) -> str:
     else:
         who = f"{names[0][0]}, {names[0][1]}, et al."
     parts = [who, f"“{_title(doc)}.”"]
-    tail = ", ".join(str(x) for x in (doc.get("venue"), doc.get("year"), _pp(doc)) if x)
+    tail = ", ".join(str(x) for x in (doc.get("venue"), *_vol(doc, "mla"), doc.get("year"), _pp(doc)) if x)
     if tail:
         parts.append(tail + ".")
     link = _link(doc)
@@ -90,6 +97,7 @@ def ieee(doc: dict, n: int) -> str:
     parts = [f"[{n}]", f"{who}," if who else "", f"“{_title(doc)},”"]
     if doc.get("venue"):
         parts.append(f"{doc['venue']},")
+    parts += [f"{v}," for v in _vol(doc, "ieee")]
     if _pp(doc):
         parts.append(f"{_pp(doc)},")
     parts.append(f"{doc['year']}." if doc.get("year") else "n.d.")
@@ -114,7 +122,10 @@ def bibtex(doc: dict) -> str:
         "author": " and ".join(doc.get("authors") or []),
         "year": str(doc.get("year") or ""),
         "journal" if entry == "article" else "howpublished": doc.get("venue") or "",
+        "volume": str(doc.get("volume") or ""),
+        "number": str(doc.get("issue") or ""),
         "pages": (doc.get("page_range") or "").replace("–", "--"),
+        "publisher": doc.get("publisher") or "",
         "doi": doc.get("doi") or "",
         "url": doc.get("url") or "",
     }

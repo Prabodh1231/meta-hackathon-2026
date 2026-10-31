@@ -1,6 +1,9 @@
 import type {
   Citation,
   CitationGraph,
+  CitingWorks,
+  EnrichResult,
+  IndexWork,
   CitedWorks,
   Doc,
   DocxConversion,
@@ -45,7 +48,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 13
+export const API_VERSION = 14
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -127,9 +130,15 @@ export const api = {
   /** Add a removed source back from its file, under its old id and added date. */
   restoreRemoved: (id: number) => request<Doc>('POST', `/library/removed/${id}/restore`),
   forgetRemoved: (id: number) => request<{ ok: boolean }>('DELETE', `/library/removed/${id}`),
-  /** Full publication dates from OpenAlex for the papers not yet looked up. */
-  fillPublicationDates: () =>
-    request<{ checked: number; found: number; dois: number; failed: number }>('POST', '/library/publication-dates'),
+  /** Look papers up in OpenAlex and Crossref (all not yet looked up, or `docIds`; `refresh` asks again). */
+  enrich: (docIds?: number[], refresh = false) =>
+    request<EnrichResult>('POST', '/library/enrich', { doc_ids: docIds ?? null, refresh }),
+  citingWorks: (docId: number, sort: 'cited' | 'recent') => request<CitingWorks>('GET', `/documents/${docId}/citing?sort=${sort}`),
+  /** Find a free copy of any work and add it to the library. */
+  fetchWork: (w: { title: string; doi: string; year: number | null; first_author: string }) =>
+    request<FetchResult>('POST', '/library/fetch-work', w),
+  /** Citations worldwide and abstracts, by DOI. */
+  worksInfo: (dois: string[]) => request<Record<string, IndexWork>>('POST', '/works/info', { dois }),
   duplicateFiles: (cited: number[]) => request<FileDuplicateReport>('POST', '/library/duplicates', { cited }),
   page: (docId: number, page: number) => request<PageText>('GET', `/documents/${docId}/pages/${page}`),
 

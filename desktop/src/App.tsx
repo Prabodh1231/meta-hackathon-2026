@@ -17,6 +17,7 @@ import { LibraryPanel } from './components/LibraryPanel'
 import { ago, toneOf } from './components/Meters'
 import { MatrixView } from './components/MatrixView'
 import { MissingPapersDialog } from './components/MissingPapersDialog'
+import { CitingPapersDialog } from './components/CitingPapersDialog'
 import { PdfViewerDialog } from './components/PdfViewerDialog'
 import { ReferencesPanel } from './components/ReferencesPanel'
 import { ReviewPanel } from './components/ReviewPanel'
@@ -165,6 +166,7 @@ export default function App() {
   const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker the Citations tab is showing
   const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
   const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
+  const [citingFor, setCitingFor] = useState<number | null>(null) // paper whose citing works are listed
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [pdfView, setPdfView] = useState<{ doc: Doc; page: number } | null>(null) // a PDF in the app's viewer
   // In the desktop app a PDF gets a resizable window of its own; in a plain browser, the viewer dialog.
@@ -1178,6 +1180,7 @@ export default function App() {
             onDismissJob={dismissJob}
             onFindDuplicates={findDuplicateFiles}
             onCitedPapers={setCitedFor}
+            onCitingPapers={setCitingFor}
             onFindMissing={findMissing}
             folderSimilarity={settings.folder_similarity}
             onOpenPdf={openPdf}
@@ -1287,6 +1290,16 @@ export default function App() {
           onOpenPaper={showPaper}
           onChanged={refresh}
           onClose={() => setCitedFor(null)}
+          onError={onError}
+        />
+      )}
+
+      {citingFor != null && (
+        <CitingPapersDialog
+          docId={citingFor}
+          onOpenPaper={showPaper}
+          onChanged={refresh}
+          onClose={() => setCitingFor(null)}
           onError={onError}
         />
       )}
