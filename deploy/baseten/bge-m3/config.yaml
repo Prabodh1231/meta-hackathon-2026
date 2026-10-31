@@ -1,0 +1,21 @@
+# BGE-M3 embeddings on Baseten (BEI, the embeddings engine), for machines without a CUDA GPU.
+# It's the model the app runs on a local GPU, so its vectors are interchangeable with the local ones.
+# Deploy:  truss push --publish   (from this folder), then paste the model ID into
+# Settings -> Search & embeddings -> Embedding model on Baseten.
+# Needs a Baseten API key that may create deployments (the hackathon workspace key can't).
+model_name: rc-bge-m3
+resources:
+  accelerator: L4
+  use_gpu: true
+trt_llm:
+  inference_stack: v1
+  build:
+    base_model: encoder_bert  # BEI-Bert: BERT / RoBERTa / XLM-RoBERTa encoders
+    checkpoint_repository:
+      source: HF
+      repo: BAAI/bge-m3
+      revision: main
+    quantization_type: no_quant
+    max_num_tokens: 16384
+  runtime:
+    webserver_default_route: /v1/embeddings

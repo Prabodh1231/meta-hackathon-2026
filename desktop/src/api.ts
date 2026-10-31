@@ -19,6 +19,7 @@ import type {
   IngestJob,
   IngestResult,
   ModelSettings,
+  SearchSettings,
   PageText,
   RefStyle,
   ResolvedCitation,
@@ -38,7 +39,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 8
+export const API_VERSION = 10
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -152,8 +153,12 @@ export const api = {
   updateSettings: (changes: Partial<Settings>) => request<Settings>('PATCH', '/settings', changes),
   modelSettings: () => request<ModelSettings>('GET', '/settings/model'),
   /** Switch model, set the API key or the reasoning effort; left-out fields stay as they are. */
-  updateModel: (changes: { provider?: string; api_key?: string; reasoning_effort?: string }) =>
+  updateModel: (changes: { provider?: string; api_key?: string; reasoning_effort?: string; route?: string }) =>
     request<ModelSettings>('PUT', '/settings/model', changes),
+  searchSettings: () => request<SearchSettings>('GET', '/settings/search'),
+  /** Where embeddings and reranking run, and the Baseten setup; checked before it's applied. */
+  updateSearch: (changes: { where?: string; api_key?: string; embed_model?: string; rerank_model?: string }) =>
+    request<SearchSettings>('PUT', '/settings/search', changes),
   /** A library document's file, e.g. a PDF to show in the app. */
   documentFile: async (docId: number) => (await send('GET', `/documents/${docId}/file`)).arrayBuffer(),
 

@@ -57,7 +57,8 @@ def test_switching_the_model_writes_env_and_never_returns_the_key(client, lib):
     assert "sk-test" not in r.text
     assert client.get("/health").json()["provider"] == "muse"
     env = read_env_file(lib.settings.data_dir / ".env")
-    assert env == {"RC_PROVIDER": "muse", "MUSE_REASONING_EFFORT": "medium", "MUSE_API_KEY": "sk-test-1234567890abcd"}
+    assert env == {"RC_PROVIDER": "muse", "MUSE_REASONING_EFFORT": "medium", "MUSE_ROUTE": "meta",
+                   "MUSE_API_KEY": "sk-test-1234567890abcd"}  # no Baseten key here, so Meta's API only
     # Back to the mock keeps the key for later.
     assert client.put("/settings/model", json={"provider": "mock"}).json()["has_key"] is True
     assert read_env_file(lib.settings.data_dir / ".env")["RC_PROVIDER"] == "mock"

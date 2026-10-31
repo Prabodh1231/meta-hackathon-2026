@@ -231,9 +231,16 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 - **New folders start at** a similarity of N% (default 50%).
 - **Contact email** (optional): sent to OpenAlex and Semantic Scholar when finding free copies of cited papers.
 
+**Search & embeddings**
+
+- **Now:** where embeddings (which find matching passages) and the reranker (which puts the best first) run.
+- **Where search runs:** *Auto* uses this computer's NVIDIA GPU when it has one and Baseten when it doesn't; *This computer* never uses Baseten; *Baseten* always does.
+- **Baseten API key**, **Embedding model** and **Reranker** (optional): the model IDs of `BAAI/bge-m3` and a reranker deployed on your Baseten account. **Save and check** tries them before switching. On Baseten, the text of your passages, questions and cited sentences is sent there; files and drafts stay on your computer. See [Search on Baseten](../README.md#search-on-baseten).
+
 **AI model**
 
 - **Model:** Muse, or the offline mock (no key; rough results). **Save and switch** changes it at once, with no restart.
+- **Where Muse runs:** *Baseten, then Meta* sends each request to Muse on Baseten (about twice as fast) and to Meta's API if Baseten fails; *Meta's API* or *Baseten only* use one. It uses the Baseten key from **Search & embeddings**. The status bar reads *Muse via Baseten* when Baseten goes first.
 - **Meta Model API key:** paste a key to save or replace it. It's written to the `.env` file in your data folder and never shown again; only its last four characters are, so you can tell which one it is.
 - **Reasoning effort:** how much Muse thinks before answering, from *minimal* (fastest) to *xhigh* (most thorough). *low* is the default.
 

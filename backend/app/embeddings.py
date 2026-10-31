@@ -1,11 +1,16 @@
-"""Local embeddings. Meta's Model API isn't known to offer embeddings, and local-first
-means chunk vectors never leave the machine anyway."""
+"""Embeddings. Local by default: Meta's Model API isn't known to offer embeddings, and
+local-first means chunk vectors never leave the machine. A machine without a CUDA GPU can use
+the same BGE-M3 model on a Baseten deployment instead of the weaker CPU model."""
 
 import logging
+import re
+import time
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Protocol
 
+import httpx
 import numpy as np
 
 from .text_utils import tokenize
@@ -91,6 +96,65 @@ class GpuEmbedder:
                 batch //= 2
 
 
+def baseten_base(model: str) -> str:
+    """A Baseten deployment's base URL from its model ID ("abcd1234") or any URL of it (the
+    dashboard's /v1/embeddings, /rerank or /predict address)."""
+    model = model.strip().rstrip("/")
+    if re.fullmatch(r"[A-Za-z0-9]{6,16}", model):
+        return f"https://model-{model}.api.baseten.co/environments/production/sync"
+    if not re.match(r"https://[\w.-]+\.baseten\.co/", model):
+        raise ValueError("Paste a Baseten model ID or its https://model-….api.baseten.co/… address")
+    return re.sub(r"/(v1/embeddings|v1|rerank|predict)$", "", model)
+
+
+def baseten_post(client: httpx.Client, url: str, body: dict) -> httpx.Response:
+    """POST with retries: a deployment that scaled to zero answers 503 or times out while it wakes."""
+    for attempt in range(5):
+        try:
+            res = client.post(url, json=body)
+        except httpx.TimeoutException:
+            if attempt == 4:
+                raise
+            continue
+        if res.status_code in (429, 500, 502, 503, 504) and attempt < 4:
+            time.sleep(min(2 ** attempt, 10))
+            continue
+        res.raise_for_status()
+        return res
+    raise RuntimeError("unreachable")
+
+
+class BasetenEmbedder:
+    """BGE-M3 on a Baseten deployment (its OpenAI-compatible /v1/embeddings), for machines
+    without a CUDA GPU. It's the model GpuEmbedder runs, so it shares that embedder's id: moving
+    between this computer's GPU and Baseten doesn't re-embed the library."""
+
+    device = "baseten"
+    BATCH = 32  # texts per request
+    PARALLEL = 4  # requests in flight
+
+    def __init__(self, model: str, api_key: str, model_name: str = "BAAI/bge-m3", dim: int = 1024,
+                 transport: httpx.BaseTransport | None = None):
+        if not api_key:
+            raise ValueError("A Baseten API key is needed to embed on Baseten")
+        self.url = baseten_base(model) + "/v1/embeddings"
+        self.client = httpx.Client(timeout=120.0, transport=transport, headers={"Authorization": f"Api-Key {api_key}"})
+        self.dim = dim
+        self.id = f"st:{model_name}"
+
+    def _batch(self, texts: list[str]) -> list[list[float]]:
+        data = baseten_post(self.client, self.url, {"input": texts, "model": "not-required"}).json()["data"]
+        return [d["embedding"] for d in sorted(data, key=lambda d: d["index"])]
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        if not texts:
+            return np.zeros((0, self.dim), dtype=np.float32)
+        batches = [texts[i:i + self.BATCH] for i in range(0, len(texts), self.BATCH)]
+        with ThreadPoolExecutor(max_workers=min(self.PARALLEL, len(batches))) as pool:
+            parts = list(pool.map(self._batch, batches))
+        return _normalize(np.array([v for part in parts for v in part], dtype=np.float32))
+
+
 def _cuda_available() -> bool:
     try:
         import torch
@@ -100,18 +164,30 @@ def _cuda_available() -> bool:
         return False
 
 
-def make_embedder(kind: str, cache_dir: Path) -> Embedder:
+def make_embedder(kind: str, cache_dir: Path, baseten_model: str = "", baseten_key: str = "") -> Embedder:
+    """kind: "auto" (this computer's GPU; else Baseten when it's set up; else the small CPU model),
+    "local" (this computer only), "baseten", or one model: "bge-m3" / "gpu", "fastembed", "hash"."""
     if kind == "hash":
         return HashEmbedder()
     if kind in ("gpu", "bge-m3"):
         return GpuEmbedder(cache_dir)
-    # "auto" picks the stronger GPU model only when a CUDA device is present; on CPU-only
-    # machines BGE-M3 would be slow, so they keep the small fastembed model.
-    if kind == "auto" and _cuda_available():
+    if kind == "baseten":
+        return BasetenEmbedder(baseten_model, baseten_key)
+    # The stronger GPU model only when a CUDA device is present; on CPU-only machines BGE-M3
+    # would be slow, so they use it on Baseten when that's set up, or the small fastembed model.
+    cuda = kind in ("auto", "local") and _cuda_available()
+    if cuda:
         try:
             return GpuEmbedder(cache_dir)
         except Exception as exc:
-            log.warning("GPU embedder unavailable (%s); trying fastembed", exc)
+            log.warning("GPU embedder unavailable (%s); trying the next option", exc)
+    if kind == "auto" and baseten_model and baseten_key:
+        try:
+            embedder = BasetenEmbedder(baseten_model, baseten_key)
+            embedder.embed(["warm up"])  # wakes a deployment that scaled to zero, and checks it answers
+            return embedder
+        except Exception as exc:
+            log.warning("Baseten embeddings unavailable (%s); using the CPU model", exc)
     try:
         return FastEmbedder(cache_dir)
     except Exception as exc:  # not installed, or model download failed offline

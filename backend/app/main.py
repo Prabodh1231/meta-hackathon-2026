@@ -32,6 +32,14 @@ class ModelIn(BaseModel):
     provider: str | None = None  # muse | mock
     api_key: str | None = None  # write-only; left out keeps the stored key
     reasoning_effort: str | None = None
+    route: str | None = None  # baseten-first | meta | baseten
+
+
+class SearchIn(BaseModel):
+    where: str | None = None  # auto | local | baseten
+    api_key: str | None = None  # write-only; left out keeps the stored key
+    embed_model: str | None = None  # a Baseten model ID or URL; "" clears it
+    rerank_model: str | None = None
 
 
 class IngestUrlIn(BaseModel):
@@ -120,7 +128,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 8
+API_VERSION = 10
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -198,7 +206,8 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.get("/health")
     def health():
-        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name, "embedder": lib.embedder.id,
+        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name,
+                "muse_route": getattr(lib.provider, "route", []), "embedder": lib.embedder.id,
                 "embedder_device": getattr(lib.embedder, "device", "cpu"),
                 "reranker": lib.reranker.id if lib.reranker else None}
 
@@ -370,7 +379,15 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.put("/settings/model")
     def set_model(body: ModelIn):
-        return lib.update_model(body.provider, body.api_key, body.reasoning_effort)
+        return lib.update_model(body.provider, body.api_key, body.reasoning_effort, body.route)
+
+    @app.get("/settings/search")
+    def get_search():
+        return lib.search_settings()
+
+    @app.put("/settings/search")
+    def set_search(body: SearchIn):
+        return lib.update_search(body.where, body.api_key, body.embed_model, body.rerank_model)
 
     @app.get("/documents/{doc_id}/file")
     def document_file(doc_id: int):

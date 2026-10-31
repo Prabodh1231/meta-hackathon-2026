@@ -74,8 +74,10 @@ const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mo
 function modelLine(h: Health): string {
   const model = h.embedder.split(':').slice(1).join(':').split('/').pop() || h.embedder
   const embedder = model.replace(/-en-v[\d.]+$/, '').replace(/^bge/, 'BGE').replace('-m3', '-M3')
-  const device = h.embedder_device === 'cuda' ? ' (GPU)' : ''
-  return `${PROVIDER_NAMES[h.provider] ?? h.provider} · ${embedder}${device}`
+  const device = h.embedder_device === 'cuda' ? ' (GPU)' : h.embedder_device === 'baseten' ? ' (Baseten)' : ''
+  // "Muse via Baseten" when Baseten takes Muse's requests first.
+  const via = h.provider === 'muse' && h.muse_route?.[0] === 'baseten' ? ' via Baseten' : ''
+  return `${PROVIDER_NAMES[h.provider] ?? h.provider}${via} · ${embedder}${device}`
 }
 
 // Whether the writing tools are open beside the draft; Settings can override it at launch.

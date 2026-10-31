@@ -17,11 +17,12 @@ from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
 from .citegraph import build_graph, focus, keyword_links, missing_works
 from .refparse import Reference, match_reference, parse_references
+from . import embeddings as embeddings_module
 from .embeddings import Embedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
-from .retrieval import Reranker, fts_query, make_reranker, reciprocal_rank_fusion
+from .retrieval import BasetenReranker, Reranker, fts_query, make_reranker, reciprocal_rank_fusion
 from .settings import Settings, write_env_file
 from .text_utils import sentence_spans
 from .topics import choose_k, jaccard, kmeans
@@ -82,6 +83,8 @@ USER_SETTINGS: dict[str, tuple] = {
 }
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MODEL_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
+SEARCH_PLACES = ("auto", "local", "baseten")  # where embeddings and reranking run
+MUSE_ROUTES = ("baseten-first", "meta", "baseten")  # where Muse requests go
 
 
 def _setting_default(spec: tuple):
@@ -108,9 +111,12 @@ class Library:
         self.lock = threading.RLock()
         self._embed_lock = threading.Lock()  # one GPU/model call at a time while files ingest in parallel
         self.provider = provider or make_provider(settings)
-        self.embedder = embedder or make_embedder(settings.embedder, settings.data_dir / "models")
+        self.embedder = embedder or make_embedder(
+            settings.embedder, settings.data_dir / "models", settings.baseten_embed_model, settings.baseten_api_key)
         self.reranker = (
-            make_reranker(settings.reranker, settings.data_dir / "models") if reranker is _FROM_SETTINGS else reranker
+            make_reranker(settings.reranker, settings.data_dir / "models", settings.baseten_rerank_model,
+                          settings.baseten_api_key)
+            if reranker is _FROM_SETTINGS else reranker
         )
         self.open_access = open_access or openaccess.OpenAccess(settings.contact_email)
         if self.pref("contact_email"):
@@ -1502,9 +1508,13 @@ class Library:
     def model_settings(self) -> dict:
         """Which model the app uses, for the Settings window. The key itself is never sent back."""
         s = self.settings
-        names = ("RC_PROVIDER", "MUSE_API_KEY", "MODEL_API_KEY", "MUSE_REASONING_EFFORT")
+        names = ("RC_PROVIDER", "MUSE_API_KEY", "MODEL_API_KEY", "MUSE_REASONING_EFFORT", "MUSE_ROUTE")
         return {
             "provider": self.provider.name,
+            "route": s.route,
+            "routes": getattr(self.provider, "route", []),  # in the order requests try them
+            "has_baseten_key": bool(s.baseten_api_key),
+            "baseten_model": s.baseten_muse_model,
             "has_key": bool(s.muse_api_key),
             "key_hint": s.muse_api_key[-4:] if len(s.muse_api_key) >= 12 else "",
             "model": s.muse_model,
@@ -1515,11 +1525,14 @@ class Library:
         }
 
     def update_model(self, provider: str | None = None, api_key: str | None = None,
-                     reasoning_effort: str | None = None) -> dict:
-        """Switch between Muse and the offline mock, set the key or the reasoning effort. Takes
-        effect at once, and is written to the data folder's .env so the next start uses it too."""
+                     reasoning_effort: str | None = None, route: str | None = None) -> dict:
+        """Switch between Muse and the offline mock, set the key, the reasoning effort, or the
+        route to Muse (Baseten first, Meta's API, Baseten only). Takes effect at once, and is
+        written to the data folder's .env so the next start uses it too."""
         if provider is not None and provider not in ("muse", "mock"):
             raise ValueError("provider must be muse or mock")
+        if route is not None and route not in MUSE_ROUTES:
+            raise ValueError(f"route must be one of {', '.join(MUSE_ROUTES)}")
         if reasoning_effort is not None and reasoning_effort not in MODEL_EFFORTS:
             raise ValueError(f"reasoning_effort must be one of {', '.join(MODEL_EFFORTS)}")
         if api_key is not None:
@@ -1531,16 +1544,108 @@ class Library:
             provider=provider or self.settings.provider,
             muse_api_key=api_key if api_key is not None else self.settings.muse_api_key,
             muse_reasoning_effort=reasoning_effort or self.settings.muse_reasoning_effort,
+            muse_route=route or self.settings.muse_route,
         )
-        if new.provider == "muse" and not new.muse_api_key:
+        if new.provider == "muse" and new.route == "meta" and not new.muse_api_key:
             raise ValueError("Add your Meta Model API key to use Muse")
+        if new.provider == "muse" and new.route != "meta" and not new.baseten_api_key:
+            raise ValueError("Add a Baseten API key (Settings → Search & embeddings) to use Muse on Baseten")
+        if new.provider == "muse" and new.route == "baseten-first" and not new.muse_api_key:
+            raise ValueError("Add your Meta Model API key too, as the backup, or choose Baseten only")
         model = make_provider(new)
-        updates = {"RC_PROVIDER": new.provider, "MUSE_REASONING_EFFORT": new.muse_reasoning_effort}
+        updates = {"RC_PROVIDER": new.provider, "MUSE_REASONING_EFFORT": new.muse_reasoning_effort,
+                   "MUSE_ROUTE": new.route}
         if api_key is not None:
             updates["MUSE_API_KEY"] = api_key
         write_env_file(new.data_dir / ".env", updates)
         self.settings, self.provider = new, model
         return self.model_settings()
+
+    # ---------- where embeddings and reranking run ----------
+
+    def search_settings(self) -> dict:
+        """Where embeddings and reranking run, for the Settings window. The key is never sent back."""
+        s = self.settings
+        where = s.embedder if s.embedder in SEARCH_PLACES else "auto"
+        return {
+            "where": where,
+            "embedder": self.embedder.id,
+            "embedder_on": getattr(self.embedder, "device", "cpu"),
+            "reranker": self.reranker.id if self.reranker else None,
+            "reranker_on": getattr(self.reranker, "device", "cpu") if self.reranker else None,
+            "has_key": bool(s.baseten_api_key),
+            "key_hint": s.baseten_api_key[-4:] if len(s.baseten_api_key) >= 12 else "",
+            "embed_model": s.baseten_embed_model,
+            "rerank_model": s.baseten_rerank_model,
+            "gpu": embeddings_module._cuda_available(),
+        }
+
+    def update_search(self, where: str | None = None, api_key: str | None = None,
+                      embed_model: str | None = None, rerank_model: str | None = None) -> dict:
+        """Choose where embeddings and reranking run, and set up Baseten. A Baseten deployment is
+        tried before anything changes, so a wrong ID or key is reported instead of breaking search.
+        Applied at once when the library's vectors stay valid (same model); otherwise at the next
+        start, which re-embeds the library."""
+        if where is not None and where not in SEARCH_PLACES:
+            raise ValueError(f"where must be one of {', '.join(SEARCH_PLACES)}")
+        if api_key is not None:
+            api_key = api_key.strip()
+            if not api_key or len(api_key) > 400 or any(c.isspace() or c in "\"'#" for c in api_key):
+                raise ValueError("That doesn't look like an API key")
+        for m in (embed_model, rerank_model):
+            if m:
+                embeddings_module.baseten_base(m)  # raises on something that isn't a Baseten model
+        new = dataclasses.replace(
+            self.settings,
+            embedder=where or self.settings.embedder,
+            reranker=where or self.settings.reranker,
+            baseten_api_key=api_key if api_key is not None else self.settings.baseten_api_key,
+            baseten_embed_model=(embed_model.strip() if embed_model is not None else self.settings.baseten_embed_model),
+            baseten_rerank_model=(rerank_model.strip() if rerank_model is not None else self.settings.baseten_rerank_model),
+        )
+        if new.embedder == "baseten" and not (new.baseten_embed_model and new.baseten_api_key):
+            raise ValueError("Add a Baseten API key and the embedding model's ID to run search on Baseten")
+        # Try Baseten now: what will be used on this computer, plus anything just entered.
+        gpu = embeddings_module._cuda_available()
+        if new.baseten_api_key and new.baseten_embed_model and (
+                new.embedder == "baseten" or (new.embedder == "auto" and not gpu) or embed_model):
+            try:
+                embeddings_module.BasetenEmbedder(new.baseten_embed_model, new.baseten_api_key).embed(["test"])
+            except Exception as exc:
+                raise ValueError(f"Baseten's embedding model didn't answer: {exc}") from exc
+        if new.baseten_api_key and new.baseten_rerank_model and (
+                new.reranker == "baseten" or (new.reranker == "auto" and not gpu) or rerank_model):
+            try:
+                BasetenReranker(new.baseten_rerank_model, new.baseten_api_key).score("test", ["test"])
+            except Exception as exc:
+                raise ValueError(f"Baseten's reranker didn't answer: {exc}") from exc
+
+        updates = {"RC_EMBEDDER": new.embedder, "RC_RERANKER": new.reranker,
+                   "BASETEN_EMBED_MODEL": new.baseten_embed_model, "BASETEN_RERANK_MODEL": new.baseten_rerank_model}
+        if api_key is not None:
+            updates["BASETEN_API_KEY"] = api_key
+        write_env_file(new.data_dir / ".env", updates)
+
+        models = new.data_dir / "models"
+        # Keep the loaded embedder when it would be the same one (loading BGE-M3 again would take
+        # a second copy's worth of GPU memory); build a new one only to move to or from Baseten.
+        remote_now = getattr(self.embedder, "device", "") == "baseten"
+        remote_next = new.embedder == "baseten" or (
+            new.embedder == "auto" and not gpu and bool(new.baseten_embed_model and new.baseten_api_key))
+        same_deployment = (new.baseten_embed_model, new.baseten_api_key) == (
+            self.settings.baseten_embed_model, self.settings.baseten_api_key)
+        if remote_next == remote_now and (not remote_next or same_deployment):
+            embedder = self.embedder
+        else:
+            embedder = make_embedder(new.embedder, models, new.baseten_embed_model, new.baseten_api_key)
+        reranker = make_reranker(new.reranker, models, new.baseten_rerank_model, new.baseten_api_key)
+        restart = embedder.id != self.embedder.id
+        with self._embed_lock:
+            if not restart:
+                self.embedder = embedder  # same vectors, so the index stays as it is
+            self.reranker = reranker
+        self.settings = new
+        return {**self.search_settings(), "restart_needed": restart}
 
     def document_file(self, doc_id: int) -> tuple[Path, str]:
         """The file on disk behind a library document, and its media type (to show a PDF in the app)."""

@@ -12,6 +12,10 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Protocol
 
+import httpx
+
+from .embeddings import _cuda_available, baseten_base, baseten_post
+
 log = logging.getLogger(__name__)
 
 DEFAULT_RERANKER = "Xenova/ms-marco-MiniLM-L-6-v2"
@@ -70,15 +74,44 @@ class CrossEncoderReranker:
         return [float(s) for s in self.model.rerank(query, texts)]
 
 
-def make_reranker(kind: str, cache_dir: Path) -> Reranker | None:
-    """kind: "none", "auto" (default model, skipped if it can't load) or a model name."""
+class BasetenReranker:
+    """A cross-encoder on a Baseten deployment (its /rerank route), e.g. BAAI/bge-reranker-v2-m3:
+    larger than the local one, for machines without a CUDA GPU or by choice."""
+
+    def __init__(self, model: str, api_key: str, transport: httpx.BaseTransport | None = None):
+        if not api_key:
+            raise ValueError("A Baseten API key is needed to rerank on Baseten")
+        self.url = baseten_base(model) + "/rerank"
+        self.client = httpx.Client(timeout=60.0, transport=transport, headers={"Authorization": f"Api-Key {api_key}"})
+        self.id = "baseten:rerank"
+        self.device = "baseten"
+
+    def score(self, query: str, texts: list[str]) -> list[float]:
+        if not texts:
+            return []
+        scores = [float("-inf")] * len(texts)
+        for item in baseten_post(self.client, self.url, {"query": query, "texts": texts}).json():
+            scores[int(item["index"])] = float(item["score"])
+        return scores
+
+
+def make_reranker(kind: str, cache_dir: Path, baseten_model: str = "", baseten_key: str = "") -> Reranker | None:
+    """kind: "none"; "auto" (Baseten when this computer has no CUDA GPU and it's set up, else the
+    local default, skipped if it can't load); "local"; "baseten" (when a reranker is deployed
+    there; the local one otherwise); or a local model name."""
     if kind == "none":
         return None
-    model = DEFAULT_RERANKER if kind == "auto" else kind
+    on_baseten = bool(baseten_model and baseten_key) and (kind == "baseten" or (kind == "auto" and not _cuda_available()))
+    if on_baseten:
+        try:
+            return BasetenReranker(baseten_model, baseten_key)
+        except Exception as exc:
+            log.warning("Baseten reranker unavailable (%s); using the local one", exc)
+    model = DEFAULT_RERANKER if kind in ("auto", "local", "baseten") else kind
     try:
         return CrossEncoderReranker(cache_dir, model)
     except Exception as exc:  # not installed, or download failed offline
-        if kind != "auto":
+        if kind not in ("auto", "local", "baseten"):
             raise
         log.warning("Reranker unavailable (%s); search will use fused keyword+vector ranking", exc)
         return None

@@ -18,6 +18,23 @@ class Settings:
     muse_model: str = "muse-spark-1.3"
     muse_reasoning_effort: str = "low"  # minimal | low | medium | high | xhigh
     contact_email: str = ""  # sent to OpenAlex and Semantic Scholar when finding cited papers (polite pool)
+    # Muse Spark is also served by Baseten's Model APIs. "baseten-first" sends each request there
+    # and to Meta's API if Baseten fails; "meta" and "baseten" use one only. Empty: Baseten first
+    # when a Baseten key is set, else Meta.
+    muse_route: str = ""
+    baseten_muse_base: str = "https://inference.baseten.co/v1"
+    baseten_muse_model: str = "meta-models/muse-spark-open-1026"
+    # Baseten deployments for machines without a CUDA GPU (see make_embedder): model ID or URL.
+    baseten_api_key: str = ""
+    baseten_embed_model: str = ""
+    baseten_rerank_model: str = ""
+
+    @property
+    def route(self) -> str:
+        """Where Muse requests go: muse_route, or its default."""
+        if self.muse_route in ("baseten-first", "meta", "baseten"):
+            return self.muse_route
+        return "baseten-first" if self.baseten_api_key else "meta"
 
     @property
     def db_path(self) -> Path:
@@ -46,6 +63,12 @@ class Settings:
             muse_model=env("MUSE_MODEL", cls.muse_model),
             muse_reasoning_effort=env("MUSE_REASONING_EFFORT", cls.muse_reasoning_effort),
             contact_email=env("RC_CONTACT_EMAIL"),
+            muse_route=env("MUSE_ROUTE").lower(),
+            baseten_muse_base=env("BASETEN_MUSE_BASE", cls.baseten_muse_base),
+            baseten_muse_model=env("BASETEN_MUSE_MODEL", cls.baseten_muse_model),
+            baseten_api_key=env("BASETEN_API_KEY"),
+            baseten_embed_model=env("BASETEN_EMBED_MODEL"),
+            baseten_rerank_model=env("BASETEN_RERANK_MODEL"),
         )
 
 

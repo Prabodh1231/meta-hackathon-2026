@@ -364,6 +364,8 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .setting-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
 .setting-ok { color: var(--ok); font-size: 13px; }
+.setting-now { margin: 0; font-size: 13px; line-height: 1.8; }
+.setting-now b { font-weight: 600; }
 .setting-warn { margin: 16px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); border-left: 3px solid var(--warn); font-size: 12.5px; }
 @media (max-width: 640px) { .modal.settings { grid-template-columns: 1fr; } .settings-nav { flex-direction: row; overflow-x: auto; } .settings-nav h2 { display: none; } }
 .prose {

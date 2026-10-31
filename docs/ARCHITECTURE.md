@@ -36,8 +36,8 @@ How Research Companion is put together, for anyone changing it. For using the ap
 | `db.py` | Schema and migrations (SQLite in WAL mode, FTS5 for keyword search). |
 | `ingest.py` | Parsers for PDF, DOCX, PPTX, Markdown/text, HTML and URLs, and images. Each returns page-addressed text. |
 | `jobs.py` | Background imports: eight files at a time (`INGEST_WORKERS` in `library.py`), with per-file stages for the progress card. Within a file, the Muse calls (metadata, summary, tags, folder scoring) run alongside the GPU embedding; folder scoring starts once the vectors are ready. |
-| `embeddings.py` | Local embedders: BGE-M3 on a GPU, bge-small via fastembed on CPU, a hashing fallback. |
-| `retrieval.py` | Keyword (BM25) queries, reciprocal rank fusion, the optional local reranker. |
+| `embeddings.py` | Embedders: BGE-M3 on a GPU, bge-small via fastembed on CPU, a hashing fallback, and BGE-M3 on a Baseten deployment (`BasetenEmbedder`, same id as the local BGE-M3 so the library's vectors stay valid). `make_embedder` picks one: *auto* is GPU, else Baseten when configured, else CPU. |
+| `retrieval.py` | Keyword (BM25) queries, reciprocal rank fusion, the optional reranker: local, or on Baseten (`BasetenReranker`, BEI `/rerank`). |
 | `citations.py` | Finding a model's quote in the source, tolerant of whitespace, case, curly quotes and OCR slips. |
 | `references.py` | APA 7, MLA 9, IEEE and BibTeX from stored metadata. |
 | `refparse.py`, `citegraph.py` | Reading reference lists; who cites whom, shared references, works the library lacks. |
@@ -47,7 +47,7 @@ How Research Companion is put together, for anyone changing it. For using the ap
 | `draft_review.py` | A draft as text at three levels; duplication and version comparison. |
 | `docx_import.py`, `export_docx.py` | Word in and out. |
 | `dupfiles.py` | Duplicate files in the library. Suggests; never deletes. |
-| `providers/` | The model interface (`base.py`), Muse over the OpenAI-compatible Meta Model API (`muse.py`), an offline mock (`mock.py`), and the prompts and JSON schemas (`prompts.py`). |
+| `providers/` | The model interface (`base.py`), Muse over an OpenAI-compatible API (`muse.py`: Meta's Model API, or Baseten's), `FailoverProvider` (`failover.py`: each request to the first service that answers, a failed one rested for a minute), an offline mock (`mock.py`), and the prompts and JSON schemas (`prompts.py`). `make_provider` builds the route from `MUSE_ROUTE`. |
 
 ## API
 
@@ -63,7 +63,7 @@ All JSON. Main groups (see `main.py` for the full list):
 | Writing | `POST /write/draft`, `POST /citations/verify`, `POST /citations/suggest`, `POST /citations/resolve`, `POST /references` |
 | Drafts | `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `POST /drafts/import`, `POST /drafts/convert-docx`, `POST /drafts/check-duplicates` |
 | Versions | `GET/POST /drafts/{id}/versions`, `GET/PATCH/DELETE /drafts/{id}/versions/{v}`, `POST …/compare`, `POST …/restore` |
-| Settings | `GET/PATCH /settings` (preferences, validated against `USER_SETTINGS` in `library.py`), `GET/PUT /settings/model` (Muse or mock, key, reasoning effort; the key is never returned) |
+| Settings | `GET/PATCH /settings` (preferences, validated against `USER_SETTINGS` in `library.py`), `GET/PUT /settings/model` (Muse or mock, key, reasoning effort; the key is never returned), `GET/PUT /settings/search` (where embeddings and reranking run, Baseten key and model IDs; tried before they're applied) |
 | Files | `GET /documents/{id}/file`: a library document's file, for the PDF viewer and pdf.js. Only files the library holds. |
 | Other | `POST /export/docx`, `GET /search` |
 

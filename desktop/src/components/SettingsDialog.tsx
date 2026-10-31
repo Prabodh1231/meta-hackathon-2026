@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import type { DocxStyle, ModelSettings, Settings, ThemePref } from '../types'
+import type { DocxStyle, ModelSettings, SearchSettings, Settings, ThemePref } from '../types'
 
 const THEMES: { value: ThemePref; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -47,19 +47,20 @@ const EFFORT_NOTES: Record<string, string> = {
   xhigh: 'Slowest; the most thorough reasoning.',
 }
 
-type Section = 'appearance' | 'writing' | 'review' | 'library' | 'model'
+type Section = 'appearance' | 'writing' | 'review' | 'library' | 'search' | 'model'
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'appearance', label: 'Appearance & editor' },
   { id: 'writing', label: 'Writing & citations' },
   { id: 'review', label: 'Review & history' },
   { id: 'library', label: 'Library' },
+  { id: 'search', label: 'Search & embeddings' },
   { id: 'model', label: 'AI model' },
 ]
 
 interface Props {
   settings: Settings
   onChange: (changes: Partial<Settings>) => void
-  /** The model was switched: the status bar shows the new one. */
+  /** The model, or where search runs, was switched: the status bar shows the new one. */
   onModelChanged: () => void
   onClose: () => void
 }
@@ -157,11 +158,132 @@ function EmailField({ value, onChange }: { value: string; onChange: (v: string) 
   )
 }
 
+/** "BGE-M3 on this computer's GPU": a model id and where it runs, in words. */
+function placeText(id: string | null, on: string | null): string {
+  if (!id) return 'off'
+  const name = id.includes('rerank') ? 'Baseten reranker' : id.split(':').slice(1).join(':').split('/').pop() || id
+  const where = on === 'baseten' ? 'on Baseten' : on === 'cuda' ? "on this computer's GPU" : 'on this computer'
+  return `${name} ${where}`
+}
+
+/** Where embeddings and reranking run: this computer, or Baseten for machines without a GPU. */
+function SearchSection({ onChanged }: { onChanged: () => void }) {
+  const [now, setNow] = useState<SearchSettings | null>(null)
+  const [where, setWhere] = useState<SearchSettings['where']>('auto')
+  const [key, setKey] = useState('')
+  const [embedModel, setEmbedModel] = useState('')
+  const [rerankModel, setRerankModel] = useState('')
+  const [state, setState] = useState<{ busy?: boolean; error?: string; done?: string }>({})
+
+  const load = (s: SearchSettings) => {
+    setNow(s)
+    setWhere(s.where)
+    setEmbedModel(s.embed_model)
+    setRerankModel(s.rerank_model)
+  }
+  useEffect(() => {
+    api
+      .searchSettings()
+      .then(load)
+      .catch((e) => setState({ error: e instanceof Error ? e.message : String(e) }))
+  }, [])
+
+  if (!now) return <p className="muted">{state.error ?? 'Loading…'}</p>
+
+  const changed =
+    where !== now.where || key.trim() !== '' || embedModel.trim() !== now.embed_model || rerankModel.trim() !== now.rerank_model
+  async function save() {
+    setState({ busy: true })
+    try {
+      const s = await api.updateSearch({
+        where,
+        embed_model: embedModel.trim(),
+        rerank_model: rerankModel.trim(),
+        ...(key.trim() ? { api_key: key.trim() } : {}),
+      })
+      load(s)
+      setKey('')
+      setState({
+        done: s.restart_needed
+          ? 'Saved. Restart the app to switch embeddings; your library is re-embedded once, then.'
+          : `Now: embeddings ${placeText(s.embedder, s.embedder_on)}; reranking ${placeText(s.reranker, s.reranker_on)}.`,
+      })
+      onChanged()
+    } catch (e) {
+      setState({ error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
+  return (
+    <>
+      <Setting title="Now" hint="Embeddings find the passages that match a question or a sentence you cite; the reranker puts the best first.">
+        <p className="setting-now">
+          Embeddings: <b>{placeText(now.embedder, now.embedder_on)}</b>
+          <br />
+          Reranking: <b>{placeText(now.reranker, now.reranker_on)}</b>
+        </p>
+      </Setting>
+      <Setting title="Where search runs">
+        <Choice
+          label="Where search runs"
+          value={where}
+          options={[
+            { value: 'auto', label: 'Auto' },
+            { value: 'local', label: 'This computer' },
+            { value: 'baseten', label: 'Baseten' },
+          ]}
+          onChange={setWhere}
+        />
+        <p className="muted">
+          {where === 'auto'
+            ? `This computer's NVIDIA GPU when it has one; Baseten when it doesn't (and it's set up below); otherwise a smaller model on the CPU.${now.gpu ? ' This computer has a GPU, so search stays here.' : ''}`
+            : where === 'local'
+              ? 'Never uses Baseten. Without an NVIDIA GPU this means the smaller CPU model, which finds sources less well.'
+              : 'Always on Baseten, using the models below. Reranking stays here if no reranker is deployed there.'}
+        </p>
+      </Setting>
+      <Setting
+        title="Baseten API key"
+        hint={now.has_key ? `A key is saved${now.key_hint ? ` (ending in ${now.key_hint})` : ''}. Paste a new one to replace it.` : 'Paste the API key from your Baseten account.'}
+      >
+        <input
+          className="setting-input"
+          type="password"
+          value={key}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={now.has_key ? '•••• •••• •••• ' + now.key_hint : 'Paste your key'}
+          aria-label="Baseten API key"
+          onChange={(e) => setKey(e.target.value)}
+        />
+      </Setting>
+      <Setting title="Embedding model on Baseten" hint="BAAI/bge-m3 deployed with Baseten's embeddings engine (BEI): paste its model ID or address. It's the model this computer's GPU runs, so moving between the two doesn't re-embed your library.">
+        <input className="setting-input" value={embedModel} spellCheck={false} placeholder="e.g. abcd1234" aria-label="Baseten embedding model" onChange={(e) => setEmbedModel(e.target.value)} />
+      </Setting>
+      <Setting title="Reranker on Baseten (optional)" hint="A reranker deployed with BEI, such as BAAI/bge-reranker-v2-m3: its model ID or address.">
+        <input className="setting-input" value={rerankModel} spellCheck={false} placeholder="e.g. efgh5678" aria-label="Baseten reranker model" onChange={(e) => setRerankModel(e.target.value)} />
+      </Setting>
+      <p className="setting-warn">
+        On Baseten, the text of your passages, questions and cited sentences is sent there to be embedded and ranked. Your
+        files and drafts stay on this computer.
+      </p>
+      <div className="setting-actions">
+        <button className="primary" disabled={!changed || state.busy} onClick={save}>
+          {state.busy ? 'Checking Baseten…' : 'Save and check'}
+        </button>
+        {state.done && !changed && <span className="setting-ok">{state.done}</span>}
+        {state.error && <span className="error-text">{state.error}</span>}
+      </div>
+    </>
+  )
+}
+
 /** Muse or the offline mock, the API key, and how hard Muse thinks. */
 function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
   const [model, setModel] = useState<ModelSettings | null>(null)
   const [provider, setProvider] = useState<'muse' | 'mock'>('mock')
   const [effort, setEffort] = useState('low')
+  const [route, setRoute] = useState<ModelSettings['route']>('meta')
   const [key, setKey] = useState('')
   const [state, setState] = useState<{ busy?: boolean; error?: string; saved?: boolean }>({})
 
@@ -172,19 +294,21 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
         setModel(m)
         setProvider(m.provider)
         setEffort(m.reasoning_effort)
+        setRoute(m.route)
       })
       .catch((e) => setState({ error: e instanceof Error ? e.message : String(e) }))
   }, [])
 
   if (!model) return <p className="muted">{state.error ?? 'Loading…'}</p>
 
-  const changed = provider !== model.provider || effort !== model.reasoning_effort || key.trim() !== ''
+  const changed = provider !== model.provider || effort !== model.reasoning_effort || route !== model.route || key.trim() !== ''
   async function save() {
     setState({ busy: true })
     try {
       const m = await api.updateModel({
         provider,
         reasoning_effort: effort,
+        route,
         ...(key.trim() ? { api_key: key.trim() } : {}),
       })
       setModel(m)
@@ -209,6 +333,28 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
           onChange={setProvider}
         />
       </Setting>
+      {provider === 'muse' && (
+        <Setting title="Where Muse runs" hint="Muse Spark is served by Meta's Model API and by Baseten. Baseten measured about twice as fast.">
+          <Choice
+            label="Where Muse runs"
+            value={route}
+            options={[
+              { value: 'baseten-first', label: 'Baseten, then Meta' },
+              { value: 'meta', label: "Meta's API" },
+              { value: 'baseten', label: 'Baseten only' },
+            ]}
+            onChange={setRoute}
+          />
+          <p className="muted">
+            {route === 'baseten-first'
+              ? `Each request goes to ${model.baseten_model} on Baseten first, and to Meta's API if Baseten fails or is busy. A failing service is passed over for a minute.`
+              : route === 'meta'
+                ? `Only Meta's API (${model.model}).`
+                : `Only ${model.baseten_model} on Baseten: if it's down, Muse is unavailable until it's back.`}
+            {route !== 'meta' && !model.has_baseten_key && ' Add your Baseten API key in Search & embeddings first.'}
+          </p>
+        </Setting>
+      )}
       <Setting
         title="Meta Model API key"
         hint={model.has_key ? `A key is saved${model.key_hint ? ` (ending in ${model.key_hint})` : ''}. Paste a new one to replace it.` : 'Paste the key from your Meta Model API account.'}
@@ -245,7 +391,11 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
         <button className="primary" disabled={!changed || state.busy} onClick={save}>
           {state.busy ? 'Saving…' : 'Save and switch'}
         </button>
-        {state.saved && !changed && <span className="setting-ok">Now using {model.provider === 'muse' ? 'Muse' : 'the offline mock'}.</span>}
+        {state.saved && !changed && (
+          <span className="setting-ok">
+            Now using {model.provider === 'muse' ? `Muse via ${model.routes.map((r) => (r === 'baseten' ? 'Baseten' : "Meta's API")).join(', then ')}` : 'the offline mock'}.
+          </span>
+        )}
         {state.error && <span className="error-text">{state.error}</span>}
       </div>
     </>
@@ -411,6 +561,8 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose 
               </Setting>
             </>
           )}
+
+          {section === 'search' && <SearchSection onChanged={onModelChanged} />}
 
           {section === 'model' && <ModelSection onModelChanged={onModelChanged} />}
         </div>
