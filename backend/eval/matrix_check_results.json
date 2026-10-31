@@ -1,0 +1,221 @@
+{
+  "provider": "muse",
+  "runs": 3,
+  "exact": 13,
+  "acceptable": 15,
+  "cases": [
+    {
+      "sentence": "Studies in Kenya and Nigeria report higher savings after mobile money adoption (Wanjiru, 2019; Okoro, 2022).",
+      "expected": "supported",
+      "acceptable": [
+        "supported"
+      ],
+      "verdicts": [
+        "supported",
+        "supported",
+        "supported"
+      ],
+      "reason": "Wanjiru 2019 reports mobile money adoption increased household savings by 12% in rural Kenya and Okoro 2022 reports savings rose 18% among treated women in Lagos, Nigeria, directly supporting the sentence.",
+      "one_quote": "partial"
+    },
+    {
+      "sentence": "Evidence on savings is mixed: Wanjiru and Okoro find increases, while Mensah finds no significant effect.",
+      "expected": "supported",
+      "acceptable": [
+        "supported"
+      ],
+      "verdicts": [
+        "supported",
+        "supported",
+        "supported"
+      ],
+      "reason": "Wanjiru 2019 reports a 12% increase in savings and Okoro 2022 reports an 18% rise, while Mensah 2017 finds no statistically significant effect, directly supporting the claim that evidence is mixed.",
+      "one_quote": "partial"
+    },
+    {
+      "sentence": "Only one of the four studies is a randomized controlled trial.",
+      "expected": "supported",
+      "acceptable": [
+        "supported"
+      ],
+      "verdicts": [
+        "supported",
+        "supported",
+        "supported"
+      ],
+      "reason": "Okoro 2022 is explicitly listed as a 'Randomized controlled trial,' while Wanjiru 2019 uses panel regression, Rao 2021 uses difference-in-differences, and Mensah 2017 uses cross-sectional PSM, so only one of four is an RCT.",
+      "one_quote": "unsupported"
+    },
+    {
+      "sentence": "None of the studies examines rural India.",
+      "expected": "supported",
+      "acceptable": [
+        "supported"
+      ],
+      "verdicts": [
+        "supported",
+        "supported",
+        "supported"
+      ],
+      "reason": "No study lists rural India as its setting \u2014 Rao 2021 is explicitly urban Mumbai/Delhi (\"urban firms only\") and Wanjiru 2019, Mensah 2017, and Okoro 2022 were conducted in rural Kenya, Ghana, and Lagos, Nigeria respectively.",
+      "one_quote": "unsupported"
+    },
+    {
+      "sentence": "All four studies are set in Africa or South Asia; none covers Latin America.",
+      "expected": "supported",
+      "acceptable": [
+        "supported"
+      ],
+      "verdicts": [
+        "supported",
+        "supported",
+        "supported"
+      ],
+      "reason": "All four settings are in Africa or South Asia \u2014 Wanjiru 2019 (rural Kenya), Mensah 2017 (Ghana), Okoro 2022 (Nigeria) in Africa and Rao 2021 (Mumbai/Delhi, India) in South Asia \u2014 with no study listing a Latin American setting.",
+      "one_quote": "unsupported"
+    },
+    {
+      "sentence": "The largest sample is Okoro's 2,400 women entrepreneurs.",
+      "expected": "supported",
+      "acceptable": [
+        "supported"
+      ],
+      "verdicts": [
+        "supported",
+        "supported",
+        "supported"
+      ],
+      "reason": "Okoro 2022 reports 2,400 women entrepreneurs, which exceeds Rao 2021's 1,200 small firms, Mensah 2017's 830 households, and Wanjiru 2019's 412 farm households, confirming the largest sample.",
+      "one_quote": "unsupported"
+    },
+    {
+      "sentence": "Both studies published after 2020 report positive effects, though one covers only urban firms.",
+      "expected": "supported",
+      "acceptable": [
+        "supported"
+      ],
+      "verdicts": [
+        "supported",
+        "supported",
+        "supported"
+      ],
+      "reason": "Rao 2021 (+9% sales) and Okoro 2022 (+18% savings) are the only post-2020 studies and both report positive effects, with Rao 2021 explicitly limited to urban firms only.",
+      "one_quote": "partial"
+    },
+    {
+      "sentence": "All four studies find that mobile money increases savings.",
+      "expected": "partial",
+      "acceptable": [
+        "partial",
+        "unsupported"
+      ],
+      "verdicts": [
+        "unsupported",
+        "unsupported",
+        "unsupported"
+      ],
+      "reason": "Wanjiru 2019 and Okoro 2022 found increased savings, but Rao 2021 measured sales growth (not savings) and Mensah 2017 found no significant effect on savings, so not all four find an increase.",
+      "one_quote": "partial"
+    },
+    {
+      "sentence": "Mobile money raised savings by 12% in Kenya and by 25% in Nigeria.",
+      "expected": "partial",
+      "acceptable": [
+        "partial",
+        "unsupported"
+      ],
+      "verdicts": [
+        "partial",
+        "partial",
+        "partial"
+      ],
+      "reason": "Wanjiru 2019 supports the 12% Kenya claim but Okoro 2022 finds an 18% increase in Nigeria, not 25%, so only part of the conjunctive sentence is supported.",
+      "one_quote": "partial"
+    },
+    {
+      "sentence": "The studies consistently name self-reported data as a limitation.",
+      "expected": "partial",
+      "acceptable": [
+        "partial",
+        "unsupported"
+      ],
+      "verdicts": [
+        "unsupported",
+        "unsupported",
+        "unsupported"
+      ],
+      "reason": "Only Wanjiru 2019 lists self-reported data as a limitation, while Rao 2021 (urban firms only), Mensah 2017 (cross-sectional causality), and Okoro 2022 (no limitation reported) do not, so the claim of consistency is contradicted.",
+      "one_quote": "unsupported"
+    },
+    {
+      "sentence": "Mensah (2017) finds that mobile money doubled household savings in Ghana.",
+      "expected": "unsupported",
+      "acceptable": [
+        "unsupported"
+      ],
+      "verdicts": [
+        "unsupported",
+        "unsupported",
+        "unsupported"
+      ],
+      "reason": "Mensah (2017) explicitly reports 'no statistically significant effect of mobile money use on household savings' in Ghana, directly contradicting the claim that it doubled savings.",
+      "one_quote": "unsupported"
+    },
+    {
+      "sentence": "The studies agree that digital finance has no effect on firm sales.",
+      "expected": "unsupported",
+      "acceptable": [
+        "unsupported"
+      ],
+      "verdicts": [
+        "unsupported",
+        "unsupported",
+        "unsupported"
+      ],
+      "reason": "Rao 2021 directly contradicts the claim by finding firms adopting digital payments grew sales 9% faster, while Wanjiru 2019, Mensah 2017, and Okoro 2022 examine household/women's savings, not firm sales, so there is no agreement of no effect.",
+      "one_quote": "unsupported"
+    },
+    {
+      "sentence": "Several of the studies examine mobile money's effect on health spending.",
+      "expected": "unsupported",
+      "acceptable": [
+        "unsupported"
+      ],
+      "verdicts": [
+        "unsupported",
+        "unsupported",
+        "unsupported"
+      ],
+      "reason": "No study examines health spending \u2014 Wanjiru 2019, Mensah 2017 and Okoro 2022 examine effects on household savings, while Rao 2021 examines digital payments' effect on small-firm sales.",
+      "one_quote": "unsupported"
+    },
+    {
+      "sentence": "None of the studies uses a randomized controlled trial.",
+      "expected": "unsupported",
+      "acceptable": [
+        "unsupported"
+      ],
+      "verdicts": [
+        "unsupported",
+        "unsupported",
+        "unsupported"
+      ],
+      "reason": "Okoro 2022 directly contradicts the claim as its Method is 'Randomized controlled trial of a mobile savings account', while Wanjiru 2019, Rao 2021 and Mensah 2017 use non-RCT designs.",
+      "one_quote": "unsupported"
+    },
+    {
+      "sentence": "Rao (2021) studied rural Kenyan farmers.",
+      "expected": "unsupported",
+      "acceptable": [
+        "unsupported"
+      ],
+      "verdicts": [
+        "unsupported",
+        "unsupported",
+        "unsupported"
+      ],
+      "reason": "Rao (2021) studied 1,200 small firms in Mumbai and Delhi, India (2016-2020), not rural Kenyan farmers \u2014 the rural Kenyan farmer sample (412 farm households, 2015-2018) belongs to Wanjiru (2019).",
+      "one_quote": "unsupported"
+    }
+  ]
+}

@@ -113,4 +113,25 @@ python scripts/eval_matrix_check.py --runs 3 --compare-quote --save
 `--compare-quote` also judges each sentence against one study's quote, the way these citations
 were checked before, to show the difference. The script needs the Muse provider set up as for
 the app; `--provider mock` only tries the script, since the mock matches words rather than
-judging meaning. No Muse results are recorded here yet.
+judging meaning.
+
+## Results
+
+Muse through the Baseten route, each sentence judged 3 times (`eval/matrix_check_results.json`):
+
+| Check | Exact | Acceptable | supported → supported | Unstable across runs | Median time |
+|---|---|---|---|---|---|
+| **Against the matrix (blue citations)** | **13/15** | **15/15** | **7/7** | 0/15 | 1.6 s |
+| Against one study's quote (before) | — | 8/15 | 0/7 | — | — |
+
+- **Every supported comparison and gap was called supported**, including ones no single passage
+  can back ("None of the studies examines rural India", "The largest sample is Okoro's"). Checked
+  against one quote, not one of the 7 was. That's why these citations are checked against the matrix.
+- **Every contradicted or invented claim was called unsupported**, and each reason names the row and
+  value that contradicts it.
+- **The two that weren't exact are overstatements** ("All four studies find…", "The studies
+  consistently name…"), which Muse called unsupported rather than partial, all three times. Its
+  reasons say most of the studies don't back them, which is a fair reading of a claim about all of
+  them, so the prompt was left as it is.
+- **Caveats:** 15 sentences on one invented matrix, with expected verdicts written alongside the
+  script. It shows the check can judge comparisons and gaps, not how often it errs on real reviews.
