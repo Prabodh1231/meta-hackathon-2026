@@ -297,6 +297,12 @@ export interface Settings {
 }
 
 /** Where embeddings and reranking run. The Baseten key is never sent back, only whether there is one. */
+/** Where free copies of papers are searched for: CORE only with the user's own key. */
+export interface SourceSettings {
+  has_core_key: boolean
+  core_key_hint: string // last 4 characters of the saved key
+}
+
 export interface SearchSettings {
   where: 'auto' | 'local' | 'baseten'
   embedder: string

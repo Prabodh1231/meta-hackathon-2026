@@ -168,7 +168,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 12
+API_VERSION = 13
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -200,6 +200,10 @@ class NewDraftIn(BaseModel):
 class ImportDocxIn(BaseModel):
     filename: str = ""
     data: str = Field(max_length=70_000_000)  # base64 of the .docx (about 50 MB at most)
+
+
+class SourcesIn(BaseModel):
+    core_api_key: str = Field(max_length=400)  # write-only; "" removes it
 
 
 class DuplicateFilesIn(BaseModel):
@@ -449,6 +453,15 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.put("/settings/search")
     def set_search(body: SearchIn):
         return lib.update_search(body.where, body.api_key, body.embed_model, body.rerank_model)
+
+    @app.get("/settings/sources")
+    def source_settings():
+        return lib.source_settings()
+
+    @app.put("/settings/sources")
+    def set_sources(body: SourcesIn):
+        """Set the CORE API key, checked with CORE first."""
+        return lib.update_sources(body.core_api_key)
 
     @app.get("/documents/{doc_id}/file")
     def document_file(doc_id: int):

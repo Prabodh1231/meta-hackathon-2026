@@ -973,7 +973,8 @@ export const LibraryPanel = memo(function LibraryPanel({
       setLookupNote('')
       const r = await api.fillPublicationDates()
       setLookupNote(
-        `Found ${r.found} exact date${r.found === 1 ? '' : 's'} for ${r.checked} paper${r.checked === 1 ? '' : 's'}.` +
+        `Found ${r.found} exact date${r.found === 1 ? '' : 's'} for ${r.checked} paper${r.checked === 1 ? '' : 's'}` +
+          (r.dois ? `, and ${r.dois} missing DOI${r.dois === 1 ? '' : 's'}.` : '.') +
           (r.failed ? ` Couldn't reach OpenAlex for ${r.failed}; try again later.` : ''),
       )
     })

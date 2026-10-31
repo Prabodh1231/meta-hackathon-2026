@@ -25,6 +25,7 @@ import type {
   IngestResult,
   ModelSettings,
   SearchSettings,
+  SourceSettings,
   PageText,
   RefStyle,
   ResolvedCitation,
@@ -44,7 +45,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 12
+export const API_VERSION = 13
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -128,7 +129,7 @@ export const api = {
   forgetRemoved: (id: number) => request<{ ok: boolean }>('DELETE', `/library/removed/${id}`),
   /** Full publication dates from OpenAlex for the papers not yet looked up. */
   fillPublicationDates: () =>
-    request<{ checked: number; found: number; failed: number }>('POST', '/library/publication-dates'),
+    request<{ checked: number; found: number; dois: number; failed: number }>('POST', '/library/publication-dates'),
   duplicateFiles: (cited: number[]) => request<FileDuplicateReport>('POST', '/library/duplicates', { cited }),
   page: (docId: number, page: number) => request<PageText>('GET', `/documents/${docId}/pages/${page}`),
 
@@ -173,6 +174,9 @@ export const api = {
   updateModel: (changes: { provider?: string; api_key?: string; reasoning_effort?: string; route?: string }) =>
     request<ModelSettings>('PUT', '/settings/model', changes),
   searchSettings: () => request<SearchSettings>('GET', '/settings/search'),
+  sourceSettings: () => request<SourceSettings>('GET', '/settings/sources'),
+  /** Set the CORE key (checked with CORE before it's saved); '' removes it. */
+  updateSources: (coreApiKey: string) => request<SourceSettings>('PUT', '/settings/sources', { core_api_key: coreApiKey }),
   /** Where embeddings and reranking run, and the Baseten setup; checked before it's applied. */
   updateSearch: (changes: { where?: string; api_key?: string; embed_model?: string; rerank_model?: string }) =>
     request<SearchSettings>('PUT', '/settings/search', changes),

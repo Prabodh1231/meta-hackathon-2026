@@ -93,7 +93,7 @@ The Library's ⋯ menu, Ctrl K, and the Network view's list of missing works ope
 
 ## Cited papers
 
-Each entry in a paper's reference list is looked up in two open scholarly indexes: **OpenAlex** first, then **Semantic Scholar**. An entry with a DOI is looked up by it; otherwise by its title, and a hit only counts when its title matches the entry's (a subtitle the entry left out is allowed) and its year is within one, so a look-alike paper is never downloaded. Entries with no DOI and a title under four words aren't searched.
+Each entry in a paper's reference list is looked up in open scholarly indexes: **OpenAlex** first, then **Semantic Scholar**, then **CORE** (university and subject repositories) when you've saved a CORE API key in Settings → Library. An entry without a DOI is first searched for in **Crossref**, which finds the DOI of most published works, so the indexes are asked by DOI. Otherwise it's looked up by its title. A hit, in Crossref or an index, only counts when its title matches the entry's (a subtitle the entry left out is allowed) and its year is within one, so a look-alike paper is never downloaded. Entries with no DOI and a title under four words aren't searched.
 
 Only open-access copies those indexes list are downloaded: open-access journals, arXiv and university or preprint repositories. A link only counts when it actually serves a PDF; publisher pages that answer with a login wall are skipped for the next link. Each entry ends as one of:
 

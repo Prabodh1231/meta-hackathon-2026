@@ -149,7 +149,7 @@ export function Timeline({ docs, axis, window: w, onChange, onField, onClose, sh
           : (spread.some(Boolean) ? 'Lighter bars are papers known only by year. ' : '') +
             (undated ? `${undated} source${undated === 1 ? ' has' : 's have'} no year and ${undated === 1 ? 'is' : 'are'} hidden. ` : '')}
         {w.field === 'published' && toLookUp > 0 && (
-          <button className="link" onClick={onLookUp} disabled={busy} title="Asks OpenAlex, by DOI or by title and year">
+          <button className="link" onClick={onLookUp} disabled={busy} title="Asks OpenAlex and Crossref, by DOI or by title and year, and fills in missing DOIs">
             Look up exact dates for {toLookUp} paper{toLookUp === 1 ? '' : 's'}
           </button>
         )}

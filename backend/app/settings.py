@@ -17,7 +17,8 @@ class Settings:
     muse_api_key: str = ""
     muse_model: str = "muse-spark-1.3"
     muse_reasoning_effort: str = "low"  # minimal | low | medium | high | xhigh
-    contact_email: str = ""  # sent to OpenAlex and Semantic Scholar when finding cited papers (polite pool)
+    contact_email: str = ""  # sent to OpenAlex, Semantic Scholar and Crossref when finding cited papers (polite pool)
+    core_api_key: str = ""  # CORE (core.ac.uk) is searched for free copies only with the user's own key
     # Muse Spark is also served by Baseten's Model APIs. "baseten-first" sends each request there
     # and to Meta's API if Baseten fails; "meta" and "baseten" use one only. Empty: Baseten first
     # when a Baseten key is set, else Meta.
@@ -63,6 +64,7 @@ class Settings:
             muse_model=env("MUSE_MODEL", cls.muse_model),
             muse_reasoning_effort=env("MUSE_REASONING_EFFORT", cls.muse_reasoning_effort),
             contact_email=env("RC_CONTACT_EMAIL"),
+            core_api_key=env("CORE_API_KEY"),
             muse_route=env("MUSE_ROUTE").lower(),
             baseten_muse_base=env("BASETEN_MUSE_BASE", cls.baseten_muse_base),
             baseten_muse_model=env("BASETEN_MUSE_MODEL", cls.baseten_muse_model),

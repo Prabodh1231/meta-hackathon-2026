@@ -95,7 +95,7 @@ Tick the box in front of a paper to have the Assistant and the cite searches use
 
 - **Added** goes by when you got each file: its date on this computer, or the day you added it here if that is earlier. Drag the two handles to a range, or click a bar to jump to that month.
 - **As of** uses one handle and shows your library as it was at the end of that month. Sources removed since then are listed greyed out at the bottom. Open one to restore it.
-- **Published** goes by publication date. Papers known only by year show as lighter bars spread across that year. **Look up exact dates** asks OpenAlex (by DOI, or by title and year) for the full date.
+- **Published** goes by publication date. Papers known only by year show as lighter bars spread across that year. **Look up exact dates** asks OpenAlex and Crossref (by DOI, or by title and year) for the full date, and fills in the DOI of papers that have none.
 
 ### Removed sources
 
@@ -281,7 +281,8 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 **Library**
 
 - **New folders start at** a similarity of N% (default 50%).
-- **Contact email** (optional): sent to OpenAlex and Semantic Scholar when finding free copies of cited papers.
+- **Contact email** (optional): sent to OpenAlex, Semantic Scholar and Crossref when finding free copies of cited papers.
+- **CORE API key** (optional): with a key (free from core.ac.uk/services/api), free copies are also searched for in CORE, which gathers full texts from university repositories. The key is checked with CORE before it's saved.
 
 **Search & embeddings**
 

@@ -145,7 +145,7 @@ class Library:
                           settings.baseten_api_key)
             if reranker is _FROM_SETTINGS else reranker
         )
-        self.open_access = open_access or openaccess.OpenAccess(settings.contact_email)
+        self.open_access = open_access or openaccess.OpenAccess(settings.contact_email, core_key=settings.core_api_key)
         if self.pref("contact_email"):
             self.open_access.set_contact(self.pref("contact_email"))
         self._ids: np.ndarray | None = None  # in-memory vector index, rebuilt lazily
@@ -836,8 +836,9 @@ class Library:
 
     def fill_publication_dates(self) -> dict:
         """Look up the full publication date (not just the year) of every paper not yet looked
-        up, in OpenAlex, by DOI or by title and year. A paper whose lookup failed (OpenAlex
-        unreachable) is tried again next time; one it doesn't know isn't."""
+        up, in OpenAlex and Crossref, and the DOI of a paper without one (Crossref, by title and
+        year). A paper whose lookup failed (OpenAlex unreachable) is tried again next time; one
+        the indexes don't know isn't."""
         with self.lock:
             rows = [dict(r) for r in self.conn.execute(
                 "SELECT id, title, year, doi, edited_fields FROM documents WHERE published_checked = 0")]
@@ -849,7 +850,7 @@ class Library:
                 log.info("Publication date lookup failed for document %s", r["id"], exc_info=True)
                 return r, None, exc
 
-        found = failed = 0
+        found = failed = dois = 0
         if rows:
             with ThreadPoolExecutor(max_workers=min(DATE_LOOKUP_WORKERS, len(rows))) as pool:
                 results = list(pool.map(one, rows))
@@ -859,16 +860,20 @@ class Library:
                         failed += 1
                         continue
                     updates: dict = {"published_checked": 1}
-                    date, year = got or ("", None)
+                    date = got.published if got else ""
+                    edited = json.loads(r["edited_fields"])
+                    if got and got.doi and not r["doi"] and "doi" not in edited:
+                        updates["doi"] = got.doi
+                        dois += 1
                     # A date from another year is another version (a preprint): the year shown wins.
                     if date and (r["year"] is None or str(r["year"]) == date[:4]):
                         updates["published"] = date
-                        if r["year"] is None and "year" not in json.loads(r["edited_fields"]):
+                        if r["year"] is None and "year" not in edited:
                             updates["year"] = int(date[:4])
                         found += 1
                     cols = ", ".join(f"{k} = ?" for k in updates)
                     self.conn.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*updates.values(), r["id"]))
-        return {"checked": len(rows) - failed, "found": found, "failed": failed}
+        return {"checked": len(rows) - failed, "found": found, "dois": dois, "failed": failed}
 
     # ---------- duplicate files ----------
 
@@ -1713,6 +1718,26 @@ class Library:
     def pref(self, key: str):
         """One preference from the Settings window, or its default."""
         return self.get_settings()[key]
+
+    # ---------- where free copies of papers come from ----------
+
+    def source_settings(self) -> dict:
+        """Whether CORE is searched for free copies (it needs the user's key). The key is never sent back."""
+        key = self.settings.core_api_key
+        return {"has_core_key": bool(key), "core_key_hint": key[-4:] if len(key) >= 12 else ""}
+
+    def update_sources(self, core_api_key: str) -> dict:
+        """Set the CORE API key ('' removes it). A key is checked with CORE before it's saved to the
+        data folder's .env, so a mistyped one is reported instead of silently finding nothing."""
+        key = core_api_key.strip()
+        if key and (len(key) > 400 or any(c.isspace() or c in "\"'#" for c in key)):
+            raise ValueError("That doesn't look like an API key")
+        if key:
+            self.open_access.check_core_key(key)
+        write_env_file(self.settings.data_dir / ".env", {"CORE_API_KEY": key})
+        self.settings = dataclasses.replace(self.settings, core_api_key=key)
+        self.open_access.set_core_key(key)
+        return self.source_settings()
 
     # ---------- the language model ----------
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import type { DocxStyle, ModelSettings, SearchSettings, Settings, ThemePref } from '../types'
+import type { DocxStyle, ModelSettings, SearchSettings, Settings, SourceSettings, ThemePref } from '../types'
 
 const THEMES: { value: ThemePref; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -155,6 +155,65 @@ function EmailField({ value, onChange }: { value: string; onChange: (v: string) 
       onBlur={save}
       onKeyDown={(e) => e.key === 'Enter' && save()}
     />
+  )
+}
+
+/** The CORE key: with one, university repositories are searched for free copies too. */
+function CoreKeySetting() {
+  const [now, setNow] = useState<SourceSettings | null>(null)
+  const [key, setKey] = useState('')
+  const [state, setState] = useState<{ busy?: boolean; error?: string; done?: string }>({})
+  useEffect(() => {
+    api
+      .sourceSettings()
+      .then(setNow)
+      .catch((e) => setState({ error: e instanceof Error ? e.message : String(e) }))
+  }, [])
+
+  async function save(value: string) {
+    setState({ busy: true })
+    try {
+      setNow(await api.updateSources(value))
+      setKey('')
+      setState({ done: value ? 'Saved. CORE is searched when a free copy is wanted.' : 'Removed. CORE is no longer searched.' })
+    } catch (e) {
+      setState({ error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
+  return (
+    <Setting
+      title="CORE API key (optional)"
+      hint={
+        now?.has_core_key
+          ? `A key is saved${now.core_key_hint ? ` (ending in ${now.core_key_hint})` : ''}. Paste a new one to replace it.`
+          : "CORE gathers full texts from thousands of university repositories, including papers OpenAlex and Semantic Scholar don't link. It's searched only with your own key, free from core.ac.uk/services/api."
+      }
+    >
+      <input
+        className="setting-input"
+        type="password"
+        value={key}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder={now?.has_core_key ? '•••• •••• •••• ' + now.core_key_hint : 'Paste your key'}
+        aria-label="CORE API key"
+        onChange={(e) => setKey(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && key.trim() && save(key.trim())}
+      />
+      <div className="setting-actions">
+        <button className="primary" disabled={!key.trim() || state.busy} onClick={() => save(key.trim())}>
+          {state.busy ? 'Checking with CORE…' : 'Save and check'}
+        </button>
+        {now?.has_core_key && !key && (
+          <button className="link danger-link" disabled={state.busy} onClick={() => save('')}>
+            Remove key
+          </button>
+        )}
+        {state.done && !key && <span className="setting-ok">{state.done}</span>}
+        {state.error && <span className="error-text">{state.error}</span>}
+      </div>
+    </Setting>
   )
 }
 
@@ -555,10 +614,11 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose 
               </Setting>
               <Setting
                 title="Contact email (optional)"
-                hint="Sent to OpenAlex and Semantic Scholar when finding free copies of cited papers, so they can write to you instead of slowing down heavy use."
+                hint="Sent to OpenAlex, Semantic Scholar and Crossref when finding free copies of cited papers, so they can write to you instead of slowing down heavy use."
               >
                 <EmailField value={s.contact_email} onChange={(v) => onChange({ contact_email: v })} />
               </Setting>
+              <CoreKeySetting />
             </>
           )}
 
