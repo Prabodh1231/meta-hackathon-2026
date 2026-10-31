@@ -73,7 +73,7 @@ Your files stay where they are. The library keeps its own index in `~/.research-
 - **Sort:** click a column header (Title, Authors, Year, Type, Added). Click again to reverse.
 - **Open a paper:** click its row. Its details open on the right: summary, folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
 - **Correct its details:** **Edit details** fixes the title, authors, year, journal, DOI or link. Reference lists are built from these, and your corrections are kept if the file is added again.
-- **Read the whole PDF:** **Open PDF** in its details shows it in the app's PDF viewer, with search, zoom, thumbnails and print. **Show in folder** finds the file on disk.
+- **Read the whole PDF:** **Open PDF** in its details opens it in a window of its own, with search, zoom, thumbnails and print. Resize it, snap it to half the screen or move it to another monitor and keep it open beside your draft; the next PDF you open replaces it in the same window, which remembers its size and place. **Show in folder** finds the file on disk.
 - **Remove it:** **Remove from library** at the bottom of its details. The file on disk isn't touched.
 
 ### Subject folders
@@ -144,11 +144,11 @@ Click any citation in the draft. The **Citations** tab shows its passage highlig
 
 For a PDF you see the page as it's printed, with the quote highlighted on it. **Text** switches to the text read from the page (handy for small print, and what other kinds of source always show); **Page** switches back, and the app remembers your pick. If a quote can't be placed on the page image (a scan, say), the text is shown instead, with a note.
 
-The page line gives both numbers when they differ: the printed page (p. 342) and the PDF page (2 of 2). The arrows turn pages. **Open the whole PDF at this page** opens the full viewer:
+The page line gives both numbers when they differ: the printed page (p. 342) and the PDF page (2 of 2). The arrows turn pages. **Open the whole PDF at this page** opens it in its PDF window at that page:
 
-![The whole PDF in the app's viewer](images/pdf-viewer.png)
+![The PDF in its own window, at the cited page](images/pdf-viewer.png)
 
-Esc closes it. **‹ Back** returns to the tab you came from.
+Close that window as you would any other. **‹ Back** returns to the tab you came from.
 
 ### Reference list
 

@@ -367,6 +367,8 @@ declare global {
       saveFile: (defaultName: string, data: ArrayBuffer) => Promise<string | null>
       trashFile?: (path: string) => Promise<boolean> // to the Recycle Bin / Trash; library files only
       showFile?: (path: string) => Promise<void>
+      /** A library PDF in its own resizable window, at a page (the desktop app only). */
+      openPdf?: (path: string, page: number, title: string) => Promise<void>
       /** Where a dropped or picked file is on disk ('' for one that isn't a file on disk). */
       pathForFile?: (file: File) => string
     }

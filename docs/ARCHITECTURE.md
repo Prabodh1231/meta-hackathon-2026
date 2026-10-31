@@ -95,7 +95,8 @@ React 19 with Tiptap 3, built by Vite. Entry: [desktop/src/App.tsx](../desktop/s
 
 **PDFs** ([pdf.ts](../desktop/src/pdf.ts)) are fetched once per document with the app's token and shared:
 
-- `PdfViewerDialog` shows the whole file in Chromium's own PDF viewer, from a `blob:` URL, so the token never appears in an address. The page's Content-Security-Policy ([index.html](../desktop/index.html)) allows `blob:` frames for this.
+- In the desktop app, **Open PDF** asks the main process (`rc:open-pdf` in [main.cjs](../desktop/electron/main.cjs)) to show the file in a separate, resizable window running Chromium's PDF viewer, straight from disk. Only files the library holds are opened (the same check as Show in folder); the window has no preload, so no bridge to the backend; it's reused for the next PDF and remembers its size and place in `pdf-window.json` in Electron's user-data folder.
+- In a plain browser (`npm run web`) there's no main process, so `PdfViewerDialog` shows the file in the viewer inside the page, from a `blob:` URL, so the token never appears in an address. The page's Content-Security-Policy ([index.html](../desktop/index.html)) allows `blob:` frames for this.
 - `SourceViewer` draws a cited page with pdf.js (loaded on first use: about 430 KB, plus a 1.3 MB worker) and places the quote on it: the backend's matched text is compared with pdf.js's text items with case, spacing, ligatures and curly quotes folded away, and each item it covers gets a highlight box. When the quote can't be placed, it falls back to the extracted text.
 
 **The search box** is the palette launcher in Write, and a filter whose text `App` passes down as `query` in the Library and Network.

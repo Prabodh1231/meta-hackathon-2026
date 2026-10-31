@@ -160,7 +160,14 @@ export default function App() {
   const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [pdfView, setPdfView] = useState<{ doc: Doc; page: number } | null>(null) // a PDF in the app's viewer
-  const openPdf = useCallback((doc: Doc, page = 1) => setPdfView({ doc, page }), [])
+  // In the desktop app a PDF gets a resizable window of its own; in a plain browser, the viewer dialog.
+  const openPdf = useCallback((doc: Doc, page = 1) => {
+    if (!window.rc?.openPdf) return setPdfView({ doc, page })
+    window.rc.openPdf(doc.source, page, doc.title).catch((e) => {
+      const why = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e)
+      setErrors((es) => [...es.slice(-2), `Could not open the PDF: ${why}`])
+    })
+  }, [])
   const [toolsOpen, setToolsOpen] = useState(storedToolsOpen) // the writing tools beside the draft
   const [focusMode, setFocusMode] = useState(false) // only the page and its toolbar
   const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 })

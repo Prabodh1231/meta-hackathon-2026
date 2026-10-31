@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('rc', {
   saveFile: (defaultName, data) => ipcRenderer.invoke('rc:save-file', defaultName, data),
   trashFile: (filePath) => ipcRenderer.invoke('rc:trash-file', filePath),
   showFile: (filePath) => ipcRenderer.invoke('rc:show-file', filePath),
+  // A library PDF in its own window, at a page.
+  openPdf: (filePath, page, title) => ipcRenderer.invoke('rc:open-pdf', filePath, page, title),
   // A dropped file carries no path in the sandboxed page; Electron can tell where it is.
   pathForFile: (file) => webUtils.getPathForFile(file),
 })

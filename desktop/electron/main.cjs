@@ -8,6 +8,7 @@ const fs = require('node:fs')
 const net = require('node:net')
 const os = require('node:os')
 const path = require('node:path')
+const { pathToFileURL } = require('node:url')
 
 // Dev layout. Packaging (PyInstaller binary in extraResources) is still to do.
 const BACKEND_DIR = path.join(__dirname, '..', '..', 'backend')
@@ -213,6 +214,90 @@ ipcMain.handle('rc:trash-file', async (_event, filePath) => {
 
 ipcMain.handle('rc:show-file', async (_event, filePath) => {
   shell.showItemInFolder(await libraryFile(filePath))
+})
+
+// Library PDFs open in a window of their own, in Chromium's PDF viewer: resizable, movable to a
+// second screen, open beside the draft. One window, reused for the next PDF; it remembers where
+// it was. Only files the library holds are opened, straight from disk.
+let pdfWindow = null
+let pdfFile = ''
+const PDF_BOUNDS = () => path.join(app.getPath('userData'), 'pdf-window.json')
+
+function savedPdfBounds() {
+  try {
+    const b = JSON.parse(fs.readFileSync(PDF_BOUNDS(), 'utf8'))
+    // Only where a screen still is: a second monitor may have been unplugged since.
+    const { screen } = require('electron')
+    const area = screen.getDisplayMatching(b).workArea
+    const visible = b.x < area.x + area.width && b.x + b.width > area.x && b.y < area.y + area.height && b.y + b.height > area.y
+    return visible ? b : { width: b.width, height: b.height }
+  } catch {
+    return { width: 980, height: 1000 }
+  }
+}
+
+function pdfWindowFor(title) {
+  if (pdfWindow && !pdfWindow.isDestroyed()) return pdfWindow
+  const saved = savedPdfBounds()
+  pdfWindow = new BrowserWindow({
+    ...saved,
+    minWidth: 420,
+    minHeight: 360,
+    useContentSize: true,
+    title,
+    autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }, // no bridge to the backend
+  })
+  // On a display scaled to a fraction (145% and the like) Electron rounds the size up a few pixels;
+  // set it again so the window opens at the size it was left at.
+  pdfWindow.setContentSize(saved.width, saved.height)
+  // Remember what the user does: the size after a resize, the place after a move. Saving the size
+  // on every close would carry those rounding pixels over, and the window would creep larger.
+  const keep = (part) => () => {
+    if (pdfWindow.isMinimized() || pdfWindow.isMaximized()) return
+    let b = {}
+    try {
+      b = JSON.parse(fs.readFileSync(PDF_BOUNDS(), 'utf8'))
+    } catch {
+      /* first time */
+    }
+    if (part === 'size') [b.width, b.height] = pdfWindow.getContentSize()
+    else ({ x: b.x, y: b.y } = pdfWindow.getBounds())
+    if (!b.width) [b.width, b.height] = pdfWindow.getContentSize()
+    fs.promises.writeFile(PDF_BOUNDS(), JSON.stringify(b)).catch(() => {})
+  }
+  pdfWindow.on('resized', keep('size'))
+  pdfWindow.on('moved', keep('place'))
+  // The viewer would retitle the window with the file name; the paper's title says more.
+  pdfWindow.on('page-title-updated', (e) => e.preventDefault())
+  // Links in the PDF open in the system browser; the window only ever shows the library file.
+  pdfWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  pdfWindow.webContents.on('will-navigate', (e, url) => {
+    if (url.split('#')[0] !== pdfFile) {
+      e.preventDefault()
+      if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    }
+  })
+  pdfWindow.on('closed', () => {
+    pdfWindow = null
+  })
+  return pdfWindow
+}
+
+ipcMain.handle('rc:open-pdf', async (_event, filePath, page, title) => {
+  const file = await libraryFile(filePath)
+  if (!/\.pdf$/i.test(file)) throw new Error('Not a PDF')
+  const name = typeof title === 'string' && title.trim() ? title.trim().slice(0, 200) : path.basename(file)
+  const win = pdfWindowFor(name)
+  pdfFile = pathToFileURL(file).href
+  win.setTitle(`${name} · PDF`)
+  await win.loadURL(`${pdfFile}#page=${Math.max(1, Number.parseInt(page, 10) || 1)}`)
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
 })
 
 app.whenReady().then(async () => {
