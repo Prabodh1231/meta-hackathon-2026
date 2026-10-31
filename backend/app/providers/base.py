@@ -90,6 +90,18 @@ class LLMProvider(ABC):
         out = self._json(prompts.DRAFT_SYSTEM, user, prompts.DRAFT_SCHEMA, max_tokens=2048)
         return out.get("sentences", [])
 
+    def extract_matrix_row(self, title: str, columns: list[dict], passages: list[Passage]) -> list[dict]:
+        """One paper's row: for each column {column, answer, passage, quote}, empty when not reported."""
+        cols = "\n".join(f"- {c['key']}: {c['label']}. {c.get('instruction') or ''}".rstrip() for c in columns)
+        user = f"Paper: {title}\n\nColumns (answer each, by key):\n{cols}\n\nPassages:\n{prompts.format_passages(passages)}"
+        out = self._json(prompts.MATRIX_SYSTEM, user, prompts.MATRIX_SCHEMA, max_tokens=300 + 220 * len(columns))
+        return out.get("cells", [])
+
+    def find_gaps(self, topic: str, table: str) -> list[dict]:
+        """Gaps across a matrix's studies: [{title, detail}]."""
+        out = self._json(prompts.GAPS_SYSTEM, f"Topic: {topic}\n\n{table[:60000]}", prompts.GAPS_SCHEMA, max_tokens=1200)
+        return out.get("gaps", [])
+
     def judge_support(self, claim: str, passage: str) -> dict:
         user = f"Claim: {claim}\n\nSource passage:\n{passage}"
         out = self._json(prompts.JUDGE_SYSTEM, user, prompts.JUDGE_SCHEMA, max_tokens=200)

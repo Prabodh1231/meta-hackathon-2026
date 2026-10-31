@@ -32,6 +32,7 @@ How Research Companion is put together, for anyone changing it. For using the ap
 | Module | What it does |
 |---|---|
 | `main.py` | Routes, request models, the token check, error mapping (`LookupError` → 404, `ValueError` → 400). |
+| `matrix.py` | Literature review matrices: for each paper, search restricted to it finds the passages for every column, one model call answers them all with a quote each, and the quote is located in the paper (page, offsets) or the cell marked unverified or not reported. Rows are read in the background, several at once, and resume after a restart. Also gaps, writing from the matrix (via `Library.draft_from`), the matrix as editor content (a table of citation chips) and Excel, CSV and Word export. |
 | `library.py` | The knowledge base: ingestion, search, folders, the citation graph, drafting, verification, drafts and versions, duplicate checks. Holds one SQLite connection behind an `RLock`. |
 | `db.py` | Schema and migrations (SQLite in WAL mode, FTS5 for keyword search). |
 | `ingest.py` | Parsers for PDF, DOCX, PPTX, Markdown/text, HTML and URLs, and images. Each returns page-addressed text. |
@@ -63,6 +64,7 @@ All JSON. Main groups (see `main.py` for the full list):
 | Writing | `POST /write/draft`, `POST /citations/verify`, `POST /citations/suggest`, `POST /citations/resolve`, `POST /references` |
 | Drafts | `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `POST /drafts/import`, `POST /drafts/convert-docx`, `POST /drafts/check-duplicates` |
 | Versions | `GET/POST /drafts/{id}/versions`, `GET/PATCH/DELETE /drafts/{id}/versions/{v}`, `POST …/compare`, `POST …/restore` |
+| Matrices | `GET/POST /matrices`, `GET /matrices/columns`, `POST /matrices/papers` (a folder's or a topic's papers), `GET/PATCH/DELETE /matrices/{id}`, `PUT /matrices/{id}/cells/{doc}/{column}`, `POST /matrices/{id}/rerun`, `POST /matrices/{id}/gaps`, `POST /matrices/{id}/synthesis`, `GET /matrices/{id}/table`, `GET /matrices/{id}/export?format=xlsx\|csv\|docx` |
 | Settings | `GET/PATCH /settings` (preferences, validated against `USER_SETTINGS` in `library.py`), `GET/PUT /settings/model` (Muse or mock, key, reasoning effort; the key is never returned), `GET/PUT /settings/search` (where embeddings and reranking run, Baseten key and model IDs; tried before they're applied) |
 | Files | `GET /documents/{id}/file`: a library document's file, for the PDF viewer and pdf.js. Only files the library holds. |
 | Other | `POST /export/docx`, `GET /search` |
@@ -71,7 +73,7 @@ All JSON. Main groups (see `main.py` for the full list):
 
 Everything lives in `~/.research-companion/` (or `RC_DATA_DIR`):
 
-- `library.db`: SQLite. Documents, their pages (the unit a citation points to), chunks with embeddings and character offsets, tags, folders and scores, parsed reference lists, drafts and their versions, settings.
+- `library.db`: SQLite. Documents, their pages (the unit a citation points to), chunks with embeddings and character offsets, tags, folders and scores, parsed reference lists, drafts and their versions, review matrices (`matrices`, `matrix_rows`, `matrix_cells`), settings.
 - The embedding model cache.
 - `logs/backend.log`.
 - `.env`: optional settings and the Muse key (`RC_PROVIDER`, `MUSE_API_KEY`, `MUSE_MODEL`, `MUSE_REASONING_EFFORT`, `RC_EMBEDDER`, `RC_RERANKER`, `RC_CONTACT_EMAIL`). Real environment variables override it. **Settings → AI model** rewrites the provider, key and effort lines here (keeping the rest) and swaps the provider without a restart.

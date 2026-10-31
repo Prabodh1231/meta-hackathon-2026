@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 
 import docx
+from docx.enum.section import WD_ORIENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
 
@@ -49,18 +50,28 @@ class Cite:
     quote: str
 
 
-def export_docx(library, content: dict, style: str, title: str = "") -> bytes:
+def export_docx(library, content: dict, style: str, title: str = "", flag_pending: bool = True,
+                landscape: bool = False) -> bytes:
+    """`flag_pending=False` leaves citations that weren't judged yet without a comment (a review
+    matrix's cells, whose quotes were found but not judged); `landscape` turns the page for wide tables."""
     style = style.lower()
     if style not in DOCX_STYLES:
         raise ValueError(f"Word export supports {', '.join(DOCX_STYLES)}; got {style!r}")
-    return _Writer(library, style).render(content, title)
+    return _Writer(library, style, flag_pending, landscape).render(content, title)
 
 
 class _Writer:
-    def __init__(self, library, style: str):
+    def __init__(self, library, style: str, flag_pending: bool = True, landscape: bool = False):
         self.lib = library
         self.style = style
+        self.flag_pending = flag_pending
+        self.landscape = landscape
         self.doc = docx.Document()
+        if self.landscape:
+            section = self.doc.sections[0]
+            section.orientation = WD_ORIENT.LANDSCAPE
+            section.page_width, section.page_height = section.page_height, section.page_width
+            section.left_margin = section.right_margin = Inches(0.6)
         self.order: list[int] = []  # cited document ids in order of first appearance
         self._pages: dict = {}  # shared by every citation's lookup, so each document's pages are read once
 
@@ -139,10 +150,33 @@ class _Writer:
             run = p.add_run("".join(c.get("text", "") for c in children))
             run.font.name = "Consolas"
             run.font.size = Pt(9.5)
+        elif kind == "table":
+            self._table(children)
         elif kind == "horizontalRule":
             self.doc.add_paragraph("* * *").alignment = WD_ALIGN_PARAGRAPH.CENTER
         else:  # unknown block: keep its text rather than drop it
             self._inline(self.doc.add_paragraph(), children)
+
+    def _table(self, rows: list[dict]) -> None:
+        """A table from the editor (tableRow > tableHeader | tableCell > paragraphs), header row bold."""
+        rows = [r for r in rows if r.get("type") == "tableRow"]
+        width = max((len(r.get("content") or []) for r in rows), default=0)
+        if not rows or not width:
+            return
+        table = self.doc.add_table(rows=len(rows), cols=width)
+        table.style = "Table Grid"
+        for i, row in enumerate(rows):
+            for j, cell in enumerate(row.get("content") or []):
+                target = table.cell(i, j)
+                paragraphs = [b for b in cell.get("content") or [] if b.get("type") in ("paragraph", "heading")] or [{}]
+                for k, block in enumerate(paragraphs):
+                    para = target.paragraphs[0] if k == 0 else target.add_paragraph()
+                    self._inline(para, block.get("content") or [])
+                    for run in para.runs:
+                        run.font.size = Pt(9)
+                        if cell.get("type") == "tableHeader":
+                            run.bold = True
+        self.doc.add_paragraph()
 
     def _inline(self, para, nodes: list[dict]) -> None:
         # Group adjacent citation chips (only whitespace between them) into one citation.
@@ -197,7 +231,7 @@ class _Writer:
                 cites, suffix = item[1], item[2]
                 run = last_run = para.add_run(self._in_text(cites))
                 for c in cites:
-                    if c.status in FLAGS:
+                    if c.status in FLAGS and (self.flag_pending or c.status != "pending"):
                         note = FLAGS[c.status] + (f" {c.reason}" if c.reason else "") + f"\nQuoted: “{c.quote}”"
                         self.doc.add_comment(run, text=note, author=COMMENT_AUTHOR, initials="RC")
                 if suffix:

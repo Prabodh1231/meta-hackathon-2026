@@ -123,6 +123,21 @@ def is_junk_pdf_title(title: str) -> bool:
 
 
 _PAGE_NUMBER = re.compile(r"\d{1,4}")
+_HEX_LABEL = re.compile(r"^<FEFF((?:[0-9A-Fa-f]{4})+)>$")
+
+
+def clean_page_label(label: str | None) -> str | None:
+    """A PDF page label as text. Some files store labels as UTF-16 hex strings, which PyMuPDF
+    passes through as they are: '<FEFF0038>' is page 8, '<FEFF00310031>' page 11."""
+    if not label or not label.strip():
+        return None
+    m = _HEX_LABEL.match(label.strip())
+    if m:
+        try:
+            label = bytes.fromhex(m.group(1)).decode("utf-16-be")
+        except ValueError:
+            return None
+    return label.strip() or None
 
 
 def printed_page_labels(doc, band: float = 0.1) -> tuple[list[str | None], str]:
@@ -136,7 +151,7 @@ def printed_page_labels(doc, band: float = 0.1) -> tuple[list[str | None], str]:
     Otherwise every label is None and callers fall back to the PDF page index.
     """
     n = doc.page_count
-    labels = [page.get_label() or None for page in doc]
+    labels = [clean_page_label(page.get_label()) for page in doc]
     # Some exporters write labels that just repeat the index; those say nothing printed.
     if any(labels) and labels != [str(i + 1) for i in range(n)]:
         return labels, "pdf_labels"

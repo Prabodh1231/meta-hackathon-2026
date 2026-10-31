@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from .export_docx import export_docx
 from .jobs import IngestJobs
 from .library import INGEST_WORKERS, Library
+from .matrix import DEFAULT_COLUMNS, Matrices
 from .parent_watch import exit_with_parent
 from .settings import Settings
 
@@ -40,6 +41,45 @@ class SearchIn(BaseModel):
     api_key: str | None = None  # write-only; left out keeps the stored key
     embed_model: str | None = None  # a Baseten model ID or URL; "" clears it
     rerank_model: str | None = None
+
+
+class MatrixColumn(BaseModel):
+    key: str = ""
+    label: str
+    instruction: str = ""
+    query: str = ""
+
+
+class MatrixIn(BaseModel):
+    name: str
+    doc_ids: list[int] = Field(min_length=1)
+    columns: list[MatrixColumn] | None = None  # the five standard columns when left out
+
+
+class MatrixPatch(BaseModel):
+    name: str | None = None
+    columns: list[MatrixColumn] | None = None
+    add_doc_ids: list[int] | None = None
+    remove_doc_ids: list[int] | None = None
+
+
+class MatrixPapersIn(BaseModel):
+    folder_id: int | None = None
+    topic: str = ""
+
+
+class CellIn(BaseModel):
+    answer: str
+
+
+class RerunIn(BaseModel):
+    doc_id: int | None = None
+    column: str | None = None
+
+
+class SynthesisIn(BaseModel):
+    instruction: str = ""
+    columns: list[str] | None = None
 
 
 class IngestUrlIn(BaseModel):
@@ -128,7 +168,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 11
+API_VERSION = 12
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -179,6 +219,8 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     app.state.library = lib
     jobs = IngestJobs(lib, INGEST_WORKERS)
     app.state.jobs = jobs
+    matrices = Matrices(lib)
+    app.state.matrices = matrices
 
     @app.middleware("http")
     async def require_token(request: Request, call_next):
@@ -412,6 +454,64 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def document_file(doc_id: int):
         path, media_type = lib.document_file(doc_id)
         return FileResponse(path, media_type=media_type)  # no filename: shown inline, not downloaded
+
+    # ---------- literature review matrices ----------
+
+    @app.get("/matrices")
+    def list_matrices():
+        return matrices.summaries()
+
+    @app.get("/matrices/columns")
+    def default_columns():
+        return DEFAULT_COLUMNS
+
+    @app.post("/matrices/papers")
+    def matrix_papers(body: MatrixPapersIn):
+        return matrices.papers_for(body.folder_id, body.topic)
+
+    @app.post("/matrices")
+    def create_matrix(body: MatrixIn):
+        cols = [c.model_dump() for c in body.columns] if body.columns is not None else None
+        return matrices.create(body.name, body.doc_ids, cols)
+
+    @app.get("/matrices/{mid}")
+    def get_matrix(mid: int):
+        return matrices.get(mid)
+
+    @app.patch("/matrices/{mid}")
+    def update_matrix(mid: int, body: MatrixPatch):
+        cols = [c.model_dump() for c in body.columns] if body.columns is not None else None
+        return matrices.update(mid, body.name, cols, body.add_doc_ids, body.remove_doc_ids)
+
+    @app.delete("/matrices/{mid}")
+    def delete_matrix(mid: int):
+        matrices.delete(mid)
+        return {"ok": True}
+
+    @app.put("/matrices/{mid}/cells/{doc_id}/{col}")
+    def set_cell(mid: int, doc_id: int, col: str, body: CellIn):
+        return matrices.set_cell(mid, doc_id, col, body.answer)
+
+    @app.post("/matrices/{mid}/rerun")
+    def rerun_matrix(mid: int, body: RerunIn):
+        return matrices.rerun(mid, body.doc_id, body.column)
+
+    @app.post("/matrices/{mid}/gaps")
+    def matrix_gaps(mid: int):
+        return matrices.gaps(mid)
+
+    @app.post("/matrices/{mid}/synthesis")
+    def matrix_synthesis(mid: int, body: SynthesisIn):
+        return matrices.synthesis(mid, body.instruction, body.columns)
+
+    @app.get("/matrices/{mid}/table")
+    def matrix_table(mid: int, columns: str = ""):
+        return matrices.table_doc(mid, [c for c in columns.split(",") if c] or None)
+
+    @app.get("/matrices/{mid}/export")
+    def export_matrix(mid: int, format: str = "xlsx", style: str = "apa"):
+        data, media, ext = matrices.export(mid, format, style)
+        return Response(data, media_type=media, headers={"Content-Disposition": f'attachment; filename="matrix.{ext}"'})
 
     @app.post("/export/docx")
     def export(body: ExportIn):

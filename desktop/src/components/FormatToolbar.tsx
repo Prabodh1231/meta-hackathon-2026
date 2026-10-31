@@ -53,6 +53,7 @@ export function FormatToolbar({ editor, onCite }: { editor: Editor | null; onCit
         bullets: e.isActive('bulletList'),
         numbers: e.isActive('orderedList'),
         quote: e.isActive('blockquote'),
+        table: e.isActive('table'),
         heading: ([1, 2, 3] as const).find((level) => e.isActive('heading', { level })) ?? 0,
         canUndo: e.can().undo(),
         canRedo: e.can().redo(),
@@ -161,6 +162,20 @@ export function FormatToolbar({ editor, onCite }: { editor: Editor | null; onCit
         <Glyph d={ICONS.cite} />
         <span className="cite-label">Cite</span>
       </button>
+      {state?.table && (
+        <>
+          <span className="sep" />
+          <button className="table-btn" onMouseDown={keep} onClick={() => editor?.chain().focus().deleteRow().run()} title="Delete this row of the table">
+            −Row
+          </button>
+          <button className="table-btn" onMouseDown={keep} onClick={() => editor?.chain().focus().deleteColumn().run()} title="Delete this column of the table">
+            −Col
+          </button>
+          <button className="table-btn" onMouseDown={keep} onClick={() => editor?.chain().focus().deleteTable().run()} title="Delete the whole table">
+            ×Table
+          </button>
+        </>
+      )}
     </div>
   )
 }

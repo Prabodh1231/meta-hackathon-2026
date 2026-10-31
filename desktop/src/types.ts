@@ -408,6 +408,7 @@ declare global {
       config: () => Promise<{ baseUrl: string; token: string; logPath?: string }>
       pickFiles: () => Promise<string[]>
       pickFolder: () => Promise<string | null>
+      /** Asks where to save; the dialog offers the type of `defaultName`'s extension (.docx, .xlsx, .csv). */
       saveFile: (defaultName: string, data: ArrayBuffer) => Promise<string | null>
       trashFile?: (path: string) => Promise<boolean> // to the Recycle Bin / Trash; library files only
       showFile?: (path: string) => Promise<void>
@@ -417,6 +418,67 @@ declare global {
       pathForFile?: (file: File) => string
     }
   }
+}
+
+/** A column of a literature review matrix: what to extract from each paper. */
+export interface MatrixColumn {
+  key: string
+  label: string
+  instruction: string
+  query?: string
+}
+
+/** One cell: a short answer and the verbatim quote it rests on, located in the paper. */
+export interface MatrixCell {
+  status: 'pending' | 'found' | 'unverified' | 'not_reported' | 'error'
+  answer: string
+  quote: string
+  chunk_id: number | null
+  page: number | null
+  start: number | null
+  end: number | null
+  label: string // "Parino & Bianchi 2018, p. 4"
+  edited: number
+  error: string
+}
+
+export interface MatrixRow {
+  doc_id: number
+  title: string
+  authors: string[]
+  year: number | null
+  kind: Doc['kind']
+  label: string // "Parino & Bianchi 2018"
+  cells: Record<string, MatrixCell>
+}
+
+export interface Matrix {
+  id: number
+  name: string
+  columns: MatrixColumn[]
+  rows: MatrixRow[]
+  gaps: { title: string; detail: string }[] | null
+  pending: number // cells still being read
+  cells: number
+  updated_at: string
+}
+
+export interface MatrixSummary {
+  id: number
+  name: string
+  columns: number
+  papers: number
+  pending: number
+  updated_at: string
+}
+
+/** A paper a matrix could include, from a folder or a topic. */
+export interface MatrixPaper {
+  id: number
+  title: string
+  authors: string[]
+  year: number | null
+  kind: Doc['kind']
 }
 
 /** A saved snapshot of the draft: 'milestone' named by the user, 'auto' taken while writing. */

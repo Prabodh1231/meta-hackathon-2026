@@ -12,6 +12,7 @@ This guide is about using the app. For setup, see the [README](../README.md#run-
 - [5. Check the draft](#5-check-the-draft)
 - [6. Export](#6-export)
 - [The citation network](#the-citation-network)
+- [Review matrix](#review-matrix)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Settings](#settings)
 - [Troubleshooting](#troubleshooting)
@@ -25,7 +26,7 @@ The window has four parts:
 | Part | What it holds |
 |---|---|
 | **Top bar** | The draft's title (click it for your drafts), whether it's saved and its version; one search box; Export; Focus mode; Settings. |
-| **Rail** (left) | The three places in the app: **Write**, **Library** and **Network**. One fills the window at a time. |
+| **Rail** (left) | The places in the app: **Write**, **Library**, **Network** and **Matrix**. One fills the window at a time. |
 | **Main area** | The place you picked. In Write, the draft with the writing tools beside it. |
 | **Status bar** (bottom) | Live counts for the draft: words, citations verified, duplication, and how much it changed since the last version. Click any of them to open the matching tool. |
 
@@ -196,6 +197,45 @@ The **History** tab keeps versions of the draft. Snapshots are taken automatical
 - Type a topic in the search box to show only the papers about it, and the works they cite that you don't have. **Rank and download…** lists those works with free copies to fetch.
 
 Esc returns to the draft.
+
+## Review matrix
+
+**Matrix** in the rail builds a literature review matrix: one row per paper, one column per question (sample, setting, method, findings, limitations, or your own), the table systematic reviewers fill in by hand.
+
+![A review matrix: one row per paper, each cell a short answer with the page its quote is on](images/matrix.png)
+
+**Make one.** Click **+ New matrix**:
+
+![Making a matrix: papers about a topic, the columns, a name](images/matrix-new.png)
+
+1. **Papers:** those *about a topic* you type, those in *a folder*, or those *ticked in the Library*. Untick any you don't want (at most 80; copies of the same paper are offered once).
+2. **Columns:** the standard five, which you can rename, reword or remove, and add your own: an outcome measure, a theory, a dataset. Each has a sentence saying what to extract.
+3. **Build the matrix.** Muse reads several papers at once (about a minute for 30) while you keep working; cells fill in as they're read.
+
+**Every cell rests on a quote.** For each paper, the app finds the passages that best answer each column (and the opening, where abstracts say most); Muse writes a short answer from them and copies the sentence it used. The app then finds that quote in the paper:
+
+| Cell | Meaning |
+|---|---|
+| answer with a green dot and a page | the quote was found on that page |
+| answer with an amber dot | the quote wasn't found in the paper: check it |
+| *Not reported* | the passages read don't say; nothing is guessed |
+
+Answers say only what their quote shows, so they can be checked; a fuller answer spread over several passages is cut to the part the quote covers.
+
+**Check and correct.** Click a cell to open it beside the table, with its quote highlighted on the PDF page:
+
+![A cell open beside the matrix: its answer, and the quote highlighted on the page](images/matrix-cell.png)
+
+Edit the answer and **Save answer** (it keeps its quote as evidence), **Read again** to have Muse redo that cell, or **Open PDF** at the page. Hover a paper's name for **Read again** (the whole row) or **Remove**. Click a column's heading to rename it, change what it asks (it's read again for every paper, except answers you wrote) or remove it; **⋯ → Add a column** adds one. The search box at the top filters the rows.
+
+**Use it.**
+
+- **Find gaps:** Muse reads the finished matrix and names what the studies leave out (populations, places, periods, methods) and where their findings conflict, naming the studies each gap rests on.
+- **Write from this matrix:** Muse writes a comparison of the studies from the matrix's quotes, each sentence citing them. Tick the sentences to keep and insert them into the draft; their citations are checked against the sources there.
+- **Insert into draft:** the matrix as a table at the cursor, with the columns you choose. Each cell cites its quote, so the paper joins the reference list and the Word export; the citations are checked in the background, like the Assistant's. In the draft, **−Row**, **−Col** and **×Table** appear in the toolbar while the cursor is in a table.
+- **Export:** an *Excel workbook* or *CSV* (each column's answer, then its evidence: page and quote), or a *Word table* whose cells cite their sources in your citation style, with a reference list.
+
+Matrices are saved with your library; **⋯ → Delete this matrix** removes one (the papers stay).
 
 ## Keyboard shortcuts
 

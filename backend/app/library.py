@@ -21,7 +21,7 @@ from .citegraph import build_graph, focus, keyword_links, missing_works
 from .refparse import Reference, match_reference, parse_references
 from . import embeddings as embeddings_module
 from .embeddings import Embedder, from_blob, make_embedder, to_blob
-from .ingest import ParsedDocument, chunk_page, is_supported, parse_file, parse_url
+from .ingest import ParsedDocument, chunk_page, clean_page_label, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
 from .retrieval import BasetenReranker, Reranker, fts_query, make_reranker, reciprocal_rank_fusion
@@ -154,6 +154,7 @@ class Library:
         self._name_vectors: dict[tuple[str, str], np.ndarray] = {}  # (embedder id, folder name) -> vector
         self._reembed_if_needed()
         self._backfill_keywords()
+        self._fix_page_labels()
         self._backfill_file_dates()
 
     # ---------- ingestion ----------
@@ -437,6 +438,13 @@ class Library:
                         [(to_blob(v), r["id"]) for r, v in zip(batch, vecs)],
                     )
             db.set_meta(self.conn, "embedder", self.embedder.id)
+
+    def _fix_page_labels(self) -> None:
+        """Page labels stored before clean_page_label existed, as UTF-16 hex ('<FEFF0038>'): decode them."""
+        with self.lock, self.conn:
+            rows = self.conn.execute("SELECT doc_id, page, label FROM pages WHERE label LIKE '<FEFF%'").fetchall()
+            self.conn.executemany("UPDATE pages SET label = ? WHERE doc_id = ? AND page = ?",
+                                  [(clean_page_label(r["label"]), r["doc_id"], r["page"]) for r in rows])
 
     def _backfill_keywords(self) -> None:
         """Once, for a library from before keywords were read: take them from the stored pages (local, no model call)."""
@@ -1526,6 +1534,10 @@ class Library:
         # drown out the question. Context only reaches the model, for continuity and voice.
         hits = self.search(instruction, k=k, doc_ids=doc_ids)
         passages = [Passage(f"P{i + 1}", h["id"], h["label"], h["text"]) for i, h in enumerate(hits)]
+        return self.draft_from(instruction, context, passages, verify)
+
+    def draft_from(self, instruction: str, context: str, passages: list[Passage], verify: bool = False) -> dict:
+        """Sentences written from these passages, each citing them with a located quote."""
         if not passages:
             return {"sentences": [], "passages": []}
         by_pid = {p.pid: p for p in passages}

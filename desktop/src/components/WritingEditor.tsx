@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
+import { TableKit } from '@tiptap/extension-table'
 import { Extension, type Editor, type JSONContent } from '@tiptap/core'
 import { EditorState } from '@tiptap/pm/state'
 import { CitationNode } from '../editor/citation'
@@ -276,6 +277,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       CitationNode,
       CiteMarkNode,
       ReviewMarks,
+      // Tables come in from a review matrix (cells that cite their quotes); edited as text.
+      TableKit.configure({ table: { resizable: false } }),
       Extension.create({
         name: 'citeShortcut',
         addKeyboardShortcuts: () => ({ 'Mod-Shift-c': () => (citeRef.current(), true) }),

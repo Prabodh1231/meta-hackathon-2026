@@ -14,6 +14,10 @@ import type {
   FetchResult,
   MissingWorks,
   FileDuplicateReport,
+  Matrix,
+  MatrixColumn,
+  MatrixPaper,
+  MatrixSummary,
   Folder,
   Health,
   RemovedDoc,
@@ -40,7 +44,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 11
+export const API_VERSION = 12
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -197,4 +201,29 @@ export const api = {
   restoreVersion: (draftId: number, id: number) =>
     request<{ id: number; title: string; content: string }>('POST', `/drafts/${draftId}/versions/${id}/restore`),
   checkDuplicates: (content: unknown) => request<DuplicateReport>('POST', '/drafts/check-duplicates', { content }),
+
+  // Literature review matrices
+  matrices: () => request<MatrixSummary[]>('GET', '/matrices'),
+  matrixColumns: () => request<MatrixColumn[]>('GET', '/matrices/columns'),
+  /** The papers a folder holds, or those about a topic (best evidence first). */
+  matrixPapers: (by: { folder_id?: number; topic?: string }) => request<MatrixPaper[]>('POST', '/matrices/papers', by),
+  createMatrix: (name: string, docIds: number[], columns?: MatrixColumn[]) =>
+    request<Matrix>('POST', '/matrices', { name, doc_ids: docIds, columns }),
+  matrix: (id: number) => request<Matrix>('GET', `/matrices/${id}`),
+  updateMatrix: (id: number, patch: { name?: string; columns?: MatrixColumn[]; add_doc_ids?: number[]; remove_doc_ids?: number[] }) =>
+    request<Matrix>('PATCH', `/matrices/${id}`, patch),
+  deleteMatrix: (id: number) => request<{ ok: boolean }>('DELETE', `/matrices/${id}`),
+  setMatrixCell: (id: number, docId: number, column: string, answer: string) =>
+    request<Matrix>('PUT', `/matrices/${id}/cells/${docId}/${encodeURIComponent(column)}`, { answer }),
+  /** Read again: one cell, a paper's row, a column, or everything. */
+  rerunMatrix: (id: number, scope: { doc_id?: number; column?: string } = {}) =>
+    request<Matrix>('POST', `/matrices/${id}/rerun`, scope),
+  matrixGaps: (id: number) => request<Matrix>('POST', `/matrices/${id}/gaps`),
+  matrixSynthesis: (id: number, instruction = '', columns?: string[]) =>
+    request<DraftResult>('POST', `/matrices/${id}/synthesis`, { instruction, columns }),
+  /** The matrix as editor content: a table whose cells cite their quotes. */
+  matrixTable: (id: number, columns: string[]) =>
+    request<{ type: 'doc'; content: unknown[] }>('GET', `/matrices/${id}/table?columns=${encodeURIComponent(columns.join(','))}`),
+  exportMatrix: async (id: number, format: 'xlsx' | 'csv' | 'docx', style: DocxStyle) =>
+    (await send('GET', `/matrices/${id}/export?format=${format}&style=${style}`)).arrayBuffer(),
 }

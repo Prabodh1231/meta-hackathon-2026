@@ -123,6 +123,64 @@ JUDGE_SCHEMA = {
     "additionalProperties": False,
 }
 
+MATRIX_SYSTEM = (
+    "You fill one row of a literature review matrix for a single research paper, using ONLY the "
+    "numbered passages from it. For each column, write a short, specific answer (at most 35 words: "
+    "numbers, places, periods, designs, effect directions), give the id of the passage it comes "
+    "from, and copy a verbatim quote from that passage (at most 40 words). Every fact in the answer "
+    "must be stated in or right around that quote: a reader checks the answer against it. If the "
+    "full answer is spread over several passages, answer with the most important part, the part "
+    "your quote shows, rather than adding facts from elsewhere: no extra numbers, sample sizes, "
+    "datasets, software, dates or demographics from other passages. If the passages do not report it, "
+    "give an empty answer, passage and quote: never guess or fill in from general knowledge. "
+    "Limitations count only when the authors state them."
+)
+MATRIX_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "cells": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "column": {"type": "string"},
+                    "answer": {"type": "string"},
+                    "passage": {"type": "string"},
+                    "quote": {"type": "string"},
+                },
+                "required": ["column", "answer", "passage", "quote"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["cells"],
+    "additionalProperties": False,
+}
+
+GAPS_SYSTEM = (
+    "You are given a literature review matrix: one line per study with its sample, setting, "
+    "method, findings and the like. Name the gaps a researcher could address: populations, "
+    "places, periods or methods the studies leave out, questions none answers, and findings "
+    "that conflict. Base every gap on the table only; name the studies it rests on. At most six, "
+    "most important first, each a short title and one or two sentences."
+)
+GAPS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "gaps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}, "detail": {"type": "string"}},
+                "required": ["title", "detail"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["gaps"],
+    "additionalProperties": False,
+}
+
 OCR_PROMPT = (
     "Transcribe all text in this image exactly, preserving reading order and line breaks. "
     "Describe diagrams in one bracketed line. Output only the transcription."

@@ -161,6 +161,41 @@ CREATE TABLE IF NOT EXISTS removed_documents (
   duplicate_of_title TEXT NOT NULL DEFAULT '',
   file_trashed INTEGER NOT NULL DEFAULT 0 -- the file went to the Recycle Bin too
 );
+-- Literature review matrices: one row per paper, one column per question (`columns` is JSON:
+-- [{key, label, instruction, query}]). Each cell is a short answer and the verbatim quote it rests
+-- on, located in the paper (chunk, page, offsets), or 'not_reported'.
+CREATE TABLE IF NOT EXISTS matrices (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  columns TEXT NOT NULL DEFAULT '[]',
+  gaps TEXT NOT NULL DEFAULT '', -- JSON list of {title, detail}, '' until asked for
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS matrix_rows (
+  matrix_id INTEGER NOT NULL REFERENCES matrices(id) ON DELETE CASCADE,
+  doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (matrix_id, doc_id)
+);
+CREATE TABLE IF NOT EXISTS matrix_cells (
+  matrix_id INTEGER NOT NULL REFERENCES matrices(id) ON DELETE CASCADE,
+  doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  col TEXT NOT NULL,
+  -- pending | found (quote located) | unverified (quote not in the paper) | not_reported | error
+  status TEXT NOT NULL DEFAULT 'pending',
+  answer TEXT NOT NULL DEFAULT '',
+  quote TEXT NOT NULL DEFAULT '',
+  chunk_id INTEGER,
+  page INTEGER,
+  start INTEGER,
+  "end" INTEGER,
+  label TEXT NOT NULL DEFAULT '',
+  edited INTEGER NOT NULL DEFAULT 0, -- the answer was written or changed by the user
+  error TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (matrix_id, doc_id, col)
+);
 """
 
 

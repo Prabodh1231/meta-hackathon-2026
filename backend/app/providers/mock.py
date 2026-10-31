@@ -91,6 +91,32 @@ class MockProvider(LLMProvider):
             out.append({"text": text, "citations": [{"passage": p.pid, "quote": best}]})
         return out
 
+    def extract_matrix_row(self, title: str, columns: list[dict], passages: list[Passage]) -> list[dict]:
+        # Offline: for each column, the sentence sharing most words with the column's search terms,
+        # quoted as it stands. Nothing shared means not reported.
+        out = []
+        for col in columns:
+            want = set(tokenize(f"{col.get('query') or ''} {col['label']} {col.get('instruction') or ''}"))
+            best, best_pid, score = "", "", 0
+            for p in passages:
+                for s in sentences(p.text):
+                    n = len(want & set(tokenize(s)))
+                    if len(s) >= 30 and n > score:
+                        best, best_pid, score = s.strip(), p.pid, n
+            if score == 0:
+                out.append({"column": col["key"], "answer": "", "passage": "", "quote": ""})
+            else:
+                answer = " ".join(best.split()[:30])
+                out.append({"column": col["key"], "answer": answer, "passage": best_pid, "quote": best})
+        return out
+
+    def find_gaps(self, topic: str, table: str) -> list[dict]:
+        # Offline: a column most studies leave empty is a gap.
+        lines = [line for line in table.splitlines() if line.strip()]
+        missing = Counter(m for line in lines for m in re.findall(r"(\w[\w ]*): not reported", line))
+        return [{"title": f"Little on {name.lower()}", "detail": f"{n} of {len(lines)} studies don't report it."}
+                for name, n in missing.most_common(6) if n]
+
     def judge_support(self, claim: str, passage: str) -> dict:
         claim_words = set(tokenize(claim))
         if not claim_words:

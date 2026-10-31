@@ -181,10 +181,18 @@ ipcMain.handle('rc:pick-folder', async (event) => {
 })
 
 // The renderer can't touch the filesystem, so it hands exported bytes here to save.
+const SAVE_TYPES = {
+  docx: 'Word document',
+  xlsx: 'Excel workbook',
+  csv: 'CSV (comma-separated values)',
+}
+
 ipcMain.handle('rc:save-file', async (event, defaultName, data) => {
+  const ext = String(path.extname(defaultName || '')).slice(1).toLowerCase()
+  const kind = SAVE_TYPES[ext] ? ext : 'docx'
   const res = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
     defaultPath: defaultName,
-    filters: [{ name: 'Word document', extensions: ['docx'] }],
+    filters: [{ name: SAVE_TYPES[kind], extensions: [kind] }],
   })
   if (res.canceled || !res.filePath) return null
   await fs.promises.writeFile(res.filePath, Buffer.from(data))

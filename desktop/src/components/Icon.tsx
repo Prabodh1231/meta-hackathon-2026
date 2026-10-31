@@ -2,6 +2,7 @@
 const PATHS = {
   write: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
   focus: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  matrix: 'M4 5h16v14H4zM4 10h16M4 15h16M9 5v14',
   collapse: 'M8 6l6 6-6 6M19 5v14', // close a panel on the right: chevron toward its edge
   expand: 'M16 6l-6 6 6 6M5 5v14',
   library: 'M4 5v14M8 5v14M12 5l4 14M17 5l3 13',

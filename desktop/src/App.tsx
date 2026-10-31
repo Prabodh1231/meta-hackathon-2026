@@ -1,3 +1,4 @@
+import type { JSONContent } from '@tiptap/core'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_VERSION, api, backendLogPath } from './api'
 import { AssistantPanel } from './components/AssistantPanel'
@@ -14,6 +15,7 @@ import { HistoryPanel } from './components/HistoryPanel'
 import { Icon, type IconName } from './components/Icon'
 import { LibraryPanel } from './components/LibraryPanel'
 import { ago, toneOf } from './components/Meters'
+import { MatrixView } from './components/MatrixView'
 import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { PdfViewerDialog } from './components/PdfViewerDialog'
 import { ReferencesPanel } from './components/ReferencesPanel'
@@ -33,6 +35,7 @@ import type {
   Citation,
   Doc,
   DocxConversion,
+  DraftSentence,
   DraftSummary,
   DuplicateReport,
   Folder,
@@ -43,12 +46,13 @@ import type {
   VersionList,
 } from './types'
 
-/** The three places in the app: the draft, the library, and the citation network. */
-type Mode = 'write' | 'library' | 'network'
+/** The places in the app: the draft, the library, the citation network, and review matrices. */
+type Mode = 'write' | 'library' | 'network' | 'matrix'
 const MODES: { mode: Mode; label: string; icon: IconName; hint: string }[] = [
   { mode: 'write', label: 'Write', icon: 'write', hint: 'Your draft, with the writing tools beside it' },
   { mode: 'library', label: 'Library', icon: 'library', hint: 'Add, organize and pick your sources' },
   { mode: 'network', label: 'Network', icon: 'network', hint: 'Who cites whom in your library' },
+  { mode: 'matrix', label: 'Matrix', icon: 'matrix', hint: 'Literature review matrix: papers side by side, each cell backed by a quote' },
 ]
 
 /** The tabs of the panel beside the draft, in the order you use them while writing. */
@@ -66,6 +70,7 @@ const TAB = Object.fromEntries(TABS.map((t) => [t.tab, t])) as Record<Tab, (type
 const SEARCH: Record<Exclude<Mode, 'write'>, { scope: string; placeholder: string }> = {
   library: { scope: 'Library', placeholder: 'Filter by title, author, keyword, JEL code…' },
   network: { scope: 'Network', placeholder: 'Search a topic: blockchain, financial inclusion…' },
+  matrix: { scope: 'Matrix', placeholder: 'Filter studies and cells…' },
 }
 
 const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mock' }
@@ -144,6 +149,8 @@ export default function App() {
   const [sourceFrom, setSourceFrom] = useState<Tab | null>(null) // showing `source`, opened from this tab
   const [libQuery, setLibQuery] = useState('')
   const [netQuery, setNetQuery] = useState('')
+  const [matQuery, setMatQuery] = useState('')
+  const [matrixSeen, setMatrixSeen] = useState(false) // mounted once opened, so a matrix keeps its place
   const [errors, setErrors] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [draftId, setDraftId] = useState(initialDraft)
@@ -723,6 +730,59 @@ export default function App() {
     setSource((s) => (s?.cid === cid ? { ...s, status: v.status, reason: v.reason } : s))
   }
 
+  useEffect(() => {
+    if (mode === 'matrix') setMatrixSeen(true)
+  }, [mode])
+
+  /** Check citations put into the draft from a matrix, a few at a time, and recolour their chips. */
+  function verifyInDraft(items: { cid: string; claim: string; chunkId: number; quote: string }[]) {
+    let next = 0
+    const one = async (): Promise<void> => {
+      const it = items[next++]
+      if (!it) return
+      try {
+        const v = await api.verify(it.claim, it.chunkId, it.quote)
+        editor.current?.updateCitation(it.cid, { status: v.status, reason: v.reason, start: v.start, end: v.end })
+      } catch {
+        /* stays "pending": the chip can be checked again from its source */
+      }
+      return one()
+    }
+    for (let i = 0; i < Math.min(4, items.length); i++) one()
+  }
+
+  /** A review matrix as a table in the draft; its cells' citations are then checked. */
+  function insertMatrixTable(doc: { type: 'doc'; content: unknown[] }) {
+    const stamp = Date.now().toString(36) // the same matrix inserted twice gets distinct chips
+    const items: { cid: string; claim: string; chunkId: number; quote: string }[] = []
+    const walk = (n: { type?: string; attrs?: Record<string, unknown>; content?: unknown[] }) => {
+      if (n.type === 'citation' && n.attrs) {
+        n.attrs.cid = `${n.attrs.cid}-${stamp}`
+        if (n.attrs.status === 'pending') {
+          items.push({ cid: String(n.attrs.cid), claim: String(n.attrs.claim), chunkId: Number(n.attrs.chunkId), quote: String(n.attrs.quote) })
+        }
+      }
+      ;(n.content ?? []).forEach((c) => walk(c as typeof n))
+    }
+    walk(doc)
+    revealTools()
+    editor.current?.insertDocument(doc as JSONContent)
+    setNotice(`Inserted the matrix as a table; checking its ${items.length} citation${items.length === 1 ? '' : 's'} in the background.`)
+    verifyInDraft(items)
+  }
+
+  /** Sentences written from a matrix into the draft; their citations are then checked. */
+  function insertMatrixSentences(sentences: DraftSentence[]) {
+    const stamp = Date.now().toString(36)
+    const withIds = sentences.map((s, i) => ({
+      ...s,
+      citations: s.citations.map((c, j) => ({ ...c, cid: `ms-${stamp}-${i}-${j}` })),
+    }))
+    revealTools()
+    editor.current?.insertDraft(withIds)
+    verifyInDraft(withIds.flatMap((s) => s.citations.map((c) => ({ cid: c.cid!, claim: s.text, chunkId: c.chunk_id, quote: c.quote }))))
+  }
+
   function showCitations(focus: string | null = null) {
     showTab('citations')
     setCiteFocus(focus)
@@ -742,6 +802,7 @@ export default function App() {
     { group: 'GO', name: 'Write', hint: 'the draft and its tools', run: () => setMode('write') },
     { group: 'GO', name: 'Library', hint: 'add and organize sources', run: openLibrary },
     { group: 'GO', name: 'Citation network', hint: 'who cites whom, shared references', run: () => setMode('network') },
+    { group: 'GO', name: 'Review matrix', hint: 'papers side by side: sample, setting, method, findings', run: () => setMode('matrix') },
     { group: 'DO', name: 'Ask the assistant', hint: 'draft with citations', run: () => showTab('assistant') },
     {
       group: 'DO',
@@ -803,8 +864,8 @@ export default function App() {
     )
   }
 
-  const query = mode === 'library' ? libQuery : netQuery
-  const setQuery = mode === 'library' ? setLibQuery : setNetQuery
+  const query = mode === 'library' ? libQuery : mode === 'matrix' ? matQuery : netQuery
+  const setQuery = mode === 'library' ? setLibQuery : mode === 'matrix' ? setMatQuery : setNetQuery
 
   return (
     <div className={`app${focusMode ? ' focus' : ''}`}>
@@ -1123,6 +1184,22 @@ export default function App() {
             cited={citedIds}
           />
         </div>
+
+        {(mode === 'matrix' || matrixSeen) && (
+          <div className="view matrix-view" hidden={mode !== 'matrix'}>
+            <MatrixView
+              docs={docs}
+              folders={folders}
+              selected={selected}
+              query={matQuery}
+              citationStyle={settings.citation_style}
+              onError={onError}
+              onOpenPdf={openPdf}
+              onInsertTable={insertMatrixTable}
+              onInsertSentences={insertMatrixSentences}
+            />
+          </div>
+        )}
 
         {mode === 'network' && (
           <div className="view network-view">
