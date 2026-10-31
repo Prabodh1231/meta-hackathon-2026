@@ -94,3 +94,23 @@ python scripts/eval_large.py run --json eval/large/results.json
 ```
 
 `tests/test_retrieval_eval.py` re-runs the small set with the cached models and fails if reranked hybrid stops beating embeddings alone, if any question type gets worse, or if the default mode starts using plain fusion.
+
+# Matrix check evaluation
+
+`scripts/eval_matrix_check.py` measures the check behind blue citations: whether a sentence
+written from a review matrix is backed by the matrix (`judge_against_matrix`). It sends Muse a
+four-study matrix on mobile money, in the exact text form the app sends (answers with their
+quotes), and 15 sentences with the verdict a careful reviewer would give:
+
+- 7 supported comparisons and gaps (for example "None of the studies examines rural India");
+- 3 overstatements, where partial is expected and unsupported is also accepted;
+- 5 contradicted or invented claims.
+
+```bash
+python scripts/eval_matrix_check.py --runs 3 --compare-quote --save
+```
+
+`--compare-quote` also judges each sentence against one study's quote, the way these citations
+were checked before, to show the difference. The script needs the Muse provider set up as for
+the app; `--provider mock` only tries the script, since the mock matches words rather than
+judging meaning. No Muse results are recorded here yet.
