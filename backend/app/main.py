@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from .export_docx import export_docx
 from .jobs import IngestJobs
 from .library import INGEST_WORKERS, Library
-from .matrix import DEFAULT_COLUMNS, Matrices
+from .matrix import DETAIL_FIELDS, Matrices, default_columns
 from .parent_watch import exit_with_parent
 from .settings import Settings
 
@@ -45,7 +45,9 @@ class SearchIn(BaseModel):
 
 class MatrixColumn(BaseModel):
     key: str = ""
-    label: str
+    kind: str = "question"  # question (read from the paper) | detail (the paper's record)
+    field: str = ""  # for a detail: which (see /matrices/details)
+    label: str = ""  # a question needs one; a detail has its own
     instruction: str = ""
     query: str = ""
 
@@ -168,7 +170,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 14
+API_VERSION = 15
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -506,8 +508,13 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         return matrices.summaries()
 
     @app.get("/matrices/columns")
-    def default_columns():
-        return DEFAULT_COLUMNS
+    def matrix_default_columns():
+        return default_columns()
+
+    @app.get("/matrices/details")
+    def detail_fields():
+        """The paper details a matrix can show as columns."""
+        return [{"field": f, "label": label} for f, label in DETAIL_FIELDS.items()]
 
     @app.post("/matrices/papers")
     def matrix_papers(body: MatrixPapersIn):

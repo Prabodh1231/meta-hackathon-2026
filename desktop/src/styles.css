@@ -1253,3 +1253,27 @@ tr:hover .mx-row-actions, .mx-row-actions:focus-within { opacity: 1; }
 @media (max-width: 1120px) { .lib-table .c-citations { display: none; } }
 .lib-note { font-size: 12px; }
 .lib-note .link { padding: 0; font-size: 12px; }
+
+/* Matrix detail columns: the paper's record beside the questions, sortable, with row filters */
+.mx-subhead { margin: 14px 0 2px; font: 600 12px/1.2 system-ui, sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.mx-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.mx-chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; }
+.mx-chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.mx-chip.on:hover:not(:disabled) { background: var(--accent); }
+.mx-tools > button.on { border-color: var(--accent); color: var(--accent); }
+.mx-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 20px; background: var(--bg); border-bottom: 1px solid var(--border); flex: none; font-size: 12.5px; }
+.mx-panel > .muted { flex: 1 1 100%; }
+.mx-filters > .muted { flex: 0 1 auto; }
+.mx-filter-form { display: flex; align-items: center; gap: 6px; }
+.mx-filter-form input { width: 110px; padding: 4px 8px; }
+.mx-filter-form select { padding: 4px 6px; }
+.mx-filter-form button { font-size: 12px; padding: 4px 10px; }
+.mx-filter-chip { display: inline-flex; align-items: center; gap: 4px; }
+.mx-table thead th.mx-detail-h button { display: flex; align-items: center; gap: 5px; color: var(--accent); }
+.mx-table thead th.mx-detail-h[aria-sort="ascending"] button, .mx-table thead th.mx-detail-h[aria-sort="descending"] button { background: var(--hover); }
+.mx-cell.mx-detail { min-width: 90px; max-width: 220px; cursor: default; background: color-mix(in srgb, var(--accent) 3%, transparent); }
+.mx-cell.mx-detail:hover { background: color-mix(in srgb, var(--accent) 3%, transparent); }
+.mx-detail-year, .mx-detail-cited_by_count, .mx-detail-published, .mx-detail-volume, .mx-detail-pages { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mx-cell.mx-detail-abstract { min-width: 280px; max-width: 360px; }
+.mx-detail-abstract .mx-detail-text { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.mx-detail-doi { word-break: break-all; }

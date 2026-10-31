@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
-import type { Doc, DocxStyle, DraftSentence, Folder, Matrix, MatrixCell, MatrixColumn, MatrixPaper, MatrixSummary } from '../types'
+import {
+  type DetailFilter, type DetailSort, NUMERIC, detailColumn, detailText, filterText, isDetail, passes, sortRows,
+} from '../matrixDetails'
+import type { Doc, DocxStyle, DraftSentence, Folder, Matrix, MatrixCell, MatrixColumn, MatrixDetailField, MatrixPaper, MatrixSummary } from '../types'
 import { ago } from './Meters'
 import { SourceViewer, type SourceTarget } from './SourceViewer'
 import { StatusBadge } from './StatusBadge'
@@ -31,6 +34,31 @@ const STATUS_TEXT: Record<MatrixCell['status'], string> = {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
+/** One chip per paper detail; a lit chip is a column the matrix shows. */
+function DetailChips({ fields, columns, onToggle, disabled }: {
+  fields: MatrixDetailField[]
+  columns: MatrixColumn[]
+  onToggle: (field: MatrixDetailField, on: boolean) => void
+  disabled?: boolean
+}) {
+  const shown = new Set(columns.filter(isDetail).map((c) => c.field))
+  return (
+    <div className="mx-chips" role="group" aria-label="Paper details">
+      {fields.map((f) => (
+        <button
+          key={f.field}
+          className={`mx-chip${shown.has(f.field) ? ' on' : ''}`}
+          aria-pressed={shown.has(f.field)}
+          disabled={disabled}
+          onClick={() => onToggle(f, !shown.has(f.field))}
+        >
+          {f.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /** Where a matrix's papers come from when it's made. */
 type Source = 'topic' | 'folder' | 'ticked'
 
@@ -49,11 +77,15 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
   const [chosen, setChosen] = useState<Set<number>>(new Set())
   const [name, setName] = useState('')
   const [columns, setColumns] = useState<MatrixColumn[]>([])
+  const [fields, setFields] = useState<MatrixDetailField[]>([])
   const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
     api.matrixColumns().then(setColumns).catch((e) => onError(message(e)))
+    api.matrixDetails().then(setFields).catch(() => {}) // an older backend has none
   }, [onError])
+  const questionCount = columns.filter((c) => !isDetail(c)).length
+  const detailCount = columns.length - questionCount
 
   const show = (list: MatrixPaper[], title: string) => {
     setPapers(list)
@@ -182,7 +214,7 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
         <h3>2. Columns</h3>
         <p className="muted">What to pull out of every paper. Rename, reword or add your own (an outcome measure, a theory, a dataset…).</p>
         <div className="mx-cols">
-          {columns.map((c, i) => (
+          {columns.map((c, i) => isDetail(c) ? null : (
             <div key={i} className="mx-col">
               <input value={c.label} onChange={(e) => setColumn(i, { label: e.target.value })} aria-label="Column name" className="mx-col-label" />
               <input value={c.instruction} onChange={(e) => setColumn(i, { instruction: e.target.value, query: '' })} aria-label="What to extract" placeholder="What to extract, in a sentence" />
@@ -191,12 +223,23 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
               </button>
             </div>
           ))}
-          {columns.length < 12 && (
+          {questionCount < 12 && (
             <button className="link" onClick={() => setColumns((cs) => [...cs, { key: '', label: '', instruction: '' }])}>
               + Add a column
             </button>
           )}
         </div>
+        {fields.length > 0 && (
+          <>
+            <h4 className="mx-subhead">Paper details</h4>
+            <p className="muted">From each paper's record (OpenAlex, Crossref and your library), shown as they are: no reading, no quotes.</p>
+            <DetailChips
+              fields={fields}
+              columns={columns}
+              onToggle={(f, on) => setColumns((cs) => (on ? [...cs, detailColumn(f.field, f.label)] : cs.filter((c) => c.field !== f.field || !isDetail(c))))}
+            />
+          </>
+        )}
       </section>
 
       <section className="mx-step">
@@ -208,7 +251,7 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
 
       <div className="mx-actions">
         <button className="primary" disabled={!chosen.size || !columns.length || columns.some((c) => !c.label.trim()) || !!busy} onClick={build}>
-          Build the matrix ({chosen.size} papers × {columns.length} columns)
+          Build the matrix ({chosen.size} papers × {questionCount} questions{detailCount ? ` + ${detailCount} details` : ''})
         </button>
         {onCancel && <button onClick={onCancel}>Cancel</button>}
         <span className="muted">About {Math.max(1, Math.ceil(chosen.size / 8) * 8)} seconds; it keeps reading if you go elsewhere.</span>
@@ -489,6 +532,15 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   const [renaming, setRenaming] = useState(false)
   const [editingCol, setEditingCol] = useState<{ index: number; label: string; instruction: string } | null>(null)
   const [showGaps, setShowGaps] = useState(true)
+  const [fields, setFields] = useState<MatrixDetailField[]>([])
+  const [panel, setPanel] = useState<'details' | 'filter' | null>(null)
+  const [sort, setSort] = useState<DetailSort | null>(null)
+  const [filters, setFilters] = useState<DetailFilter[]>([])
+  const [draft, setDraft] = useState<{ field: string; min: string; max: string; text: string }>({ field: 'year', min: '', max: '', text: '' })
+
+  useEffect(() => {
+    api.matrixDetails().then(setFields).catch(() => {})
+  }, [])
 
   const refreshList = () => api.matrices().then(setList).catch((e) => onError(message(e)))
   useEffect(() => {
@@ -520,6 +572,8 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   async function open(id: number) {
     setCreating(false)
     setCellAt(null)
+    setSort(null)
+    setFilters([])
     try {
       setMatrix(await api.matrix(id))
     } catch (e) {
@@ -541,17 +595,37 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   }
 
   const needle = query.trim().toLowerCase()
-  const rows = useMemo(
-    () =>
-      !matrix
-        ? []
-        : !needle
-          ? matrix.rows
-          : matrix.rows.filter((r) =>
-              `${r.title} ${r.label} ${Object.values(r.cells).map((c) => c.answer).join(' ')}`.toLowerCase().includes(needle),
-            ),
-    [matrix, needle],
-  )
+  const rows = useMemo(() => {
+    if (!matrix) return []
+    const shown = matrix.rows.filter(
+      (r) =>
+        (!needle || `${r.title} ${r.label} ${Object.values(r.cells).map((c) => c.answer).join(' ')}`.toLowerCase().includes(needle)) &&
+        filters.every((f) => passes(r, f)),
+    )
+    return sortRows(shown, sort)
+  }, [matrix, needle, filters, sort])
+  const labelOf = (field: string) => fields.find((f) => f.field === field)?.label ?? field
+  const toggleDetail = (f: MatrixDetailField, on: boolean) => {
+    if (!matrix) return
+    const cols = on ? [...matrix.columns, detailColumn(f.field, f.label)] : matrix.columns.filter((c) => !(isDetail(c) && c.field === f.field))
+    if (!on && sort?.field === f.field) setSort(null)
+    run(on ? 'Adding…' : 'Removing…', () => api.updateMatrix(matrix.id, { columns: cols }))
+  }
+  const addFilter = () => {
+    const f: DetailFilter = NUMERIC.has(draft.field)
+      ? { field: draft.field, min: draft.min.trim() ? Number(draft.min) : undefined, max: draft.max.trim() ? Number(draft.max) : undefined }
+      : { field: draft.field, text: draft.text.trim() }
+    if (f.min == null && f.max == null && !f.text) return
+    setFilters((fs) => [...fs.filter((x) => x.field !== f.field), f])
+    setDraft({ ...draft, min: '', max: '', text: '' })
+  }
+  const narrowed = needle !== '' || filters.length > 0
+  const sortedBy = (c: MatrixColumn): 0 | 1 | -1 => (sort && sort.field === c.field ? sort.dir : 0)
+  /** First click: most or newest first for numbers, A to Z for text; then the other way; then as added. */
+  const sortBy = (field: string) => {
+    const first: 1 | -1 = NUMERIC.has(field) ? -1 : 1
+    setSort((s) => (!s || s.field !== field ? { field, dir: first } : s.dir === first ? { field, dir: -first as 1 | -1 } : null))
+  }
 
   const showNew = creating || (list !== null && list.length === 0 && !matrix)
   const done = matrix ? matrix.cells - matrix.pending : 0
@@ -615,11 +689,24 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                   </h2>
                 )}
                 <span className="muted">
-                  {matrix.rows.length} papers · {matrix.columns.length} columns
-                  {needle && ` · ${rows.length} shown`}
+                  {matrix.rows.length} papers · {matrix.columns.filter((c) => !isDetail(c)).length} questions
+                  {matrix.columns.some(isDetail) && ` · ${matrix.columns.filter(isDetail).length} details`}
+                  {narrowed && ` · ${rows.length} shown`}
                 </span>
               </div>
               <div className="mx-tools">
+                {fields.length > 0 && (
+                  <>
+                    <button className={panel === 'details' ? 'on' : ''} aria-expanded={panel === 'details'} onClick={() => setPanel(panel === 'details' ? null : 'details')}
+                      title="Show the papers' year, journal, citations, abstract… as columns">
+                      Paper details
+                    </button>
+                    <button className={panel === 'filter' || filters.length ? 'on' : ''} aria-expanded={panel === 'filter'} onClick={() => setPanel(panel === 'filter' ? null : 'filter')}
+                      title="Show only papers from some years, a journal, with enough citations…">
+                      Filter{filters.length ? ` (${filters.length})` : ''}
+                    </button>
+                  </>
+                )}
                 <button onClick={() => run('Finding gaps…', () => api.matrixGaps(matrix.id).then((m) => (setShowGaps(true), m)))} disabled={!!matrix.pending || !!busy}>
                   Find gaps
                 </button>
@@ -667,8 +754,8 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                   {menu === 'more' && (
                     <div className="lib-menu" role="menu">
                       <button role="menuitem" onClick={() => (setMenu(null), setEditingCol({ index: -1, label: '', instruction: '' }))}>
-                        <b>Add a column</b>
-                        <span>A new question, read for every paper</span>
+                        <b>Add a question</b>
+                        <span>A new column Muse reads for every paper</span>
                       </button>
                       <button role="menuitem" onClick={() => (setMenu(null), run('Reading again…', () => api.rerunMatrix(matrix.id)))}>
                         <b>Read every paper again</b>
@@ -743,6 +830,54 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
               </form>
             )}
 
+            {panel === 'details' && (
+              <section className="mx-panel" aria-label="Paper details">
+                <span className="muted">Show as columns, straight from each paper's record. Click a detail's header to sort by it.</span>
+                <DetailChips fields={fields} columns={matrix.columns} onToggle={toggleDetail} disabled={!!busy} />
+              </section>
+            )}
+            {(panel === 'filter' || filters.length > 0) && (
+              <section className="mx-panel mx-filters" aria-label="Filter papers">
+                {panel === 'filter' && (
+                  <form
+                    className="mx-filter-form"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      addFilter()
+                    }}
+                  >
+                    <select value={draft.field} onChange={(e) => setDraft({ ...draft, field: e.target.value })} aria-label="Detail to filter by">
+                      {fields.map((f) => (
+                        <option key={f.field} value={f.field}>{f.label}</option>
+                      ))}
+                    </select>
+                    {NUMERIC.has(draft.field) ? (
+                      <>
+                        <input type="number" value={draft.min} onChange={(e) => setDraft({ ...draft, min: e.target.value })}
+                          placeholder={draft.field === 'year' ? 'From' : 'At least'} aria-label="From" />
+                        <input type="number" value={draft.max} onChange={(e) => setDraft({ ...draft, max: e.target.value })}
+                          placeholder={draft.field === 'year' ? 'To' : 'At most'} aria-label="To" />
+                      </>
+                    ) : (
+                      <input value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} placeholder="Contains…" aria-label="Contains" />
+                    )}
+                    <button className="primary">Add filter</button>
+                  </form>
+                )}
+                {filters.map((f) => (
+                  <span key={f.field} className="tag mx-filter-chip">
+                    {filterText(f, labelOf(f.field))}
+                    <button className="tag-x" onClick={() => setFilters((fs) => fs.filter((x) => x !== f))} aria-label={`Remove the ${labelOf(f.field)} filter`}>×</button>
+                  </span>
+                ))}
+                {filters.length > 0 && (
+                  <span className="muted">
+                    {rows.length} of {matrix.rows.length} papers · papers without the detail are left out
+                  </span>
+                )}
+              </section>
+            )}
+
             {matrix.gaps && matrix.gaps.length > 0 && (
               <section className="mx-gaps">
                 <button className="mx-gaps-head" onClick={() => setShowGaps((s) => !s)} aria-expanded={showGaps}>
@@ -768,13 +903,22 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                   <thead>
                     <tr>
                       <th className="mx-study">Study</th>
-                      {matrix.columns.map((c, i) => (
-                        <th key={c.key}>
-                          <button onClick={() => setEditingCol({ index: i, label: c.label, instruction: c.instruction })} title={c.instruction || 'Edit this column'}>
-                            {c.label}
-                          </button>
-                        </th>
-                      ))}
+                      {matrix.columns.map((c, i) =>
+                        isDetail(c) ? (
+                          <th key={c.key} className="mx-detail-h" aria-sort={sortedBy(c) === 1 ? 'ascending' : sortedBy(c) === -1 ? 'descending' : 'none'}>
+                            <button onClick={() => sortBy(c.field!)} title={`From each paper's record. Click to sort by ${c.label.toLowerCase()}.`}>
+                              {c.label}
+                              <span className="sort-arrow" aria-hidden="true">{sortedBy(c) === 1 ? '▲' : sortedBy(c) === -1 ? '▼' : ''}</span>
+                            </button>
+                          </th>
+                        ) : (
+                          <th key={c.key}>
+                            <button onClick={() => setEditingCol({ index: i, label: c.label, instruction: c.instruction })} title={c.instruction || 'Edit this column'}>
+                              {c.label}
+                            </button>
+                          </th>
+                        ),
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -795,6 +939,14 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                           </span>
                         </th>
                         {matrix.columns.map((c) => {
+                          if (isDetail(c)) {
+                            const text = detailText(r.details[c.field!], c.field)
+                            return (
+                              <td key={c.key} className={`mx-cell mx-detail mx-detail-${c.field}`} title={text.length > 120 ? text : undefined}>
+                                {text ? <span className="mx-detail-text">{text}</span> : <span className="mx-nr">—</span>}
+                              </td>
+                            )
+                          }
                           const cell = r.cells[c.key]
                           const on = cellAt?.doc === r.doc_id && cellAt.col === c.key
                           return (
@@ -827,7 +979,17 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                     ))}
                   </tbody>
                 </table>
-                {rows.length === 0 && <p className="empty">No study matches “{query.trim()}”.</p>}
+                {rows.length === 0 && (
+                  <p className="empty">
+                    {needle ? `No study matches “${query.trim()}”` : 'No study passes these filters'}
+                    {filters.length > 0 && (
+                      <>
+                        {' · '}
+                        <button className="link" onClick={() => setFilters([])}>Clear the filters</button>
+                      </>
+                    )}
+                  </p>
+                )}
               </div>
               {cellAt && (
                 <CellPane

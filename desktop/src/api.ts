@@ -19,6 +19,7 @@ import type {
   FileDuplicateReport,
   Matrix,
   MatrixColumn,
+  MatrixDetailField,
   MatrixPaper,
   MatrixSummary,
   Folder,
@@ -48,7 +49,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 14
+export const API_VERSION = 15
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -218,6 +219,8 @@ export const api = {
   // Literature review matrices
   matrices: () => request<MatrixSummary[]>('GET', '/matrices'),
   matrixColumns: () => request<MatrixColumn[]>('GET', '/matrices/columns'),
+  /** The paper details a matrix can show as columns. */
+  matrixDetails: () => request<MatrixDetailField[]>('GET', '/matrices/details'),
   /** The papers a folder holds, or those about a topic (best evidence first). */
   matrixPapers: (by: { folder_id?: number; topic?: string }) => request<MatrixPaper[]>('POST', '/matrices/papers', by),
   createMatrix: (name: string, docIds: number[], columns?: MatrixColumn[]) =>

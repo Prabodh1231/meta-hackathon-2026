@@ -61,8 +61,9 @@ def test_every_cell_is_a_located_quote_or_not_reported(setup):
     r = client.post("/matrices", json={"name": "Digital finance", "doc_ids": list(ids.values())})
     assert r.status_code == 200
     m = wait(client, r.json()["id"])
-    assert [c["key"] for c in m["columns"]] == ["sample", "setting", "method", "findings", "limitations"]
-    assert len(m["rows"]) == 2 and m["cells"] == 10
+    assert [c["key"] for c in m["columns"]] == [
+        "sample", "setting", "method", "findings", "limitations", "@year", "@venue", "@cited_by_count"]
+    assert len(m["rows"]) == 2 and m["cells"] == 10  # the paper details aren't read: no cells
     sample = cell(m, ids["kenya.md"], "sample")
     assert sample["status"] == "found" and "412 farmers" in sample["answer"]
     page = lib.get_page(ids["kenya.md"], sample["page"])["text"]
@@ -189,3 +190,81 @@ def test_hex_page_labels_are_decoded(setup):
         lib.conn.execute("UPDATE pages SET label = '<FEFF00310032>' WHERE doc_id = ?", (ids["kenya.md"],))
     again = Library(lib.settings, provider=MockProvider(), embedder=HashEmbedder())
     assert again.get_page(ids["kenya.md"], 1)["label"] == "12"
+
+
+# ---------- detail columns: the paper's record beside the questions ----------
+
+def details_only(*fields):
+    return [{"kind": "detail", "field": f} for f in fields]
+
+
+def test_detail_columns_show_the_record_and_cost_no_reading(setup):
+    client, lib, ids = setup
+    with lib.conn:
+        lib.conn.execute("UPDATE documents SET year = 2019, venue = 'J Dev Econ', volume = '140', issue = '2', "
+                         "cited_by_count = 812, abstract = 'We study mobile money.', authors = '[\"Ana Wanjiru\"]' WHERE id = ?",
+                         (ids["kenya.md"],))
+    cols = [{"label": "Sample", "instruction": "Who was studied"}, *details_only("year", "volume", "cited_by_count", "abstract")]
+    m = wait(client, client.post("/matrices", json={"name": "M", "doc_ids": list(ids.values()), "columns": cols}).json()["id"])
+    assert [(c["key"], c["kind"], c["label"]) for c in m["columns"]][1:] == [
+        ("@year", "detail", "Year"), ("@volume", "detail", "Volume (issue)"), ("@cited_by_count", "detail", "Cited"),
+        ("@abstract", "detail", "Abstract")]
+    assert m["cells"] == 2  # one question, two papers
+    kenya = next(r for r in m["rows"] if r["doc_id"] == ids["kenya.md"])
+    assert {k: kenya["details"][k] for k in ("year", "volume", "cited_by_count", "abstract", "authors")} == {
+        "year": 2019, "volume": "140(2)", "cited_by_count": 812, "abstract": "We study mobile money.", "authors": ["Ana Wanjiru"]}
+
+    # A correction in the library shows at once: details are the record, not a copy.
+    client.patch(f"/documents/{ids['kenya.md']}", json={"year": 2020})
+    assert next(r for r in client.get(f"/matrices/{m['id']}").json()["rows"] if r["doc_id"] == ids["kenya.md"])["details"]["year"] == 2020
+
+    # Adding or removing a detail column reads nothing.
+    m = client.patch(f"/matrices/{m['id']}", json={"columns": [*m["columns"], *details_only("publisher")]}).json()
+    assert m["pending"] == 0 and m["columns"][-1]["key"] == "@publisher"
+
+
+def test_a_matrix_of_details_alone_and_the_limits(setup):
+    client, lib, ids = setup
+    r = client.post("/matrices", json={"name": "Years", "doc_ids": list(ids.values()), "columns": details_only("year", "year", "doi")})
+    assert r.status_code == 200
+    assert [c["key"] for c in r.json()["columns"]] == ["@year", "@doi"]  # the same detail once
+    assert r.json()["pending"] == 0 and r.json()["cells"] == 0
+    bad = client.post("/matrices", json={"name": "X", "doc_ids": list(ids.values()), "columns": details_only("shoe_size")})
+    assert bad.status_code == 400
+    # Twelve questions and every detail fit: the limit is on questions, which cost reading.
+    every = [d["field"] for d in client.get("/matrices/details").json()]
+    many = [{"label": f"Q{i}", "instruction": "x"} for i in range(12)] + details_only(*every)
+    assert client.post("/matrices", json={"name": "Big", "doc_ids": [ids["kenya.md"]], "columns": many}).status_code == 200
+    # A column keyed like a detail ("@year") is that detail.
+    q = client.post("/matrices", json={"name": "Q", "doc_ids": [ids["kenya.md"]], "columns": [{"key": "@year", "label": "Year"}]})
+    assert q.status_code == 200 and q.json()["columns"][0]["kind"] == "detail"
+
+
+def test_details_in_exports_gaps_and_synthesis(setup, monkeypatch):
+    client, lib, ids = setup
+    with lib.conn:
+        lib.conn.execute("UPDATE documents SET venue = 'J Dev Econ', cited_by_count = 812 WHERE id = ?", (ids["kenya.md"],))
+    cols = [{"label": "Sample", "instruction": "Who was studied", "key": "sample"}, *details_only("year", "venue", "cited_by_count")]
+    mid = client.post("/matrices", json={"name": "M", "doc_ids": list(ids.values()), "columns": cols}).json()["id"]
+    wait(client, mid)
+
+    csv = client.get(f"/matrices/{mid}/export", params={"format": "csv"}).content.decode("utf-8-sig").splitlines()
+    assert csv[0] == "Study,Title,Year,Sample,Sample: evidence,Journal,Cited"  # no evidence for a detail, and Year once
+    assert any(line.endswith(",J Dev Econ,812") for line in csv[1:])
+
+    seen = {}
+    monkeypatch.setattr(lib.provider, "find_gaps", lambda name, table: seen.setdefault("table", table) and [])
+    client.post(f"/matrices/{mid}/gaps")
+    assert "Journal: J Dev Econ | Cited: 812" in seen["table"]  # (after Year: unknown)
+
+    monkeypatch.setattr(lib.provider, "draft", lambda instruction, context, passages: seen.setdefault("task", instruction) and [])
+    client.post(f"/matrices/{mid}/synthesis", json={})
+    assert "Journal: J Dev Econ; Cited: 812" in seen["task"] and "cite only the passages" in seen["task"]
+
+
+def test_what_a_new_matrix_starts_with(setup):
+    client, _, _ = setup
+    cols = client.get("/matrices/columns").json()
+    assert [c["key"] for c in cols if c["kind"] == "detail"] == ["@year", "@venue", "@cited_by_count"]
+    assert len([c for c in cols if c["kind"] == "question"]) == 5
+    assert {"field": "abstract", "label": "Abstract"} in client.get("/matrices/details").json()

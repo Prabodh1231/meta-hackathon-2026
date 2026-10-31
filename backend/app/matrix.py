@@ -1,6 +1,8 @@
 """Literature review matrices: one row per paper, one column per question (sample, setting,
 method, findings, limitations, or the user's own), every cell a short answer resting on a verbatim
-quote that has been found in the paper, or marked not reported.
+quote that has been found in the paper, or marked not reported. Detail columns sit beside them: the
+paper's own record (year, journal, citations, abstract…, from the scholarly indexes), shown as it
+is in the library, never read by the model.
 
 A row is read with one model call: for each column the paper's own best passages are found with
 search restricted to that paper (plus its opening, where abstracts say most), and the model
@@ -41,8 +43,15 @@ DEFAULT_COLUMNS = [
      "instruction": "Limitations the authors themselves acknowledge.",
      "query": "limitations limitation future research caveat shortcoming constraint generalisability"},
 ]
+# Detail columns: the paper's record. Their keys start with "@" so they never clash with a question's.
+DETAIL_FIELDS = {
+    "authors": "Authors", "year": "Year", "published": "Published", "venue": "Journal", "volume": "Volume (issue)",
+    "pages": "Pages", "publisher": "Publisher", "doi": "DOI", "cited_by_count": "Cited", "abstract": "Abstract",
+    "keywords": "Keywords", "jel_codes": "JEL codes",
+}
+DEFAULT_DETAILS = ("year", "venue", "cited_by_count")
 MAX_ROWS = 80
-MAX_COLUMNS = 12
+MAX_COLUMNS = 12  # questions: each costs a model call's worth of reading per paper; details are free
 PASSAGES_PER_COLUMN = 3
 MAX_PASSAGES = 16
 WORKERS = 8  # rows read at once, as many as files during an import
@@ -54,29 +63,74 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")[:30] or "column"
 
 
+def detail_column(field: str) -> dict:
+    return {"key": f"@{field}", "kind": "detail", "field": field, "label": DETAIL_FIELDS[field], "instruction": "", "query": ""}
+
+
+def default_columns() -> list[dict]:
+    """What a new matrix starts with: the reviewers' questions, then a few details."""
+    return [{**c, "kind": "question"} for c in DEFAULT_COLUMNS] + [detail_column(f) for f in DEFAULT_DETAILS]
+
+
+def questions(columns: list[dict]) -> list[dict]:
+    return [c for c in columns if c.get("kind") != "detail"]
+
+
+def details(columns: list[dict]) -> list[dict]:
+    return [c for c in columns if c.get("kind") == "detail"]
+
+
 def normalize_columns(columns: list[dict] | None) -> list[dict]:
-    """Columns as stored: unique keys, a label each, at most MAX_COLUMNS."""
+    """Columns as stored: unique keys, a label each, at most MAX_COLUMNS questions."""
     if columns is None:
-        return [dict(c) for c in DEFAULT_COLUMNS]
+        return default_columns()
     if not columns:
         raise ValueError("A matrix needs at least one column")
-    if len(columns) > MAX_COLUMNS:
-        raise ValueError(f"At most {MAX_COLUMNS} columns")
+    if len([c for c in columns if c.get("kind") != "detail" and not str(c.get("key") or "").startswith("@")]) > MAX_COLUMNS:
+        raise ValueError(f"At most {MAX_COLUMNS} question columns")
     defaults = {c["key"]: c for c in DEFAULT_COLUMNS}
     out, keys = [], set()
     for c in columns:
+        if c.get("kind") == "detail" or str(c.get("key") or "").startswith("@"):
+            field = str(c.get("field") or str(c.get("key") or "")[1:])
+            if field not in DETAIL_FIELDS:
+                raise ValueError(f"Unknown paper detail {field!r}")
+            if f"@{field}" not in keys:
+                keys.add(f"@{field}")
+                out.append(detail_column(field))
+            continue
         label = str(c.get("label") or "").strip()[:60]
         if not label:
             raise ValueError("Every column needs a name")
-        key = str(c.get("key") or "").strip() or _slug(label)
+        key = str(c.get("key") or "").strip().lstrip("@") or _slug(label)
         base, n = key, 2
         while key in keys:
             key, n = f"{base}_{n}", n + 1
         keys.add(key)
         instruction = str(c.get("instruction") or "").strip()[:300]
         query = str(c.get("query") or "").strip()[:200] or (defaults[key]["query"] if key in defaults else "")
-        out.append({"key": key, "label": label, "instruction": instruction, "query": query})
+        out.append({"key": key, "kind": "question", "label": label, "instruction": instruction, "query": query})
     return out
+
+
+def _detail_values(row) -> dict:
+    """A paper's record as detail columns show it (lists stay lists, numbers numbers)."""
+    return {
+        "authors": json.loads(row["authors"]), "year": row["year"], "published": row["published"], "venue": row["venue"],
+        "volume": row["volume"] + (f"({row['issue']})" if row["issue"] else "") if row["volume"] else
+                  (f"({row['issue']})" if row["issue"] else ""),
+        "pages": row["page_span"], "publisher": row["publisher"], "doi": row["doi"], "cited_by_count": row["cited_by_count"],
+        "abstract": row["abstract"], "keywords": json.loads(row["keywords"]), "jel_codes": json.loads(row["jel_codes"]),
+    }
+
+
+def detail_text(field: str, value) -> str:
+    """A detail as text, for exports and for the model."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return ("; " if any("," in str(v) for v in value) else ", ").join(str(v) for v in value)
+    return str(value)
 
 
 class Matrices:
@@ -111,7 +165,9 @@ class Matrices:
         with self.lib.lock:
             m = self._matrix(mid)
             rows = self.lib.conn.execute(
-                "SELECT d.id, d.title, d.authors, d.year, d.kind FROM matrix_rows r JOIN documents d ON d.id = r.doc_id "
+                "SELECT d.id, d.title, d.authors, d.year, d.kind, d.published, d.venue, d.volume, d.issue, d.page_span, "
+                "d.publisher, d.doi, d.cited_by_count, d.abstract, d.keywords, d.jel_codes "
+                "FROM matrix_rows r JOIN documents d ON d.id = r.doc_id "
                 "WHERE r.matrix_id = ? ORDER BY r.position, d.id", (mid,)).fetchall()
             cells = self.lib.conn.execute(
                 'SELECT doc_id, col, status, answer, quote, chunk_id, page, start, "end", label, edited, error '
@@ -123,9 +179,11 @@ class Matrices:
         for r in rows:
             doc = {"title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"]}
             papers.append({"doc_id": r["id"], "title": r["title"], "authors": doc["authors"], "year": r["year"],
-                           "kind": r["kind"], "label": short_label(doc), "cells": by_doc.get(r["id"], {})})
+                           "kind": r["kind"], "label": short_label(doc), "cells": by_doc.get(r["id"], {}),
+                           "details": _detail_values(r)})
+        columns = [{"kind": "question", **c} for c in json.loads(m["columns"])]  # matrices from before details
         return {
-            "id": m["id"], "name": m["name"], "columns": json.loads(m["columns"]), "rows": papers,
+            "id": m["id"], "name": m["name"], "columns": columns, "rows": papers,
             "gaps": json.loads(m["gaps"]) if m["gaps"] else None,
             "pending": sum(1 for c in cells if c["status"] == "pending"), "cells": len(cells),
             "updated_at": m["updated_at"],
@@ -173,15 +231,16 @@ class Matrices:
             mid = self.lib.conn.execute("INSERT INTO matrices (name, columns) VALUES (?, ?)",
                                         (name, json.dumps(cols))).lastrowid
             self._add_rows(mid, doc_ids, cols, start=0)
-        for d in doc_ids:
-            self._queue(mid, d)
+        if questions(cols):
+            for d in doc_ids:
+                self._queue(mid, d)
         return self.get(mid)
 
     def _add_rows(self, mid: int, doc_ids: list[int], cols: list[dict], start: int) -> None:
         self.lib.conn.executemany("INSERT OR IGNORE INTO matrix_rows (matrix_id, doc_id, position) VALUES (?, ?, ?)",
                                   [(mid, d, start + i) for i, d in enumerate(doc_ids)])
         self.lib.conn.executemany("INSERT OR IGNORE INTO matrix_cells (matrix_id, doc_id, col) VALUES (?, ?, ?)",
-                                  [(mid, d, c["key"]) for d in doc_ids for c in cols])
+                                  [(mid, d, c["key"]) for d in doc_ids for c in questions(cols)])
 
     def update(self, mid: int, name: str | None = None, columns: list[dict] | None = None,
                add_doc_ids: list[int] | None = None, remove_doc_ids: list[int] | None = None) -> dict:
@@ -202,7 +261,7 @@ class Matrices:
                 if gone:
                     self.lib.conn.execute(f"DELETE FROM matrix_cells WHERE matrix_id = ? AND col IN ({','.join('?' * len(gone))})",
                                           [mid, *gone])
-                for c in cols:
+                for c in questions(cols):
                     before = old.get(c["key"])
                     if before is None:  # a new column: read it for every paper
                         self.lib.conn.executemany("INSERT OR IGNORE INTO matrix_cells (matrix_id, doc_id, col) VALUES (?, ?, ?)",
@@ -227,7 +286,8 @@ class Matrices:
                 if have[0] + len(new) > MAX_ROWS:
                     raise ValueError(f"At most {MAX_ROWS} papers in one matrix")
                 self._add_rows(mid, new, cols, start=have[1] + 1)
-                requeue.update(new)
+                if questions(cols):
+                    requeue.update(new)
             self._touch(mid)
         for d in requeue:
             self._queue(mid, d)
@@ -384,9 +444,13 @@ class Matrices:
         m = self.get(mid)
         if m["pending"]:
             raise ValueError("Wait for the matrix to finish reading its papers")
+        def value(r: dict, c: dict) -> str:
+            if c["kind"] == "detail":
+                return detail_text(c["field"], r["details"][c["field"]])[:600] or "unknown"
+            return (r["cells"].get(c["key"]) or {}).get("answer") or "not reported"
+
         table = "\n".join(
-            f"{r['label']} ({r['title'][:90]}): " + " | ".join(
-                f"{c['label']}: {(r['cells'].get(c['key']) or {}).get('answer') or 'not reported'}" for c in m["columns"])
+            f"{r['label']} ({r['title'][:90]}): " + " | ".join(f"{c['label']}: {value(r, c)}" for c in m["columns"])
             for r in m["rows"])
         gaps = self.lib.provider.find_gaps(m["name"], table)
         gaps = [{"title": str(g.get("title", "")).strip(), "detail": str(g.get("detail", "")).strip()} for g in gaps][:6]
@@ -398,7 +462,13 @@ class Matrices:
         """Sentences comparing the studies, written from the matrix's quotes and citing them."""
         m = self.get(mid)
         keep = set(columns) if columns else {c["key"] for c in m["columns"]}
-        labels = {c["key"]: c["label"] for c in m["columns"]}
+        labels = {c["key"]: c["label"] for c in questions(m["columns"])}
+        # The papers' details (year, journal, citations…) go in as background: there's no quote to cite for them.
+        shown = [c for c in details(m["columns"]) if c["key"] in keep and c["field"] != "abstract"]
+        context = "\n".join(
+            f"{r['label']}: " + "; ".join(f"{c['label']}: {detail_text(c['field'], r['details'][c['field']])}"
+                                          for c in shown if detail_text(c["field"], r["details"][c["field"]]))
+            for r in m["rows"]) if shown else ""
         passages = []
         for r in m["rows"]:
             for key in labels:
@@ -408,7 +478,10 @@ class Matrices:
                                             cell["quote"]))
         if not passages:
             raise ValueError("The matrix has no verified quotes to write from yet")
-        return self.lib.draft_from((instruction or DEFAULT_SYNTHESIS).strip(), "", passages[:80])
+        task = (instruction or DEFAULT_SYNTHESIS).strip()
+        if context.strip():  # background for the comparison, in the task: the draft's context is text already written
+            task += f"\n\nAbout the studies, from their records (use them, but cite only the passages):\n{context}"
+        return self.lib.draft_from(task, "", passages[:80])
 
     def table_doc(self, mid: int, columns: list[str] | None = None, heading: bool = False) -> dict:
         """The matrix as editor content: a table whose cells cite their quotes (citation chips),
@@ -428,6 +501,9 @@ class Matrices:
         for r in m["rows"]:
             cells = [{"type": "tableCell", "content": [para(text(r["label"] or r["title"][:60]))]}]
             for c in cols:
+                if c["kind"] == "detail":
+                    cells.append({"type": "tableCell", "content": [para(text(detail_text(c["field"], r["details"][c["field"]])))]})
+                    continue
                 cell = r["cells"].get(c["key"]) or {}
                 if cell.get("status") == "not_reported":
                     content = para(text("Not reported"))
@@ -458,12 +534,16 @@ class Matrices:
         """Header and rows for a spreadsheet: each column's answer, then its evidence (page and quote)."""
         m = self.get(mid)
         header = ["Study", "Title", "Year"]
-        for c in m["columns"]:
-            header += [c["label"], f"{c['label']}: evidence"]
+        cols = [c for c in m["columns"] if not (c["kind"] == "detail" and c["field"] == "year")]  # Year is already there
+        for c in cols:
+            header += [c["label"]] if c["kind"] == "detail" else [c["label"], f"{c['label']}: evidence"]
         rows = []
         for r in m["rows"]:
             line = [r["label"], r["title"], str(r["year"] or "")]
-            for c in m["columns"]:
+            for c in cols:
+                if c["kind"] == "detail":
+                    line.append(detail_text(c["field"], r["details"][c["field"]]))
+                    continue
                 cell = r["cells"].get(c["key"]) or {}
                 status = cell.get("status")
                 answer = "Not reported" if status == "not_reported" else cell.get("answer") or ""

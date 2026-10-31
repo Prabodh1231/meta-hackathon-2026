@@ -470,10 +470,19 @@ declare global {
 
 /** A column of a literature review matrix: what to extract from each paper. */
 export interface MatrixColumn {
-  key: string
+  key: string // a detail's starts with "@"
+  /** 'question': read from each paper by Muse, with a quote. 'detail': the paper's record (year, journal, citations…). */
+  kind?: 'question' | 'detail'
+  field?: string // for a detail
   label: string
   instruction: string
   query?: string
+}
+
+/** A paper detail a matrix can show as a column. */
+export interface MatrixDetailField {
+  field: string
+  label: string
 }
 
 /** One cell: a short answer and the verbatim quote it rests on, located in the paper. */
@@ -498,6 +507,8 @@ export interface MatrixRow {
   kind: Doc['kind']
   label: string // "Parino & Bianchi 2018"
   cells: Record<string, MatrixCell>
+  /** The paper's record, by detail field: authors and keywords are lists, year and citations numbers. */
+  details: Record<string, string | number | string[] | null>
 }
 
 export interface Matrix {
