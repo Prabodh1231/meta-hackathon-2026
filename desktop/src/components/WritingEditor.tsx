@@ -172,6 +172,8 @@ export interface WritingEditorHandle {
   flush: () => Promise<void>
   /** Insert a whole document (an imported Word file) at the cursor; it fills an empty draft. */
   insertDocument: (json: JSONContent) => void
+  /** Insert HTML (a chat reply) at the cursor, or at the end if the page wasn't clicked into. */
+  insertHTML: (html: string) => void
   isEmpty: () => boolean
   focus: () => void
   /** Replace the whole document (restoring a version). */
@@ -639,6 +641,10 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         // Not clicked into since the draft opened: the cursor is still parked at the top, so
         // "at the cursor" would push the whole draft down. The end is what's meant.
         else editor.chain().focus(placed.current ? undefined : 'end').insertContent(blocks).scrollIntoView().run()
+      },
+
+      insertHTML(html) {
+        if (editor && html) editor.chain().focus(placed.current ? undefined : 'end').insertContent(html).scrollIntoView().run()
       },
 
       isEmpty: () => editor?.isEmpty ?? true,

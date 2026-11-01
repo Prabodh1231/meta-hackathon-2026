@@ -1730,57 +1730,35 @@ class Library:
             "passages": [{"pid": p.pid, "chunk_id": p.chunk_id, "label": p.label} for p in passages],
         }
 
-    # ---------- asking about a draft ----------
+    # ---------- the Ask chat beside a draft ----------
 
     @staticmethod
     def _ask_turn(row) -> dict:
+        reply = row["answer"]
+        if reply.startswith("{"):  # kept before Ask became a plain chat: cited sentences, then the rest
+            old = json.loads(reply)
+            reply = "\n\n".join(filter(None, [" ".join(s["text"] for s in old.get("sentences", [])), old.get("general", "")]))
         return {"id": row["id"], "question": row["question"], "selection": row["selection"],
-                "created_at": row["created_at"], **json.loads(row["answer"])}
+                "created_at": row["created_at"], "reply": reply}
 
     def ask_turns(self, draft_id: int) -> list[dict]:
-        """The Ask conversation about a draft, oldest first."""
+        """The Ask chat kept with a draft, oldest first."""
         with self.lock:
             rows = self.conn.execute("SELECT * FROM ask_turns WHERE draft_id = ? ORDER BY id", (draft_id,)).fetchall()
         return [self._ask_turn(r) for r in rows]
 
-    def ask(self, draft_id: int, question: str, context: str = "", selection: str = "",
-            doc_ids: list[int] | None = None, k: int = 8) -> dict:
-        """Answer a question from the library, with general knowledge kept apart, and keep it in the
-        draft's conversation. Citations come back located but not yet judged, as in a draft."""
-        history = self.ask_turns(draft_id)
-        # A follow-up ("and their sample sizes?") leans on the question before it, so both are searched.
-        query = " ".join(filter(None, [history[-1]["question"] if history else "", question, selection[:500]]))
-        hits = self.search(query, k=k, doc_ids=doc_ids)
-        passages = [Passage(f"P{i + 1}", h["id"], h["label"], h["text"]) for i, h in enumerate(hits)]
-        by_pid = {p.pid: p for p in passages}
-        earlier = [{"question": t["question"], "answer": " ".join([*(s["text"] for s in t["sentences"]), t["general"]]).strip()}
-                   for t in history]
-        out = self.provider.ask(question, earlier, context, selection, passages)
-        sentences = []
-        for s in out["sentences"]:
-            text = (s.get("text") or "").strip()
-            cites = [self.verify_citation(text, by_pid[pid].chunk_id, c.get("quote", ""), judge=False)
-                     for c in s.get("citations") or [] if (pid := str(c.get("passage", "")).strip("[] ")) in by_pid]
-            if text and cites:  # a sentence the library doesn't back would pass for sourced
-                sentences.append({"text": text, "citations": cites})
-        answer = {"sentences": sentences, "general": out["general"], "followups": out["followups"]}
+    def ask(self, draft_id: int, question: str, context: str = "", selection: str = "") -> dict:
+        """The chatbot's reply to a message, kept in the draft's chat. It doesn't search the library:
+        the Assistant is for writing from sources."""
+        history = [{"question": t["question"], "reply": t["reply"]} for t in self.ask_turns(draft_id)]
+        reply = self.provider.ask(question, history, context, selection)
         with self.lock, self.conn:
             turn_id = self.conn.execute(
                 "INSERT INTO ask_turns (draft_id, question, selection, answer) VALUES (?, ?, ?, ?)",
-                (draft_id, question, selection, json.dumps(answer)),
+                (draft_id, question, selection, reply),
             ).lastrowid
             row = self.conn.execute("SELECT * FROM ask_turns WHERE id = ?", (turn_id,)).fetchone()
         return self._ask_turn(row)
-
-    def save_ask_answer(self, turn_id: int, sentences: list[dict]) -> dict:
-        """Keep the checked citations of an answer, so they aren't checked again next time."""
-        with self.lock, self.conn:
-            row = self.conn.execute("SELECT * FROM ask_turns WHERE id = ?", (turn_id,)).fetchone()
-            if not row:
-                raise LookupError(f"Answer {turn_id} not found")
-            answer = {**json.loads(row["answer"]), "sentences": sentences}
-            self.conn.execute("UPDATE ask_turns SET answer = ? WHERE id = ?", (json.dumps(answer), turn_id))
-        return self._ask_turn({**dict(row), "answer": json.dumps(answer)})
 
     def clear_ask(self, draft_id: int) -> None:
         with self.lock, self.conn:

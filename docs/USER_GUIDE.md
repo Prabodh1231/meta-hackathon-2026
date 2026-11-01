@@ -146,18 +146,15 @@ Click a citation to see its passage. Tick the sentences you want to keep (or cli
 
 ### Ask
 
-The **Ask** tab is for questions rather than drafting: "which of my sources disagree?", "is this paragraph backed?", "what's a spindle?". Type a question and press Enter (Shift+Enter starts a new line). Follow-up questions build on the earlier ones, and the AI also sees the paragraph your cursor is in.
+The **Ask** tab is a plain AI chatbot: ask it to explain a concept, reword a sentence, suggest a title, or anything else. Type a message and press Enter (Shift+Enter starts a new line). It remembers the conversation, so follow-ups work, and it also sees the paragraph your cursor is in.
 
-To ask about part of your draft, select it and press **Ctrl J**, or click **Ask** in the toolbar beside Cite. The Ask tab opens with the text attached above the question box (× removes it).
+Ask answers from the AI's own knowledge, not your library, and its replies have no citations: check facts before you rely on them. To write from your sources with cited quotes, use the Assistant.
 
-An answer comes in up to two parts:
+To ask about part of your draft, select it and press **Ctrl J**, or click **Ask** in the toolbar beside Cite. The Ask tab opens with the text attached above the message box (× removes it).
 
-- **From your sources:** sentences with numbered citations. Each number is coloured by its check, like the Assistant's marks above, and the sources are listed under the answer. Click a number or a source to see the quote on its page.
-- **Not from your sources:** a grey, dashed box for whatever your sources don't cover, answered from the AI's general knowledge. It has no citations, so check it before you rely on it.
+Replies show formatted (bold, lists, headings, tables, code). **Insert into draft** under a reply puts it at the cursor with that formatting.
 
-Under the latest answer, two or three suggested follow-up questions are one click away. **Insert into draft** puts the sourced part of an answer at the cursor, with its citations; the grey part has its own **Insert anyway**, which adds it without a citation.
-
-Each draft keeps its own conversation, also after you close the app; **Clear conversation** at the top of the tab starts it over. Ask uses the same sources as the Assistant (the ticked papers, or the whole library) and the same *Passages the Assistant reads* setting. With an empty library, answers come from general knowledge only.
+Each draft keeps its own chat, also after you close the app; **Clear conversation** at the top of the tab starts it over.
 
 ## 4. Back up each claim
 
@@ -326,7 +323,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 **Writing & citations**
 
 - **Citation style:** APA 7, MLA 9 or IEEE, for the References tab and Export.
-- **Passages the Assistant reads** (3 to 20, default 8): fewer is faster and sticks to the closest matches; more covers more ground. Ask uses it too.
+- **Passages the Assistant reads** (3 to 20, default 8): fewer is faster and sticks to the closest matches; more covers more ground.
 - **Cite markers search:** the sources ticked in the Library (all of them when none are ticked), or always the whole library.
 
 **Review & history**

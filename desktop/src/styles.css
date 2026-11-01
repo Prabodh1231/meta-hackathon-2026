@@ -919,8 +919,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .example { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; background: var(--bg); color: var(--text); text-align: left; }
 .example:hover:not(:disabled) { border-color: var(--accent); }
 
-/* Ask: a conversation about the draft. Questions on the right; answers cite with numbers coloured
-   by their check, and what came from general knowledge sits apart in a dashed box. */
+/* Ask: a plain chat beside the draft. Your messages on the right; replies are Markdown. */
 .ask-top { margin-top: 0; font-size: 12px; }
 .ask-intro p { margin: 0 0 6px; font-size: 13px; line-height: 1.55; }
 .ask-intro kbd { font: 600 11px Consolas, monospace; border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; background: var(--bg); color: var(--text); }
@@ -932,28 +931,23 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .ask-a { margin-top: 10px; }
-.ask-sourced { margin: 0 0 6px; font-family: var(--doc-font); font-size: 15px; line-height: 1.6; }
-.ask-num {
-  display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px; margin-left: 3px; border-radius: 999px;
-  border: 1px dashed var(--pending); background: var(--pending-bg); color: var(--pending); font: 600 10.5px/1 system-ui, sans-serif; vertical-align: 2px;
-}
-.ask-num:hover:not(:disabled) { border-color: var(--text); }
-.ask-num-verified { border: 1px solid transparent; background: var(--ok-bg); color: var(--ok); }
-.ask-num-weak { border: 1px solid transparent; background: var(--warn-bg); color: var(--warn); }
-.ask-num-unsupported, .ask-num-quote_not_found { border: 1px solid transparent; background: var(--bad-bg); color: var(--bad); }
-.ask-num-verified:hover:not(:disabled), .ask-num-weak:hover:not(:disabled), .ask-num-unsupported:hover:not(:disabled), .ask-num-quote_not_found:hover:not(:disabled) { border-color: currentColor; }
-.ask-sources { list-style: none; margin: 0 0 6px; padding: 0; }
-.ask-src-num { font-weight: 600; min-width: 14px; text-align: right; }
-.ask-general { margin: 8px 0 6px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; background: var(--bg); }
-.ask-general-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;
-  font: 600 10.5px/1.3 system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
-}
-.ask-general-head .link { font: 400 12px system-ui, sans-serif; letter-spacing: 0; text-transform: none; }
-.ask-general p { margin: 0; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; }
+.ask-md { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.ask-md > :first-child { margin-top: 0; }
+.ask-md > :last-child { margin-bottom: 0; }
+.ask-md p, .ask-md ul, .ask-md ol, .ask-md blockquote, .ask-md pre, .ask-md table { margin: 0 0 8px; }
+.ask-md li p { margin: 0 0 2px; }
+.ask-md ul, .ask-md ol { padding-left: 20px; }
+.ask-md h2, .ask-md h3, .ask-md h4 { margin: 12px 0 4px; font-size: 14.5px; line-height: 1.35; }
+.ask-md blockquote { padding-left: 10px; border-left: 2px solid var(--border); color: var(--muted); }
+.ask-md code { font: 12.5px Consolas, monospace; padding: 1px 4px; border-radius: 4px; background: var(--bg); }
+.ask-md pre { padding: 8px 10px; border-radius: 8px; background: var(--bg); overflow-x: auto; }
+.ask-md pre code { padding: 0; background: none; }
+.ask-md table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; }
+.ask-md th, .ask-md td { padding: 4px 8px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.ask-md th p, .ask-md td p { margin: 0; }
+.ask-md hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 .ask-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
 .ask-actions button { font-size: 12.5px; }
-.ask-followups { margin-top: 10px; }
 .ask-thinking { margin: 10px 0 0; font-size: 13px; }
 .ask-compose { position: sticky; bottom: -24px; margin-top: 8px; padding: 10px 0 24px; background: var(--panel); border-top: 1px solid var(--border); }
 .ask-attached { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; padding: 4px 4px 4px 8px; border-radius: 6px; background: var(--hover); font-size: 12px; }

@@ -64,7 +64,7 @@ const MODES: { mode: Mode; label: string; icon: IconName; hint: string }[] = [
 type Tab = 'assistant' | 'ask' | 'citations' | 'references' | 'review' | 'history'
 const TABS: { tab: Tab; label: string; icon: IconName; hint: string }[] = [
   { tab: 'assistant', label: 'Assistant', icon: 'assistant', hint: 'Draft from your library with cited quotes' },
-  { tab: 'ask', label: 'Ask', icon: 'ask', hint: 'Ask the AI anything; answers cite your sources (Ctrl+J asks about the selection)' },
+  { tab: 'ask', label: 'Ask', icon: 'ask', hint: 'Chat with the AI about anything (Ctrl+J asks about the selection)' },
   { tab: 'citations', label: 'Citations', icon: 'cite', hint: 'Confirm cite markers and see each quote on its page' },
   { tab: 'references', label: 'References', icon: 'references', hint: 'Reference list for the sources you cite' },
   { tab: 'review', label: 'Review', icon: 'review', hint: 'Repeated passages and text matching your sources' },
@@ -1254,15 +1254,9 @@ export default function App() {
               <div hidden={tab !== 'ask'}>
                 <AskPanel
                   draftId={draftId}
-                  passages={settings.assistant_passages}
-                  scope={[...selected]}
-                  sourceCount={docs.length}
                   attach={askAttach}
-                  onChooseSources={openLibrary}
                   getParagraph={() => editor.current?.getFocus().paragraph ?? ''}
-                  onInsert={(s) => editor.current?.insertDraft(s)}
-                  onVerified={onVerified}
-                  onOpenCitation={openCitation}
+                  onInsert={(html) => editor.current?.insertHTML(html)}
                   onError={onError}
                 />
               </div>

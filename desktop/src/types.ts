@@ -154,16 +154,13 @@ export interface DraftSentence {
   citations: Citation[]
 }
 
-/** One question in the Ask tab and its answer: sentences backed by the library, then what came
- * from general knowledge (empty when the library covered it), then questions to ask next. */
+/** One message in the Ask chat and the AI's reply (Markdown). */
 export interface AskTurn {
   id: number
   question: string
   selection: string // the draft text the question was about, '' for none
   created_at: string
-  sentences: DraftSentence[]
-  general: string
-  followups: string[]
+  reply: string
 }
 
 export interface DraftResult {
