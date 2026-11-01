@@ -180,11 +180,14 @@ class MockProvider(LLMProvider):
         }
 
     def review_questions(self, plan: str) -> dict:
-        # Offline: every question is kept as it is.
+        # Offline: everything is kept as it is.
         block = plan.split("Research questions:\n", 1)[-1].split("\n\n", 1)[0]
         qs = [q.lstrip("- ").strip() for q in block.splitlines() if q.strip()]
         hyp = plan.split("Hypotheses:\n", 1)[-1].split("\n\n", 1)[0] if "Hypotheses:\n" in plan else ""
-        return {"questions": [{"original": q, "verdict": "keep", "text": q, "why": "Mock: kept."} for q in qs],
+        title = plan.split("Title: ", 1)[-1].split("\n", 1)[0]
+        core = plan.split("Core question: ", 1)[-1].split("\n", 1)[0] if "Core question: " in plan else ""
+        return {"title": title, "core_question": core, "core_changed_why": "",
+                "questions": [{"original": q, "verdict": "keep", "text": q, "why": "Mock: kept."} for q in qs],
                 "hypotheses": [h.lstrip("- ").strip() for h in hyp.splitlines() if h.strip()]}
 
     def write_proposal(self, tables: str, plan: str, gaps: str, exclusions: str, resources: str,
@@ -208,6 +211,14 @@ class MockProvider(LLMProvider):
             "timeline": [{"when": "Months 1–3", "what": "Data"}, {"when": "Months 4–6", "what": "Analysis"},
                          {"when": "Months 7–8", "what": "Writing"}],
         }
+
+    def repair_claims(self, items: list[dict]) -> list[str]:
+        # Offline: keep each cited row's first answer, the only thing the mock can be sure of.
+        out = []
+        for it in items:
+            studies = self._studies(it["rows"])
+            out.append(" ".join(f"{name} reports {vals[0][1]}." for name, _, vals in studies if vals and vals[0][1]))
+        return out
 
     def check_exclusions(self, exclusions: str, proposal: str) -> list[dict]:
         # Offline: a rule is broken when every content word of it appears in the proposal.

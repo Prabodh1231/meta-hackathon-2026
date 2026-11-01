@@ -114,9 +114,13 @@ class Proposals:
 
     @staticmethod
     def _clean(text: str) -> str:
-        """Text without bracketed study references ("[S6]", "[Alonso et al. 2021]"): the citations follow it."""
-        text = re.sub(r"\s*(?:\[(?:S\d+|[^\[\]]*\b(?:19|20)\d\d[a-z]?(?: \(\d\))?)\])+", "", text)
-        return re.sub(r"\s+([.,;:])", r"\1", text).strip()
+        """Text without bracket references. A trailing one ("…in 2020 [S6][Alonso et al. 2021].") goes:
+        the citations follow the text. One that is part of the sentence ("[Alonso et al. 2021] find…")
+        loses only its brackets, or the sentence would lose its subject."""
+        text = re.sub(r"\s*\[S\d+\]", "", text)
+        text = re.sub(r"(?:\s*\[[^\[\]]{1,80}\])+(?=\s*(?:[.;,:)]|$))", "", text)
+        text = re.sub(r"\[([^\[\]]{1,80})\]", r"\1", text)
+        return re.sub(r"\s+([.,;:])", r"\1", re.sub(r"\s{2,}", " ", text)).strip()
 
     # ---------- suggesting variables ----------
 
@@ -178,13 +182,14 @@ class Proposals:
                                               "\n".join(p["research_questions"]), [], [], rows,
                                               matrix_ids=[m["id"] for m in ms])
         checks = self._check(fid, p)
+        repaired = self._repair(fid, p, checks, rows)
         removed = self._drop_unstated_measures(p, checks)
         doc = self._doc(fid, p, checks)
         statuses = [n["attrs"]["status"] for n in _walk(doc) if n.get("type") == "citation"]
         return {"finding": fid, "title": p["title"], "doc": doc, "research_questions": p["research_questions"],
                 "hypotheses": p["hypotheses"], "violations": violations, "matrices": names,
                 "left_out": p["left_out"], "flagged": self._flagged(p, checks), "question_review": question_review,
-                "removed": removed, "core_question": p["core_question"],
+                "removed": removed, "repaired": repaired, "core_question": p["core_question"],
                 "citations": {"verified": statuses.count("verified"),
                               "flagged": sum(s != "verified" for s in statuses)}}
 
@@ -247,10 +252,17 @@ class Proposals:
             if verdict != "keep":
                 changes.append({"original": original, "verdict": verdict, "text": text if verdict == "revise" else "",
                                 "why": str(q.get("why", "")).strip()})
-        if not review.get("questions"):  # no review came back: the plan's questions stand
-            return plan, []
+        title = str(review.get("title") or "").strip() or plan["title"]
+        core = str(review.get("core_question") or "").strip() or plan["core_question"]
+        if (title, core) != (plan["title"], plan["core_question"]):
+            changes.insert(0, {"original": plan["core_question"], "verdict": "core", "text": core,
+                               "title_before": plan["title"], "title": title,
+                               "why": str(review.get("core_changed_why") or "").strip()})
+            plan = {**plan, "title": title, "core_question": core}
+        if not review.get("questions"):  # no question review came back: the plan's questions stand
+            return plan, changes
         kept = list(dict.fromkeys(kept))[:3] or ([plan["core_question"]] if plan["core_question"] else plan["research_questions"][:1])
-        hypotheses = self._items(review.get("hypotheses")) if changes else plan["hypotheses"]
+        hypotheses = self._items(review.get("hypotheses")) if any(c["verdict"] != "core" for c in changes) else plan["hypotheses"]
         return {**plan, "research_questions": kept, "hypotheses": hypotheses[:len(kept)]}, changes
 
     def _normalize(self, raw: dict, by_key: dict[str, dict], plan: dict) -> dict:
@@ -285,6 +297,44 @@ class Proposals:
             "timeline": [{"when": str(t.get("when", "")).strip(), "what": str(t.get("what", "")).strip()}
                          for t in raw.get("timeline") or [] if str(t.get("what", "")).strip()],
         }
+
+    def _repair(self, fid: int, p: dict, checks: dict[str, dict], rows: list[dict]) -> list[dict]:
+        """One pass at the background and gap paragraphs the matrices don't back: Muse rewrites each
+        from the rows it cites and the reason the check gave, the rewrite is checked, and it replaces
+        the paragraph only if it fares better. A paragraph nothing can be saved of, and that the rows
+        contradict, is dropped. Returns what changed, for the writer to see."""
+        flagged = [(key, c) for key in ("background", "gap") for c in p[key]
+                   if c["rows"] and checks.get(c["text"], {}).get("status") in ("weak", "unsupported")]
+        if not flagged:
+            return []
+        keys = _keys(rows)
+        items = [{"claim": c["text"], "reason": checks[c["text"]]["reason"], "rows": _study_text(c["rows"], keys)}
+                 for _, c in flagged]
+        try:
+            rewrites = self.lib.provider.repair_claims(items)
+        except Exception:  # noqa: BLE001 - the draft keeps its flagged paragraphs, in amber or red
+            return []
+        rank = {"verified": 3, "weak": 2, "unsupported": 1, "pending": 0}
+        out, drop = [], []
+        for (key, c), rewrite in zip(flagged, rewrites):
+            before = checks[c["text"]]
+            rewrite = self._clean(rewrite)
+            if not rewrite:
+                if before["status"] == "unsupported":
+                    drop.append((key, c))
+                    out.append({"section": key, "before": c["text"], "after": "", "status": "removed", "reason": before["reason"]})
+                continue
+            try:
+                r = self.matrices.check_finding(fid, rewrite, [row["doc_id"] for row in c["rows"]])
+            except Exception:  # noqa: BLE001
+                continue
+            if rank[r["status"]] > rank[before["status"]]:
+                out.append({"section": key, "before": c["text"], "after": rewrite, "status": r["status"], "reason": r["reason"]})
+                checks[rewrite] = {"status": r["status"], "reason": r["reason"]}
+                c["text"] = rewrite
+        for key, c in drop:
+            p[key].remove(c)
+        return out
 
     def _drop_unstated_measures(self, p: dict, checks: dict[str, dict]) -> list[dict]:
         """Earlier measures the matrices don't state are taken out of the variables table: they come

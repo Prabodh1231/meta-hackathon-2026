@@ -230,6 +230,7 @@ def test_plan_then_review_the_questions_then_write(setup, monkeypatch):
     monkeypatch.setattr(lib.provider, "plan_proposal", plan)
     monkeypatch.setattr(lib.provider, "review_questions", review)
     monkeypatch.setattr(lib.provider, "write_proposal", write)
+    monkeypatch.setattr(lib.provider, "repair_claims", lambda items: [""] * len(items))  # nothing saved: kept as written
 
     judged = {}
     def judge(claim, topic, table):
@@ -289,3 +290,69 @@ def test_a_check_can_be_limited_to_the_cited_studies(setup, monkeypatch):
     client.post(f"/findings/{fid}/check", json={"claim": "Savings rose.", "doc_ids": [999]})
     assert [t.count("\n") + 1 for t in tables] == [1, 2, 2]  # unknown ids fall back to the whole matrix
     assert "Digital payments" in tables[0] and "Mobile money" not in tables[0]
+
+
+def test_the_review_can_refocus_the_title_and_core_question(setup, monkeypatch):
+    client, lib, ids, mid, gaps = setup
+    real = lib.provider.plan_proposal
+    monkeypatch.setattr(lib.provider, "plan_proposal", lambda *a: {
+        **real(*a), "title": "Savings, when search interest is controlled",
+        "core_question": "Does mobile money raise savings, distinguishing search-interest proxies from use?"})
+    def review(plan_text):
+        return {"title": "Savings and mobile money", "core_question": "Does mobile money raise savings?",
+                "core_changed_why": "The search-interest clause brings in another review's topic.",
+                "questions": [{"original": "Q", "verdict": "keep", "text": "Does mobile money raise savings?", "why": ""}],
+                "hypotheses": ["It does."]}
+    monkeypatch.setattr(lib.provider, "review_questions", review)
+    seen = {}
+    write = lib.provider.write_proposal
+    monkeypatch.setattr(lib.provider, "write_proposal", lambda t, plan, *r: seen.setdefault("plan", plan) and write(t, plan, *r))
+    out = client.post("/proposals", json={"finding_ids": [gaps[0]["id"]]}).json()
+    assert out["title"] == "Savings and mobile money" and out["core_question"] == "Does mobile money raise savings?"
+    assert out["question_review"][0] == {
+        "original": "Does mobile money raise savings, distinguishing search-interest proxies from use?", "verdict": "core",
+        "text": "Does mobile money raise savings?", "title_before": "Savings, when search interest is controlled",
+        "title": "Savings and mobile money", "why": "The search-interest clause brings in another review's topic."}
+    assert "search-interest" not in seen["plan"]  # the rest is written around the refocused study
+    assert section(out["doc"], "Background") is not None and out["doc"]["content"][0]["content"][0]["text"] == "Savings and mobile money"
+
+
+def test_flagged_paragraphs_get_one_repair(setup, monkeypatch):
+    client, lib, ids, mid, gaps = setup
+    labels = {r["doc_id"]: r["label"] for r in client.get(f"/matrices/{mid}").json()["rows"]}
+    kenya, india = labels[ids["kenya.md"]], labels[ids["india.md"]]
+    def write(*a):
+        return {"background": [{"text": f"[{kenya}] find savings rose 12%.", "studies": [kenya]},
+                               {"text": "No study has ever measured savings.", "studies": [kenya, india]},
+                               {"text": "Both studies find huge effects.", "studies": [kenya, india]},
+                               {"text": "Firms everywhere doubled sales.", "studies": [india]}],
+                "gap": [], "variables": [], "design": [], "data": [], "analysis": [], "contribution": [],
+                "limitations": [], "timeline": []}
+    monkeypatch.setattr(lib.provider, "write_proposal", write)
+    asked = {}
+    def repair(items):
+        asked["items"] = items
+        return [f"{kenya} reports savings rose 12%.",  # better: replaces it
+                "Some studies find effects.",            # no better: the original stays
+                ""]                                      # nothing saved, and contradicted: dropped
+    monkeypatch.setattr(lib.provider, "repair_claims", repair)
+    verdicts = {f"{kenya} find savings rose 12%.": "supported",
+                "No study has ever measured savings.": "unsupported", f"{kenya} reports savings rose 12%.": "supported",
+                "Both studies find huge effects.": "partial", "Some studies find effects.": "partial",
+                "Firms everywhere doubled sales.": "unsupported"}
+    checked = []
+    def judge(claim, topic, table):
+        checked.append((claim, table.count("\n") + 1))
+        return {"verdict": verdicts[claim], "reason": f"Reason for {claim[:12]}"}
+    monkeypatch.setattr(lib.provider, "judge_against_matrix", judge)
+    out = client.post("/proposals", json={"finding_ids": [gaps[0]["id"]]}).json()
+
+    assert [i["claim"] for i in asked["items"]] == ["No study has ever measured savings.", "Both studies find huge effects.",
+                                                    "Firms everywhere doubled sales."]
+    assert asked["items"][0]["rows"].count("\n") == 1 and f"[{kenya}]" in asked["items"][0]["rows"]  # the rows it cites
+    assert (f"{kenya} reports savings rose 12%.", 2) in checked  # the rewrite is checked against the same studies
+    texts = [b["content"][0]["text"].strip() for b in section(out["doc"], "Background")]
+    assert texts == [f"{kenya} find savings rose 12%.", f"{kenya} reports savings rose 12%.", "Both studies find huge effects."]
+    assert [(r["status"], r["after"]) for r in out["repaired"]] == [("verified", f"{kenya} reports savings rose 12%."),
+                                                                     ("removed", "")]
+    assert [f["claim"] for f in out["flagged"]] == ["Both studies find huge effects."]
