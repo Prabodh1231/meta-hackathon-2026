@@ -637,10 +637,12 @@ class Matrices:
             if not self.lib.conn.execute("DELETE FROM matrix_findings WHERE id = ?", (fid,)).rowcount:
                 raise LookupError("This finding was already deleted")
 
-    def check_finding(self, fid: int, claim: str) -> dict:
+    def check_finding(self, fid: int, claim: str, doc_ids: list[int] | None = None) -> dict:
         """Is a sentence written from a finding (a gap, or a passage written from the matrix) backed
         by the matrix? Checked against the matrix as it is now, or, once the matrix is deleted or
-        while it is being read again, against the copy kept with the finding."""
+        while it is being read again, against the copy kept with the finding. With `doc_ids` (the
+        studies the sentence cites), only their rows: a claim pinned on the wrong study is caught,
+        and a large review isn't cut off to fit."""
         claim = " ".join(claim.split())
         if not claim:
             raise ValueError("There's no sentence to check")
@@ -649,6 +651,8 @@ class Matrices:
         rows, against = json.loads(row["snapshot"]), "saved"
         if current is not None and not any(self.get(i)["pending"] for i in self._ids(row)):
             rows, against = current, "matrix"
+        cited = [r for r in rows if doc_ids and r["doc_id"] in set(doc_ids)]
+        rows = cited or rows
         table = _table_text(rows, quotes=True)
         if len(table) > MAX_TABLE:  # a large matrix: its answers, without the quotes behind them
             table = _table_text(rows)

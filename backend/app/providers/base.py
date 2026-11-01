@@ -116,15 +116,30 @@ class LLMProvider(ABC):
                 + f"Review matrices:\n{tables[:60000]}")
         return self._json(prompts.VARIABLES_SYSTEM, user, prompts.VARIABLES_SCHEMA, max_tokens=2000).get("variables", [])
 
-    def write_proposal(self, tables: str, gaps: str, focus: str, variables: str, exclusions: str, resources: str,
-                       avoid: str = "") -> dict:
-        """A research proposal (PROPOSAL_SCHEMA) for a study addressing the gaps."""
-        user = (f"Gaps to address:\n{gaps}\n\n"
+    @staticmethod
+    def _brief(gaps: str, focus: str, exclusions: str, resources: str, avoid: str) -> str:
+        return (f"Gaps to address:\n{gaps or '(none chosen)'}\n\n"
                 + (f"The writer's focus: {focus}\n\n" if focus else "")
-                + f"Variables and their roles:\n{variables or '(choose them)'}\n\n"
                 + f"The writer rules out (strict):\n{exclusions or '(nothing)'}\n\n"
                 + f"What the writer has to work with:\n{resources or '(not said)'}\n\n"
-                + (f"A previous draft broke these exclusions; do not repeat them:\n{avoid}\n\n" if avoid else "")
+                + (f"A previous draft broke these exclusions; do not repeat them:\n{avoid}\n\n" if avoid else ""))
+
+    def plan_proposal(self, tables: str, gaps: str, focus: str, variables: str, exclusions: str, resources: str,
+                      avoid: str = "") -> dict:
+        """One study's title, core question, questions, hypotheses, variables, and the gaps it leaves out."""
+        user = (self._brief(gaps, focus, exclusions, resources, avoid)
+                + f"Variables and the writer's roles:\n{variables or '(choose them)'}\n\n"
+                + f"Review matrices:\n{tables[:60000]}")
+        return self._json(prompts.PLAN_SYSTEM, user, prompts.PLAN_SCHEMA, max_tokens=1800)
+
+    def review_questions(self, plan: str) -> dict:
+        """Each research question kept, revised or removed against the study's core question."""
+        return self._json(prompts.QUESTIONS_SYSTEM, plan, prompts.QUESTIONS_SCHEMA, max_tokens=1500)
+
+    def write_proposal(self, tables: str, plan: str, gaps: str, exclusions: str, resources: str,
+                       avoid: str = "") -> dict:
+        """The rest of a planned study's proposal (PROPOSAL_SCHEMA): background, gap, measures, design…"""
+        user = (f"The planned study (fixed):\n{plan}\n\n" + self._brief(gaps, "", exclusions, resources, avoid)
                 + f"Review matrices:\n{tables[:60000]}")
         return self._json(prompts.PROPOSAL_SYSTEM, user, prompts.PROPOSAL_SCHEMA, max_tokens=5000)
 

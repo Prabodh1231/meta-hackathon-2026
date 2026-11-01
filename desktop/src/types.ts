@@ -218,6 +218,11 @@ export interface ProposalResult {
   citations: { verified: number; flagged: number }
   /** Chosen gaps the one study doesn't take on, and why. */
   left_out: { gap: string; why: string }[]
+  core_question: string
+  /** What the separate review of the research questions changed: revised or removed, and why. */
+  question_review: { original: string; verdict: 'revise' | 'remove'; text: string; why: string }[]
+  /** Earlier measures the matrices don't state, taken out of the variables table. */
+  removed: { claim: string; reason: string; study: string }[]
   /** Claims about the reviewed studies the matrices don't back (amber or red in the draft). */
   flagged: { section: string; claim: string; status: CitationStatus; reason: string; studies: string[] }[]
 }

@@ -300,6 +300,42 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
             {result && !busy && (
               <>
                 <h3 className="proposal-result-title">{result.title}</h3>
+                {result.core_question && (
+                  <p className="proposal-core">
+                    <span className="muted">Core question:</span> {result.core_question}
+                  </p>
+                )}
+                {result.research_questions.length > 0 && (
+                  <>
+                    <h4 className="eyebrow">Research questions</h4>
+                    <ol className="proposal-rqs">
+                      {result.research_questions.map((q, i) => (
+                        <li key={i}>{q}</li>
+                      ))}
+                    </ol>
+                  </>
+                )}
+                {result.question_review.length > 0 && (
+                  <div className="proposal-note">
+                    <b>Muse reviewed the questions against the core question:</b>
+                    <ul>
+                      {result.question_review.map((q, i) => (
+                        <li key={i}>
+                          {q.verdict === 'remove' ? (
+                            <>
+                              <b>Removed</b> “{q.original}”
+                            </>
+                          ) : (
+                            <>
+                              <b>Revised</b> “{q.original}” → “{q.text}”
+                            </>
+                          )}
+                          {q.why && <span className="muted">: {q.why}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <p className="muted small">
                   From {result.matrices}. {result.citations.verified} of {result.citations.verified + result.citations.flagged} citations
                   to the reviewed studies are backed by the matrices
@@ -317,6 +353,21 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
                     </ul>
                     <span className="muted small">Untick the gaps you don't need, or write a proposal for these separately.</span>
                   </div>
+                )}
+                {result.removed.length > 0 && (
+                  <details className="proposal-flagged">
+                    <summary>
+                      Took out {result.removed.length} earlier measure{result.removed.length === 1 ? '' : 's'} the matrices don't state
+                    </summary>
+                    <ul>
+                      {result.removed.map((r, i) => (
+                        <li key={i}>
+                          {r.claim}
+                          {r.reason && <div className="muted small">{r.reason}</div>}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
                 {result.flagged.length > 0 && (
                   <details className="proposal-flagged">
@@ -352,16 +403,6 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
                   </div>
                 ) : (
                   limits.exclusions.trim() && <p className="ok small">Checked: it keeps to everything you ruled out.</p>
-                )}
-                {result.research_questions.length > 0 && (
-                  <>
-                    <h4 className="eyebrow">Research questions</h4>
-                    <ol className="proposal-rqs">
-                      {result.research_questions.map((q, i) => (
-                        <li key={i}>{q}</li>
-                      ))}
-                    </ol>
-                  </>
                 )}
                 <div className="proposal-novelty">
                   <button onClick={checkNovelty} disabled={!!busy}>

@@ -304,8 +304,10 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   }
 
   /** Check a sentence written from a review matrix against that matrix, and recolour its chips. */
-  async function checkAgainstMatrix(finding: number, claim: string, cids: string[]): Promise<Partial<ChipAttrs>> {
-    const v = await api.checkFinding(finding, claim)
+  /** Checked against the rows of the studies the sentence's citations name (`chips`), not the whole review. */
+  async function checkAgainstMatrix(finding: number, claim: string, chips: ChipAttrs[]): Promise<Partial<ChipAttrs>> {
+    const cids = chips.map((c) => c.cid)
+    const v = await api.checkFinding(finding, claim, [...new Set(chips.map((c) => c.docId))])
     const patch = { status: v.status, reason: v.reason }
     if (editorRef.current) patchChips(editorRef.current, new Map(cids.map((cid) => [cid, patch])))
     return patch
@@ -527,7 +529,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         }
         for (const { finding, claim, chips: group } of fromMatrix.values()) {
           work.push(
-            limited(() => checkAgainstMatrix(finding, claim, group.map((c) => c.cid)))
+            limited(() => checkAgainstMatrix(finding, claim, group))
               .then((patch) => {
                 for (const c of group) summary.checked.set(c.cid, patch)
                 if (patch.status === 'verified') summary.verified += group.length
@@ -582,7 +584,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
           })
           patchChips(editor, new Map(group.map((c) => [c.cid, { status: 'pending' as const, reason: '', claim }])))
           try {
-            return { ...(await checkAgainstMatrix(attrs.finding, claim, group.map((c) => c.cid))), claim }
+            return { ...(await checkAgainstMatrix(attrs.finding, claim, group)), claim }
           } catch (e) {
             patchChips(editor, new Map(group.map((c) => [c.cid, { status: c.status, reason: c.reason }])))
             throw e
