@@ -176,17 +176,27 @@ VARIABLES_SCHEMA = {
 }
 
 PROPOSAL_SYSTEM = (
-    "Write a research proposal for one study that addresses the chosen gaps, based on the review "
-    "matrices given (one line per study, its id in brackets). Two kinds of content, kept apart:\n"
-    "1. Background and gap describe the reviewed studies. Each paragraph lists, by id, every study it "
-    "relies on, and says nothing about a study that its line doesn't state. In the text, refer to "
-    "studies by author and year as their line shows, never by id.\n"
+    "Write a research proposal for ONE study that addresses the chosen gaps, based on the review "
+    "matrices given (one line per study, its id in brackets).\n"
+    "One study means one core question: at most 3 research questions, each a part of that question, and "
+    "at most one hypothesis per research question. When the gaps come from different matrices, join "
+    "them through something this study tests directly (a variable from one review explaining an outcome "
+    "from the other, in the same data), never as separate sub-studies side by side. If some chosen gaps "
+    "don't fit that one study, leave them out and list each under left_out with a one-line reason; "
+    "a focused study is better than one that covers everything.\n"
+    "Two kinds of content, kept apart:\n"
+    "1. Background and gap describe the reviewed studies. Each paragraph makes one point and lists, by "
+    "id, only the studies whose lines state that point (usually one to three); it says nothing about a "
+    "study that its line doesn't state. In the text, refer to studies by author and year as their line "
+    "shows, never by id.\n"
     "2. Everything else (research questions, hypotheses, design, data, analysis, contribution, "
     "limitations, timeline) is proposed for the new study: write it without citing anyone.\n"
-    "Use the variables exactly as given, in the roles given; for each, say how this study would measure "
-    "it and, by id, how the reviewed studies measured it (only what their lines say). The writer's "
-    "exclusions are strict: propose nothing they rule out, not even as an option. Fit the design, data "
-    "and timeline to what the writer says they have. Be concrete and plain; no filler."
+    "Use the variables given, in the roles given, leaving out any the one study doesn't need; for each "
+    "you use, say how this study would measure it and, by id, how the reviewed studies measured it "
+    "(only what their lines say). The writer's exclusions are strict: propose nothing they rule out, "
+    "not even as an option. Fit the design, data and timeline to what the writer says they have. Don't "
+    "number or label the research questions or hypotheses (no 'RQ1:', 'H1:'). Be concrete and plain; "
+    "no filler."
 )
 _PARAS = {"type": "array", "items": {"type": "string"}}
 _CITED = {
@@ -242,9 +252,18 @@ PROPOSAL_SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "left_out": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"gap": {"type": "string"}, "why": {"type": "string"}},
+                "required": ["gap", "why"],
+                "additionalProperties": False,
+            },
+        },
     },
     "required": ["title", "background", "gap", "research_questions", "hypotheses", "variables", "design", "data",
-                 "analysis", "contribution", "limitations", "timeline"],
+                 "analysis", "contribution", "limitations", "timeline", "left_out"],
     "additionalProperties": False,
 }
 

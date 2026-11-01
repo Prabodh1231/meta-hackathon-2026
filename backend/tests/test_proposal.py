@@ -187,3 +187,35 @@ def test_a_proposal_exports_to_word(setup):
     text = "\n".join(p.text for p in word.paragraphs)
     assert "Research questions" in text and "References" in text and "missing source" not in text
     assert len(word.tables) == 2  # variables and timeline
+
+
+def test_labels_left_out_gaps_and_unbacked_claims(setup, monkeypatch):
+    client, lib, ids, mid, gaps = setup
+    raw = {
+        "title": "Savings and firms", "hypotheses": ["H1: Savings rise."], "design": ["A panel."], "data": [],
+        "analysis": [], "contribution": [], "limitations": [], "timeline": [],
+        "research_questions": ["RQ1: Do savings rise?", "Research question 2 – Do firms grow?", "Why now?"],
+        "background": [{"text": "Wanjiru finds savings rose 12%.", "studies": ["S1"]},
+                       {"text": "Both studies find large effects on savings.", "studies": ["S1", "S2"]}],
+        "gap": [],
+        "variables": [{"name": "Savings", "role": "dependent", "measure": "Bank records",
+                       "earlier": [{"study": "S1", "how": "self-reported savings"}]}],
+        "left_out": [{"gap": "Little on setting", "why": "It needs a second country."}],
+    }
+    monkeypatch.setattr(lib.provider, "write_proposal", lambda *a, **k: raw)
+    judged = []
+    def judge(claim, topic, table):
+        judged.append(claim)
+        return ({"verdict": "partial", "reason": "Only Wanjiru reports savings."} if claim.startswith("Both")
+                else {"verdict": "supported", "reason": "Stated."})
+    monkeypatch.setattr(lib.provider, "judge_against_matrix", judge)
+    out = client.post("/proposals", json={"finding_ids": [gaps[0]["id"]]}).json()
+
+    assert out["research_questions"] == ["Do savings rise?", "Do firms grow?", "Why now?"]  # the list numbers them
+    assert out["hypotheses"] == ["Savings rise."]
+    assert out["left_out"] == [{"gap": "Little on setting", "why": "It needs a second country."}]
+    labels = [r["label"] for r in client.get(f"/matrices/{mid}").json()["rows"]]
+    assert out["flagged"] == [{"section": "Background", "claim": "Both studies find large effects on savings.",
+                               "status": "weak", "reason": "Only Wanjiru reports savings.", "studies": labels}]
+    assert out["citations"] == {"verified": 2, "flagged": 2}  # one paragraph's two citations share its check
+    assert any(c.startswith("In ") and "Savings was measured as: self-reported savings" in c for c in judged)

@@ -14,6 +14,7 @@ is reported so it can be written again. The proposal is kept as a matrix finding
 "proposal") holding the rows of all its matrices, so its citations can be checked again later.
 """
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 from .matrix import MAX_TABLE, _snapshot, union_snapshot
@@ -22,6 +23,8 @@ ROLES = ("independent", "dependent", "mediator", "moderator", "control")
 ROLE_LABELS = {"independent": "Independent", "dependent": "Dependent", "mediator": "Mediator",
                "moderator": "Moderator", "control": "Control"}
 CHECKS_AT_ONCE = 4
+# "RQ1: …", "H2. …", "Research question 3 – …": the draft numbers its lists itself.
+_LABEL = re.compile(r"^\s*(?:RQ|Q|H|Hypothesis|Research question)\s*\d+[a-z]?\s*[:.)\-–—]\s*", re.I)
 NOTE = ("Background, the gap and how the reviewed studies measured each variable cite your review "
         "matrices and are checked against them. Everything from the research questions on is "
         "proposed for this study, so it cites no one.")
@@ -146,16 +149,31 @@ class Proposals:
             fid = self.matrices._save_finding(ms[0]["id"], names, "proposal", p["title"],
                                               "\n".join(p["research_questions"]), [], [], rows,
                                               matrix_ids=[m["id"] for m in ms])
-        doc = self._doc(fid, p, self._check(fid, p))
+        checks = self._check(fid, p)
+        doc = self._doc(fid, p, checks)
         statuses = [n["attrs"]["status"] for n in _walk(doc) if n.get("type") == "citation"]
         return {"finding": fid, "title": p["title"], "doc": doc, "research_questions": p["research_questions"],
                 "hypotheses": p["hypotheses"], "violations": violations, "matrices": names,
+                "left_out": p["left_out"], "flagged": self._flagged(p, checks),
                 "citations": {"verified": statuses.count("verified"),
                               "flagged": sum(s != "verified" for s in statuses)}}
 
+    def _flagged(self, p: dict, checks: dict[str, dict]) -> list[dict]:
+        """Claims about the reviewed studies the matrices don't back, with why, in the draft's order."""
+        claims = [("Background", c["text"], c["rows"]) for c in p["background"]]
+        claims += [("The gap", c["text"], c["rows"]) for c in p["gap"]]
+        claims += [("Variables", self._measure_claim(v, e), [e["row"]]) for v in p["variables"] for e in v["earlier"]]
+        out = []
+        for section, claim, rows in claims:
+            check = checks.get(claim)
+            if rows and check and check["status"] != "verified":
+                out.append({"section": section, "claim": claim, "status": check["status"], "reason": check["reason"],
+                            "studies": [r["label"] for r in rows]})
+        return out
+
     def _normalize(self, raw: dict, by_id: dict[str, dict]) -> dict:
         def paras(key):
-            return [t for t in (str(x).strip() for x in raw.get(key) or []) if t]
+            return [t for t in (_LABEL.sub("", str(x)).strip() for x in raw.get(key) or []) if t]
 
         def cited(key):
             return [{"text": str(c.get("text", "")).strip(), "rows": self._study_refs(c.get("studies") or [], by_id)}
@@ -178,6 +196,8 @@ class Proposals:
             "contribution": paras("contribution"), "limitations": paras("limitations"),
             "timeline": [{"when": str(t.get("when", "")).strip(), "what": str(t.get("what", "")).strip()}
                          for t in raw.get("timeline") or [] if str(t.get("what", "")).strip()],
+            "left_out": [{"gap": str(g.get("gap", "")).strip(), "why": str(g.get("why", "")).strip()}
+                         for g in raw.get("left_out") or [] if str(g.get("gap", "")).strip()],
         }
 
     @staticmethod
@@ -207,7 +227,7 @@ class Proposals:
 
     @staticmethod
     def _measure_claim(v: dict, e: dict) -> str:
-        return f"{e['row']['label']} measured {v['name']}: {e['how']}"
+        return f"In {e['row']['label']}, {v['name']} was measured as: {e['how']}"
 
     # ---------- the draft ----------
 
