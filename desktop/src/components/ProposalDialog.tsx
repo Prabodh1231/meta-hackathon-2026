@@ -317,11 +317,16 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
                 )}
                 {result.question_review.length > 0 && (
                   <div className="proposal-note">
-                    <b>Muse reviewed the questions against the core question:</b>
+                    <b>Muse reviewed the study's focus:</b>
                     <ul>
                       {result.question_review.map((q, i) => (
                         <li key={i}>
-                          {q.verdict === 'remove' ? (
+                          {q.verdict === 'core' ? (
+                            <>
+                              <b>Refocused the core question</b> to “{q.text}”
+                              {q.title && q.title !== q.title_before && <> and the title to “{q.title}”</>}
+                            </>
+                          ) : q.verdict === 'remove' ? (
                             <>
                               <b>Removed</b> “{q.original}”
                             </>
@@ -353,6 +358,30 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
                     </ul>
                     <span className="muted small">Untick the gaps you don't need, or write a proposal for these separately.</span>
                   </div>
+                )}
+                {result.repaired.length > 0 && (
+                  <details className="proposal-flagged proposal-repaired">
+                    <summary>
+                      Muse rewrote {result.repaired.filter((r) => r.after).length} and took out{' '}
+                      {result.repaired.filter((r) => !r.after).length} paragraph{result.repaired.length === 1 ? '' : 's'} the
+                      matrices didn't back
+                    </summary>
+                    <ul>
+                      {result.repaired.map((r, i) => (
+                        <li key={i}>
+                          <div className="muted small">Was: {r.before}</div>
+                          {r.after ? (
+                            <div>
+                              Now: {r.after}{' '}
+                              <span className={`badge badge-${r.status}`}>{r.status === 'verified' ? 'backed' : 'partly'}</span>
+                            </div>
+                          ) : (
+                            <div className="muted small">Taken out: {r.reason}</div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
                 {result.removed.length > 0 && (
                   <details className="proposal-flagged">

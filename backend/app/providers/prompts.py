@@ -186,6 +186,10 @@ PLAN_SYSTEM = (
     "matrices, join them only through something this study tests directly (a variable from one review "
     "explaining the outcome from the other, in the same data); if they can't be joined that way, build "
     "the study around the gaps that fit together best (prefer the writer's focus) and leave the rest out. "
+    "Never force a link: a matrix may contribute nothing to the study, and then all its gaps are left "
+    "out. Nothing in the title, core question or research questions may be there only to mention another "
+    "review's topic. Each research question asks about one relationship, in plain words and at most 30 "
+    "words; controls, periods and measurement choices belong in the design, not in the question. "
     "List every chosen gap you don't address under left_out with a one-line reason. Give at most one "
     "hypothesis per research question, in the same order. Keep only the variables this study needs, in "
     "the writer's roles. The writer's exclusions are strict. Don't number or label the questions or "
@@ -222,13 +226,18 @@ PLAN_SCHEMA = {
 }
 
 QUESTIONS_SYSTEM = (
-    "Review the research questions of a planned study, one by one, against its title and core question. "
+    "Review a planned study for focus. First the title and core question: they must be about one outcome; "
+    "strip any clause that is there only to bring in another topic or review (e.g. a measurement issue "
+    "from an unrelated literature), and give them back, revised or unchanged, with a one-line reason if "
+    "you changed them. Then the research questions, one by one, against that core question. "
     "Keep a question that is part of the core question: same outcome, same population and same kind of "
     "data. Revise one that drifts but can be brought back (say how in one line). Remove one that belongs "
     "to a different study (another outcome, population or kind of data), repeats another, or can't be "
     "answered with the planned variables. At most 3 questions may remain, and at least one: if all would "
-    "go, revise the closest to the core question. Then give the hypotheses for the questions that remain, "
-    "at most one each, in the same order, revised to match. Don't number or label them."
+    "go, revise the closest to the core question. Revise a question that strings together controls, "
+    "periods or measurement choices: it should ask about one relationship in at most 30 words. Then give "
+    "the hypotheses for the questions that remain, at most one each, in the same order, revised to match. "
+    "Don't number or label them."
 )
 QUESTIONS_SCHEMA = {
     "type": "object",
@@ -248,8 +257,11 @@ QUESTIONS_SCHEMA = {
             },
         },
         "hypotheses": {"type": "array", "items": {"type": "string"}},
+        "title": {"type": "string"},
+        "core_question": {"type": "string"},
+        "core_changed_why": {"type": "string"},
     },
-    "required": ["questions", "hypotheses"],
+    "required": ["title", "core_question", "core_changed_why", "questions", "hypotheses"],
     "additionalProperties": False,
 }
 
@@ -260,8 +272,10 @@ PROPOSAL_SYSTEM = (
     "1. Background and gap describe the reviewed studies, and only those relevant to the core question. "
     "Each paragraph is two to four sentences, makes one point, and lists only the studies whose lines "
     "state that point (usually one to three), by their bracketed names exactly as written. It says "
-    "nothing about a study that its line doesn't state. Don't put brackets or study names in brackets "
-    "in the text.\n"
+    "nothing about a study that its line doesn't state. Say what the studies did rather than what they "
+    "lack, and never write that none, no study, only or all of them do something, or that something "
+    "was never tested, unless every line in the table shows it. In the text, name studies plainly "
+    "(Alonso et al. 2021 find…), without brackets.\n"
     "2. Design, data, analysis, contribution, limitations and timeline are proposed for the new study: "
     "write them without citing anyone.\n"
     "For each planned variable, say how this study would measure it. Under earlier, give how a reviewed "
@@ -324,6 +338,20 @@ PROPOSAL_SCHEMA = {
     },
     "required": ["background", "gap", "variables", "design", "data", "analysis", "contribution", "limitations",
                  "timeline"],
+    "additionalProperties": False,
+}
+
+REPAIR_SYSTEM = (
+    "Some sentences in a research proposal's background claim more than the review matrix rows they cite "
+    "support; each comes with the rows and the reason a check gave. Rewrite each so that every part is "
+    "stated in, or directly implied by, those rows: keep what is backed, drop or soften what isn't, and "
+    "don't add anything new. Name studies plainly, without brackets. Return one rewrite per item, in "
+    "order; if nothing can be saved, return an empty string for it."
+)
+REPAIR_SCHEMA = {
+    "type": "object",
+    "properties": {"rewrites": {"type": "array", "items": {"type": "string"}}},
+    "required": ["rewrites"],
     "additionalProperties": False,
 }
 

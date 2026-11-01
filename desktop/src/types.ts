@@ -220,7 +220,16 @@ export interface ProposalResult {
   left_out: { gap: string; why: string }[]
   core_question: string
   /** What the separate review of the research questions changed: revised or removed, and why. */
-  question_review: { original: string; verdict: 'revise' | 'remove'; text: string; why: string }[]
+  question_review: {
+    original: string
+    verdict: 'revise' | 'remove' | 'core' // 'core': the title and core question were refocused
+    text: string
+    why: string
+    title_before?: string
+    title?: string
+  }[]
+  /** Background and gap paragraphs Muse rewrote from the rows they cite, or dropped, after a failed check. */
+  repaired: { section: string; before: string; after: string; status: CitationStatus | 'removed'; reason: string }[]
   /** Earlier measures the matrices don't state, taken out of the variables table. */
   removed: { claim: string; reason: string; study: string }[]
   /** Claims about the reviewed studies the matrices don't back (amber or red in the draft). */

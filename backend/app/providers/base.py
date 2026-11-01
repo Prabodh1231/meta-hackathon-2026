@@ -143,6 +143,13 @@ class LLMProvider(ABC):
                 + f"Review matrices:\n{tables[:60000]}")
         return self._json(prompts.PROPOSAL_SYSTEM, user, prompts.PROPOSAL_SCHEMA, max_tokens=5000)
 
+    def repair_claims(self, items: list[dict]) -> list[str]:
+        """Rewrites of claims the matrix rows they cite don't back: items are {claim, reason, rows}."""
+        user = "\n\n".join(f"Item {i + 1}\nSentence: {it['claim']}\nWhy it isn't backed: {it['reason']}\n"
+                            f"Rows it cites:\n{it['rows']}" for i, it in enumerate(items))
+        out = self._json(prompts.REPAIR_SYSTEM, user[:60000], prompts.REPAIR_SCHEMA, max_tokens=600 + 250 * len(items))
+        return [str(r) for r in out.get("rewrites") or []]
+
     def check_exclusions(self, exclusions: str, proposal: str) -> list[dict]:
         """Where a proposal breaks what the writer ruled out: [{rule, section, why}]."""
         user = f"The writer rules out:\n{exclusions}\n\nThe proposal:\n{proposal[:30000]}"

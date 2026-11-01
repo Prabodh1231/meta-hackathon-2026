@@ -197,7 +197,8 @@ class Matrices:
     # ---------- storage ----------
 
     def _matrix(self, mid: int):
-        row = self.lib.conn.execute("SELECT * FROM matrices WHERE id = ?", (mid,)).fetchone()
+        with self.lib.lock:  # reentrant: callers often hold it already; findings are checked from threads
+            row = self.lib.conn.execute("SELECT * FROM matrices WHERE id = ?", (mid,)).fetchone()
         if not row:
             raise LookupError(f"Matrix {mid} not found")
         return row
