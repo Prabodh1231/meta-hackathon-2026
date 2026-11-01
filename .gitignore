@@ -10,3 +10,8 @@ desktop/dist/
 
 # Large retrieval eval: downloaded papers, the eval library and its questions stay local
 backend/eval/large/
+
+# Installer builds: the bundled backend and the packaged app
+backend/build/
+backend/dist/
+desktop/release/
