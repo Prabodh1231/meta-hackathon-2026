@@ -168,12 +168,6 @@ class AskIn(BaseModel):
     question: str = Field(min_length=1)
     context: str = ""  # the paragraph at the cursor
     selection: str = ""  # text the question is about
-    doc_ids: list[int] | None = None
-    k: int = Field(8, ge=1, le=30)
-
-
-class AskAnswerIn(BaseModel):
-    sentences: list[dict]
 
 
 class VerifyIn(BaseModel):
@@ -499,12 +493,8 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.post("/drafts/{draft_id}/ask")
     def ask(draft_id: int, body: AskIn):
-        """Answer a question from the library (general knowledge kept apart) and keep it with the draft."""
-        return lib.ask(draft_id, body.question, body.context, body.selection, body.doc_ids, body.k)
-
-    @app.put("/ask/{turn_id}")
-    def save_ask_answer(turn_id: int, body: AskAnswerIn):
-        return lib.save_ask_answer(turn_id, body.sentences)
+        """The chatbot's reply, kept with the draft."""
+        return lib.ask(draft_id, body.question, body.context, body.selection)
 
     @app.delete("/drafts/{draft_id}/ask")
     def clear_ask(draft_id: int):

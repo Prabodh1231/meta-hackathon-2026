@@ -163,8 +163,8 @@ CREATE TABLE IF NOT EXISTS draft_versions (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS draft_versions_draft ON draft_versions(draft_id, id);
--- The Ask tab's conversation about a draft, one row per question. `answer` is JSON:
--- {sentences: [{text, citations}], general, followups}, with each citation's latest check.
+-- The Ask tab's chat beside a draft, one row per message and its reply (`answer`, Markdown).
+-- Rows from before Ask became a plain chat hold JSON ({sentences, general, followups}) instead.
 CREATE TABLE IF NOT EXISTS ask_turns (
   id INTEGER PRIMARY KEY,
   draft_id INTEGER NOT NULL,
