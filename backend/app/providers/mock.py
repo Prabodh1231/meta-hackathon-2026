@@ -91,6 +91,16 @@ class MockProvider(LLMProvider):
             out.append({"text": text, "citations": [{"passage": p.pid, "quote": best}]})
         return out
 
+    def ask(self, question: str, history: list[dict], context: str, selection: str, passages: list[Passage]) -> dict:
+        # Offline: quote the passages sharing words with the question; nothing to say beyond them.
+        query = set(tokenize(f"{question} {selection}"))
+        on_topic = [p for p in passages if query & set(tokenize(p.text))]
+        sentences = self.draft(question, context, on_topic[:3])
+        general = "" if sentences else "[Offline mock: general knowledge is unavailable. Connect Muse for answers beyond your sources.]"
+        terms = [t for t in keywords([p.text for p in on_topic], 6) if t not in query][:2]
+        followups = [f"What do my sources say about {t}?" for t in terms]
+        return {"sentences": sentences, "general": general, "followups": followups}
+
     def extract_matrix_row(self, title: str, columns: list[dict], passages: list[Passage]) -> list[dict]:
         # Offline: for each column, the sentence sharing most words with the column's search terms,
         # quoted as it stands. Nothing shared means not reported.

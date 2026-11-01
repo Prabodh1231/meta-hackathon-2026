@@ -33,6 +33,7 @@ const ICONS = {
   undo: 'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',
   redo: 'M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3',
   cite: 'M7 4h10v16l-5-4-5 4z',
+  ask: 'M5 5h14v10H10l-4 4v-4H5zM10 8.5a2 2 0 1 1 2.5 1.9c-.4.2-.5.5-.5.9M12 13h.01',
 }
 
 function Glyph({ d }: { d: string }) {
@@ -43,7 +44,7 @@ function Glyph({ d }: { d: string }) {
   )
 }
 
-export function FormatToolbar({ editor, onCite }: { editor: Editor | null; onCite: () => void }) {
+export function FormatToolbar({ editor, onCite, onAsk }: { editor: Editor | null; onCite: () => void; onAsk: () => void }) {
   const [fontsOpen, setFontsOpen] = useState(false)
   const fontsRef = useRef<HTMLDivElement>(null)
   // Re-render only when the formatting at the cursor changes.
@@ -146,6 +147,15 @@ export function FormatToolbar({ editor, onCite }: { editor: Editor | null; onCit
       >
         <Glyph d={ICONS.cite} />
         <span className="cite-label">Cite</span>
+      </button>
+      <button
+        className="cite-button"
+        title="Ask the AI about the selected text, or anything else, in the Ask tab (Ctrl+J)"
+        onMouseDown={keep}
+        onClick={onAsk}
+      >
+        <Glyph d={ICONS.ask} />
+        <span className="cite-label">Ask</span>
       </button>
       {state?.table && (
         <>
