@@ -90,6 +90,24 @@ class LLMProvider(ABC):
         out = self._json(prompts.DRAFT_SYSTEM, user, prompts.DRAFT_SCHEMA, max_tokens=2048)
         return out.get("sentences", [])
 
+    def ask(self, question: str, history: list[dict], context: str, selection: str, passages: list[Passage]) -> dict:
+        """An answer to a question: {sentences: [{text, citations}], general, followups}.
+        `history` is the conversation so far, [{question, answer}], oldest first."""
+        earlier = "\n\n".join(f"Q: {t['question']}\nA: {t['answer']}" for t in history[-6:])
+        user = (
+            (f"Conversation so far:\n{earlier[-6000:]}\n\n" if earlier else "")
+            + f"Paragraph being written:\n{context[-3000:] or '(empty)'}\n\n"
+            + (f"Selected text the question is about:\n{selection[:4000]}\n\n" if selection else "")
+            + f"Question: {question}\n\n"
+            + f"Passages:\n{prompts.format_passages(passages) or '(none: the library has nothing on this)'}"
+        )
+        out = self._json(prompts.ASK_SYSTEM, user, prompts.ASK_SCHEMA, max_tokens=2500)
+        return {
+            "sentences": out.get("sentences") or [],
+            "general": (out.get("general") or "").strip(),
+            "followups": [str(f).strip() for f in out.get("followups") or [] if str(f).strip()][:3],
+        }
+
     def extract_matrix_row(self, title: str, columns: list[dict], passages: list[Passage]) -> list[dict]:
         """One paper's row: for each column {column, answer, passage, quote}, empty when not reported."""
         cols = "\n".join(f"- {c['key']}: {c['label']}. {c.get('instruction') or ''}".rstrip() for c in columns)

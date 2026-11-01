@@ -90,7 +90,7 @@ React 19 with Tiptap 3, built by Vite. Entry: [desktop/src/App.tsx](../desktop/s
 - the **app bar**: the title (opening the drafts menu, `DraftsPanel`), save state and version, the search box, `ExportControl`, Settings;
 - the **rail**, which sets `mode`: `write`, `library` or `network`;
 - one **view** per mode:
-  - *Write:* `WritingEditor` and the side panel. Its tabs are `AssistantPanel`, Citations (`CitePanel`, or `SourceViewer` while a cited passage is open), `ReferencesPanel`, `ReviewPanel` and `HistoryPanel`. `CitationWire` draws the line from a citation to its quote. Closed, the panel is a strip of the tabs' icons (`toolsOpen`); focus mode (`focusMode`) hides the rail, panel, app bar and dock.
+  - *Write:* `WritingEditor` and the side panel. Its tabs are `AssistantPanel`, `AskPanel` (questions, kept per draft in `ask_turns`), Citations (`CitePanel`, or `SourceViewer` while a cited passage is open), `ReferencesPanel`, `ReviewPanel` and `HistoryPanel`. `CitationWire` draws the line from a citation to its quote. Closed, the panel is a strip of the tabs' icons (`toolsOpen`); focus mode (`focusMode`) hides the rail, panel, app bar and dock.
   - *Library:* `LibraryPanel`: folders, a sortable table and the open paper's details.
   - *Network:* `NetworkView`, which loads Cytoscape only when it's first opened.
 - the **dock** (status bar) and the dialogs: `CommandPalette` (Ctrl K), `WordImportDialog`, `DuplicateFilesDialog`, `CitedPapersDialog`, `MissingPapersDialog`, `SettingsDialog`, `PdfViewerDialog`.

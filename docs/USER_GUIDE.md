@@ -144,6 +144,21 @@ The **Assistant** tab drafts from your sources. Type what you want (or pick an e
 
 Click a citation to see its passage. Tick the sentences you want to keep (or click a sentence; **Select all** ticks every one), then **Insert N selected** puts just those in, in the draft's order, at the cursor, or at the end if you haven't clicked into the page yet.
 
+### Ask
+
+The **Ask** tab is for questions rather than drafting: "which of my sources disagree?", "is this paragraph backed?", "what's a spindle?". Type a question and press Enter (Shift+Enter starts a new line). Follow-up questions build on the earlier ones, and the AI also sees the paragraph your cursor is in.
+
+To ask about part of your draft, select it and press **Ctrl J**, or click **Ask** in the toolbar beside Cite. The Ask tab opens with the text attached above the question box (× removes it).
+
+An answer comes in up to two parts:
+
+- **From your sources:** sentences with numbered citations. Each number is coloured by its check, like the Assistant's marks above, and the sources are listed under the answer. Click a number or a source to see the quote on its page.
+- **Not from your sources:** a grey, dashed box for whatever your sources don't cover, answered from the AI's general knowledge. It has no citations, so check it before you rely on it.
+
+Under the latest answer, two or three suggested follow-up questions are one click away. **Insert into draft** puts the sourced part of an answer at the cursor, with its citations; the grey part has its own **Insert anyway**, which adds it without a citation.
+
+Each draft keeps its own conversation, also after you close the app; **Clear conversation** at the top of the tab starts it over. Ask uses the same sources as the Assistant (the ticked papers, or the whole library) and the same *Passages the Assistant reads* setting. With an empty library, answers come from general knowledge only.
+
 ## 4. Back up each claim
 
 Put the cursor in a sentence you wrote (or select some text) and press **Cite** in the toolbar, or Ctrl+Shift+C. A small grey `cite` marker appears at the end of the sentence and you keep writing; the search runs in the background and the cursor doesn't move.
@@ -286,6 +301,7 @@ The draft has a title and Background, The gap, Research questions, Hypotheses, V
 | Ctrl N | New draft |
 | Ctrl O | Import a Word file |
 | Ctrl Shift C | Cite the sentence at the cursor |
+| Ctrl J | Ask about the selected text (or open the Ask tab) |
 | Ctrl \ | Open or close the writing tools |
 | Ctrl Shift F | Focus mode on or off |
 | Ctrl Z / Ctrl Y | Undo / redo in the draft |
@@ -310,7 +326,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 **Writing & citations**
 
 - **Citation style:** APA 7, MLA 9 or IEEE, for the References tab and Export.
-- **Passages the Assistant reads** (3 to 20, default 8): fewer is faster and sticks to the closest matches; more covers more ground.
+- **Passages the Assistant reads** (3 to 20, default 8): fewer is faster and sticks to the closest matches; more covers more ground. Ask uses it too.
 - **Cite markers search:** the sources ticked in the Library (all of them when none are ticked), or always the whole library.
 
 **Review & history**

@@ -163,6 +163,17 @@ CREATE TABLE IF NOT EXISTS draft_versions (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS draft_versions_draft ON draft_versions(draft_id, id);
+-- The Ask tab's conversation about a draft, one row per question. `answer` is JSON:
+-- {sentences: [{text, citations}], general, followups}, with each citation's latest check.
+CREATE TABLE IF NOT EXISTS ask_turns (
+  id INTEGER PRIMARY KEY,
+  draft_id INTEGER NOT NULL,
+  question TEXT NOT NULL,
+  selection TEXT NOT NULL DEFAULT '',
+  answer TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ask_turns_draft ON ask_turns(draft_id, id);
 -- SHA-256 of library files for the duplicate finder, reused while a file's size and
 -- modification time are unchanged so a re-scan doesn't read every file again.
 CREATE TABLE IF NOT EXISTS file_hashes (

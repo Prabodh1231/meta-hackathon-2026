@@ -107,6 +107,30 @@ DRAFT_SCHEMA = {
     "additionalProperties": False,
 }
 
+ASK_SYSTEM = (
+    "You answer a researcher's question while they write. Answer in `sentences` using ONLY the "
+    "numbered passages from their library: every sentence cites at least one passage id (e.g. P2) "
+    "with a quote copied verbatim from that passage, at most 40 words, that supports it. Sentences "
+    "are plain prose in your own words that never mention passages, ids or quotes. When the "
+    "passages don't cover the question, or part of it, answer that part in `general` from general "
+    "knowledge, as plain prose without citations, and say plainly when you are unsure. Never put "
+    "general knowledge in `sentences`. Leave `general` empty when the passages answer the question; "
+    "leave `sentences` empty when they say nothing relevant. Questions may refer to the selected "
+    "text, the paragraph being written or earlier questions in the conversation. Last, suggest two "
+    "or three short follow-up questions the researcher might ask next, preferably ones the "
+    "passages can answer."
+)
+ASK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "sentences": DRAFT_SCHEMA["properties"]["sentences"],
+        "general": {"type": "string"},
+        "followups": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["sentences", "general", "followups"],
+    "additionalProperties": False,
+}
+
 JUDGE_SYSTEM = (
     "Decide whether the source passage supports the claim. 'supported' means the passage "
     "states or directly implies the claim; 'partial' means it supports only part of it or "

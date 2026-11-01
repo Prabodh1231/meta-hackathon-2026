@@ -1730,6 +1730,62 @@ class Library:
             "passages": [{"pid": p.pid, "chunk_id": p.chunk_id, "label": p.label} for p in passages],
         }
 
+    # ---------- asking about a draft ----------
+
+    @staticmethod
+    def _ask_turn(row) -> dict:
+        return {"id": row["id"], "question": row["question"], "selection": row["selection"],
+                "created_at": row["created_at"], **json.loads(row["answer"])}
+
+    def ask_turns(self, draft_id: int) -> list[dict]:
+        """The Ask conversation about a draft, oldest first."""
+        with self.lock:
+            rows = self.conn.execute("SELECT * FROM ask_turns WHERE draft_id = ? ORDER BY id", (draft_id,)).fetchall()
+        return [self._ask_turn(r) for r in rows]
+
+    def ask(self, draft_id: int, question: str, context: str = "", selection: str = "",
+            doc_ids: list[int] | None = None, k: int = 8) -> dict:
+        """Answer a question from the library, with general knowledge kept apart, and keep it in the
+        draft's conversation. Citations come back located but not yet judged, as in a draft."""
+        history = self.ask_turns(draft_id)
+        # A follow-up ("and their sample sizes?") leans on the question before it, so both are searched.
+        query = " ".join(filter(None, [history[-1]["question"] if history else "", question, selection[:500]]))
+        hits = self.search(query, k=k, doc_ids=doc_ids)
+        passages = [Passage(f"P{i + 1}", h["id"], h["label"], h["text"]) for i, h in enumerate(hits)]
+        by_pid = {p.pid: p for p in passages}
+        earlier = [{"question": t["question"], "answer": " ".join([*(s["text"] for s in t["sentences"]), t["general"]]).strip()}
+                   for t in history]
+        out = self.provider.ask(question, earlier, context, selection, passages)
+        sentences = []
+        for s in out["sentences"]:
+            text = (s.get("text") or "").strip()
+            cites = [self.verify_citation(text, by_pid[pid].chunk_id, c.get("quote", ""), judge=False)
+                     for c in s.get("citations") or [] if (pid := str(c.get("passage", "")).strip("[] ")) in by_pid]
+            if text and cites:  # a sentence the library doesn't back would pass for sourced
+                sentences.append({"text": text, "citations": cites})
+        answer = {"sentences": sentences, "general": out["general"], "followups": out["followups"]}
+        with self.lock, self.conn:
+            turn_id = self.conn.execute(
+                "INSERT INTO ask_turns (draft_id, question, selection, answer) VALUES (?, ?, ?, ?)",
+                (draft_id, question, selection, json.dumps(answer)),
+            ).lastrowid
+            row = self.conn.execute("SELECT * FROM ask_turns WHERE id = ?", (turn_id,)).fetchone()
+        return self._ask_turn(row)
+
+    def save_ask_answer(self, turn_id: int, sentences: list[dict]) -> dict:
+        """Keep the checked citations of an answer, so they aren't checked again next time."""
+        with self.lock, self.conn:
+            row = self.conn.execute("SELECT * FROM ask_turns WHERE id = ?", (turn_id,)).fetchone()
+            if not row:
+                raise LookupError(f"Answer {turn_id} not found")
+            answer = {**json.loads(row["answer"]), "sentences": sentences}
+            self.conn.execute("UPDATE ask_turns SET answer = ? WHERE id = ?", (json.dumps(answer), turn_id))
+        return self._ask_turn({**dict(row), "answer": json.dumps(answer)})
+
+    def clear_ask(self, draft_id: int) -> None:
+        with self.lock, self.conn:
+            self.conn.execute("DELETE FROM ask_turns WHERE draft_id = ?", (draft_id,))
+
     def verify_citation(self, claim: str, chunk_id: int, quote: str, judge: bool = True) -> dict:
         with self.lock:
             ch = self.conn.execute("SELECT * FROM chunks WHERE id = ?", (chunk_id,)).fetchone()
@@ -2078,11 +2134,12 @@ class Library:
         return self.get_draft(draft_id)
 
     def delete_draft(self, draft_id: int) -> None:
-        """Delete a draft and its version history."""
+        """Delete a draft, its version history and its Ask conversation."""
         with self.lock, self.conn:
             if not self.conn.execute("DELETE FROM drafts WHERE id = ?", (draft_id,)).rowcount:
                 raise LookupError(f"Draft {draft_id} not found")
             self.conn.execute("DELETE FROM draft_versions WHERE draft_id = ?", (draft_id,))
+            self.conn.execute("DELETE FROM ask_turns WHERE draft_id = ?", (draft_id,))
 
     @staticmethod
     def convert_docx(filename: str, data: bytes) -> dict:
