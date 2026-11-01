@@ -271,7 +271,8 @@ export const api = {
   /** Published work close to a research question: has this been done? */
   proposalNovelty: (query: string) => request<{ works: SimilarWork[] }>('POST', '/proposals/novelty', { query }),
   /** Check a sentence written from a finding against its matrix (not against one quote). */
-  checkFinding: (id: number, claim: string) => request<FindingCheck>('POST', `/findings/${id}/check`, { claim }),
+  checkFinding: (id: number, claim: string, docIds?: number[]) =>
+    request<FindingCheck>('POST', `/findings/${id}/check`, { claim, doc_ids: docIds?.length ? docIds : undefined }),
   /** The matrix as editor content: a table whose cells cite their quotes. */
   matrixTable: (id: number, columns: string[]) =>
     request<{ type: 'doc'; content: unknown[] }>('GET', `/matrices/${id}/table?columns=${encodeURIComponent(columns.join(','))}`),

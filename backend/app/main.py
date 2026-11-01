@@ -105,6 +105,7 @@ class NoveltyIn(BaseModel):
 
 class FindingCheckIn(BaseModel):
     claim: str
+    doc_ids: list[int] | None = None  # the studies the sentence cites: checked against their rows only
 
 
 class SynthesisIn(BaseModel):
@@ -607,7 +608,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/findings/{fid}/check")
     def check_finding(fid: int, body: FindingCheckIn):
         """Check a sentence written from a finding against its matrix."""
-        return matrices.check_finding(fid, body.claim)
+        return matrices.check_finding(fid, body.claim, body.doc_ids)
 
     @app.post("/proposals/variables")
     def proposal_variables(body: ProposalSourcesIn):

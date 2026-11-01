@@ -1380,3 +1380,4 @@ tr:hover .mx-row-actions, .mx-row-actions:focus-within { opacity: 1; }
 .proposal-flagged { margin: 10px 0; font-size: 13px; }
 .proposal-flagged summary { cursor: pointer; color: var(--warn); }
 .proposal-flagged li + li { margin-top: 6px; }
+.proposal-core { margin: 4px 0 8px; font-size: 13.5px; }

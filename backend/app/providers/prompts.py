@@ -135,15 +135,18 @@ MATRIX_JUDGE_SYSTEM = (
 
 ROLES = ["independent", "dependent", "mediator", "moderator", "control"]
 
+_STUDIES = (
+    "The review matrices have one line per study: its name in brackets, its title in quotes, then its "
+    "details and, for each column, a short answer with the quote behind it. "
+)
 VARIABLES_SYSTEM = (
     "You help plan a study that addresses gaps found in a literature review. You are given review "
-    "matrices (one line per study, its id in brackets: its details, and for each column a short answer "
-    "with the quote behind it) and the gaps the study should address. List the variables (constructs) "
+    "matrices and the gaps the study should address. " + _STUDIES + "List the variables (constructs) "
     "such a study would work with, at most 10, most central first. For each: a short name; the role it "
     "would most likely play (independent, dependent, mediator, moderator or control); one sentence on "
-    "why it matters for the gaps; and how the reviewed studies measured or operationalised it, citing "
-    "each study by its id and using only what its line says. Leave the measures empty for a variable "
-    "no study measured."
+    "why it matters for the gaps; and how the reviewed studies measured or operationalised it, naming "
+    "each study by its bracketed name exactly as written, and only where its line states the measure. "
+    "Leave the measures empty otherwise; never fill one in from general knowledge."
 )
 VARIABLES_SCHEMA = {
     "type": "object",
@@ -175,28 +178,97 @@ VARIABLES_SCHEMA = {
     "additionalProperties": False,
 }
 
+PLAN_SYSTEM = (
+    "Plan ONE study that addresses the chosen gaps, using the review matrices. " + _STUDIES +
+    "One study means one core question about one outcome, studied in one kind of data and unit of "
+    "analysis. Research questions (at most 3) are parts of that core question; a question about another "
+    "outcome, population or kind of data belongs to a different study. When the gaps come from different "
+    "matrices, join them only through something this study tests directly (a variable from one review "
+    "explaining the outcome from the other, in the same data); if they can't be joined that way, build "
+    "the study around the gaps that fit together best (prefer the writer's focus) and leave the rest out. "
+    "List every chosen gap you don't address under left_out with a one-line reason. Give at most one "
+    "hypothesis per research question, in the same order. Keep only the variables this study needs, in "
+    "the writer's roles. The writer's exclusions are strict. Don't number or label the questions or "
+    "hypotheses."
+)
+PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "core_question": {"type": "string"},
+        "research_questions": {"type": "array", "items": {"type": "string"}},
+        "hypotheses": {"type": "array", "items": {"type": "string"}},
+        "variables": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "role": {"type": "string", "enum": ROLES}},
+                "required": ["name", "role"],
+                "additionalProperties": False,
+            },
+        },
+        "left_out": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"gap": {"type": "string"}, "why": {"type": "string"}},
+                "required": ["gap", "why"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["title", "core_question", "research_questions", "hypotheses", "variables", "left_out"],
+    "additionalProperties": False,
+}
+
+QUESTIONS_SYSTEM = (
+    "Review the research questions of a planned study, one by one, against its title and core question. "
+    "Keep a question that is part of the core question: same outcome, same population and same kind of "
+    "data. Revise one that drifts but can be brought back (say how in one line). Remove one that belongs "
+    "to a different study (another outcome, population or kind of data), repeats another, or can't be "
+    "answered with the planned variables. At most 3 questions may remain, and at least one: if all would "
+    "go, revise the closest to the core question. Then give the hypotheses for the questions that remain, "
+    "at most one each, in the same order, revised to match. Don't number or label them."
+)
+QUESTIONS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "questions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "original": {"type": "string"},
+                    "verdict": {"type": "string", "enum": ["keep", "revise", "remove"]},
+                    "text": {"type": "string"},
+                    "why": {"type": "string"},
+                },
+                "required": ["original", "verdict", "text", "why"],
+                "additionalProperties": False,
+            },
+        },
+        "hypotheses": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["questions", "hypotheses"],
+    "additionalProperties": False,
+}
+
 PROPOSAL_SYSTEM = (
-    "Write a research proposal for ONE study that addresses the chosen gaps, based on the review "
-    "matrices given (one line per study, its id in brackets).\n"
-    "One study means one core question: at most 3 research questions, each a part of that question, and "
-    "at most one hypothesis per research question. When the gaps come from different matrices, join "
-    "them through something this study tests directly (a variable from one review explaining an outcome "
-    "from the other, in the same data), never as separate sub-studies side by side. If some chosen gaps "
-    "don't fit that one study, leave them out and list each under left_out with a one-line reason; "
-    "a focused study is better than one that covers everything.\n"
-    "Two kinds of content, kept apart:\n"
-    "1. Background and gap describe the reviewed studies. Each paragraph makes one point and lists, by "
-    "id, only the studies whose lines state that point (usually one to three); it says nothing about a "
-    "study that its line doesn't state. In the text, refer to studies by author and year as their line "
-    "shows, never by id.\n"
-    "2. Everything else (research questions, hypotheses, design, data, analysis, contribution, "
-    "limitations, timeline) is proposed for the new study: write it without citing anyone.\n"
-    "Use the variables given, in the roles given, leaving out any the one study doesn't need; for each "
-    "you use, say how this study would measure it and, by id, how the reviewed studies measured it "
-    "(only what their lines say). The writer's exclusions are strict: propose nothing they rule out, "
-    "not even as an option. Fit the design, data and timeline to what the writer says they have. Don't "
-    "number or label the research questions or hypotheses (no 'RQ1:', 'H1:'). Be concrete and plain; "
-    "no filler."
+    "Write the rest of a research proposal for the planned study given: its title, core question, "
+    "research questions, hypotheses and variables are fixed; write everything around them and nothing "
+    "about other topics. " + _STUDIES + "Two kinds of content, kept apart:\n"
+    "1. Background and gap describe the reviewed studies, and only those relevant to the core question. "
+    "Each paragraph is two to four sentences, makes one point, and lists only the studies whose lines "
+    "state that point (usually one to three), by their bracketed names exactly as written. It says "
+    "nothing about a study that its line doesn't state. Don't put brackets or study names in brackets "
+    "in the text.\n"
+    "2. Design, data, analysis, contribution, limitations and timeline are proposed for the new study: "
+    "write them without citing anyone.\n"
+    "For each planned variable, say how this study would measure it. Under earlier, give how a reviewed "
+    "study measured it ONLY when its line states the measure or instrument; otherwise leave earlier "
+    "empty. Never fill in a measure from general knowledge. The writer's exclusions are strict: propose "
+    "nothing they rule out, not even as an option. Fit the design, data and timeline to what the writer "
+    "says they have. Be concrete and plain; no filler."
 )
 _PARAS = {"type": "array", "items": {"type": "string"}}
 _CITED = {
@@ -211,11 +283,8 @@ _CITED = {
 PROPOSAL_SCHEMA = {
     "type": "object",
     "properties": {
-        "title": {"type": "string"},
         "background": _CITED,
         "gap": _CITED,
-        "research_questions": _PARAS,
-        "hypotheses": _PARAS,
         "variables": {
             "type": "array",
             "items": {
@@ -252,18 +321,9 @@ PROPOSAL_SCHEMA = {
                 "additionalProperties": False,
             },
         },
-        "left_out": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {"gap": {"type": "string"}, "why": {"type": "string"}},
-                "required": ["gap", "why"],
-                "additionalProperties": False,
-            },
-        },
     },
-    "required": ["title", "background", "gap", "research_questions", "hypotheses", "variables", "design", "data",
-                 "analysis", "contribution", "limitations", "timeline", "left_out"],
+    "required": ["background", "gap", "variables", "design", "data", "analysis", "contribution", "limitations",
+                 "timeline"],
     "additionalProperties": False,
 }
 
