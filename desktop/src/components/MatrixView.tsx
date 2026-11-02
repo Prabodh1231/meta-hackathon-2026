@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import {
   type DetailFilter, type DetailSort, NUMERIC, detailColumn, detailText, filterText, isDetail, passes, sortRows,
@@ -7,6 +7,8 @@ import type { Doc, DocxStyle, DraftSentence, FindingSummary, Folder, Matrix, Mat
 import { ago } from './Meters'
 import { SourceViewer, type SourceTarget } from './SourceViewer'
 import { StatusBadge } from './StatusBadge'
+import { WaitStatus } from './WaitStatus'
+import { notifyDone, timeLeft } from '../notify'
 
 interface Props {
   docs: Doc[]
@@ -28,6 +30,8 @@ interface Props {
   onWriteProposal: (matrixId: number) => void
   /** Open this matrix (a citation in the draft asked for it); `at` makes each request new. */
   openRequest?: { id: number; at: number } | null
+  /** The Matrix place is on screen: a matrix finishing while it isn't sends a desktop notification. */
+  visible: boolean
 }
 
 const STATUS_TEXT: Record<MatrixCell['status'], string> = {
@@ -370,9 +374,11 @@ function SynthesisDialog({ matrix, onInsert, onClose, onError }: {
   const [finding, setFinding] = useState<number | null>(null)
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
+  const [busyAt, setBusyAt] = useState(0)
 
   async function write() {
     setBusy(true)
+    setBusyAt(Date.now())
     setSentences(null)
     try {
       const res = await api.matrixSynthesis(matrix.id, instruction.trim(), [...cols])
@@ -417,6 +423,7 @@ function SynthesisDialog({ matrix, onInsert, onClose, onError }: {
             {busy ? 'Writing…' : sentences ? 'Write again' : 'Write'}
           </button>
         </div>
+        {busy && <WaitStatus label="Muse is writing from the matrix…" startedAt={busyAt} usual="This usually takes 15 to 45 seconds." />}
         {sentences && sentences.length === 0 && <p className="muted">Nothing could be written from these columns.</p>}
         {sentences && sentences.length > 0 && (
           <>
@@ -531,7 +538,7 @@ async function save(name: string, data: ArrayBuffer, ext: string) {
   return file
 }
 
-export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences, onInsertFinding, onWriteProposal, openRequest }: Props) {
+export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences, onInsertFinding, onWriteProposal, openRequest, visible }: Props) {
   const [list, setList] = useState<MatrixSummary[] | null>(null)
   const [matrix, setMatrix] = useState<Matrix | null>(null)
   const [creating, setCreating] = useState(false)
@@ -539,6 +546,9 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   const [dialog, setDialog] = useState<'synthesis' | 'insert' | null>(null)
   const [menu, setMenu] = useState<'export' | 'more' | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [busyAt, setBusyAt] = useState(0)
+  // Reading cells: the first time and count seen, for "about 2 min left".
+  const readingFrom = useRef<{ id: number; at: number; done: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [editingCol, setEditingCol] = useState<{ index: number; label: string; instruction: string } | null>(null)
   const [showGaps, setShowGaps] = useState(true)
@@ -567,7 +577,10 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
         .matrix(matrix.id)
         .then((m) => {
           setMatrix(m)
-          if (!m.pending) refreshList()
+          if (!m.pending) {
+            refreshList()
+            notifyDone(`“${m.name}” is ready`, `Muse finished reading ${m.cells} cells.`, !visible)
+          }
         })
         .catch(() => {})
     }, 1200)
@@ -624,6 +637,7 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
 
   async function run(label: string, fn: () => Promise<Matrix | void>) {
     setBusy(label)
+    setBusyAt(Date.now())
     try {
       const m = await fn()
       if (m) setMatrix(m)
@@ -670,6 +684,11 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
 
   const showNew = creating || (list !== null && list.length === 0 && !matrix)
   const done = matrix ? matrix.cells - matrix.pending : 0
+  if (!matrix?.pending) readingFrom.current = null
+  else if (readingFrom.current?.id !== matrix.id) readingFrom.current = { id: matrix.id, at: Date.now(), done }
+  const left = matrix?.pending && readingFrom.current
+    ? timeLeft(matrix.pending, done - readingFrom.current.done, (Date.now() - readingFrom.current.at) / 1000)
+    : ''
 
   return (
     <section className="panel mx" aria-label="Review matrices">
@@ -824,13 +843,17 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                   )}
                 </div>
               </div>
-              {(matrix.pending > 0 || busy) && (
-                <div className="mx-progress" role="status">
-                  <span className="bar">
-                    <span style={{ width: `${matrix.cells ? (100 * done) / matrix.cells : 0}%` }} />
-                  </span>
-                  {busy ?? `Reading papers: ${done} of ${matrix.cells} cells`}
-                </div>
+              {busy ? (
+                <WaitStatus label={busy} startedAt={busyAt} usual="This usually takes 10 to 40 seconds." />
+              ) : (
+                matrix.pending > 0 && (
+                  <div className="mx-progress" role="status">
+                    <span className="bar">
+                      <span style={{ width: `${matrix.cells ? (100 * done) / matrix.cells : 0}%` }} />
+                    </span>
+                    Reading papers: {done} of {matrix.cells} cells{left && ` · ${left}`}
+                  </div>
+                )
               )}
             </header>
 

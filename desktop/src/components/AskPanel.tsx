@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { BackendUnreachable, api } from '../api'
 import { markdownToHtml } from '../markdown'
 import type { AskTurn } from '../types'
+import { WaitStatus } from './WaitStatus'
 
 // Starting points for an empty chat; clicking one fills the box to edit or send.
 const EXAMPLES = [
@@ -25,7 +26,10 @@ interface Props {
 /** A plain chatbot beside the draft. It doesn't search the library: the Assistant writes from sources. */
 export function AskPanel({ draftId, attach, getParagraph, onInsert, onError }: Props) {
   const [turns, setTurns] = useState<AskTurn[]>([])
-  const [asking, setAsking] = useState<{ question: string; selection: string } | null>(null)
+  // The question being answered, since when (the wait line counts from it), and how to stop waiting.
+  const [asking, setAsking] = useState<{ question: string; selection: string; at: number } | null>(null)
+  const [cancelled, setCancelled] = useState(false)
+  const controller = useRef<AbortController | null>(null)
   const [question, setQuestion] = useState('')
   const [attached, setAttached] = useState('')
   const box = useRef<HTMLTextAreaElement>(null)
@@ -72,19 +76,32 @@ export function AskPanel({ draftId, attach, getParagraph, onInsert, onError }: P
     const q = text.trim()
     if (!q || asking) return
     const selection = attached
-    setAsking({ question: q, selection })
+    const ctrl = new AbortController()
+    controller.current = ctrl
+    setAsking({ question: q, selection, at: Date.now() })
+    setCancelled(false)
     setQuestion('')
     setAttached('')
     try {
-      const turn = await api.ask(draftId, q, getParagraph(), selection)
-      setTurns((ts) => [...ts, turn])
+      const turn = await api.ask(draftId, q, getParagraph(), selection, ctrl.signal)
+      if (!ctrl.signal.aborted) setTurns((ts) => [...ts, turn])
     } catch (e) {
+      if (ctrl.signal.aborted) return
       onError(e instanceof Error ? e.message : String(e))
       setQuestion(q) // to try again
       setAttached(selection)
     } finally {
-      setAsking(null)
+      if (controller.current === ctrl) setAsking(null)
     }
+  }
+
+  function cancel() {
+    if (!asking) return
+    controller.current?.abort()
+    setQuestion(asking.question) // back in the box, to edit or send again
+    setAttached(asking.selection)
+    setAsking(null)
+    setCancelled(true)
   }
 
   async function clear() {
@@ -133,8 +150,17 @@ export function AskPanel({ draftId, attach, getParagraph, onInsert, onError }: P
       {asking && (
         <div className="ask-turn">
           <Question question={asking.question} selection={asking.selection} />
-          <p className="ask-thinking muted">Thinking…</p>
+          <WaitStatus
+            label="Muse is answering…"
+            startedAt={asking.at}
+            usual="This usually takes 5 to 20 seconds."
+            onCancel={cancel}
+            cancelTitle="Stop waiting; your question goes back in the box"
+          />
         </div>
+      )}
+      {cancelled && !asking && (
+        <p className="muted wait-cancelled">Cancelled. If Muse still answers, the reply appears here the next time this chat loads.</p>
       )}
 
       <form

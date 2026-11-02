@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useSyncExternalStore } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
@@ -53,6 +53,28 @@ const MAX_SEARCHES = 3
 let activeSearches = 0
 const waitingSearches: (() => void)[] = []
 const searching = new Map<string, Promise<void>>()
+
+// The markers whose search is running now (not waiting for a turn), for the Citations tab.
+let checking: ReadonlySet<string> = new Set()
+const checkingListeners = new Set<() => void>()
+function setChecking(cid: string, on: boolean) {
+  const next = new Set(checking)
+  if (on) next.add(cid)
+  else next.delete(cid)
+  checking = next
+  checkingListeners.forEach((l) => l())
+}
+/** Cite markers being checked at this moment; the others still searching are waiting their turn. */
+export function useCheckingMarkers(): ReadonlySet<string> {
+  return useSyncExternalStore(
+    (l) => {
+      checkingListeners.add(l)
+      return () => checkingListeners.delete(l)
+    },
+    () => checking,
+  )
+}
+
 async function limited<T>(fn: () => Promise<T>): Promise<T> {
   if (activeSearches >= MAX_SEARCHES) await new Promise<void>((r) => waitingSearches.push(r))
   activeSearches++
@@ -296,7 +318,10 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   function searchFor(cid: string, claim: string): Promise<void> {
     const already = searching.get(cid)
     if (already) return already
-    const run = limited(() => api.suggestCitations(claim, scopeRef.current()))
+    const run = limited(() => {
+      setChecking(cid, true)
+      return api.suggestCitations(claim, scopeRef.current())
+    })
       .then((results) => {
         // The writer may have moved to another draft meanwhile: then this marker isn't in the
         // editor, stays "searching" in its draft, and is searched again when that draft opens.
@@ -305,7 +330,10 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       .catch(() => {
         if (editorRef.current) patchChips(editorRef.current, new Map([[cid, { state: 'error' as const }]]))
       })
-      .finally(() => searching.delete(cid))
+      .finally(() => {
+        searching.delete(cid)
+        setChecking(cid, false)
+      })
     searching.set(cid, run)
     return run
   }

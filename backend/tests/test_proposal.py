@@ -356,3 +356,14 @@ def test_flagged_paragraphs_get_one_repair(setup, monkeypatch):
     assert [(r["status"], r["after"]) for r in out["repaired"]] == [("verified", f"{kenya} reports savings rose 12%."),
                                                                      ("removed", "")]
     assert [f["claim"] for f in out["flagged"]] == ["Both studies find huge effects."]
+
+
+def test_writing_a_proposal_reports_each_step(setup):
+    """The dialog shows which of the five steps is running (GET /model/activity)."""
+    import time
+
+    client, lib, ids, mid, gaps = setup
+    since = time.time()
+    client.post("/proposals", json={"finding_ids": [gaps[0]["id"]], "exclusions": "No randomised trials"})
+    stages = [e["text"] for e in client.get("/model/activity", params={"since": since}).json()["events"] if e["kind"] == "stage"]
+    assert [s.split(":")[0] for s in stages] == [f"Step {i} of 5" for i in range(1, 6)]

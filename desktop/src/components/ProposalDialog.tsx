@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { FindingSummary, MatrixSummary, ProposalResult, SimilarWork, SuggestedVariable, VariableRole } from '../types'
+import { notifyDone } from '../notify'
+import { WaitStatus } from './WaitStatus'
 
 interface Props {
   /** The matrix it was opened from, ticked to start with. */
@@ -59,6 +61,13 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
   const [result, setResult] = useState<ProposalResult | null>(null)
   const [similar, setSimilar] = useState<SimilarWork[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // Since when the current wait runs, and whether it's the write (whose steps the backend reports).
+  const [busyAt, setBusyAt] = useState(0)
+  const [writing, setWriting] = useState(false)
+  const wait = (label: string) => {
+    setBusy(label)
+    setBusyAt(Date.now())
+  }
 
   useEffect(() => {
     api.matrices().then(setMatrices).catch((e) => onError(message(e)))
@@ -83,7 +92,7 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
   const chosen = (variables ?? []).filter((v) => v.role !== 'unused' && v.name.trim())
 
   async function suggest() {
-    setBusy('Muse is reading the matrices for variables…')
+    wait('Muse is reading the matrices for variables…')
     try {
       const out = await api.proposalVariables(sources)
       setVariables(out.map((v) => ({ ...v, measure: '' })))
@@ -101,29 +110,31 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
       /* storage unavailable */
     }
     setStep('result')
-    setBusy(avoid.length ? 'Writing it again without what you ruled out…' : 'Muse is writing the proposal and checking it…')
+    wait(avoid.length ? 'Writing it again without what you ruled out…' : 'Muse is writing the proposal and checking it…')
+    setWriting(true)
     setSimilar(null)
     try {
-      setResult(
-        await api.writeProposal({
-          ...sources,
-          variables: chosen.map((v) => ({ name: v.name.trim(), role: v.role as VariableRole, measure: v.measure.trim() })),
-          exclusions: limits.exclusions.trim(),
-          resources: limits.resources.trim(),
-          avoid,
-        }),
-      )
+      const r = await api.writeProposal({
+        ...sources,
+        variables: chosen.map((v) => ({ name: v.name.trim(), role: v.role as VariableRole, measure: v.measure.trim() })),
+        exclusions: limits.exclusions.trim(),
+        resources: limits.resources.trim(),
+        avoid,
+      })
+      setResult(r)
+      notifyDone('Your research proposal is ready', r.title)
     } catch (e) {
       onError(message(e))
       if (!result) setStep('limits')
     } finally {
       setBusy(null)
+      setWriting(false)
     }
   }
 
   async function checkNovelty() {
     if (!result) return
-    setBusy('Searching OpenAlex for similar studies…')
+    wait('Searching OpenAlex for similar studies…')
     try {
       setSimilar((await api.proposalNovelty(result.research_questions[0] || result.title)).works)
     } catch (e) {
@@ -205,7 +216,7 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
               Muse suggests the variables from your matrices. Give each a role, or mark it not used, and say how you'd measure
               it if you know.
             </p>
-            {busy && <p className="busy">{busy}</p>}
+            {busy && <WaitStatus label={busy} startedAt={busyAt} steps={writing} usual={writing ? 'Writing a proposal takes five Muse steps, usually 1 to 3 minutes.' : 'This usually takes 10 to 30 seconds.'} />}
             {variables && variables.length === 0 && !busy && <p className="muted">No variables suggested. Add your own below.</p>}
             {variables && variables.length > 0 && (
               <table className="proposal-vars">
@@ -296,7 +307,7 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
 
         {step === 'result' && (
           <section>
-            {busy && <p className="busy">{busy}</p>}
+            {busy && <WaitStatus label={busy} startedAt={busyAt} steps={writing} usual={writing ? 'Writing a proposal takes five Muse steps, usually 1 to 3 minutes.' : 'This usually takes 10 to 30 seconds.'} />}
             {result && !busy && (
               <>
                 <h3 className="proposal-result-title">{result.title}</h3>

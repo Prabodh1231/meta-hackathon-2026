@@ -56,7 +56,7 @@ All JSON. Main groups (see `main.py` for the full list):
 
 | Area | Endpoints |
 |---|---|
-| Health | `GET /health`, `GET /model/activity?since=` (Muse retries and route switches, for the Assistant to explain a slow answer) |
+| Health | `GET /health`, `GET /model/activity?since=` (Muse retries, route switches and the steps of a proposal being written, for `WaitStatus` to explain a slow answer) |
 | Adding sources | `POST /ingest/jobs`, `GET /ingest/jobs[/{id}]`, `POST /ingest/jobs/{id}/cancel`, `POST /ingest/url`, `POST /library/fill-missing` |
 | Documents | `GET/PATCH/DELETE /documents/{id}`, `GET /documents`, `GET /documents/{id}/pages/{page}`, `POST /library/duplicates` |
 | Folders | `GET/POST /folders`, `PATCH/DELETE /folders/{id}`, `POST /folders/classify`, `POST /documents/{id}/folders`, `PUT /documents/{id}/folders/{folder}` |

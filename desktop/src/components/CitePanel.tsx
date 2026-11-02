@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react'
 import type { CiteMarkAttrs, CiteMarkState } from '../editor/citeMark'
 import type { Citation } from '../types'
 import { StatusBadge } from './StatusBadge'
+import { WaitStatus } from './WaitStatus'
+import { useCheckingMarkers } from './WritingEditor'
 
 interface Props {
   /** The draft's cite markers, in document order. */
@@ -30,10 +33,24 @@ const HEADLINE: Record<CiteMarkState, string> = {
 /** Cite markers waiting for the writer: what each search found, and confirming a source. */
 export function CitePanel({ marks, citations, rechecking, onRecheckAll, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource }: Props) {
   const mark = focus ? marks.find((m) => m.cid === focus) : undefined
+  const checking = useCheckingMarkers()
+  // While any marker is still searching: since when (the wait line counts from the first).
+  const searchingCount = marks.filter((m) => m.state === 'searching').length
+  const [searchingSince, setSearchingSince] = useState<number | null>(null)
+  useEffect(() => {
+    setSearchingSince((t) => (searchingCount ? t ?? Date.now() : null))
+  }, [searchingCount])
 
   if (!mark) {
     return (
       <div className="cite-panel">
+        {searchingCount > 0 && searchingSince && (
+          <WaitStatus
+            label={`Checking ${searchingCount} sentence${searchingCount === 1 ? '' : 's'} against your library…`}
+            startedAt={searchingSince}
+            usual="Three are checked at a time; each takes a few seconds. Keep writing."
+          />
+        )}
         <p className="cite-intro">
           Put the cursor in a sentence (or select text) and press <strong>Cite</strong> (Ctrl+Shift+C). A grey{' '}
           <span className="cite-mark cite-mark-searching">cite</span> marker appears and you keep writing; it turns{' '}
@@ -61,7 +78,10 @@ export function CitePanel({ marks, citations, rechecking, onRecheckAll, focus, o
                 <li key={m.cid}>
                   <button onClick={() => onFocus(m.cid)} title={HEADLINE[m.state]}>
                     <span className={`cite-mark cite-mark-${m.state}`}>cite</span>
-                    <span className="cite-queue-claim">{m.claim}</span>
+                    <span className="cite-queue-claim">
+                      {m.claim}
+                      {m.state === 'searching' && <em className="cite-queue-state">{checking.has(m.cid) ? 'Checking…' : 'Waiting its turn'}</em>}
+                    </span>
                   </button>
                 </li>
               ))}
