@@ -10,7 +10,22 @@ Built for the **Meta Global AI Developer Hackathon** (Oct 27 – Nov 4, 2026).
 |---|---|---|
 | **Muse Spark** (`muse-spark-1.3`) via the [Meta Model API](https://api.meta.ai/v1), and `muse-spark-open-1026` via [Baseten's Model APIs](https://www.baseten.co/) | `backend/app/providers/muse.py`, `failover.py` | Everything that needs a language model: title, author and summary extraction, tagging, naming topics, OCR for scans and images, drafting with cited quotes, and judging whether each quote supports its claim. It takes text and images natively and returns strict JSON. |
 
-Muse is the only hosted model the app calls. Only text chunks, and images that need OCR, leave the machine. Embeddings and reranking are open models that run locally (see [How it works](#how-it-works)), so your library stays on your computer. Without a key the app falls back to an offline **mock model** (see [Using Muse](#using-muse)).
+Muse is the only language model the app uses: every piece of reading, writing and judging above, plus review matrices, gap finding and research proposals, is Muse's work. Search uses the open-source models listed next. They run on this computer, unless you choose [Search on Baseten](#search-on-baseten) on a machine without a GPU. Only text chunks and images that need OCR leave the machine for Muse; with Search on Baseten, so do the passages and questions being embedded and ranked. Without a key the app falls back to an offline **mock model** (see [Using Muse](#using-muse)).
+
+## Open-source models (not Meta's)
+
+These models only embed and rank text for search. They never write, summarize or judge anything.
+
+| Model | License | Where it runs | What it does here | Code |
+|---|---|---|---|---|
+| [`BAAI/bge-m3`](https://huggingface.co/BAAI/bge-m3) | MIT | This computer's NVIDIA GPU (sentence-transformers), or your own Baseten deployment on a computer without one | Embeds passages and questions for search | `backend/app/embeddings.py` |
+| [`BAAI/bge-small-en-v1.5`](https://huggingface.co/BAAI/bge-small-en-v1.5) | MIT | This computer's CPU (fastembed, ONNX) | The same, when there's no GPU and Search on Baseten isn't set up | `backend/app/embeddings.py` |
+| [`cross-encoder/ms-marco-MiniLM-L-6-v2`](https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-6-v2), as its ONNX build [`Xenova/ms-marco-MiniLM-L-6-v2`](https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2) | Apache-2.0 | This computer (fastembed) | Reranks search results | `backend/app/retrieval.py` |
+| [`BAAI/bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3) (optional) | Apache-2.0 | Your own Baseten deployment | Reranks search results instead, on a computer without a GPU | `backend/app/retrieval.py` |
+
+No closed third-party AI service is called. Baseten is only a host: it serves Meta's Muse Spark (`meta-models/muse-spark-open-1026`) through its Model APIs and, if you set up Search on Baseten, the open models above, deployed on your own account. Only open-source models may be deployed there for the app. The other web services the app calls are scholarly indexes, not AI models: OpenAlex, Crossref, Semantic Scholar, CORE and arXiv, for paper details and free copies.
+
+Used in evaluation only, never shipped or called by the app: `scripts/eval_retrieval.py` also compared `ms-marco-MiniLM-L-12-v2` and two `jina-reranker-v1` models, and `scripts/bench_embedders.py` can benchmark any sentence-transformers model.
 
 **Status:** the app runs on Muse once a key is in place.
 
@@ -154,7 +169,7 @@ Muse Spark is also served by Baseten (`meta-models/muse-spark-open-1026`), which
 
 On a computer without an NVIDIA GPU, the app falls back to the small bge-small model, which finds sources less well. It can instead run the same BGE-M3 model, and optionally a larger reranker, on [Baseten](https://www.baseten.co/):
 
-1. In your Baseten account, deploy `BAAI/bge-m3` with Baseten's embeddings engine (BEI), and optionally a reranker such as `BAAI/bge-reranker-v2-m3` (BEI with `webserver_default_route: /rerank`).
+1. In your Baseten account, deploy `BAAI/bge-m3` with Baseten's embeddings engine (BEI), and optionally the reranker `BAAI/bge-reranker-v2-m3` (BEI with `webserver_default_route: /rerank`). Deploy open-source models only (see [Open-source models](#open-source-models-not-metas)); a closed model must not be called at runtime.
 2. In **Settings → Search & embeddings**, paste your Baseten API key and each model's ID, choose where search runs, and click **Save and check**. The app tries each deployment before switching.
 
 *Auto* (the default) uses this computer's GPU when it has one and Baseten only when it doesn't; *This computer* never uses Baseten. The embedding deployment runs the model the GPU runs, so moving between the two doesn't re-embed the library. On Baseten, the text of passages, questions and cited sentences is sent there; files and drafts stay local. The settings are kept in the data folder's `.env` (`BASETEN_API_KEY`, `BASETEN_EMBED_MODEL`, `BASETEN_RERANK_MODEL`, `RC_EMBEDDER`, `RC_RERANKER`).
