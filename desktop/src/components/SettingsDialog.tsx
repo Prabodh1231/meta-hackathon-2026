@@ -320,7 +320,7 @@ function SearchSection({ onChanged }: { onChanged: () => void }) {
       <Setting title="Embedding model on Baseten" hint="BAAI/bge-m3 deployed with Baseten's embeddings engine (BEI): paste its model ID or address. It's the model this computer's GPU runs, so moving between the two doesn't re-embed your library.">
         <input className="setting-input" value={embedModel} spellCheck={false} placeholder="e.g. abcd1234" aria-label="Baseten embedding model" onChange={(e) => setEmbedModel(e.target.value)} />
       </Setting>
-      <Setting title="Reranker on Baseten (optional)" hint="A reranker deployed with BEI, such as BAAI/bge-reranker-v2-m3: its model ID or address.">
+      <Setting title="Reranker on Baseten (optional)" hint="An open-source reranker deployed with BEI, such as BAAI/bge-reranker-v2-m3: its model ID or address. Deploy open-source models only.">
         <input className="setting-input" value={rerankModel} spellCheck={false} placeholder="e.g. efgh5678" aria-label="Baseten reranker model" onChange={(e) => setRerankModel(e.target.value)} />
       </Setting>
       <p className="setting-warn">

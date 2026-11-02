@@ -343,7 +343,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 - **Now:** where embeddings (which find matching passages) and the reranker (which puts the best first) run.
 - **Where search runs:** *Auto* uses this computer's NVIDIA GPU when it has one and Baseten when it doesn't; *This computer* never uses Baseten; *Baseten* always does.
-- **Baseten API key**, **Embedding model** and **Reranker** (optional): the model IDs of `BAAI/bge-m3` and a reranker deployed on your Baseten account. **Save and check** tries them before switching. On Baseten, the text of your passages, questions and cited sentences is sent there; files and drafts stay on your computer. See [Search on Baseten](../README.md#search-on-baseten).
+- **Baseten API key**, **Embedding model** and **Reranker** (optional): the model IDs of `BAAI/bge-m3` and an open-source reranker such as `BAAI/bge-reranker-v2-m3`, deployed on your Baseten account (open-source models only: see [Open-source models](../README.md#open-source-models-not-metas)). **Save and check** tries them before switching. On Baseten, the text of your passages, questions and cited sentences is sent there; files and drafts stay on your computer. See [Search on Baseten](../README.md#search-on-baseten).
 
 **AI model**
 
