@@ -93,6 +93,34 @@ python scripts/eval_large.py sample --n 70                  # passages to write 
 python scripts/eval_large.py run --json eval/large/results.json
 ```
 
+### bge-small or BGE-M3?
+
+The table above uses bge-small (`fastembed`, the CPU model). On a machine with an NVIDIA GPU the app
+loads BGE-M3 instead: a 2 GB download and about 12 s to load at every start. `run --embedder bge-m3`
+scores the same library and questions with it (2026-11-02; re-embedding the 14,099 chunks took 152 s on the GPU):
+
+| Configuration | Embedder | R@1 | R@3 | R@10 | MRR | cand@24 | identifier | keyword | paraphrase |
+|---|---|---|---|---|---|---|---|---|---|
+| dense: embeddings only | bge-small | 0.27 | 0.46 | 0.63 | 0.39 | 0.71 | 0.33 | 0.32 | 0.17 |
+| dense: embeddings only | BGE-M3 | 0.36 | 0.51 | 0.69 | 0.46 | 0.87 | 0.46 | 0.45 | 0.17 |
+| **hybrid + reranker (default)** | bge-small | 0.56 | 0.70 | 0.77 | 0.63 | 0.84 | 0.83 | 0.68 | 0.17 |
+| **hybrid + reranker (default)** | BGE-M3 | 0.56 | 0.71 | 0.81 | 0.64 | 0.86 | 0.83 | 0.68 | 0.17 |
+
+- **On its own, BGE-M3 is clearly better**: right passage first 27% → 36% of the time, and the
+  gold reaches the reranker's 24 candidates for 87% of questions instead of 71%.
+- **In the search the app actually runs, the difference almost disappears.** Keyword search and
+  the reranker already make up for the weaker embedder. The passage ranked first is the same for
+  all 70 questions. BGE-M3 brings three more golds into the top 10 (two keyword questions, one
+  paraphrase); R@3 and MRR move by one question or less.
+- **Paraphrases aren't held back by the embedder.** Both put 17% first and about half in the top 10,
+  so the next thing to try there is the reranker or a query rewritten by Muse, not a bigger embedder.
+- Caveats: 70 questions (one question ≈ 1.4 points), all in English; BGE-M3 is also multilingual,
+  which this set doesn't test.
+
+On this result the app dropped BGE-M3 (on the GPU and on Baseten) and ships only bge-small.
+`run --embedder bge-m3` still works for comparisons, with `sentence-transformers` installed by hand
+(`scripts/st_embedder.py`).
+
 `tests/test_retrieval_eval.py` re-runs the small set with the cached models and fails if reranked hybrid stops beating embeddings alone, if any question type gets worse, or if the default mode starts using plain fusion.
 
 # Matrix check evaluation

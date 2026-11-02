@@ -1,8 +1,8 @@
 # PyInstaller spec for the packaged backend: `pyinstaller rc-backend.spec` writes dist/rc-backend/,
 # a folder (not one file, which unpacks itself on every start) that the installer ships beside the app.
 #
-# Embeddings use the small CPU model (fastembed). torch and sentence-transformers, for BGE-M3 on a
-# GPU, are left out: they'd add gigabytes, and a GPU user can embed on Baseten instead.
+# Embeddings use bge-small (fastembed), as in development. torch and sentence-transformers, which
+# only the evaluation scripts use, are excluded in case they're installed in the venv.
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 

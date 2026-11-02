@@ -13,7 +13,11 @@ pool at all, which is where keyword search should matter in a big library.
 Usage:
   python scripts/eval_large.py build FOLDER [FOLDER ...]
   python scripts/eval_large.py sample [--n 80] [--seed 7]
-  python scripts/eval_large.py run [--json eval/large/results.json]
+  python scripts/eval_large.py run [--json eval/large/results.json] [--embedder bge-m3]
+
+`--embedder bge-m3` scores the same library with BGE-M3 (GPU) in place of bge-small: the first
+run copies the library to eval/large/library-bge-m3/ and re-embeds every chunk there. The app only
+ships bge-small; this needs `pip install sentence-transformers` (scripts/st_embedder.py).
 """
 
 import argparse
@@ -21,12 +25,14 @@ import json
 import os
 import random
 import re
+import sqlite3
 import statistics
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from app.embeddings import FastEmbedder  # noqa: E402
 from app.library import Library  # noqa: E402
@@ -45,8 +51,24 @@ def norm(s: str) -> str:
     return " ".join(s.split())
 
 
-def open_library() -> Library:
-    return Library(Settings(data_dir=ROOT / "library"), provider=MockProvider(), embedder=FastEmbedder(CACHE), reranker=None)
+def open_library(embedder: str = "small") -> Library:
+    if embedder == "small":
+        return Library(Settings(data_dir=ROOT / "library"), provider=MockProvider(), embedder=FastEmbedder(CACHE), reranker=None)
+    # The same documents and chunks, embedded with BGE-M3: a copy, so the bge-small library stays as built.
+    data = ROOT / "library-bge-m3"
+    if not (data / "library.db").exists():
+        data.mkdir(parents=True, exist_ok=True)
+        src, dst = sqlite3.connect(ROOT / "library" / "library.db"), sqlite3.connect(data / "library.db")
+        src.backup(dst)
+        src.close()
+        dst.close()
+        print("re-embedding the library copy with BGE-M3 (once)…", flush=True)
+    start = time.perf_counter()
+    from st_embedder import SentenceTransformerEmbedder  # evaluation only
+
+    lib = Library(Settings(data_dir=data), provider=MockProvider(), embedder=SentenceTransformerEmbedder(CACHE), reranker=None)
+    print(f"BGE-M3 library ready in {time.perf_counter() - start:.0f}s", flush=True)
+    return lib
 
 
 def build(folders: list[str]) -> None:
@@ -130,9 +152,9 @@ def evaluate(lib: Library, questions: list[dict], mode: str, chunk_text: dict[in
     }
 
 
-def run(out: Path | None) -> None:
+def run(out: Path | None, embedder: str = "small") -> None:
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
-    lib = open_library()
+    lib = open_library(embedder)
     questions = json.loads(QUESTIONS.read_text(encoding="utf-8"))["questions"]
     chunk_text = {r["id"]: norm(r["text"]) for r in lib.conn.execute("SELECT id, text FROM chunks")}
     for q in questions:  # every gold must exist; report how many chunks hold it
@@ -152,6 +174,7 @@ def run(out: Path | None) -> None:
         results[label] = evaluate(lib, questions, mode, chunk_text)
 
     types = sorted({q["type"] for q in questions})
+    print(f"\nembedder: {lib.embedder.id}")
     print(f"\n{len(questions)} questions ({', '.join(f'{sum(q['type'] == t for q in questions)} {t}' for t in types)}); "
           f"library: {docs} documents, {len(chunk_text)} chunks; {multi} golds occur in more than one chunk\n")
     header = (f"{'configuration':<28}{'R@1':>6}{'R@3':>6}{'R@10':>6}{'MRR':>6}{'cand@24':>9}  "
@@ -178,13 +201,14 @@ def main() -> None:
     s.add_argument("--seed", type=int, default=7)
     r = sub.add_parser("run")
     r.add_argument("--json", type=Path)
+    r.add_argument("--embedder", choices=["small", "bge-m3"], default="small")
     args = ap.parse_args()
     if args.cmd == "build":
         build(args.folders)
     elif args.cmd == "sample":
         sample(args.n, args.seed)
     else:
-        run(args.json)
+        run(args.json, args.embedder)
 
 
 if __name__ == "__main__":

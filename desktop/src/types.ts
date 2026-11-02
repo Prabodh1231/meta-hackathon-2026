@@ -456,17 +456,13 @@ export interface SourceSettings {
 
 /** Where embeddings and reranking run. The Baseten key is never sent back, only whether there is one. */
 export interface SearchSettings {
-  where: 'auto' | 'local' | 'baseten'
-  embedder: string
-  embedder_on: string // "cuda", "cpu" or "baseten"
+  where: 'auto' | 'local' | 'baseten' // where reranking runs; embeddings always run on this computer
+  embedder: string // the model's id, or "loading" / "failed" while the backend starts
   reranker: string | null
-  reranker_on: string | null
+  reranker_on: string | null // "cpu" or "baseten"
   has_key: boolean
   key_hint: string
-  embed_model: string // a Baseten model ID or address
-  rerank_model: string
-  gpu: boolean // this computer has a CUDA GPU
-  restart_needed?: boolean // after a change: applies at the next start, which re-embeds the library
+  rerank_model: string // a Baseten model ID or address
 }
 
 /** The language model in use. The API key is never sent back, only whether there is one. */

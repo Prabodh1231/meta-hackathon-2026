@@ -7,8 +7,8 @@ from pathlib import Path
 class Settings:
     data_dir: Path
     provider: str = "mock"  # mock | muse
-    embedder: str = "auto"  # auto (BGE-M3 on CUDA, else fastembed) | bge-m3 | fastembed | hash
-    # Cross-encoder reranker: auto | none | a fastembed model name. "none" by default here
+    embedder: str = "auto"  # bge-small (fastembed); "hash" for tests and scripts
+    # Cross-encoder reranker: auto | local | baseten | none | a fastembed model name. "none" by default here
     # (tests, scripts); from_env() defaults to "auto" so the app uses it.
     reranker: str = "none"
     api_token: str = ""  # set by Electron per launch; empty disables the check
@@ -25,9 +25,8 @@ class Settings:
     muse_route: str = ""
     baseten_muse_base: str = "https://inference.baseten.co/v1"
     baseten_muse_model: str = "meta-models/muse-spark-open-1026"
-    # Baseten deployments for machines without a CUDA GPU (see make_embedder): model ID or URL.
+    # A reranker deployed on Baseten (see make_reranker): model ID or URL. The key also serves Muse.
     baseten_api_key: str = ""
-    baseten_embed_model: str = ""
     baseten_rerank_model: str = ""
 
     @property
@@ -69,7 +68,6 @@ class Settings:
             baseten_muse_base=env("BASETEN_MUSE_BASE", cls.baseten_muse_base),
             baseten_muse_model=env("BASETEN_MUSE_MODEL", cls.baseten_muse_model),
             baseten_api_key=env("BASETEN_API_KEY"),
-            baseten_embed_model=env("BASETEN_EMBED_MODEL"),
             baseten_rerank_model=env("BASETEN_RERANK_MODEL"),
         )
 

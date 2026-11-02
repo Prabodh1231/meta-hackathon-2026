@@ -38,10 +38,9 @@ class ModelIn(BaseModel):
 
 
 class SearchIn(BaseModel):
-    where: str | None = None  # auto | local | baseten
+    where: str | None = None  # where reranking runs: auto | local | baseten
     api_key: str | None = None  # write-only; left out keeps the stored key
-    embed_model: str | None = None  # a Baseten model ID or URL; "" clears it
-    rerank_model: str | None = None
+    rerank_model: str | None = None  # a Baseten model ID or URL; "" clears it
 
 
 class MatrixColumn(BaseModel):
@@ -544,7 +543,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.put("/settings/search")
     def set_search(body: SearchIn):
-        return lib.update_search(body.where, body.api_key, body.embed_model, body.rerank_model)
+        return lib.update_search(body.where, body.api_key, body.rerank_model)
 
     @app.get("/settings/sources")
     def source_settings():

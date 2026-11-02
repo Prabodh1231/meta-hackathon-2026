@@ -356,16 +356,16 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 - **Look papers up in scholarly indexes** (on by default): after an import, each paper's DOI or title is sent to OpenAlex and Crossref for its journal details, abstract, reference list and citation count.
 - **CORE API key** (optional): with a key (free from core.ac.uk/services/api), free copies are also searched for in CORE, which gathers full texts from university repositories. The key is checked with CORE before it's saved.
 
-**Search & embeddings**
+**Search**
 
-- **Now:** where embeddings (which find matching passages) and the reranker (which puts the best first) run.
-- **Where search runs:** *Auto* uses this computer's NVIDIA GPU when it has one and Baseten when it doesn't; *This computer* never uses Baseten; *Baseten* always does.
-- **Baseten API key**, **Embedding model** and **Reranker** (optional): the model IDs of `BAAI/bge-m3` and an open-source reranker such as `BAAI/bge-reranker-v2-m3`, deployed on your Baseten account (open-source models only: see [Open-source models](../README.md#open-source-models-not-metas)). **Save and check** tries them before switching. On Baseten, the text of your passages, questions and cited sentences is sent there; files and drafts stay on your computer. See [Search on Baseten](../README.md#search-on-baseten).
+- **Now:** the models that find matching passages (embeddings, always bge-small on this computer) and put the best first (the reranker).
+- **Where reranking runs:** *Auto* uses Baseten when a reranker is set up there, and this computer otherwise; *This computer* never uses Baseten; *Baseten* always does.
+- **Baseten API key** and **Reranker on Baseten** (optional): the model ID of an open-source reranker such as `BAAI/bge-reranker-v2-m3`, deployed on your Baseten account (open-source models only: see [Open-source models](../README.md#open-source-models-not-metas)). **Save and check** tries it before switching. Reranking on Baseten sends each search's question and its candidate passages there; files, drafts and the rest of your library stay on your computer. See [Reranking on Baseten](../README.md#reranking-on-baseten).
 
 **AI model**
 
 - **Model:** Muse, or the offline mock (no key; rough results). **Save and switch** changes it at once, with no restart.
-- **Where Muse runs:** *Baseten, then Meta* sends each request to Muse on Baseten (about twice as fast) and to Meta's API if Baseten fails; *Meta's API* or *Baseten only* use one. It uses the Baseten key from **Search & embeddings**. The status bar reads *Muse via Baseten* when Baseten goes first.
+- **Where Muse runs:** *Baseten, then Meta* sends each request to Muse on Baseten (about twice as fast) and to Meta's API if Baseten fails; *Meta's API* or *Baseten only* use one. It uses the Baseten key from **Search**. The status bar reads *Muse via Baseten* when Baseten goes first.
 - **Meta Model API key:** paste a key to save or replace it. It's written to the `.env` file in your data folder and never shown again; only its last four characters are, so you can tell which one it is.
 - **Reasoning effort:** how much Muse thinks before answering, from *minimal* (fastest) to *xhigh* (most thorough). *low* is the default.
 
@@ -375,8 +375,8 @@ If one of these is also set as a system environment variable, Settings says so: 
 
 | What you see | What to do |
 |---|---|
-| *loading search model…* in the status bar | The search model loads in the background each time the app starts (about 12 s for the GPU model). Your library and drafts work meanwhile; searching, cite markers and imports wait until it's ready. The first launch takes longer while it downloads (about 30 MB, or about 2 GB for the GPU model). |
-| *search model failed to load* | The backend log (`~/.research-companion/logs/backend.log`) says why. Settings → Search & embeddings can move search to another model. |
+| *loading search model…* in the status bar | The search model loads in the background when the app starts: about a second, longer on the first launch while it downloads (about 150 MB with the reranker), or once after an update that changed the model, while your library is re-embedded. Your library and drafts work meanwhile; searching, cite markers and imports wait until it's ready. |
+| *search model failed to load* | The backend log (`~/.research-companion/logs/backend.log`) says why. Without internet on the first launch the model can't download: start the app again once you're online. |
 | *Backend offline, reconnecting…* | The backend stopped; the app restarts it by itself (up to 3 times a minute). Hover the message for the log file's location. |
 | *Restart the app to finish updating* | The backend is older than the window. Close and reopen the app. |
 | *no summary yet* on papers | Muse was unavailable when they were added. Click **Try again** in the Library. |

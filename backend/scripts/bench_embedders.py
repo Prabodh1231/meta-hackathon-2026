@@ -5,7 +5,8 @@ no reranker), so differences come from the embedder alone. Speed: chunks per sec
 character chunks (the size real documents are split into) and milliseconds to embed one query.
 
 Usage: python scripts/bench_embedders.py [--models bge-small bge-m3 ...] [--json OUT]
-Models download to ~/.research-companion/models on first use.
+Models download to ~/.research-companion/models on first use. Anything but bge-small needs
+`pip install sentence-transformers` (the app itself only ships bge-small).
 """
 
 import argparse
@@ -31,21 +32,17 @@ K = 10
 def make(name: str):
     if name == "bge-small":
         return FastEmbedder(CACHE)
-    if name == "bge-m3":
-        from app.embeddings import GpuEmbedder
+    from st_embedder import SentenceTransformerEmbedder  # evaluation only: needs sentence-transformers
 
-        return GpuEmbedder(CACHE)
+    if name == "bge-m3":
+        return SentenceTransformerEmbedder(CACHE)
     if name == "bge-m3-cpu":
         import torch
 
-        from app.embeddings import GpuEmbedder
-
         torch.cuda.is_available = lambda: False  # force the CPU path for a fair CPU number
-        return GpuEmbedder(CACHE)
+        return SentenceTransformerEmbedder(CACHE)
     if name.startswith("st:"):  # any sentence-transformers model, e.g. st:Qwen/Qwen3-Embedding-0.6B
-        from app.embeddings import GpuEmbedder
-
-        return GpuEmbedder(CACHE, model=name[3:])
+        return SentenceTransformerEmbedder(CACHE, model=name[3:])
     raise SystemExit(f"unknown model {name}")
 
 
