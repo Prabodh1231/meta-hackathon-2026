@@ -189,8 +189,11 @@ VARIABLES_SCHEMA = {
 
 PLAN_SYSTEM = (
     "Plan ONE study that addresses the chosen gaps, using the review matrices. " + _STUDIES +
+    "Prefer the simplest study that addresses them: a plain title of at most 12 words naming the outcome "
+    "and its main explanatory variable, and a core question about how one explains the other. Add a "
+    "mediator or moderator only when a chosen gap is about one. "
     "One study means one core question about one outcome, studied in one kind of data and unit of "
-    "analysis. Research questions (at most 3) are parts of that core question; a question about another "
+    "analysis. Research questions (at most 3, usually one or two) are parts of that core question; a question about another "
     "outcome, population or kind of data belongs to a different study. When the gaps come from different "
     "matrices, join them only through something this study tests directly (a variable from one review "
     "explaining the outcome from the other, in the same data); if they can't be joined that way, build "
@@ -200,9 +203,11 @@ PLAN_SYSTEM = (
     "review's topic. Each research question asks about one relationship, in plain words and at most 30 "
     "words; controls, periods and measurement choices belong in the design, not in the question. "
     "List every chosen gap you don't address under left_out with a one-line reason. Give at most one "
-    "hypothesis per research question, in the same order. Keep only the variables this study needs, in "
-    "the writer's roles. The writer's exclusions are strict. Don't number or label the questions or "
-    "hypotheses."
+    "hypothesis per research question, in the same order. The writer's variables are a menu, not a "
+    "checklist: use the fewest that answer the core question (its outcome, its main explanatory variable, "
+    "and the controls the design needs), in the writer's roles, and leave the others out. The writer's "
+    "exclusions are strict. Give the title and core question as plain text, with no notes, labels or "
+    "reasons in them. Don't number or label the questions or hypotheses."
 )
 PLAN_SCHEMA = {
     "type": "object",
@@ -237,8 +242,10 @@ PLAN_SCHEMA = {
 QUESTIONS_SYSTEM = (
     "Review a planned study for focus. First the title and core question: they must be about one outcome; "
     "strip any clause that is there only to bring in another topic or review (e.g. a measurement issue "
-    "from an unrelated literature), and give them back, revised or unchanged, with a one-line reason if "
-    "you changed them. Then the research questions, one by one, against that core question. "
+    "from an unrelated literature), and prefer the simpler wording. Give them back, revised or unchanged, "
+    "as plain text only: no notes, labels or reasons inside them; a one-line reason for a change goes in "
+    "core_changed_why. Then the research questions, one by one, against that core question; each item "
+    "is one of the plan's listed research questions, never its title or core question. "
     "Keep a question that is part of the core question: same outcome, same population and same kind of "
     "data. Revise one that drifts but can be brought back (say how in one line). Remove one that belongs "
     "to a different study (another outcome, population or kind of data), repeats another, or can't be "

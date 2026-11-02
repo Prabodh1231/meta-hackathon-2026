@@ -31,6 +31,15 @@ ROLE_LABELS = {"independent": "Independent", "dependent": "Dependent", "mediator
 CHECKS_AT_ONCE = 4
 # "RQ1: …", "H2. …", "Research question 3 – …": the draft numbers its lists itself.
 _LABEL = re.compile(r"^\s*(?:RQ|Q|H|Hypothesis|Research question)\s*\d+[a-z]?\s*[:.)\-–—]\s*", re.I)
+# Muse sometimes writes its change note into the title or core question itself ("… mechanism _ revised -
+# removed crisis-era qualifiers"), and once turned the plan's "Title: …" line into a research question.
+_NOTE = re.compile(r"\s*(?:[_–—-]+|\()\s*(?:revised|unchanged|changed|refocused|stripped)\b.*$", re.I | re.S)
+_HEADING_LINE = re.compile(r"^\s*(?:title|core question)\s*:", re.I)
+
+
+def clean_heading(text) -> str:
+    """A title or core question without a note written into it or a "Title:" label."""
+    return _NOTE.sub("", re.sub(r"^\s*(?:title|core question)\s*:\s*", "", str(text or ""), flags=re.I)).strip()
 NOTE = ("Background, the gap and how the reviewed studies measured each variable cite your review "
         "matrices and are checked against them. Everything from the research questions on is "
         "proposed for this study, so it cites no one.")
@@ -229,11 +238,12 @@ class Proposals:
         variables = [{"name": str(v.get("name", "")).strip(), "role": v.get("role"),
                       "measure": measures.get(str(v.get("name", "")).strip().lower(), "")}
                      for v in raw.get("variables") or [] if str(v.get("name", "")).strip() and v.get("role") in ROLES]
-        core = str(raw.get("core_question") or "").strip()
+        core = clean_heading(raw.get("core_question"))
+        questions = [q for q in self._items(raw.get("research_questions")) if not _HEADING_LINE.match(q)]
         return {
-            "title": str(raw.get("title") or "").strip() or "Research proposal",
+            "title": clean_heading(raw.get("title")) or "Research proposal",
             "core_question": core,
-            "research_questions": self._items(raw.get("research_questions")) or ([core] if core else []),
+            "research_questions": questions or ([core] if core else []),
             "hypotheses": self._items(raw.get("hypotheses")),
             "variables": variables or [{**v, "measure": str(v.get("measure") or "").strip()} for v in chosen],
             "left_out": [{"gap": str(g.get("gap", "")).strip(), "why": str(g.get("why", "")).strip()}
@@ -254,13 +264,15 @@ class Proposals:
             verdict = q.get("verdict") if q.get("verdict") in ("keep", "revise", "remove") else "keep"
             original = _LABEL.sub("", str(q.get("original", ""))).strip()
             text = _LABEL.sub("", str(q.get("text", ""))).strip() or original
+            if _HEADING_LINE.match(original) or _HEADING_LINE.match(text):
+                continue  # the plan's title or core line, not one of its questions
             if verdict != "remove" and text:
                 kept.append(text)
             if verdict != "keep":
                 changes.append({"original": original, "verdict": verdict, "text": text if verdict == "revise" else "",
                                 "why": str(q.get("why", "")).strip()})
-        title = str(review.get("title") or "").strip() or plan["title"]
-        core = str(review.get("core_question") or "").strip() or plan["core_question"]
+        title = clean_heading(review.get("title")) or plan["title"]
+        core = clean_heading(review.get("core_question")) or plan["core_question"]
         if (title, core) != (plan["title"], plan["core_question"]):
             changes.insert(0, {"original": plan["core_question"], "verdict": "core", "text": core,
                                "title_before": plan["title"], "title": title,

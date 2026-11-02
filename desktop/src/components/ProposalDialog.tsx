@@ -14,6 +14,18 @@ interface Props {
 
 type Step = 'gaps' | 'variables' | 'limits' | 'result'
 type Role = VariableRole | 'unused'
+/** The suggestions that start switched on: the outcome, its main cause and the next most central one.
+ * A simple study is the better default; the writer switches on any others they want. */
+export function startOn(roles: VariableRole[], count = 3): Set<number> {
+  const on = new Set<number>()
+  for (const role of ['dependent', 'independent'] as const) {
+    const i = roles.indexOf(role)
+    if (i >= 0) on.add(i)
+  }
+  for (let i = 0; i < roles.length && on.size < count; i++) on.add(i) // suggestions come most central first
+  return on
+}
+
 interface Variable {
   name: string
   role: Role
@@ -95,7 +107,8 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
     wait('Muse is reading the matrices for variables…')
     try {
       const out = await api.proposalVariables(sources)
-      setVariables(out.map((v) => ({ ...v, measure: '' })))
+      const on = startOn(out.map((v) => v.role))
+      setVariables(out.map((v, i) => ({ ...v, role: on.has(i) ? v.role : 'unused', measure: '' })))
     } catch (e) {
       onError(message(e))
     } finally {
@@ -213,8 +226,9 @@ export function ProposalDialog({ matrixId, onCreate, onClose, onError }: Props) 
         {step === 'variables' && (
           <section>
             <p className="muted">
-              Muse suggests the variables from your matrices. Give each a role, or mark it not used, and say how you'd measure
-              it if you know.
+              Muse suggests the variables from your matrices, most central first. The three that make the simplest study start
+              switched on; give any other a role to use it too, and say how you'd measure each if you know. Fewer variables make
+              a simpler, more focused proposal.
             </p>
             {busy && <WaitStatus label={busy} startedAt={busyAt} steps={writing} usual={writing ? 'Writing a proposal takes five Muse steps, usually 1 to 3 minutes.' : 'This usually takes 10 to 30 seconds.'} />}
             {variables && variables.length === 0 && !busy && <p className="muted">No variables suggested. Add your own below.</p>}
