@@ -16,7 +16,7 @@ import time
 
 import httpx
 
-from . import prompts
+from . import activity, prompts
 from .base import LLMProvider
 
 REASONING_HEADROOM = 4096
@@ -73,12 +73,16 @@ class MuseProvider(LLMProvider):
             except httpx.TransportError:
                 if attempt == self.retries:
                     raise
+                why = "didn't answer"
             else:
                 if resp.status_code not in RETRY_STATUS or attempt == self.retries:
                     if resp.is_error:
                         raise MuseError(f"Muse API error {resp.status_code}: {resp.text[:300]}")
                     return resp.json()
-            time.sleep(min(2 ** attempt, 8) + random.random())  # backoff with jitter
+                why = "is busy (rate limit)" if resp.status_code == 429 else f"had a server error ({resp.status_code})"
+            wait = min(2 ** attempt, 8) + random.random()  # backoff with jitter
+            activity.note("retry", f"Muse {why}; trying again in {wait:.0f} s (attempt {attempt + 2} of {self.retries + 1}).")
+            time.sleep(wait)
         raise AssertionError("unreachable")
 
     def transcribe_image(self, data: bytes, mime: str) -> str:

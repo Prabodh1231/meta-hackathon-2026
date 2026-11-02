@@ -159,6 +159,8 @@ The **Assistant** tab drafts from your sources. Type what you want (or pick an e
 | unsupported / quote not found (red) | The source doesn't back the sentence, or the quote isn't in it. |
 | from your matrix (blue, square mark) | Written from a review matrix and checked against the whole matrix (see [Review matrix](#review-matrix)). |
 
+While it drafts, the tab counts the seconds (it usually takes 10 to 30) and says why when it's slower: Muse is busy and retrying after a rate limit, or Baseten didn't answer and the request went to Meta's API instead. **Cancel** stops waiting; nothing is added to your draft (Muse may still finish in the background, and that answer is dropped).
+
 Click a citation to see its passage. Tick the sentences you want to keep (or click a sentence; **Select all** ticks every one), then **Insert N selected** puts just those in, in the draft's order, at the cursor, or at the end if you haven't clicked into the page yet.
 
 ### Ask

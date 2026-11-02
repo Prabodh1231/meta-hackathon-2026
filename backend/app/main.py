@@ -1,5 +1,6 @@
 import base64
 import logging
+import time
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +13,7 @@ from .library import INGEST_WORKERS, Library
 from .matrix import DETAIL_FIELDS, Matrices, default_columns
 from .proposal import ROLES, Proposals
 from .parent_watch import exit_with_parent
+from .providers import activity
 from .settings import Settings
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -204,7 +206,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 16
+API_VERSION = 17
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -484,6 +486,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def fetch_cited_work(doc_id: int, idx: int):
         """Download a free, open-access copy of one cited work and add it to the library."""
         return lib.fetch_cited_work(doc_id, idx)
+
+    @app.get("/model/activity")
+    def model_activity(since: float = 0.0):
+        """Retries and route switches since `since` (epoch seconds), to explain a slow answer."""
+        return {"now": time.time(), "events": activity.since(since)}
 
     @app.post("/write/draft")
     def draft(body: DraftIn):

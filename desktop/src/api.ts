@@ -59,7 +59,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 16
+export const API_VERSION = 17
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -76,7 +76,7 @@ export class BackendUnreachable extends Error {
   }
 }
 
-async function send(method: string, path: string, body?: unknown): Promise<Response> {
+async function send(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
   const { baseUrl, token } = await config()
   let res: Response
   try {
@@ -84,8 +84,10 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
       method,
       headers: { 'Content-Type': 'application/json', 'x-rc-token': token },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
     })
-  } catch {
+  } catch (e) {
+    if (signal?.aborted) throw e // cancelled by the caller: an AbortError, not an outage
     throw new BackendUnreachable() // the browser's own message is just "Failed to fetch"
   }
   if (!res.ok) {
@@ -104,8 +106,8 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
   return res
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  return (await send(method, path, body)).json() as Promise<T>
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  return (await send(method, path, body, signal)).json() as Promise<T>
 }
 
 /** Where the desktop app writes backend output (empty outside Electron). */
@@ -187,8 +189,12 @@ export const api = {
   ask: (draftId: number, question: string, context: string, selection: string) =>
     request<AskTurn>('POST', `/drafts/${draftId}/ask`, { question, context, selection }),
   clearAsk: (draftId: number) => request<{ ok: boolean }>('DELETE', `/drafts/${draftId}/ask`),
-  draft: (instruction: string, context: string, docIds: number[] | null, k?: number) =>
-    request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds, k }),
+  /** `signal` cancels the wait (Muse may still finish on the backend; the answer is dropped). */
+  draft: (instruction: string, context: string, docIds: number[] | null, k?: number, signal?: AbortSignal) =>
+    request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds, k }, signal),
+  /** Muse's retries and route switches since `since` (epoch seconds), to explain a slow answer. */
+  modelActivity: (since: number) =>
+    request<{ now: number; events: { at: number; kind: 'retry' | 'switch'; text: string }[] }>('GET', `/model/activity?since=${since}`),
   verify: (claim: string, chunkId: number, quote: string) =>
     request<Citation>('POST', '/citations/verify', { claim, chunk_id: chunkId, quote }),
   suggestCitations: (claim: string, docIds: number[] | null) =>
