@@ -221,6 +221,8 @@ function CoreKeySetting() {
 /** "BGE-M3 on this computer's GPU": a model id and where it runs, in words. */
 function placeText(id: string | null, on: string | null): string {
   if (!id) return 'off'
+  if (id === 'loading') return 'the model still loading'
+  if (id === 'failed') return "a model that couldn't load (see the backend log)"
   const name = id.includes('rerank') ? 'Baseten reranker' : id.split(':').slice(1).join(':').split('/').pop() || id
   const where = on === 'baseten' ? 'on Baseten' : on === 'cuda' ? "on this computer's GPU" : 'on this computer'
   return `${name} ${where}`

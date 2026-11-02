@@ -4,8 +4,10 @@ the same BGE-M3 model on a Baseten deployment instead of the weaker CPU model.""
 
 import logging
 import re
+import threading
 import time
 import zlib
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Protocol
@@ -162,6 +164,53 @@ def _cuda_available() -> bool:
         return torch.cuda.is_available()
     except Exception:
         return False
+
+
+class LoadingEmbedder:
+    """An embedder that loads in a background thread. BGE-M3 takes ~12 s to load (importing torch
+    and sentence-transformers, then the weights), and listing the library doesn't need it, so the
+    backend answers at once; anything that embeds waits here until the model is ready. `load`
+    returns the real embedder; if it fails, each use raises instead of searching with something else."""
+
+    def __init__(self, load: Callable[[], Embedder]):
+        self._inner: Embedder | None = None
+        self._error: Exception | None = None
+        self._done = threading.Event()
+        threading.Thread(target=self._load, args=(load,), name="load-embedder", daemon=True).start()
+
+    def _load(self, load: Callable[[], Embedder]) -> None:
+        started = time.perf_counter()
+        try:
+            self._inner = load()
+            log.info("Embedder ready after %.1f s", time.perf_counter() - started)
+        except Exception as exc:
+            log.exception("The embedding model couldn't load")
+            self._error = exc
+        finally:
+            self._done.set()
+
+    @property
+    def state(self) -> str:
+        """'loading', 'ready' or 'failed', without waiting."""
+        return "loading" if not self._done.is_set() else "failed" if self._error else "ready"
+
+    def wait(self) -> Embedder:
+        self._done.wait()
+        if self._error:
+            raise RuntimeError(f"The search model couldn't load: {self._error}") from self._error
+        return self._inner
+
+    @property
+    def id(self) -> str:
+        return self.wait().id
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        return self.wait().embed(texts)
+
+    def __getattr__(self, name: str):  # device, dim, … of the loaded embedder
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.wait(), name)
 
 
 def make_embedder(kind: str, cache_dir: Path, baseten_model: str = "", baseten_key: str = "") -> Embedder:

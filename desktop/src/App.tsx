@@ -83,12 +83,16 @@ const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mo
 
 /** "Muse · BGE-M3 (GPU)": a short form of the backend's model ids. */
 function modelLine(h: Health): string {
+  // "Muse via Baseten" when Baseten takes Muse's requests first.
+  const via = h.provider === 'muse' && h.muse_route?.[0] === 'baseten' ? ' via Baseten' : ''
+  const ai = `${PROVIDER_NAMES[h.provider] ?? h.provider}${via}`
+  // The backend answers before its search model has loaded (about 12 s for BGE-M3).
+  if (h.embedder === 'loading') return `${ai} · loading search model…`
+  if (h.embedder === 'failed') return `${ai} · search model failed to load`
   const model = h.embedder.split(':').slice(1).join(':').split('/').pop() || h.embedder
   const embedder = model.replace(/-en-v[\d.]+$/, '').replace(/^bge/, 'BGE').replace('-m3', '-M3')
   const device = h.embedder_device === 'cuda' ? ' (GPU)' : h.embedder_device === 'baseten' ? ' (Baseten)' : ''
-  // "Muse via Baseten" when Baseten takes Muse's requests first.
-  const via = h.provider === 'muse' && h.muse_route?.[0] === 'baseten' ? ' via Baseten' : ''
-  return `${PROVIDER_NAMES[h.provider] ?? h.provider}${via} · ${embedder}${device}`
+  return `${ai} · ${embedder}${device}`
 }
 
 // Whether the writing tools are open beside the draft; Settings can override it at launch.
@@ -629,7 +633,9 @@ export default function App() {
     let wasOffline = false
     const timer = window.setInterval(async () => {
       try {
-        await api.health()
+        const h = await api.health()
+        // The search model finished loading (or the backend restarted with another): show it.
+        setHealth((prev) => (prev && prev.embedder === h.embedder && prev.provider === h.provider ? prev : h))
         if (wasOffline) await refresh() // back after a restart: reload what may have changed
         wasOffline = false
       } catch {

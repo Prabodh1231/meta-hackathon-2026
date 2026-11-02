@@ -384,7 +384,7 @@ export interface Health {
   ok: boolean
   api?: number // backend API version; missing from backends older than the version check
   provider: string
-  embedder: string
+  embedder: string // the model's id, or "loading" / "failed" while the backend starts
   embedder_device?: string // "cuda" or "cpu"; missing from older backends
   muse_route?: string[] // Muse's services in the order requests try them, e.g. ["baseten", "meta"]
 }

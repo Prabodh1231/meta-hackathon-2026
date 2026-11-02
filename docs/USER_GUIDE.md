@@ -358,7 +358,8 @@ If one of these is also set as a system environment variable, Settings says so: 
 
 | What you see | What to do |
 |---|---|
-| *Starting backend…* for a long time on first launch | The local embedding model is downloading (about 30 MB, or about 2 GB for the GPU model). It only happens once. |
+| *loading search model…* in the status bar | The search model loads in the background each time the app starts (about 12 s for the GPU model). Your library and drafts work meanwhile; searching, cite markers and imports wait until it's ready. The first launch takes longer while it downloads (about 30 MB, or about 2 GB for the GPU model). |
+| *search model failed to load* | The backend log (`~/.research-companion/logs/backend.log`) says why. Settings → Search & embeddings can move search to another model. |
 | *Backend offline, reconnecting…* | The backend stopped; the app restarts it by itself (up to 3 times a minute). Hover the message for the log file's location. |
 | *Restart the app to finish updating* | The backend is older than the window. Close and reopen the app. |
 | *no summary yet* on papers | Muse was unavailable when they were added. Click **Try again** in the Library. |

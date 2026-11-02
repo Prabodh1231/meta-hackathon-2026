@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '../api'
+import { BackendUnreachable, api } from '../api'
 import { markdownToHtml } from '../markdown'
 import type { AskTurn } from '../types'
 
@@ -37,10 +37,22 @@ export function AskPanel({ draftId, attach, getParagraph, onInsert, onError }: P
     let live = true
     setTurns([])
     setAsking(null)
-    api
-      .askTurns(draftId)
-      .then((list) => live && setTurns(list))
-      .catch((e) => report.current(e instanceof Error ? e.message : String(e)))
+    ;(async () => {
+      // At launch the backend may not be listening yet: keep trying quietly, as the draft does.
+      while (live) {
+        try {
+          const list = await api.askTurns(draftId)
+          if (live) setTurns(list)
+          return
+        } catch (e) {
+          if (!(e instanceof BackendUnreachable)) {
+            if (live) report.current(e instanceof Error ? e.message : String(e))
+            return
+          }
+          await new Promise((r) => setTimeout(r, 700))
+        }
+      }
+    })()
     return () => {
       live = false
     }
