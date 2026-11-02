@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { Citation, DraftSentence } from '../types'
 import { StatusBadge } from './StatusBadge'
@@ -26,11 +26,46 @@ interface Props {
 
 let nextCid = 0
 
+/** What the wait says, from how long it has run and what Muse reported (a retry, a switch of route). */
+function waitText(seconds: number, note: string | null): string {
+  if (note) return note
+  if (seconds < 45) return 'This usually takes 10 to 30 seconds.'
+  return 'Taking longer than usual: Muse may be under load. You can keep waiting or cancel.'
+}
+
 export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, getContext, onInsert, onVerified, onOpenCitation, onError }: Props) {
   const [instruction, setInstruction] = useState('')
   const [sentences, setSentences] = useState<DraftSentence[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [picked, setPicked] = useState<Set<number>>(new Set()) // sentences ticked for inserting
+  // While drafting: when it started, seconds waited, Muse's latest note; and how to stop waiting.
+  const [startedAt, setStartedAt] = useState(0)
+  const [waited, setWaited] = useState(0)
+  const [note, setNote] = useState<string | null>(null)
+  const [cancelled, setCancelled] = useState(false)
+  const controller = useRef<AbortController | null>(null)
+
+  // Count the seconds, and ask the backend now and then whether Muse is retrying or switched route.
+  useEffect(() => {
+    if (!busy) return
+    const tick = window.setInterval(() => setWaited(Math.floor((Date.now() - startedAt) / 1000)), 1000)
+    const poll = window.setInterval(() => {
+      api
+        .modelActivity(startedAt / 1000)
+        .then((a) => a.events.length && setNote(a.events[a.events.length - 1].text))
+        .catch(() => {}) // only an explanation: a failed poll changes nothing
+    }, 1500)
+    return () => {
+      window.clearInterval(tick)
+      window.clearInterval(poll)
+    }
+  }, [busy, startedAt])
+
+  function cancel() {
+    controller.current?.abort()
+    setBusy(false)
+    setCancelled(true)
+  }
 
   const toggle = (i: number) =>
     setPicked((p) => {
@@ -40,11 +75,18 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
     })
 
   async function draft() {
+    const ctrl = new AbortController()
+    controller.current = ctrl
     setBusy(true)
+    setStartedAt(Date.now())
+    setWaited(0)
+    setNote(null)
+    setCancelled(false)
     setSentences(null)
     setPicked(new Set())
     try {
-      const res = await api.draft(instruction.trim(), getContext(), scope.length ? scope : null, passages)
+      const res = await api.draft(instruction.trim(), getContext(), scope.length ? scope : null, passages, ctrl.signal)
+      if (ctrl.signal.aborted) return
       const withIds = res.sentences.map((s) => ({
         ...s,
         citations: s.citations.map((c) => ({ ...c, cid: `c${Date.now()}-${nextCid++}` })),
@@ -69,9 +111,9 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
         }
       }
     } catch (e) {
-      onError(e instanceof Error ? e.message : String(e))
+      if (!ctrl.signal.aborted) onError(e instanceof Error ? e.message : String(e))
     } finally {
-      setBusy(false)
+      if (controller.current === ctrl) setBusy(false) // a newer draft may have started since
     }
   }
 
@@ -129,6 +171,20 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
           </button>
         </div>
       </form>
+
+      {busy && (
+        <div className="assist-wait" role="status" aria-live="polite">
+          <span className="assist-spin" aria-hidden="true" />
+          <div>
+            <b>Finding passages and writing… {waited} s</b>
+            <p className={note ? 'assist-note' : 'muted'}>{waitText(waited, note)}</p>
+          </div>
+          <button type="button" onClick={cancel} title="Stop waiting. Muse may still finish in the background; nothing is inserted.">
+            Cancel
+          </button>
+        </div>
+      )}
+      {cancelled && !busy && <p className="muted assist-cancelled">Cancelled. Nothing was added to your draft.</p>}
 
       {sentences && sentences.length === 0 && (
         <p className="empty">Nothing in the library supports this yet. Try adding sources or rephrasing.</p>

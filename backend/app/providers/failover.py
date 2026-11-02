@@ -11,11 +11,13 @@ import logging
 import threading
 import time
 
+from . import activity
 from .base import LLMProvider
 
 log = logging.getLogger(__name__)
 
 COOLDOWN = 60.0  # seconds a route that just failed is passed over
+ROUTE_NAMES = {"baseten": "Baseten", "meta": "Meta's API"}  # for the UI's activity notes
 
 
 class FailoverProvider(LLMProvider):
@@ -42,11 +44,14 @@ class FailoverProvider(LLMProvider):
 
     def _call(self, method: str, *args, **kwargs):
         error: Exception | None = None
-        for label, provider in self._order():
+        order = self._order()
+        for i, (label, provider) in enumerate(order):
             try:
                 result = getattr(provider, method)(*args, **kwargs)
             except Exception as exc:  # the next route may answer what this one couldn't
                 log.warning("Muse via %s failed (%s); trying the next route", label, str(exc)[:200])
+                if i + 1 < len(order):
+                    activity.note("switch", f"Muse via {ROUTE_NAMES.get(label, label)} didn't answer; asking it via {ROUTE_NAMES.get(order[i + 1][0], order[i + 1][0])} instead.")
                 with self._lock:
                     self._down_until[label] = time.monotonic() + self.cooldown
                 error = exc
