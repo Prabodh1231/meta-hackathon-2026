@@ -144,6 +144,18 @@ The **Assistant** tab drafts from your sources. Type what you want (or pick an e
 
 Click a citation to see its passage. Tick the sentences you want to keep (or click a sentence; **Select all** ticks every one), then **Insert N selected** puts just those in, in the draft's order, at the cursor, or at the end if you haven't clicked into the page yet.
 
+### Ask
+
+The **Ask** tab is a plain AI chatbot: ask it to explain a concept, reword a sentence, suggest a title, or anything else. Type a message and press Enter (Shift+Enter starts a new line). It remembers the conversation, so follow-ups work, and it also sees the paragraph your cursor is in.
+
+Ask answers from the AI's own knowledge, not your library, and its replies have no citations: check facts before you rely on them. To write from your sources with cited quotes, use the Assistant.
+
+To ask about part of your draft, select it and press **Ctrl J**, or click **Ask** in the toolbar beside Cite. The Ask tab opens with the text attached above the message box (× removes it).
+
+Replies show formatted (bold, lists, headings, tables, code). **Insert into draft** under a reply puts it at the cursor with that formatting.
+
+Each draft keeps its own chat, also after you close the app; **Clear conversation** at the top of the tab starts it over.
+
 ## 4. Back up each claim
 
 Put the cursor in a sentence you wrote (or select some text) and press **Cite** in the toolbar, or Ctrl+Shift+C. A small grey `cite` marker appears at the end of the sentence and you keep writing; the search runs in the background and the cursor doesn't move.
@@ -286,6 +298,7 @@ The draft has a title and Background, The gap, Research questions, Hypotheses, V
 | Ctrl N | New draft |
 | Ctrl O | Import a Word file |
 | Ctrl Shift C | Cite the sentence at the cursor |
+| Ctrl J | Ask about the selected text (or open the Ask tab) |
 | Ctrl \ | Open or close the writing tools |
 | Ctrl Shift F | Focus mode on or off |
 | Ctrl Z / Ctrl Y | Undo / redo in the draft |

@@ -10,8 +10,12 @@ const os = require('node:os')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 
-// Dev layout. Packaging (PyInstaller binary in extraResources) is still to do.
+// Dev layout: the repo's backend folder and its .venv. The installed app instead runs the
+// PyInstaller build of it (backend/rc-backend.spec), shipped in resources/backend.
 const BACKEND_DIR = path.join(__dirname, '..', '..', 'backend')
+const BUNDLED_BACKEND = app.isPackaged
+  ? path.join(process.resourcesPath, 'backend', process.platform === 'win32' ? 'rc-backend.exe' : 'rc-backend')
+  : null
 const SUPPORTED = ['pdf', 'docx', 'pptx', 'md', 'markdown', 'txt', 'html', 'htm', 'png', 'jpg', 'jpeg', 'webp']
 const DATA_DIR = process.env.RC_DATA_DIR || path.join(os.homedir(), '.research-companion')
 const LOG_PATH = path.join(DATA_DIR, 'logs', 'backend.log')
@@ -61,11 +65,14 @@ function spawnBackend() {
   const { port, token } = spawnArgs
   fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true })
   log(`\n=== backend starting ${new Date().toISOString()} on port ${port} ===\n`)
+  const [command, args, cwd] = BUNDLED_BACKEND
+    ? [BUNDLED_BACKEND, ['--host', '127.0.0.1', '--port', String(port)], path.dirname(BUNDLED_BACKEND)]
+    : [pythonExecutable(), ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)], BACKEND_DIR]
   backend = spawn(
-    pythonExecutable(),
-    ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)],
+    command,
+    args,
     {
-      cwd: BACKEND_DIR,
+      cwd,
       // RC_PARENT_PID: the backend exits by itself if this app dies without cleaning up.
       env: { ...process.env, RC_API_TOKEN: token, RC_PARENT_PID: String(process.pid) },
       stdio: ['ignore', 'pipe', 'pipe'],

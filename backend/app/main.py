@@ -164,6 +164,12 @@ class DraftIn(BaseModel):
     verify: bool = False  # the UI verifies each citation separately so drafts appear fast
 
 
+class AskIn(BaseModel):
+    question: str = Field(min_length=1)
+    context: str = ""  # the paragraph at the cursor
+    selection: str = ""  # text the question is about
+
+
 class VerifyIn(BaseModel):
     claim: str
     chunk_id: int
@@ -480,6 +486,20 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/write/draft")
     def draft(body: DraftIn):
         return lib.draft(body.instruction, body.context, body.doc_ids, body.k, body.verify)
+
+    @app.get("/drafts/{draft_id}/ask")
+    def ask_turns(draft_id: int):
+        return lib.ask_turns(draft_id)
+
+    @app.post("/drafts/{draft_id}/ask")
+    def ask(draft_id: int, body: AskIn):
+        """The chatbot's reply, kept with the draft."""
+        return lib.ask(draft_id, body.question, body.context, body.selection)
+
+    @app.delete("/drafts/{draft_id}/ask")
+    def clear_ask(draft_id: int):
+        lib.clear_ask(draft_id)
+        return {"ok": True}
 
     @app.post("/citations/verify")
     def verify(body: VerifyIn):

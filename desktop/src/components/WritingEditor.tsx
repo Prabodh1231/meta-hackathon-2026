@@ -149,6 +149,8 @@ export interface WritingEditorHandle {
   /** Bring one chip up to date with the library and return its current attributes. */
   resolveChip: (chip: ChipAttrs) => Promise<ChipAttrs>
   getText: () => string
+  /** The selected text, and the paragraph the cursor is in. */
+  getFocus: () => { selection: string; paragraph: string }
   getJSON: () => JSONContent | null
   /** First non-empty line, used as the draft's title. */
   getTitle: () => string
@@ -170,6 +172,8 @@ export interface WritingEditorHandle {
   flush: () => Promise<void>
   /** Insert a whole document (an imported Word file) at the cursor; it fills an empty draft. */
   insertDocument: (json: JSONContent) => void
+  /** Insert HTML (a chat reply) at the cursor, or at the end if the page wasn't clicked into. */
+  insertHTML: (html: string) => void
   isEmpty: () => boolean
   focus: () => void
   /** Replace the whole document (restoring a version). */
@@ -264,11 +268,13 @@ interface Props {
   onCiteMarks?: (marks: CiteMarkAttrs[]) => void
   /** The sources cite searches look in (the ticked ones), or null for the whole library. */
   getScope: () => number[] | null
+  /** The toolbar's Ask button: ask about the selection in the Ask tab. */
+  onAsk: () => void
   onError: (msg: string) => void
 }
 
 export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function WritingEditor(
-  { draftId, banner, spellcheck = true, onCitationClick, onCiteMarkClick, onCiteMarks, getScope, onError, onStats, onSaveState },
+  { draftId, banner, spellcheck = true, onCitationClick, onCiteMarkClick, onCiteMarks, getScope, onAsk, onError, onStats, onSaveState },
   ref,
 ) {
   const saveTimer = useRef<number | undefined>(undefined)
@@ -637,6 +643,10 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         else editor.chain().focus(placed.current ? undefined : 'end').insertContent(blocks).scrollIntoView().run()
       },
 
+      insertHTML(html) {
+        if (editor && html) editor.chain().focus(placed.current ? undefined : 'end').insertContent(html).scrollIntoView().run()
+      },
+
       isEmpty: () => editor?.isEmpty ?? true,
       focus: () => editor?.commands.focus('end'),
 
@@ -678,6 +688,12 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       },
 
       getText: () => editor?.getText() ?? '',
+      getFocus() {
+        if (!editor) return { selection: '', paragraph: '' }
+        const { from, to, $from } = editor.state.selection
+        const selection = editor.state.doc.textBetween(from, to, ' ', '').replace(/\s+/g, ' ').trim()
+        return { selection, paragraph: $from.parent.textContent }
+      },
       getJSON: () => editor?.getJSON() ?? null,
       getTitle: () => (editor ? titleOf(editor) : 'Untitled'),
 
@@ -694,7 +710,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
 
   return (
     <>
-      <FormatToolbar editor={editor} onCite={() => citeRef.current()} />
+      <FormatToolbar editor={editor} onCite={() => citeRef.current()} onAsk={onAsk} />
       <div className="editor-wrap">
         {banner}
         <EditorContent editor={editor} />

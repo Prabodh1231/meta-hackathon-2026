@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_VERSION, api, backendLogPath } from './api'
+import { AskPanel } from './components/AskPanel'
 import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
 import { CitePanel } from './components/CitePanel'
@@ -60,9 +61,10 @@ const MODES: { mode: Mode; label: string; icon: IconName; hint: string }[] = [
 ]
 
 /** The tabs of the panel beside the draft, in the order you use them while writing. */
-type Tab = 'assistant' | 'citations' | 'references' | 'review' | 'history'
+type Tab = 'assistant' | 'ask' | 'citations' | 'references' | 'review' | 'history'
 const TABS: { tab: Tab; label: string; icon: IconName; hint: string }[] = [
   { tab: 'assistant', label: 'Assistant', icon: 'assistant', hint: 'Draft from your library with cited quotes' },
+  { tab: 'ask', label: 'Ask', icon: 'ask', hint: 'Chat with the AI about anything (Ctrl+J asks about the selection)' },
   { tab: 'citations', label: 'Citations', icon: 'cite', hint: 'Confirm cite markers and see each quote on its page' },
   { tab: 'references', label: 'References', icon: 'references', hint: 'Reference list for the sources you cite' },
   { tab: 'review', label: 'Review', icon: 'review', hint: 'Repeated passages and text matching your sources' },
@@ -179,6 +181,7 @@ export default function App() {
   const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
   const [citingFor, setCitingFor] = useState<number | null>(null) // paper whose citing works are listed
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [askAttach, setAskAttach] = useState<{ text: string; n: number } | null>(null) // text sent to the Ask tab
   const [pdfView, setPdfView] = useState<{ doc: Doc; page: number } | null>(null) // a PDF in the app's viewer
   // In the desktop app a PDF gets a resizable window of its own; in a plain browser, the viewer dialog.
   const openPdf = useCallback((doc: Doc, page = 1) => {
@@ -286,6 +289,9 @@ export default function App() {
         e.preventDefault()
         if (mode === 'write' && !focusMode) setToolsOpen((o) => !o)
         else revealTools()
+      } else if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+        e.preventDefault()
+        askRef.current()
       } else if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault()
         toggleFocus()
@@ -405,6 +411,15 @@ export default function App() {
   }
   const newDraftRef = useRef(newDraft)
   newDraftRef.current = newDraft
+
+  /** Ctrl+J or the toolbar's Ask: open the Ask tab, with the selected text attached to the question. */
+  const askAboutSelection = useCallback(() => {
+    const text = editor.current?.getFocus().selection ?? ''
+    setAskAttach((a) => ({ text: mode === 'write' ? text : '', n: (a?.n ?? 0) + 1 }))
+    showTab('ask')
+  }, [mode, showTab])
+  const askRef = useRef(askAboutSelection)
+  askRef.current = askAboutSelection
 
   // ---------- Word files and dropped files ----------
 
@@ -1174,6 +1189,7 @@ export default function App() {
               onCiteMarkClick={(cid) => showCitations(cid)}
               onCiteMarks={setCiteMarks}
               getScope={() => (settings.cite_scope === 'library' || !selected.size ? null : [...selected])}
+              onAsk={askAboutSelection}
               spellcheck={settings.spellcheck}
               onError={onError}
             />
@@ -1231,6 +1247,16 @@ export default function App() {
                   onInsert={(s) => editor.current?.insertDraft(s)}
                   onVerified={onVerified}
                   onOpenCitation={openCitation}
+                  onError={onError}
+                />
+              </div>
+              {/* Kept mounted too, so a question being answered survives a look at another tab. */}
+              <div hidden={tab !== 'ask'}>
+                <AskPanel
+                  draftId={draftId}
+                  attach={askAttach}
+                  getParagraph={() => editor.current?.getFocus().paragraph ?? ''}
+                  onInsert={(html) => editor.current?.insertHTML(html)}
                   onError={onError}
                 />
               </div>

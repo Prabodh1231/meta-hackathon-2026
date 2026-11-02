@@ -91,6 +91,10 @@ class MockProvider(LLMProvider):
             out.append({"text": text, "citations": [{"passage": p.pid, "quote": best}]})
         return out
 
+    def ask(self, question: str, history: list[dict], context: str, selection: str) -> str:
+        about = f" about “{selection[:80]}”" if selection else ""
+        return f"**Offline mock.** Connect Muse to chat. You asked{about}: {question}"
+
     def extract_matrix_row(self, title: str, columns: list[dict], passages: list[Passage]) -> list[dict]:
         # Offline: for each column, the sentence sharing most words with the column's search terms,
         # quoted as it stands. Nothing shared means not reported.

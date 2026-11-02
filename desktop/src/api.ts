@@ -1,4 +1,5 @@
 import type {
+  AskTurn,
   Citation,
   CitationGraph,
   CitingWorks,
@@ -181,6 +182,11 @@ export const api = {
     return request<CitationGraph>('GET', `/graph${params.size ? `?${params}` : ''}`)
   },
 
+  /** The Ask chat kept with a draft, oldest first. */
+  askTurns: (draftId: number) => request<AskTurn[]>('GET', `/drafts/${draftId}/ask`),
+  ask: (draftId: number, question: string, context: string, selection: string) =>
+    request<AskTurn>('POST', `/drafts/${draftId}/ask`, { question, context, selection }),
+  clearAsk: (draftId: number) => request<{ ok: boolean }>('DELETE', `/drafts/${draftId}/ask`),
   draft: (instruction: string, context: string, docIds: number[] | null, k?: number) =>
     request<DraftResult>('POST', '/write/draft', { instruction, context, doc_ids: docIds, k }),
   verify: (claim: string, chunkId: number, quote: string) =>

@@ -10,7 +10,9 @@
     "build": "tsc --noEmit && vite build",
     "start": "electron .",
     "smoke": "vite build && cross-env RC_SMOKE_TEST=1 electron .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bundle-backend": "cd ../backend && .venv/Scripts/python -m PyInstaller rc-backend.spec --noconfirm",
+    "dist": "npm run build && npm run bundle-backend && electron-builder --win"
   },
   "dependencies": {
     "@tiptap/core": "^3.32.0",
@@ -31,8 +33,37 @@
     "concurrently": "^10.0.6",
     "cross-env": "^10.1.0",
     "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "wait-on": "^9.5.1"
+  },
+  "build": {
+    "appId": "com.researchcompanion.app",
+    "productName": "Research Companion",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json",
+      "!**/node_modules/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/rc-backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Research-Companion-Setup-${version}.${ext}"
+    }
   }
 }

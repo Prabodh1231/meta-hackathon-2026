@@ -54,6 +54,25 @@ For the GPU model, install a CUDA build of PyTorch before the other requirements
 
 Your library lives in `~/.research-companion/`: a SQLite database plus the embedding model cache. Set `RC_DATA_DIR` to put it somewhere else.
 
+### Build a Windows installer
+
+To give the app to someone who won't set up Python and Node, build an installer from a working dev setup:
+
+```bash
+cd backend && .venv/Scripts/pip install pyinstaller
+cd ../desktop && npm run dist
+```
+
+`npm run dist` builds the UI, freezes the backend with PyInstaller (`backend/rc-backend.spec`, into `backend/dist/rc-backend`) and packages both with electron-builder into `desktop/release/Research-Companion-Setup-<version>.exe`, about 200 MB. The installed app runs that bundled backend instead of `backend/.venv`. It installs for the current user without admin rights.
+
+Things to tell testers:
+
+- Windows says the installer is from an **unknown publisher**, because it isn't signed. They click **More info → Run anyway**.
+- Until they paste a key in **Settings → Model** and pick Muse, the app runs on the offline mock, which matches words instead of reading. Give each tester their own key if you can; a shared key spends from your account.
+- Their library lives in their own `~/.research-companion/`. On first launch the backend downloads the small embedding and reranking models (about 150 MB) there.
+
+The bundle leaves out torch and sentence-transformers, so it always embeds with the small CPU model, or on Baseten when that's set up in Settings → Search. It also leaves out PyMuPDF's optional layout add-on, which isn't in `requirements.txt`.
+
 The backend runs detached from the terminal you launched from, so a Ctrl+C there doesn't kill it. If it exits anyway, the app restarts it (up to 3 times a minute) and the status bar shows "Backend offline, reconnecting…" meanwhile. Its output is appended to `~/.research-companion/logs/backend.log`. On Windows, run the app with `npm.cmd run dev` if PowerShell blocks `npm`.
 
 ## Using the app
@@ -145,6 +164,6 @@ On a machine with a GPU, Baseten doesn't make imports faster: embedding a paper 
 ## Known gaps / next steps
 
 - **Documents imported on the mock** keep its rough metadata, summaries and tags until they're re-imported with Muse on.
-- **Packaging:** the Python backend still needs bundling with PyInstaller and shipping as an Electron `extraResources` binary. Today `main.cjs` runs `backend/.venv`.
+- **Installer:** Windows only, unsigned (Windows warns about an unknown publisher), with the default Electron icon. The bundled backend has no GPU embeddings.
 - **Import jobs live in memory:** if the backend restarts mid-import, the files already added stay, but the rest of that import has to be started again.
 - **PDF viewer download name:** Chromium's viewer shows and downloads the file under a random blob name; Show in folder finds the original.

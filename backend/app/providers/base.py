@@ -90,6 +90,16 @@ class LLMProvider(ABC):
         out = self._json(prompts.DRAFT_SYSTEM, user, prompts.DRAFT_SCHEMA, max_tokens=2048)
         return out.get("sentences", [])
 
+    def ask(self, question: str, history: list[dict], context: str, selection: str) -> str:
+        """A chatbot reply in Markdown. `history` is the conversation so far, [{question, reply}], oldest first."""
+        messages = [{"role": "system", "content": prompts.CHAT_SYSTEM}]
+        for t in history[-10:]:
+            messages += [{"role": "user", "content": t["question"]}, {"role": "assistant", "content": t["reply"]}]
+        about = (f"(The paragraph I'm writing: {context[-3000:]})\n\n" if context.strip() else "") + (
+            f"(Selected text:\n{selection[:4000]})\n\n" if selection else "")
+        messages.append({"role": "user", "content": about + question})
+        return self.chat(messages, max_tokens=3000, temperature=0.5).strip()
+
     def extract_matrix_row(self, title: str, columns: list[dict], passages: list[Passage]) -> list[dict]:
         """One paper's row: for each column {column, answer, passage, quote}, empty when not reported."""
         cols = "\n".join(f"- {c['key']}: {c['label']}. {c.get('instruction') or ''}".rstrip() for c in columns)

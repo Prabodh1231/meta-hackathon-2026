@@ -154,6 +154,15 @@ export interface DraftSentence {
   citations: Citation[]
 }
 
+/** One message in the Ask chat and the AI's reply (Markdown). */
+export interface AskTurn {
+  id: number
+  question: string
+  selection: string // the draft text the question was about, '' for none
+  created_at: string
+  reply: string
+}
+
 export interface DraftResult {
   sentences: DraftSentence[]
   passages: { pid: string; chunk_id: number; label: string }[]

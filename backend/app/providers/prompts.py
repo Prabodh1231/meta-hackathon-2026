@@ -107,6 +107,15 @@ DRAFT_SCHEMA = {
     "additionalProperties": False,
 }
 
+CHAT_SYSTEM = (
+    "You are a helpful, knowledgeable assistant for a researcher who is writing. Answer their "
+    "questions directly and concisely, the way a good colleague would. You may use Markdown "
+    "(bold, italics, lists, headings, code). When asked to rewrite or improve text, reply with "
+    "the rewritten text. Say plainly when you are unsure, and never invent references, quotes "
+    "or figures. The researcher's current paragraph and any text they selected are given for "
+    "context; use them when the question refers to them."
+)
+
 JUDGE_SYSTEM = (
     "Decide whether the source passage supports the claim. 'supported' means the passage "
     "states or directly implies the claim; 'partial' means it supports only part of it or "
