@@ -367,3 +367,30 @@ def test_writing_a_proposal_reports_each_step(setup):
     client.post("/proposals", json={"finding_ids": [gaps[0]["id"]], "exclusions": "No randomised trials"})
     stages = [e["text"] for e in client.get("/model/activity", params={"since": since}).json()["events"] if e["kind"] == "stage"]
     assert [s.split(":")[0] for s in stages] == [f"Step {i} of 5" for i in range(1, 6)]
+
+
+def test_notes_muse_writes_into_the_title_or_core_question_are_removed():
+    """Seen with Muse: the review's change note inside the title, and the plan's "Title:" line as a question."""
+    from app.proposal import Proposals, clean_heading
+
+    title = "Macro-financial conditions and cryptocurrency adoption"
+    core = "Do macro-financial conditions explain cross-country variation in cryptocurrency adoption?"
+    assert clean_heading(f"{title} _ revised - removed crisis-era and coverage qualifiers") == title
+    assert clean_heading(f"{core} _ revised - stripped post-crisis era framing") == core
+    assert clean_heading("Title: Mobile money and savings (revised to one outcome)") == "Mobile money and savings"
+    for kept in ("Revised pension rules and retirement timing", "Do changed tax rules affect savings?",
+                 "Self-reported well-being and pay - a panel study"):
+        assert clean_heading(kept) == kept  # a word in the title itself isn't a note
+
+    p = Proposals.__new__(Proposals)  # the two steps below use no library
+    plan = p._plan({"title": f"{title} _ revised - one outcome", "core_question": core, "hypotheses": [],
+                    "research_questions": [f"Title: {title}", "Do macro-financial conditions associate with adoption?"],
+                    "variables": [], "left_out": []}, [])
+    assert plan["title"] == title and plan["research_questions"] == ["Do macro-financial conditions associate with adoption?"]
+    review = {"title": f"{title} _ revised - stripped the crisis era", "core_question": core, "core_changed_why": "one outcome",
+              "hypotheses": [], "questions": [
+                  {"original": "Do macro-financial conditions associate with adoption?", "verdict": "keep", "text": "", "why": ""},
+                  {"original": f"Title: {title}", "verdict": "keep", "text": f"Title: {title}", "why": ""}]}
+    reviewed, _ = p._apply_review(plan, review)
+    assert reviewed["title"] == title
+    assert reviewed["research_questions"] == ["Do macro-financial conditions associate with adoption?"]
