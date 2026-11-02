@@ -5,6 +5,7 @@ Research Companion keeps the papers, notes, slides, scans and web pages you're w
 This guide is about using the app. For setup, see the [README](../README.md#run-it). For how the code fits together, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 - [The layout](#the-layout)
+- [Try the demo](#try-the-demo)
 - [1. Add your sources](#1-add-your-sources)
 - [2. Organize the library](#2-organize-the-library)
 - [3. Write a draft](#3-write-a-draft)
@@ -47,6 +48,22 @@ The **⛶** button in the top bar, or Ctrl+Shift+F, hides everything but the pag
 ![Focus mode: only the page and its toolbar](images/focus.png)
 
 The save state stays in the corner. Esc, or **Exit focus**, brings the rest back.
+
+## Try the demo
+
+A new library opens on **Getting started**. If its first step says *Connect the AI*, the app is running on the offline mock, which matches words instead of reading them; **Add a Muse key** opens Settings at **AI model**. The status bar says so too: *Offline mock* shows in amber, and clicking it opens the same place.
+
+**Try the sample library** (under *Add your sources*, or **Load sample library** in Ctrl K) adds six small files on sleep and coral reefs: two papers, reading notes, a fieldwork log, lab slides and a chapter outline. When they're in, the demo draft opens: four sentences from those papers, each with a cite marker that starts checking it at once. One sentence is false on purpose: the sleep paper found that reactivation during REM sleep did nothing, so Muse marks the claim that it helped as unsupported. (On the mock it may only be marked partial, or even pass.)
+
+Above the draft, a checklist walks through the app, and each step ticks itself off when you do it. The button, tab or marker for the next step pulses:
+
+1. **Confirm a source:** click a green marker, then **Use this source**.
+2. **See the quote on its page:** click the citation that replaced it.
+3. **Draft with the Assistant:** ask for a paragraph and insert it.
+4. **Check for duplication:** open **Review**.
+5. **Export to Word.**
+
+**Reset demo** puts the draft back as it was written and clears the checklist, to run it again. **Remove samples** takes the sample files out of the library (they don't stay in *Removed* either) and deletes the demo draft; your own sources and drafts stay. **Hide** puts the checklist away; **Open demo draft** in Ctrl K brings it back. The sample files are copied into the data folder (`samples`) and read from there.
 
 ## 1. Add your sources
 

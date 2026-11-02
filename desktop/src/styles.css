@@ -236,6 +236,9 @@ textarea { width: 100%; resize: vertical; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pending); flex: none; }
 .dot.live { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
 .dock .status { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock .status-mock { border: none; background: var(--warn-bg); color: var(--text); padding: 3px 10px; border-radius: 999px; font: inherit; cursor: pointer; }
+.dock .status-mock .dot { background: var(--warn); }
+.dock .status-mock:hover { filter: brightness(0.97); }
 
 /* The wire from a citation chip to its highlighted quote */
 .wire { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 60; }
@@ -903,7 +906,8 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .getting-started header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .getting-started h2 { margin: 0; font: 600 18px/1.3 var(--doc-font); }
 .getting-started header p { margin: 2px 0 0; }
-.getting-started ol { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.getting-started ol { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.demo-guide ol { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .getting-started li { display: flex; gap: 10px; padding: 12px; border-radius: 10px; background: var(--bg); }
 .getting-started li p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
 .getting-started li.done { opacity: 0.75; }
@@ -912,6 +916,29 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .getting-started li.done .gs-num { background: var(--ok); }
 .gs-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .gs-actions button { font-size: 12.5px; }
+
+/* The demo checklist above the demo draft; the step to do next is outlined */
+.demo-guide footer { align-items: center; margin-top: 14px; }
+.demo-guide li.next { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent); }
+.demo-mock { margin: 8px 0 0; padding: 6px 10px; border-radius: 8px; font-size: 13px; background: var(--warn-bg); color: var(--text); }
+
+/* The demo's next step: its button, tab or marker pulses (App sets data-demo-next) */
+.app[data-demo-next="confirm"] .writing .cite-mark-verified,
+.app[data-demo-next="quote"] .writing .cite,
+.app[data-demo-next="assistant"] [data-tab="assistant"]:not(.on),
+.app[data-demo-next="review"] [data-tab="review"]:not(.on),
+.app[data-demo-next="export"] .export .bar-btn { animation: demo-pulse 1.8s ease-out infinite; }
+@keyframes demo-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app[data-demo-next="confirm"] .writing .cite-mark-verified,
+  .app[data-demo-next="quote"] .writing .cite,
+  .app[data-demo-next="assistant"] [data-tab="assistant"]:not(.on),
+  .app[data-demo-next="review"] [data-tab="review"]:not(.on),
+  .app[data-demo-next="export"] .export .bar-btn { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
+}
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* Assistant: example prompts */

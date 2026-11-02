@@ -289,6 +289,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   scopeRef.current = getScope
   const citeRef = useRef<() => void>(() => {})
   const placed = useRef(false) // the writer has put the cursor somewhere since the draft opened
+  const placedBefore = useRef(false) // `placed` as it was before the latest mousedown focused the editor
   const editorRef = useRef<Editor | null>(null)
 
   /** Find sources for a marker's sentence in the background, then recolour the marker. */
@@ -341,12 +342,22 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     content: '',
     editorProps: {
       attributes: { class: 'prose', spellcheck: 'true' },
+      handleDOMEvents: {
+        mousedown: () => {
+          placedBefore.current = placed.current
+          return false
+        },
+      },
+      // Clicking a marker or a citation focuses the editor but leaves the cursor where it was, so
+      // it doesn't count as placing it: an insert still goes to the end, not above the title.
       handleClickOn: (_view, _pos, node) => {
         if (node.type.name === 'citeMark') {
+          placed.current = placedBefore.current
           clickRef.current.mark(node.attrs.cid)
           return true
         }
         if (node.type.name !== 'citation') return false
+        placed.current = placedBefore.current
         clickRef.current.chip(node.attrs as ChipAttrs)
         return true
       },
@@ -654,6 +665,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         if (!editor) return
         window.clearTimeout(saveTimer.current) // a pending autosave of the old text must not win
         editor.commands.setContent(json ? JSON.parse(json) : '', { emitUpdate: false })
+        placed.current = false // the cursor was in the old text
         report.current.onStats?.(statsOf(editor))
         report.current.onCiteMarks?.(citeMarks(editor))
         report.current.onSaveState?.({ state: 'saved', at: Date.now() })

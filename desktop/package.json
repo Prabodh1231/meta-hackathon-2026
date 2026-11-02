@@ -54,6 +54,10 @@
       {
         "from": "../backend/dist/rc-backend",
         "to": "backend"
+      },
+      {
+        "from": "../samples",
+        "to": "samples"
       }
     ],
     "win": {

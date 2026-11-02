@@ -11,6 +11,7 @@ interface Props {
   getJSON: () => JSONContent | null
   getTitle: () => string
   onError: (msg: string) => void
+  onExported?: () => void // a file was saved (the demo checklist ticks it off)
 }
 
 function fileName(title: string): string {
@@ -20,7 +21,7 @@ function fileName(title: string): string {
 
 /** Word export: citations rendered in the Settings citation style, a reference list, and
  * Word comments on citations that didn't pass verification. */
-export function ExportControl({ style, getJSON, getTitle, onError }: Props) {
+export function ExportControl({ style, getJSON, getTitle, onError, onExported }: Props) {
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
 
@@ -34,7 +35,10 @@ export function ExportControl({ style, getJSON, getTitle, onError }: Props) {
       const data = await api.exportDocx(content, style, title)
       if (window.rc) {
         const path = await window.rc.saveFile(fileName(title), data)
-        if (path) setSaved(path)
+        if (path) {
+          setSaved(path)
+          onExported?.()
+        }
       } else {
         // Plain browser (dev without Electron): let the browser download it.
         const url = URL.createObjectURL(new Blob([data], { type: DOCX_MIME }))
@@ -44,6 +48,7 @@ export function ExportControl({ style, getJSON, getTitle, onError }: Props) {
         a.click()
         setTimeout(() => URL.revokeObjectURL(url), 5000)
         setSaved(a.download)
+        onExported?.()
       }
     } catch (e) {
       onError(`Export failed: ${e instanceof Error ? e.message : e}`)
