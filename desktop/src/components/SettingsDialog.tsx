@@ -48,7 +48,7 @@ const EFFORT_NOTES: Record<string, string> = {
   xhigh: 'Slowest; the most thorough reasoning.',
 }
 
-type Section = 'appearance' | 'writing' | 'review' | 'library' | 'search' | 'model'
+export type Section = 'appearance' | 'writing' | 'review' | 'library' | 'search' | 'model'
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'appearance', label: 'Appearance & editor' },
   { id: 'writing', label: 'Writing & citations' },
@@ -64,6 +64,7 @@ interface Props {
   /** The model, or where search runs, was switched: the status bar shows the new one. */
   onModelChanged: () => void
   onClose: () => void
+  section?: Section // the section to open at (Appearance by default)
 }
 
 function Choice<T extends string>({ label, value, options, onChange }: {
@@ -462,8 +463,8 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
   )
 }
 
-export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose }: Props) {
-  const [section, setSection] = useState<Section>('appearance')
+export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose, section: initialSection = 'appearance' }: Props) {
+  const [section, setSection] = useState<Section>(initialSection)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()

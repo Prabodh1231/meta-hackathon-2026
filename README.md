@@ -83,7 +83,8 @@ cd ../desktop && npm run dist
 Things to tell testers:
 
 - Windows says the installer is from an **unknown publisher**, because it isn't signed. They click **More info → Run anyway**.
-- Until they paste a key in **Settings → Model** and pick Muse, the app runs on the offline mock, which matches words instead of reading. Give each tester their own key if you can; a shared key spends from your account.
+- Until they paste a key in **Settings → Model** and pick Muse, the app runs on the offline mock, which matches words instead of reading. Getting started and the amber *Offline mock* in the status bar both lead there. Give each tester their own key if you can; a shared key spends from your account.
+- **Try the sample library** in Getting started loads six demo files and a demo draft with a checklist of what to try (see the [user guide](docs/USER_GUIDE.md#try-the-demo)). The installer ships the files from `samples/`.
 - Their library lives in their own `~/.research-companion/`. On first launch the backend downloads the small embedding and reranking models (about 150 MB) there.
 
 The bundle leaves out torch and sentence-transformers, so it always embeds with the small CPU model, or on Baseten when that's set up in Settings → Search. It also leaves out PyMuPDF's optional layout add-on, which isn't in `requirements.txt`.

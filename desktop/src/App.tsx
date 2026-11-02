@@ -8,6 +8,7 @@ import { CitePanel } from './components/CitePanel'
 import type { CiteMarkAttrs } from './editor/citeMark'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
 import { CitedPapersDialog } from './components/CitedPapersDialog'
+import { DemoGuide } from './components/DemoGuide'
 import { DraftsPanel } from './components/DraftsPanel'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { ExportControl } from './components/ExportControl'
@@ -24,7 +25,8 @@ import { CitingPapersDialog } from './components/CitingPapersDialog'
 import { PdfViewerDialog } from './components/PdfViewerDialog'
 import { ReferencesPanel } from './components/ReferencesPanel'
 import { ReviewPanel } from './components/ReviewPanel'
-import { DEFAULT_SETTINGS, SettingsDialog } from './components/SettingsDialog'
+import { DEFAULT_SETTINGS, SettingsDialog, type Section as SettingsSection } from './components/SettingsDialog'
+import { DEMO_STEPS, DEMO_TITLE, type DemoState, type DemoStep, demoDoc, inSamples, loadDemo, saveDemo } from './demo'
 import { WordImportDialog, convertedSummary, simplifiedNotes } from './components/WordImportDialog'
 import { applyTheme, cacheTheme, cachedTheme, watchSystemTheme } from './theme'
 import { SourceViewer, type SourceTarget } from './components/SourceViewer'
@@ -172,7 +174,7 @@ export default function App() {
   const [draftsBusy, setDraftsBusy] = useState<string | null>(null)
   const [hideGuide, setHideGuide] = useState(guideHidden)
   const [settings, setSettings] = useState<Settings>({ ...DEFAULT_SETTINGS, theme: cachedTheme() })
-  const [showSettings, setShowSettings] = useState(false)
+  const [showSettings, setShowSettings] = useState<SettingsSection | null>(null) // open, at this section
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
   const [citeMarks, setCiteMarks] = useState<CiteMarkAttrs[]>([]) // "cite" markers in the draft, searching or waiting
   const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker the Citations tab is showing
@@ -212,6 +214,9 @@ export default function App() {
   const draftsMenu = useRef<HTMLDivElement>(null)
   const [dropping, setDropping] = useState(false) // files dragged over the window
   const [jobs, setJobs] = useState<IngestJob[]>([]) // background imports, newest first
+  const [demo, setDemo] = useState<DemoState | null>(loadDemo) // the demo draft and its checklist
+  const [demoJob, setDemoJob] = useState<number | null>(null) // the import of the sample library
+  const [demoBusy, setDemoBusy] = useState<string | null>(null)
   // Papers the draft cites, for the library to mark. Recounted whenever the draft's stats change,
   // but a new list only when the papers do, so the library doesn't redraw at every pause in typing.
   const citedKey = useMemo(() => (editor.current?.citedDocIds() ?? []).join(','), [stats, draftId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -433,12 +438,20 @@ export default function App() {
     setImporting(file)
   }
 
+  /** Show a draft just created with `content`. On a new library the blank page that's open may
+   * never have been saved, so the new draft can get its id: then the content is loaded in place. */
+  function openWritten(id: number, content: string) {
+    if (id === draftId) editor.current?.setContent(content)
+    else setDraftId(id)
+  }
+
   async function openAsNewDraft(file: File, c: DocxConversion) {
     await editor.current?.flush()
     const d = await api.createDraft(c.title)
-    await api.saveDraft(d.id, c.title, JSON.stringify(c.content)) // also takes its first version
+    const content = JSON.stringify(c.content)
+    await api.saveDraft(d.id, c.title, content) // also takes its first version
     await refreshDrafts()
-    setDraftId(d.id)
+    openWritten(d.id, content)
     setMode('write')
     setNotice(importNotice('Opened', file.name, c))
   }
@@ -449,19 +462,23 @@ export default function App() {
     setNotice(importNotice('Inserted', file.name, c))
   }
 
-  /** Add files or folders on disk to the library in the background; the library shows progress. */
-  const addToLibrary = useCallback(
+  /** Add files or folders on disk to the library in the background; the library shows progress.
+   * Resolves to the import job (null if it couldn't start). */
+  const startImport = useCallback(
     async (paths: string[]) => {
       setMode('library')
       try {
         const job = await api.startIngest(paths)
         setJobs((js) => [job, ...js.filter((j) => j.id !== job.id)])
+        return job
       } catch (e) {
         onError(`Could not start adding files: ${e instanceof Error ? e.message : e}`)
+        return null
       }
     },
     [onError],
   )
+  const addToLibrary = useCallback(async (paths: string[]) => void (await startImport(paths)), [startImport])
 
   // Follow running imports: the library list updates as each file lands, and when an import
   // ends a short summary is shown (the details stay in the library until dismissed).
@@ -586,6 +603,110 @@ export default function App() {
     }
   }
 
+  // ---------- the demo: sample library, demo draft and its checklist ----------
+
+  useEffect(() => saveDemo(demo), [demo])
+  const onDemo = demo != null && demo.draftId === draftId
+  const demoNext = onDemo && !demo.hidden ? DEMO_STEPS.find((s) => !demo.done.includes(s.step))?.step : undefined
+
+  /** Tick a step of the demo checklist off, if the demo draft is the one open. */
+  const markDemo = useCallback(
+    (step: DemoStep) => setDemo((d) => (d && d.draftId === draftId && !d.done.includes(step) ? { ...d, done: [...d.done, step] } : d)),
+    [draftId],
+  )
+
+  /** Add the sample library (unless it's already in), then open the demo draft. */
+  async function trySamples() {
+    if (!window.rc?.copySamples) {
+      onError('The sample library comes with the desktop app.')
+      return
+    }
+    try {
+      const dir = await window.rc.copySamples()
+      if (docs.some((d) => inSamples(d.source, dir))) return openDemoDraft()
+      const job = await startImport([dir])
+      if (job) setDemoJob(job.id) // the demo draft opens when it's done
+    } catch (e) {
+      onError(`Could not add the sample library: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
+  useEffect(() => {
+    const job = demoJob == null ? null : jobs.find((j) => j.id === demoJob)
+    if (!job?.finished_at) return
+    setDemoJob(null)
+    if (job.state !== 'failed' && job.done) openDemoDraft()
+  }, [jobs, demoJob]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Open the demo draft, writing it first if there isn't one, with the Citations tab beside it. */
+  async function openDemoDraft() {
+    try {
+      const list = await refreshDrafts()
+      if (demo && list.some((d) => d.id === demo.draftId)) {
+        setDemo({ ...demo, hidden: false })
+        await switchDraft(demo.draftId)
+      } else {
+        setDraftsBusy('Writing the demo draft…')
+        await editor.current?.flush()
+        const d = await api.createDraft(DEMO_TITLE)
+        const content = JSON.stringify(demoDoc())
+        await api.saveDraft(d.id, DEMO_TITLE, content)
+        await refreshDrafts()
+        setDemo({ draftId: d.id, done: [], hidden: false })
+        setMode('write')
+        openWritten(d.id, content)
+        setNotice('Opened the demo draft. Its cite markers are checking each sentence against the sample library.')
+      }
+      showCitations()
+    } catch (e) {
+      onError(`Could not open the demo draft: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setDraftsBusy(null)
+    }
+  }
+
+  /** Put the demo draft back as it was written and clear the checklist. */
+  async function resetDemo() {
+    if (!demo) return
+    setDemoBusy('Resetting…')
+    try {
+      const content = JSON.stringify(demoDoc())
+      if (demo.draftId === draftId) await editor.current?.flush()
+      await api.saveDraft(demo.draftId, DEMO_TITLE, content)
+      if (demo.draftId === draftId) editor.current?.setContent(content)
+      else await switchDraft(demo.draftId)
+      setDemo({ ...demo, done: [], hidden: false })
+      setSource(null)
+      setDup({ report: null, at: null, busy: false, stale: false, error: null })
+      showCitations()
+    } catch (e) {
+      onError(`Could not reset the demo: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setDemoBusy(null)
+    }
+  }
+
+  /** Take the sample files out of the library (and its removal log) and delete the demo draft. */
+  async function removeSamples() {
+    if (!window.confirm('Remove the sample files from your library and delete the demo draft? Your own sources and drafts stay.')) return
+    setDemoBusy('Removing the samples…')
+    try {
+      const dir = (await window.rc?.config())?.samplesDir ?? ''
+      for (const d of docs.filter((d) => inSamples(d.source, dir))) {
+        await api.deleteDocument(d.id)
+        await api.forgetRemoved(d.id).catch(() => {}) // not worth a Removed entry
+      }
+      if (demo) await deleteDraft(demo.draftId)
+      setDemo(null)
+      await refresh()
+      setNotice('Removed the sample library and the demo draft.')
+    } catch (e) {
+      onError(`Could not remove the samples: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setDemoBusy(null)
+    }
+  }
+
   // The backend may take a while on first launch (embedding model download).
   useEffect(() => {
     let stop = false
@@ -691,6 +812,10 @@ export default function App() {
     return () => window.clearTimeout(t)
   }, [reviewing, dup.stale, dup.report, dup.busy, dup.error, runCheck, settings.auto_recheck])
 
+  useEffect(() => {
+    if (reviewing && dup.report) markDemo('review')
+  }, [reviewing, dup.report, markDemo])
+
   // Leaving the tab forgets a failed check, so opening it again tries once more.
   useEffect(() => {
     if (!reviewing) setDup((d) => (d.error ? { ...d, error: null } : d))
@@ -743,6 +868,7 @@ export default function App() {
   }
 
   async function openChip(a: ChipAttrs) {
+    markDemo('quote')
     if (a.finding != null) {
       // Written from a review matrix: show the gap or passage it came from, not one quote.
       setSource(null)
@@ -834,10 +960,11 @@ export default function App() {
     try {
       await editor.current?.flush()
       const d = await api.createDraft(r.title)
-      await api.saveDraft(d.id, r.title, JSON.stringify(r.doc))
+      const content = JSON.stringify(r.doc)
+      await api.saveDraft(d.id, r.title, content)
       await refreshDrafts()
       setMode('write')
-      setDraftId(d.id)
+      openWritten(d.id, content)
       setNotice(`Opened the proposal as a new draft. Its blue citations are checked against ${r.matrices.includes(',') ? 'the matrices' : `“${r.matrices}”`}.`)
     } catch (e) {
       onError(`Could not create the draft: ${e instanceof Error ? e.message : e}`)
@@ -975,7 +1102,9 @@ export default function App() {
     { group: 'DO', name: 'Import a Word file', hint: '.docx · Ctrl+O', run: pickWord },
     { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: findDuplicateFiles },
     { group: 'DO', name: "Most-cited papers you don't have", hint: 'what your papers cite most, by topic', run: findMissing },
-    { group: 'DO', name: 'Show getting started', hint: 'the three steps', run: () => {
+    { group: 'DO', name: 'Load sample library', hint: 'six files on sleep and coral reefs, and a demo draft', run: trySamples },
+    ...(demo ? [{ group: 'DO', name: 'Open demo draft', hint: 'with its checklist', run: openDemoDraft }] : []),
+    { group: 'DO', name: 'Show getting started', hint: 'connect the AI, add sources, write, cite', run: () => {
       setMode('write')
       setHideGuide(false)
       try {
@@ -986,7 +1115,7 @@ export default function App() {
     } },
     { group: 'DO', name: toolsOpen ? 'Close the writing tools' : 'Open the writing tools', hint: 'Ctrl+\\', run: () => (toolsOpen ? setToolsOpen(false) : revealTools()) },
     { group: 'DO', name: 'Focus mode', hint: 'only the page · Ctrl+Shift+F', run: toggleFocus },
-    { group: 'DO', name: 'Settings', hint: 'appearance, writing, review, library, AI model', run: () => setShowSettings(true) },
+    { group: 'DO', name: 'Settings', hint: 'appearance, writing, review, library, AI model', run: () => setShowSettings('appearance') },
   ]
 
   const running = jobs.filter((j) => j.finished_at == null)
@@ -1025,7 +1154,7 @@ export default function App() {
   const setQuery = mode === 'library' ? setLibQuery : mode === 'matrix' ? setMatQuery : setNetQuery
 
   return (
-    <div className={`app${focusMode ? ' focus' : ''}`}>
+    <div className={`app${focusMode ? ' focus' : ''}`} data-demo-next={demoNext}>
       {focusMode && (
         <div className="focus-exit">
           <span className={`save-state save-${saveState.state}`}>{saveText(saveState)}</span>
@@ -1120,6 +1249,7 @@ export default function App() {
             getJSON={() => editor.current?.getJSON() ?? null}
             getTitle={() => editor.current?.getTitle() ?? 'Untitled'}
             onError={onError}
+            onExported={() => markDemo('export')}
           />
           <input
             ref={wordInput}
@@ -1135,7 +1265,7 @@ export default function App() {
           <button className="icon-button" onClick={toggleFocus} title="Focus: only the page and its toolbar (Ctrl+Shift+F)" aria-label="Focus mode">
             <Icon name="focus" size={18} />
           </button>
-          <button className="icon-button" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings">
+          <button className="icon-button" onClick={() => setShowSettings('appearance')} title="Settings" aria-label="Settings">
             <Icon name="settings" size={18} />
           </button>
         </div>
@@ -1164,12 +1294,25 @@ export default function App() {
               ref={editor}
               draftId={draftId}
               banner={
-                health && !hideGuide && (docs.length === 0 || stats.words === 0) ? (
+                onDemo && !demo.hidden ? (
+                  <DemoGuide
+                    done={demo.done}
+                    mock={health?.provider === 'mock'}
+                    busy={demoBusy}
+                    onConnectModel={() => setShowSettings('model')}
+                    onReset={resetDemo}
+                    onRemove={removeSamples}
+                    onHide={() => setDemo({ ...demo, hidden: true })}
+                  />
+                ) : health && !hideGuide && (docs.length === 0 || stats.words === 0) ? (
                   <GettingStarted
+                    mock={health.provider === 'mock'}
                     sources={docs.length}
                     words={stats.words}
                     citations={stats.citations}
+                    onConnectModel={() => setShowSettings('model')}
                     onAddSources={openLibrary}
+                    onTrySamples={window.rc?.copySamples ? trySamples : undefined}
                     onAsk={() => showTab('assistant')}
                     onOpenWord={pickWord}
                     onHide={() => {
@@ -1209,6 +1352,7 @@ export default function App() {
                     <button
                       key={t.tab}
                       role="tab"
+                      data-tab={t.tab}
                       aria-selected={tab === t.tab}
                       className={`tab${tab === t.tab ? ' on' : ''}`}
                       onClick={() => pickTab(t.tab)}
@@ -1228,7 +1372,7 @@ export default function App() {
                   <Icon name="expand" size={18} />
                 </button>
                 {TABS.map((t) => (
-                  <button key={t.tab} className="strip-btn" onClick={() => pickTab(t.tab)} title={`${t.label}: ${t.hint}`} aria-label={t.label}>
+                  <button key={t.tab} className="strip-btn" data-tab={t.tab} onClick={() => pickTab(t.tab)} title={`${t.label}: ${t.hint}`} aria-label={t.label}>
                     <Icon name={t.icon} size={20} />
                     {tabBadge(t.tab)}
                   </button>
@@ -1244,7 +1388,10 @@ export default function App() {
                   sourceCount={docs.length}
                   onChooseSources={openLibrary}
                   getContext={() => editor.current?.getText() ?? ''}
-                  onInsert={(s) => editor.current?.insertDraft(s)}
+                  onInsert={(s) => {
+                    editor.current?.insertDraft(s)
+                    markDemo('assistant')
+                  }}
                   onVerified={onVerified}
                   onOpenCitation={openCitation}
                   onError={onError}
@@ -1299,8 +1446,10 @@ export default function App() {
                     if (cid) editor.current?.showCite(cid)
                   }}
                   onConfirm={(cid, c) => {
-                    if (editor.current?.confirmCite(cid, c)) setCiteFocus(null)
-                    else onError('That marker was deleted from the draft.')
+                    if (editor.current?.confirmCite(cid, c)) {
+                      setCiteFocus(null)
+                      markDemo('confirm')
+                    } else onError('That marker was deleted from the draft.')
                   }}
                   onRecheck={(cid) => editor.current?.recheckCite(cid)}
                   onRemove={(cid) => {
@@ -1458,10 +1607,17 @@ export default function App() {
             Backend offline, reconnecting…
           </span>
         ) : (
-          <span className="status" title={health ? `model: ${health.provider} · embeddings: ${health.embedder}` : undefined}>
-            <span className={`dot${health ? ' live' : ''}`} />
-            {health ? `${docs.length} source${docs.length === 1 ? '' : 's'} · ${modelLine(health)}` : 'Starting backend…'}
-          </span>
+          health?.provider === 'mock' ? (
+            <button className="status status-mock" onClick={() => setShowSettings('model')} title="The AI is offline: a stand-in that matches words instead of reading. Click to add a Muse key.">
+              <span className="dot" />
+              {`${docs.length} source${docs.length === 1 ? '' : 's'} · ${modelLine(health)}`}
+            </button>
+          ) : (
+            <span className="status" title={health ? `model: ${health.provider} · embeddings: ${health.embedder}` : undefined}>
+              <span className={`dot${health ? ' live' : ''}`} />
+              {health ? `${docs.length} source${docs.length === 1 ? '' : 's'} · ${modelLine(health)}` : 'Starting backend…'}
+            </span>
+          )
         )}
       </footer>
 
@@ -1516,7 +1672,8 @@ export default function App() {
           settings={settings}
           onChange={changeSettings}
           onModelChanged={() => api.health().then(setHealth).catch(() => {})}
-          onClose={() => setShowSettings(false)}
+          section={showSettings}
+          onClose={() => setShowSettings(null)}
         />
       )}
 

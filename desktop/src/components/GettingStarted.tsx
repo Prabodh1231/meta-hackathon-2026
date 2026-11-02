@@ -1,24 +1,40 @@
 interface Props {
+  mock: boolean // running on the offline mock, not Muse
   sources: number
   words: number
   citations: number
+  onConnectModel: () => void
   onAddSources: () => void
+  onTrySamples?: () => void // the desktop app only: it copies the sample files
   onAsk: () => void
   onOpenWord: () => void
   onHide: () => void
 }
 
-/** Shown above an empty draft or with an empty library: the three steps of using the app, with
- * the button for each. Steps tick themselves off as they're done. */
-export function GettingStarted({ sources, words, citations, onAddSources, onAsk, onOpenWord, onHide }: Props) {
+/** Shown above an empty draft or with an empty library: connecting the AI, then the three steps of
+ * using the app, with the button for each. Steps tick themselves off as they're done. */
+export function GettingStarted({ mock, sources, words, citations, onConnectModel, onAddSources, onTrySamples, onAsk, onOpenWord, onHide }: Props) {
   const steps = [
+    {
+      done: !mock,
+      title: mock ? 'Connect the AI' : 'AI connected',
+      text: mock
+        ? 'The AI is offline: a stand-in that matches words instead of reading them. Add a Muse key to have your sources really read and checked.'
+        : 'Muse reads your sources and checks every citation.',
+      actions: mock ? <button className="primary" onClick={onConnectModel}>Add a Muse key</button> : null,
+    },
     {
       done: sources > 0,
       title: 'Add your sources',
       text: sources > 0
         ? `${sources} source${sources === 1 ? '' : 's'} in your library.`
         : 'Papers, notes, slides, scans or web pages. They stay on this computer.',
-      actions: <button className={sources ? '' : 'primary'} onClick={onAddSources}>{sources ? 'Open library' : 'Add sources'}</button>,
+      actions: (
+        <>
+          <button className={sources || mock ? '' : 'primary'} onClick={onAddSources}>{sources ? 'Open library' : 'Add sources'}</button>
+          {onTrySamples && <button onClick={onTrySamples} title="Six sample files on sleep and coral reefs, and a draft that shows what the app does">Try the sample library</button>}
+        </>
+      ),
     },
     {
       done: words > 0,
@@ -43,7 +59,7 @@ export function GettingStarted({ sources, words, citations, onAddSources, onAsk,
       <header>
         <div>
           <h2>Getting started</h2>
-          <p className="muted">Three steps from your sources to a cited draft.</p>
+          <p className="muted">From your sources to a cited draft.</p>
         </div>
         <button className="link" onClick={onHide}>Hide</button>
       </header>

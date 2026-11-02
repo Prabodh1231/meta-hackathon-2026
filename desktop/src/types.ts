@@ -563,7 +563,7 @@ export interface FileDuplicateReport {
 declare global {
   interface Window {
     rc?: {
-      config: () => Promise<{ baseUrl: string; token: string; logPath?: string }>
+      config: () => Promise<{ baseUrl: string; token: string; logPath?: string; samplesDir?: string }>
       pickFiles: () => Promise<string[]>
       pickFolder: () => Promise<string | null>
       /** Asks where to save; the dialog offers the type of `defaultName`'s extension (.docx, .xlsx, .csv). */
@@ -574,6 +574,8 @@ declare global {
       openPdf?: (path: string, page: number, title: string) => Promise<void>
       /** Where a dropped or picked file is on disk ('' for one that isn't a file on disk). */
       pathForFile?: (file: File) => string
+      /** Copies the demo corpus into the data folder and resolves to that folder. */
+      copySamples?: () => Promise<string>
     }
   }
 }

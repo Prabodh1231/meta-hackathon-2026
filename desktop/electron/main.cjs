@@ -20,6 +20,10 @@ const SUPPORTED = ['pdf', 'docx', 'pptx', 'md', 'markdown', 'txt', 'html', 'htm'
 const DATA_DIR = process.env.RC_DATA_DIR || path.join(os.homedir(), '.research-companion')
 const LOG_PATH = path.join(DATA_DIR, 'logs', 'backend.log')
 const MAX_RESTARTS_PER_MINUTE = 3
+// The demo corpus: the repo's samples folder, or its copy shipped in resources/samples. The
+// library reads a copy in the data folder, so removing the samples never touches the app's files.
+const SAMPLES_SOURCE = app.isPackaged ? path.join(process.resourcesPath, 'samples') : path.join(__dirname, '..', '..', 'samples')
+const SAMPLES_DIR = path.join(DATA_DIR, 'samples')
 
 let backend = null
 let backendConfig = null
@@ -170,7 +174,18 @@ async function smokeTest() {
   app.quit()
 }
 
-ipcMain.handle('rc:config', () => backendConfig)
+ipcMain.handle('rc:config', () => ({ ...backendConfig, samplesDir: SAMPLES_DIR }))
+
+// The sample library: copied into the data folder (files already there are kept), then read from there.
+ipcMain.handle('rc:copy-samples', async () => {
+  const names = await fs.promises.readdir(SAMPLES_SOURCE)
+  await fs.promises.mkdir(SAMPLES_DIR, { recursive: true })
+  for (const name of names) {
+    const to = path.join(SAMPLES_DIR, name)
+    if (!fs.existsSync(to)) await fs.promises.copyFile(path.join(SAMPLES_SOURCE, name), to)
+  }
+  return SAMPLES_DIR
+})
 
 ipcMain.handle('rc:pick-files', async (event) => {
   const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
