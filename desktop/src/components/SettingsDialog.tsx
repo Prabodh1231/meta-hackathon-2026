@@ -54,7 +54,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'writing', label: 'Writing & citations' },
   { id: 'review', label: 'Review & history' },
   { id: 'library', label: 'Library' },
-  { id: 'search', label: 'Search & embeddings' },
+  { id: 'search', label: 'Search' },
   { id: 'model', label: 'AI model' },
 ]
 
@@ -219,29 +219,26 @@ function CoreKeySetting() {
   )
 }
 
-/** "BGE-M3 on this computer's GPU": a model id and where it runs, in words. */
+/** "bge-small on this computer": a model id and where it runs, in words. */
 function placeText(id: string | null, on: string | null): string {
   if (!id) return 'off'
   if (id === 'loading') return 'the model still loading'
   if (id === 'failed') return "a model that couldn't load (see the backend log)"
-  const name = id.includes('rerank') ? 'Baseten reranker' : id.split(':').slice(1).join(':').split('/').pop() || id
-  const where = on === 'baseten' ? 'on Baseten' : on === 'cuda' ? "on this computer's GPU" : 'on this computer'
-  return `${name} ${where}`
+  const name = id.includes('rerank') ? 'Baseten reranker' : (id.split(':').slice(1).join(':').split('/').pop() || id).replace(/-en-v[\d.]+$/, '')
+  return `${name} ${on === 'baseten' ? 'on Baseten' : 'on this computer'}`
 }
 
-/** Where embeddings and reranking run: this computer, or Baseten for machines without a GPU. */
+/** The search models: embeddings always on this computer, the reranker here or on Baseten. */
 function SearchSection({ onChanged }: { onChanged: () => void }) {
   const [now, setNow] = useState<SearchSettings | null>(null)
   const [where, setWhere] = useState<SearchSettings['where']>('auto')
   const [key, setKey] = useState('')
-  const [embedModel, setEmbedModel] = useState('')
   const [rerankModel, setRerankModel] = useState('')
   const [state, setState] = useState<{ busy?: boolean; error?: string; done?: string }>({})
 
   const load = (s: SearchSettings) => {
     setNow(s)
     setWhere(s.where)
-    setEmbedModel(s.embed_model)
     setRerankModel(s.rerank_model)
   }
   useEffect(() => {
@@ -253,24 +250,18 @@ function SearchSection({ onChanged }: { onChanged: () => void }) {
 
   if (!now) return <p className="muted">{state.error ?? 'Loading…'}</p>
 
-  const changed =
-    where !== now.where || key.trim() !== '' || embedModel.trim() !== now.embed_model || rerankModel.trim() !== now.rerank_model
+  const changed = where !== now.where || key.trim() !== '' || rerankModel.trim() !== now.rerank_model
   async function save() {
     setState({ busy: true })
     try {
       const s = await api.updateSearch({
         where,
-        embed_model: embedModel.trim(),
         rerank_model: rerankModel.trim(),
         ...(key.trim() ? { api_key: key.trim() } : {}),
       })
       load(s)
       setKey('')
-      setState({
-        done: s.restart_needed
-          ? 'Saved. Restart the app to switch embeddings; your library is re-embedded once, then.'
-          : `Now: embeddings ${placeText(s.embedder, s.embedder_on)}; reranking ${placeText(s.reranker, s.reranker_on)}.`,
-      })
+      setState({ done: `Now reranking ${placeText(s.reranker, s.reranker_on)}.` })
       onChanged()
     } catch (e) {
       setState({ error: e instanceof Error ? e.message : String(e) })
@@ -281,14 +272,15 @@ function SearchSection({ onChanged }: { onChanged: () => void }) {
     <>
       <Setting title="Now" hint="Embeddings find the passages that match a question or a sentence you cite; the reranker puts the best first.">
         <p className="setting-now">
-          Embeddings: <b>{placeText(now.embedder, now.embedder_on)}</b>
+          Embeddings: <b>{placeText(now.embedder, 'cpu')}</b>
           <br />
           Reranking: <b>{placeText(now.reranker, now.reranker_on)}</b>
         </p>
+        <p className="muted">Embeddings always run on this computer, so your library's text is never sent anywhere to be embedded.</p>
       </Setting>
-      <Setting title="Where search runs">
+      <Setting title="Where reranking runs">
         <Choice
-          label="Where search runs"
+          label="Where reranking runs"
           value={where}
           options={[
             { value: 'auto', label: 'Auto' },
@@ -299,10 +291,10 @@ function SearchSection({ onChanged }: { onChanged: () => void }) {
         />
         <p className="muted">
           {where === 'auto'
-            ? `This computer's NVIDIA GPU when it has one; Baseten when it doesn't (and it's set up below); otherwise a smaller model on the CPU.${now.gpu ? ' This computer has a GPU, so search stays here.' : ''}`
+            ? 'Baseten when a reranker is set up there below; otherwise this computer.'
             : where === 'local'
-              ? 'Never uses Baseten. Without an NVIDIA GPU this means the smaller CPU model, which finds sources less well.'
-              : 'Always on Baseten, using the models below. Reranking stays here if no reranker is deployed there.'}
+              ? 'Never uses Baseten.'
+              : 'Always on Baseten, using the reranker below.'}
         </p>
       </Setting>
       <Setting
@@ -320,15 +312,12 @@ function SearchSection({ onChanged }: { onChanged: () => void }) {
           onChange={(e) => setKey(e.target.value)}
         />
       </Setting>
-      <Setting title="Embedding model on Baseten" hint="BAAI/bge-m3 deployed with Baseten's embeddings engine (BEI): paste its model ID or address. It's the model this computer's GPU runs, so moving between the two doesn't re-embed your library.">
-        <input className="setting-input" value={embedModel} spellCheck={false} placeholder="e.g. abcd1234" aria-label="Baseten embedding model" onChange={(e) => setEmbedModel(e.target.value)} />
-      </Setting>
-      <Setting title="Reranker on Baseten (optional)" hint="An open-source reranker deployed with BEI, such as BAAI/bge-reranker-v2-m3: its model ID or address. Deploy open-source models only.">
+      <Setting title="Reranker on Baseten (optional)" hint="An open-source reranker deployed with Baseten's embeddings engine (BEI), such as BAAI/bge-reranker-v2-m3: its model ID or address. Deploy open-source models only.">
         <input className="setting-input" value={rerankModel} spellCheck={false} placeholder="e.g. efgh5678" aria-label="Baseten reranker model" onChange={(e) => setRerankModel(e.target.value)} />
       </Setting>
       <p className="setting-warn">
-        On Baseten, the text of your passages, questions and cited sentences is sent there to be embedded and ranked. Your
-        files and drafts stay on this computer.
+        Reranking on Baseten sends each search's question and its candidate passages there. Your files, drafts and the
+        rest of your library stay on this computer.
       </p>
       <div className="setting-actions">
         <button className="primary" disabled={!changed || state.busy} onClick={save}>
@@ -414,7 +403,7 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
               : route === 'meta'
                 ? `Only Meta's API (${model.model}).`
                 : `Only ${model.baseten_model} on Baseten: if it's down, Muse is unavailable until it's back.`}
-            {route !== 'meta' && !model.has_baseten_key && ' Add your Baseten API key in Search & embeddings first.'}
+            {route !== 'meta' && !model.has_baseten_key && ' Add your Baseten API key in Search first.'}
           </p>
         </Setting>
       )}

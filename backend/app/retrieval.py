@@ -8,17 +8,44 @@ put the best few on top. See eval/ for the test set these choices were measured 
 
 import logging
 import re
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Protocol
 
 import httpx
 
-from .embeddings import _cuda_available, baseten_base, baseten_post
-
 log = logging.getLogger(__name__)
 
 DEFAULT_RERANKER = "Xenova/ms-marco-MiniLM-L-6-v2"
+
+
+def baseten_base(model: str) -> str:
+    """A Baseten deployment's base URL from its model ID ("abcd1234") or any URL of it (the
+    dashboard's /v1/embeddings, /rerank or /predict address)."""
+    model = model.strip().rstrip("/")
+    if re.fullmatch(r"[A-Za-z0-9]{6,16}", model):
+        return f"https://model-{model}.api.baseten.co/environments/production/sync"
+    if not re.match(r"https://[\w.-]+\.baseten\.co/", model):
+        raise ValueError("Paste a Baseten model ID or its https://model-….api.baseten.co/… address")
+    return re.sub(r"/(v1/embeddings|v1|rerank|predict)$", "", model)
+
+
+def baseten_post(client: httpx.Client, url: str, body: dict) -> httpx.Response:
+    """POST with retries: a deployment that scaled to zero answers 503 or times out while it wakes."""
+    for attempt in range(5):
+        try:
+            res = client.post(url, json=body)
+        except httpx.TimeoutException:
+            if attempt == 4:
+                raise
+            continue
+        if res.status_code in (429, 500, 502, 503, 504) and attempt < 4:
+            time.sleep(min(2 ** attempt, 10))
+            continue
+        res.raise_for_status()
+        return res
+    raise RuntimeError("unreachable")
 
 # Only true function words: everything else may be the term that matters, and BM25's IDF
 # already discounts words that are common in this library.
@@ -96,13 +123,12 @@ class BasetenReranker:
 
 
 def make_reranker(kind: str, cache_dir: Path, baseten_model: str = "", baseten_key: str = "") -> Reranker | None:
-    """kind: "none"; "auto" (Baseten when this computer has no CUDA GPU and it's set up, else the
-    local default, skipped if it can't load); "local"; "baseten" (when a reranker is deployed
-    there; the local one otherwise); or a local model name."""
+    """kind: "none"; "auto" (Baseten when a reranker is deployed there, else the local default,
+    skipped if it can't load); "local"; "baseten" (the local one when none is deployed there);
+    or a local model name."""
     if kind == "none":
         return None
-    on_baseten = bool(baseten_model and baseten_key) and (kind == "baseten" or (kind == "auto" and not _cuda_available()))
-    if on_baseten:
+    if baseten_model and baseten_key and kind in ("auto", "baseten"):
         try:
             return BasetenReranker(baseten_model, baseten_key)
         except Exception as exc:

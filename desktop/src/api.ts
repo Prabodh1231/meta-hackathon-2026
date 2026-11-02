@@ -209,7 +209,7 @@ export const api = {
   /** Set the CORE key (checked with CORE before it's saved); '' removes it. */
   updateSources: (coreApiKey: string) => request<SourceSettings>('PUT', '/settings/sources', { core_api_key: coreApiKey }),
   /** Where embeddings and reranking run, and the Baseten setup; checked before it's applied. */
-  updateSearch: (changes: { where?: string; api_key?: string; embed_model?: string; rerank_model?: string }) =>
+  updateSearch: (changes: { where?: string; api_key?: string; rerank_model?: string }) =>
     request<SearchSettings>('PUT', '/settings/search', changes),
   /** A library document's file, e.g. a PDF to show in the app. */
   documentFile: async (docId: number) => (await send('GET', `/documents/${docId}/file`)).arrayBuffer(),

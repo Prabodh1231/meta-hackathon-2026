@@ -61,6 +61,33 @@ def test_a_model_that_fails_to_load_is_reported_not_replaced(tmp_path, slow_mode
     assert client.get("/documents").status_code == 200
 
 
+def test_the_library_lists_while_it_is_reembedded(tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    first = Library(Settings(data_dir=data), provider=MockProvider(), embedder=HashEmbedder(dim=64), reranker=None)
+    for i in range(3):
+        note = data / f"note{i}.txt"
+        note.write_text(f"Note {i}: coral reefs bleach in marine heatwaves.")
+        first.ingest_path(str(note))
+    first.conn.close()
+
+    started, release = threading.Event(), threading.Event()
+
+    class SlowModel(HashEmbedder):  # a new model, mid-way through re-embedding the library
+        def embed(self, texts):
+            started.set()
+            release.wait(10)
+            return super().embed(texts)
+
+    monkeypatch.setattr(library_module, "make_embedder", lambda *_a, **_k: SlowModel())
+    lib = Library(Settings(data_dir=data), provider=MockProvider(), reranker=None)
+    assert started.wait(5)
+    client = TestClient(create_app(lib.settings, lib))
+    assert len(client.get("/documents").json()) == 3  # answered while the model is still embedding
+    assert client.get("/health").json()["embedder"] == "loading"
+    release.set()
+    assert lib.embedder.id == "hash-512" and lib.search("coral heatwaves")
+
+
 def test_a_new_model_reembeds_before_it_is_used(tmp_path, slow_model):
     data = tmp_path / "data"
     first = Library(Settings(data_dir=data), provider=MockProvider(), embedder=HashEmbedder(dim=64), reranker=None)

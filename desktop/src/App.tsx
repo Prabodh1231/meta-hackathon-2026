@@ -83,18 +83,16 @@ const SEARCH: Record<Exclude<Mode, 'write'>, { scope: string; placeholder: strin
 
 const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mock' }
 
-/** "Muse · BGE-M3 (GPU)": a short form of the backend's model ids. */
+/** "Muse · BGE-small": a short form of the backend's model ids. */
 function modelLine(h: Health): string {
   // "Muse via Baseten" when Baseten takes Muse's requests first.
   const via = h.provider === 'muse' && h.muse_route?.[0] === 'baseten' ? ' via Baseten' : ''
   const ai = `${PROVIDER_NAMES[h.provider] ?? h.provider}${via}`
-  // The backend answers before its search model has loaded (about 12 s for BGE-M3).
+  // The backend answers before its search model has loaded (downloading it, on first launch).
   if (h.embedder === 'loading') return `${ai} · loading search model…`
   if (h.embedder === 'failed') return `${ai} · search model failed to load`
   const model = h.embedder.split(':').slice(1).join(':').split('/').pop() || h.embedder
-  const embedder = model.replace(/-en-v[\d.]+$/, '').replace(/^bge/, 'BGE').replace('-m3', '-M3')
-  const device = h.embedder_device === 'cuda' ? ' (GPU)' : h.embedder_device === 'baseten' ? ' (Baseten)' : ''
-  return `${ai} · ${embedder}${device}`
+  return `${ai} · ${model.replace(/-en-v[\d.]+$/, '').replace(/^bge/, 'BGE')}`
 }
 
 // Whether the writing tools are open beside the draft; Settings can override it at launch.
