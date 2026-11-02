@@ -15,3 +15,6 @@ backend/eval/large/
 backend/build/
 backend/dist/
 desktop/release/
+
+# AI review panel runs: screenshots, sessions and marksheets
+desktop/scripts/app-review/results/

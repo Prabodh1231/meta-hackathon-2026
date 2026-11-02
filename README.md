@@ -32,6 +32,7 @@ Used in evaluation only, never shipped or called by the app: `scripts/eval_retri
 
 - [User guide](docs/USER_GUIDE.md): using the app, screen by screen.
 - [Architecture](docs/ARCHITECTURE.md): processes, modules, API, data and the frontend.
+- [AI review panel](desktop/scripts/app-review/README.md): AI models use the real app and mark it from four points of view; the first marksheet, what we learned, and what to improve.
 
 ## Layout
 
