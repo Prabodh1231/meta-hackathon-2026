@@ -951,6 +951,7 @@ export const LibraryPanel = memo(function LibraryPanel({
     })
   const owed = docs.filter((d) => d.missing.length > 0).length
   const importing = jobs.some((j) => j.finished_at == null) // an import retries what it owes when it ends
+  const adding = jobs.filter((j) => j.finished_at == null).reduce((n, j) => n + j.total, 0) // files in running imports
 
   // Bring a requested paper into view: show everything and open its details.
   useEffect(() => {
@@ -1355,7 +1356,16 @@ export const LibraryPanel = memo(function LibraryPanel({
               />
             )}
 
-            {docs.length === 0 && !showingRemoved && (
+            {docs.length === 0 && !showingRemoved && importing && (
+              <div className="lib-empty">
+                <div className="lib-empty-title">{adding ? `Adding ${adding} file${adding === 1 ? '' : 's'}` : 'Looking for files…'}</div>
+                <p>
+                  Each one appears here as soon as it's read. Muse takes about 15 seconds per file to read it, write a summary and
+                  tag it; the card above shows where each file is.
+                </p>
+              </div>
+            )}
+            {docs.length === 0 && !showingRemoved && !importing && (
               <div className="lib-empty">
                 <div className="lib-empty-title">Your library is empty</div>
                 <p>Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.</p>

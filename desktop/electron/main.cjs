@@ -330,6 +330,10 @@ ipcMain.handle('rc:open-pdf', async (_event, filePath, page, title) => {
   win.focus()
 })
 
+// Windows shows a page's notifications (a matrix or proposal finished) only for an app with an id:
+// the installer's appId when installed, the Electron executable in development.
+if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.researchcompanion.app' : process.execPath)
+
 app.whenReady().then(async () => {
   backendConfig = await startBackend()
   createWindow()

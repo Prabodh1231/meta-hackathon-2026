@@ -12,7 +12,8 @@ _lock = threading.Lock()
 
 
 def note(kind: str, text: str) -> None:
-    """kind: "retry" (the same route again after a pause) or "switch" (the next route)."""
+    """kind: "retry" (the same route again after a pause), "switch" (the next route) or "stage"
+    (which step of a long job is running, e.g. writing a proposal)."""
     with _lock:
         _events.append({"at": time.time(), "kind": kind, "text": text})
 

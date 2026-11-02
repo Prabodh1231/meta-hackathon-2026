@@ -170,6 +170,13 @@ export default function App() {
   const [matrixSeen, setMatrixSeen] = useState(false) // mounted once opened, so a matrix keeps its place
   const [errors, setErrors] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+  // An info message closes by itself after a while (errors stay until clicked): left open, the
+  // demo draft's "Opened…" message covered the page and status bar for whole sessions.
+  useEffect(() => {
+    if (!notice) return
+    const t = window.setTimeout(() => setNotice(null), 8000)
+    return () => window.clearTimeout(t)
+  }, [notice])
   const [draftId, setDraftId] = useState(initialDraft)
   const [drafts, setDrafts] = useState<DraftSummary[]>([])
   const [draftsOpen, setDraftsOpen] = useState(false) // the drafts menu under the title
@@ -1543,6 +1550,7 @@ export default function App() {
               onInsertFinding={insertFinding}
               onWriteProposal={(id) => setProposalFrom({ matrixId: id })}
               openRequest={openMatrix}
+              visible={mode === 'matrix'}
             />
           </div>
         )}

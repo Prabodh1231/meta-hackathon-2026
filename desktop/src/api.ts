@@ -186,8 +186,9 @@ export const api = {
 
   /** The Ask chat kept with a draft, oldest first. */
   askTurns: (draftId: number) => request<AskTurn[]>('GET', `/drafts/${draftId}/ask`),
-  ask: (draftId: number, question: string, context: string, selection: string) =>
-    request<AskTurn>('POST', `/drafts/${draftId}/ask`, { question, context, selection }),
+  /** `signal` cancels the wait; an answer Muse still gives is kept with the chat and shows next time it loads. */
+  ask: (draftId: number, question: string, context: string, selection: string, signal?: AbortSignal) =>
+    request<AskTurn>('POST', `/drafts/${draftId}/ask`, { question, context, selection }, signal),
   clearAsk: (draftId: number) => request<{ ok: boolean }>('DELETE', `/drafts/${draftId}/ask`),
   /** `signal` cancels the wait (Muse may still finish on the backend; the answer is dropped). */
   draft: (instruction: string, context: string, docIds: number[] | null, k?: number, signal?: AbortSignal) =>

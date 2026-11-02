@@ -23,6 +23,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 
 from .matrix import MAX_TABLE, _snapshot, union_snapshot
+from .providers import activity
 
 ROLES = ("independent", "dependent", "mediator", "moderator", "control")
 ROLE_LABELS = {"independent": "Independent", "dependent": "Dependent", "mediator": "Mediator",
@@ -161,16 +162,21 @@ class Proposals:
         gap_text, focus = self._gap_text(gaps), focus.strip()
         brief = (gap_text, exclusions.strip(), resources.strip(), avoid_text)
 
+        # The dialog shows each step as it starts (GET /model/activity), since writing takes minutes.
         # 1. Plan one study. 2. Review its questions against its core question, separately.
+        activity.note("stage", "Step 1 of 5: planning one study from the gaps.")
         plan = self._plan(self.lib.provider.plan_proposal(tables, gap_text, focus, var_text, exclusions.strip(),
                                                           resources.strip(), avoid_text), chosen)
+        activity.note("stage", "Step 2 of 5: reviewing the research questions against the core question.")
         review = self.lib.provider.review_questions(self._plan_text(plan))
         plan, question_review = self._apply_review(plan, review)
         # 3. Write the rest around the questions that remain.
+        activity.note("stage", "Step 3 of 5: writing the proposal.")
         raw = self.lib.provider.write_proposal(tables, self._plan_text(plan), *brief)
         p = self._normalize(raw, by_key, plan)
 
         violations = []
+        activity.note("stage", "Step 4 of 5: checking it against what you ruled out and against the matrices.")
         if exclusions.strip():
             violations = [{"rule": str(v.get("rule", "")).strip(), "section": str(v.get("section", "")).strip(),
                            "why": str(v.get("why", "")).strip()}
@@ -182,6 +188,7 @@ class Proposals:
                                               "\n".join(p["research_questions"]), [], [], rows,
                                               matrix_ids=[m["id"] for m in ms])
         checks = self._check(fid, p)
+        activity.note("stage", "Step 5 of 5: rewriting paragraphs the matrices don't back.")
         repaired = self._repair(fid, p, checks, rows)
         removed = self._drop_unstated_measures(p, checks)
         doc = self._doc(fid, p, checks)
