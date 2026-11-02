@@ -306,9 +306,12 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.get("/health")
     def health():
+        # Answers while the embedding model is still loading (embedder: "loading"), never waiting for it.
+        state = lib.embedder_state()
         return {"ok": True, "api": API_VERSION, "provider": lib.provider.name,
-                "muse_route": getattr(lib.provider, "route", []), "embedder": lib.embedder.id,
-                "embedder_device": getattr(lib.embedder, "device", "cpu"),
+                "muse_route": getattr(lib.provider, "route", []),
+                "embedder": lib.embedder.id if state == "ready" else state,
+                "embedder_device": getattr(lib.embedder, "device", "cpu") if state == "ready" else "",
                 "reranker": lib.reranker.id if lib.reranker else None}
 
     @app.post("/ingest/path")

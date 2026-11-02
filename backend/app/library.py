@@ -20,7 +20,7 @@ from .citations import VERDICT_STATUS, locate_quote
 from .citegraph import build_graph, focus, keyword_links, missing_works
 from .refparse import Reference, match_reference, norm, parse_references
 from . import embeddings as embeddings_module
-from .embeddings import Embedder, from_blob, make_embedder, to_blob
+from .embeddings import Embedder, LoadingEmbedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, clean_page_label, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
@@ -139,8 +139,11 @@ class Library:
         self.lock = threading.RLock()
         self._embed_lock = threading.Lock()  # one GPU/model call at a time while files ingest in parallel
         self.provider = provider or make_provider(settings)
-        self.embedder = embedder or make_embedder(
-            settings.embedder, settings.data_dir / "models", settings.baseten_embed_model, settings.baseten_api_key)
+        # The embedding model loads in the background (see LoadingEmbedder), re-embedding the
+        # library first if it's a different model, so the library lists at once.
+        self.embedder = self._reembed_if_needed(embedder) if embedder is not None else LoadingEmbedder(
+            lambda: self._reembed_if_needed(make_embedder(
+                settings.embedder, settings.data_dir / "models", settings.baseten_embed_model, settings.baseten_api_key)))
         self.reranker = (
             make_reranker(settings.reranker, settings.data_dir / "models", settings.baseten_rerank_model,
                           settings.baseten_api_key)
@@ -153,7 +156,6 @@ class Library:
         self._docs: np.ndarray | None = None
         self._mat: np.ndarray | None = None
         self._name_vectors: dict[tuple[str, str], np.ndarray] = {}  # (embedder id, folder name) -> vector
-        self._reembed_if_needed()
         self._backfill_keywords()
         self._fix_page_labels()
         self._backfill_file_dates()
@@ -425,20 +427,22 @@ class Library:
         db.set_meta(self.conn, key, str(start + n))
         return list(range(start, start + n))
 
-    def _reembed_if_needed(self) -> None:
+    def _reembed_if_needed(self, embedder: Embedder) -> Embedder:
+        """Re-embed every chunk when `embedder` isn't the model the library was embedded with; returns it."""
         with self.lock, self.conn:
             stored = db.get_meta(self.conn, "embedder")
-            if stored and stored != self.embedder.id:
-                log.info("Embedder changed (%s -> %s); re-embedding all chunks", stored, self.embedder.id)
+            if stored and stored != embedder.id:
+                log.info("Embedder changed (%s -> %s); re-embedding all chunks", stored, embedder.id)
                 rows = self.conn.execute("SELECT id, text FROM chunks").fetchall()
                 for i in range(0, len(rows), 256):
                     batch = rows[i : i + 256]
-                    vecs = self.embedder.embed([r["text"] for r in batch])
+                    vecs = embedder.embed([r["text"] for r in batch])
                     self.conn.executemany(
                         "UPDATE chunks SET embedding = ? WHERE id = ?",
                         [(to_blob(v), r["id"]) for r, v in zip(batch, vecs)],
                     )
-            db.set_meta(self.conn, "embedder", self.embedder.id)
+            db.set_meta(self.conn, "embedder", embedder.id)
+        return embedder
 
     def _fix_page_labels(self) -> None:
         """Page labels stored before clean_page_label existed, as UTF-16 hex ('<FEFF0038>'): decode them."""
@@ -2001,14 +2005,19 @@ class Library:
 
     # ---------- where embeddings and reranking run ----------
 
+    def embedder_state(self) -> str:
+        """'loading', 'ready' or 'failed': whether search can embed yet."""
+        return getattr(self.embedder, "state", "ready")
+
     def search_settings(self) -> dict:
         """Where embeddings and reranking run, for the Settings window. The key is never sent back."""
         s = self.settings
         where = s.embedder if s.embedder in SEARCH_PLACES else "auto"
+        state = self.embedder_state()
         return {
             "where": where,
-            "embedder": self.embedder.id,
-            "embedder_on": getattr(self.embedder, "device", "cpu"),
+            "embedder": self.embedder.id if state == "ready" else state,
+            "embedder_on": getattr(self.embedder, "device", "cpu") if state == "ready" else "",
             "reranker": self.reranker.id if self.reranker else None,
             "reranker_on": getattr(self.reranker, "device", "cpu") if self.reranker else None,
             "has_key": bool(s.baseten_api_key),

@@ -63,7 +63,7 @@ Other commands:
 - `cd backend && .venv/Scripts/python -m pytest`: runs the backend tests.
 - `RC_BACKEND_URL=http://127.0.0.1:8765 npm run dev`: points Electron at a backend you started yourself, for example `uvicorn app.main:app --reload --port 8765` (the token check is off in this mode).
 
-On first launch the backend downloads the local embedding model into the data folder: bge-small (about 30 MB) on a CPU-only machine, or BGE-M3 (about 2 GB) when an NVIDIA GPU is found. The UI shows "Starting backend…" until that finishes.
+On first launch the backend downloads the local embedding model into the data folder: bge-small (about 30 MB) on a CPU-only machine, or BGE-M3 (about 2 GB) when an NVIDIA GPU is found. The backend loads the embedding model in the background, so the library and drafts open at once while the status bar says "loading search model…"; search, cite suggestions and imports wait for it. Loading BGE-M3 takes about 12 s on every launch (importing torch and sentence-transformers, then the weights), longer the first time while it downloads.
 
 For the GPU model, install a CUDA build of PyTorch before the other requirements, for example `pip install torch --index-url https://download.pytorch.org/whl/cu124`. BGE-M3 runs in fp16 and fits in 6 GB of VRAM. Set `RC_EMBEDDER=fastembed` to keep the small CPU model.
 
