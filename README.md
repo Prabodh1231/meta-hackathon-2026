@@ -95,7 +95,7 @@ The **[user guide](docs/USER_GUIDE.md)** walks through every screen with picture
 
 - The **rail** on the left switches between four places: **Write** (the draft, with its tools beside it), **Library** (your sources), **Network** (who cites whom) and **Matrix** (literature review matrices: one row per paper, a column per question such as sample, setting, method, findings and limitations, every cell a short answer resting on a quote found in the paper, beside sortable, filterable columns of each paper's details such as year, journal, citations and abstract; with gap finding, writing from the matrix, insertion into the draft as a cited table, and Excel, CSV and Word export). One fills the window at a time.
 - The **top bar** has the draft's title (click it for your drafts: new, import a Word file, switch, delete), its save state and version, **one search box**, Export and Settings. In Write the search box finds anything and runs any action (Ctrl K); in the Library it filters your sources; in the Network it finds papers on a topic.
-- Beside the draft, five **tabs**: **Assistant** (drafts from your sources with cited quotes), **Citations** (confirm `cite` markers, and see a cited quote highlighted on its page), **References**, **Review** (duplication) and **History** (versions).
+- Beside the draft, the **tabs**: **Assistant** (drafts from your sources with cited quotes), **Highlights** (what you highlighted and noted while reading a PDF in the app, ranked for the paragraph you're writing: insert one as a verified quote, or have Muse write from a few), **Ask** (a chatbot), **Citations** (confirm `cite` markers, and see a cited quote highlighted on its page), **References**, **Review** (duplication) and **History** (versions).
 - The **Library** is a reference manager: **+ Add sources** (files, a folder, or a pasted link or path; or drop files on the window), subject folders, a sortable table, and the open paper's details.
 - The **status bar** shows live counts for the draft; each one opens its tool.
 
@@ -178,4 +178,5 @@ Embeddings always run on this computer. The reranker, which puts the best passag
 - **Documents imported on the mock** keep its rough metadata, summaries and tags until they're re-imported with Muse on.
 - **Installer:** Windows only, unsigned (Windows warns about an unknown publisher), with the default Electron icon.
 - **Import jobs live in memory:** if the backend restarts mid-import, the files already added stay, but the rest of that import has to be started again.
-- **PDF viewer download name:** Chromium's viewer shows and downloads the file under a random blob name; Show in folder finds the original.
+- **Reading beside the draft:** the reader, where you highlight, opens over the app; **Open in PDF viewer** gives a separate window to keep beside the draft, but highlights can't be made there.
+- **Highlights on scanned pages:** a page without a text layer can't be selected, so it can't be highlighted.

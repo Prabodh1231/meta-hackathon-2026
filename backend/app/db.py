@@ -243,6 +243,21 @@ CREATE TABLE IF NOT EXISTS matrix_cells (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (matrix_id, doc_id, col)
 );
+-- Highlights and notes made while reading a PDF in the app: the selected text, its page, and
+-- where it is in the page's stored text (NULL when it couldn't be found there, so it can't be cited).
+-- Offsets rather than a chunk id, so a paper added again keeps its highlights.
+CREATE TABLE IF NOT EXISTS highlights (
+  id INTEGER PRIMARY KEY,
+  doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  page INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  start INTEGER,
+  "end" INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS highlights_doc ON highlights(doc_id, page);
 """ + FINDINGS_TABLE
 
 

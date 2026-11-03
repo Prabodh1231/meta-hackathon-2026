@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { api } from '../api'
 import type { Citation, DraftSentence } from '../types'
-import { StatusBadge } from './StatusBadge'
+import { DraftPreview, verifyAll, withCids } from './DraftPreview'
 import { WaitStatus } from './WaitStatus'
 
 // Starting points that work with any library; clicking one fills the box to edit or send.
@@ -25,13 +25,11 @@ interface Props {
   onError: (msg: string) => void
 }
 
-let nextCid = 0
-
 export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, getContext, onInsert, onVerified, onOpenCitation, onError }: Props) {
   const [instruction, setInstruction] = useState('')
   const [sentences, setSentences] = useState<DraftSentence[] | null>(null)
   const [busy, setBusy] = useState(false)
-  const [picked, setPicked] = useState<Set<number>>(new Set()) // sentences ticked for inserting
+  const [draftNo, setDraftNo] = useState(0) // a new draft starts with nothing ticked
   // While drafting: when it started (the wait line counts from it), and how to stop waiting.
   const [startedAt, setStartedAt] = useState(0)
   const [cancelled, setCancelled] = useState(false)
@@ -43,13 +41,6 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
     setCancelled(true)
   }
 
-  const toggle = (i: number) =>
-    setPicked((p) => {
-      const n = new Set(p)
-      n.has(i) ? n.delete(i) : n.add(i)
-      return n
-    })
-
   async function draft() {
     const ctrl = new AbortController()
     controller.current = ctrl
@@ -57,43 +48,20 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
     setStartedAt(Date.now())
     setCancelled(false)
     setSentences(null)
-    setPicked(new Set())
+    setDraftNo((n) => n + 1)
     try {
       const res = await api.draft(instruction.trim(), getContext(), scope.length ? scope : null, passages, ctrl.signal)
       if (ctrl.signal.aborted) return
-      const withIds = res.sentences.map((s) => ({
-        ...s,
-        citations: s.citations.map((c) => ({ ...c, cid: `c${Date.now()}-${nextCid++}` })),
-      }))
+      const withIds = withCids(res.sentences)
       setSentences(withIds)
       // Show the draft immediately, then check each citation in the background.
-      for (const s of withIds) {
-        for (const c of s.citations) {
-          if (c.status !== 'pending') continue
-          api
-            .verify(s.text, c.chunk_id, c.quote)
-            .then((v) => {
-              setSentences((cur) =>
-                cur?.map((cs) => ({
-                  ...cs,
-                  citations: cs.citations.map((cc) => (cc.cid === c.cid ? { ...v, cid: c.cid } : cc)),
-                })) ?? cur,
-              )
-              onVerified(c.cid!, v)
-            })
-            .catch((e) => onError(`Verification failed: ${e instanceof Error ? e.message : e}`))
-        }
-      }
+      verifyAll(withIds, setSentences, onVerified, onError)
     } catch (e) {
       if (!ctrl.signal.aborted) onError(e instanceof Error ? e.message : String(e))
     } finally {
       if (controller.current === ctrl) setBusy(false) // a newer draft may have started since
     }
   }
-
-  const flagged = sentences?.filter(
-    (s) => s.citations.length === 0 || s.citations.every((c) => c.status !== 'verified' && c.status !== 'pending'),
-  ).length
 
   if (sourceCount === 0) {
     return (
@@ -162,46 +130,7 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
       )}
 
       {sentences && sentences.length > 0 && (
-        <div className="draft-preview">
-          <div className="row">
-            <strong>Draft</strong>
-            {!!flagged && <span className="warn">{flagged} sentence(s) need attention</span>}
-          </div>
-          <p className="muted draft-hint">Tick the sentences you want, then insert them. Click a citation to see its quote.</p>
-          {sentences.map((s, i) => (
-            <div key={i} className={`draft-sentence${picked.has(i) ? ' picked' : ''}`}>
-              <label className="draft-pick">
-                <input type="checkbox" checked={picked.has(i)} onChange={() => toggle(i)} />
-                <p>{s.text}</p>
-              </label>
-              <div className="draft-cites">
-                {s.citations.length === 0 && <StatusBadge status="unsupported" text="no citation" />}
-                {s.citations.map((c) => (
-                  <button key={c.cid} className="cite-row" onClick={() => onOpenCitation(c)} title={c.reason}>
-                    <StatusBadge status={c.status} />
-                    <span>{c.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-          <div className="row draft-actions">
-            <button className="link" onClick={() => setPicked(picked.size === sentences.length ? new Set() : new Set(sentences.map((_, i) => i)))}>
-              {picked.size === sentences.length ? 'Select none' : 'Select all'}
-            </button>
-            <button
-              className="primary"
-              disabled={!picked.size}
-              onClick={() => {
-                // In the draft's order, whatever order they were ticked in.
-                onInsert(sentences.filter((_, i) => picked.has(i)))
-                setPicked(new Set())
-              }}
-            >
-              {picked.size ? `Insert ${picked.size} selected` : 'Tick sentences to insert'}
-            </button>
-          </div>
-        </div>
+        <DraftPreview key={draftNo} sentences={sentences} onInsert={onInsert} onOpenCitation={onOpenCitation} />
       )}
     </div>
   )

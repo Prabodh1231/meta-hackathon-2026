@@ -16,6 +16,8 @@ import type {
   DuplicateReport,
   Comparison,
   FetchResult,
+  FetchedHighlight,
+  Highlight,
   MissingWorks,
   FileDuplicateReport,
   Finding,
@@ -59,7 +61,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 17
+export const API_VERSION = 18
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -196,6 +198,16 @@ export const api = {
   /** Muse's retries and route switches since `since` (epoch seconds), to explain a slow answer. */
   modelActivity: (since: number) =>
     request<{ now: number; events: { at: number; kind: 'retry' | 'switch'; text: string }[] }>('GET', `/model/activity?since=${since}`),
+  documentHighlights: (docId: number) => request<Highlight[]>('GET', `/documents/${docId}/highlights`),
+  addHighlight: (docId: number, page: number, text: string, note = '') =>
+    request<Highlight>('POST', `/documents/${docId}/highlights`, { page, text, note }),
+  setHighlightNote: (id: number, note: string) => request<Highlight>('PATCH', `/highlights/${id}`, { note }),
+  deleteHighlight: (id: number) => request<{ ok: boolean }>('DELETE', `/highlights/${id}`),
+  /** Highlights and notes closest to the paragraph being written, ranked on this computer. */
+  fetchHighlights: (context: string) => request<FetchedHighlight[]>('POST', '/highlights/fetch', { context }),
+  /** Muse writes cited sentences from these highlights; each citation still needs verifying. */
+  writeFromHighlights: (ids: number[], context: string, signal?: AbortSignal) =>
+    request<DraftResult>('POST', '/highlights/write', { ids, context }, signal),
   verify: (claim: string, chunkId: number, quote: string) =>
     request<Citation>('POST', '/citations/verify', { claim, chunk_id: chunkId, quote }),
   suggestCitations: (claim: string, docIds: number[] | null) =>
