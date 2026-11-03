@@ -38,7 +38,7 @@ How Research Companion is put together, for anyone changing it. For using the ap
 | `ingest.py` | Parsers for PDF, DOCX, PPTX, Markdown/text, HTML and URLs, and images. Each returns page-addressed text. |
 | `jobs.py` | Background imports: eight files at a time (`INGEST_WORKERS` in `library.py`), with per-file stages for the progress card. Within a file, the Muse calls (metadata, summary, tags, folder scoring) run alongside the embedding; folder scoring starts once the vectors are ready. |
 | `embeddings.py` | Embedders: bge-small via fastembed on this computer, the only model the app ships (BGE-M3 was measured and dropped: see [backend/eval/README.md](../backend/eval/README.md)), a hashing fallback, and `LoadingEmbedder`, which loads it in the background. `bundled_model` finds the installer's copy of a model in `RC_MODELS_DIR` (Electron passes `resources/models`, filled by [scripts/fetch_models.py](../backend/scripts/fetch_models.py)); the embedder and the local reranker load from there instead of downloading. |
-| `retrieval.py` | Keyword (BM25) queries, reciprocal rank fusion, the optional reranker: local, or on Baseten (`BasetenReranker`, BEI `/rerank`, with the Baseten URL and retry helpers). |
+| `retrieval.py` | Keyword (BM25) queries, reciprocal rank fusion, and the local cross-encoder reranker. |
 | `citations.py` | Finding a model's quote in the source, tolerant of whitespace, case, curly quotes and OCR slips. |
 | `references.py` | APA 7, MLA 9, IEEE and BibTeX from stored metadata. |
 | `refparse.py`, `citegraph.py` | Reading reference lists; who cites whom, shared references, works the library lacks. |
@@ -48,7 +48,7 @@ How Research Companion is put together, for anyone changing it. For using the ap
 | `draft_review.py` | A draft as text at three levels; duplication and version comparison. |
 | `docx_import.py`, `export_docx.py` | Word in and out. |
 | `dupfiles.py` | Duplicate files in the library. Suggests; never deletes. |
-| `providers/` | The model interface (`base.py`), Muse over an OpenAI-compatible API (`muse.py`: Meta's Model API, or Baseten's), `FailoverProvider` (`failover.py`: each request to the first service that answers, a failed one rested for a minute), an offline mock (`mock.py`), and the prompts and JSON schemas (`prompts.py`). `make_provider` builds the route from `MUSE_ROUTE`. |
+| `providers/` | The model interface (`base.py`), Muse over Meta's OpenAI-compatible Model API (`muse.py`), an offline mock (`mock.py`), and the prompts and JSON schemas (`prompts.py`). |
 
 ## API
 
@@ -65,7 +65,7 @@ All JSON. Main groups (see `main.py` for the full list):
 | Drafts | `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `PATCH /drafts/{id}` (name; empty: its first line), `POST /drafts/import`, `POST /drafts/convert-docx`, `POST /drafts/check-duplicates` |
 | Versions | `GET/POST /drafts/{id}/versions`, `GET/PATCH/DELETE /drafts/{id}/versions/{v}`, `POST …/compare`, `POST …/restore` |
 | Matrices | `GET/POST /matrices`, `GET /matrices/columns`, `POST /matrices/papers` (a folder's or a topic's papers), `GET/PATCH/DELETE /matrices/{id}`, `PUT /matrices/{id}/cells/{doc}/{column}`, `POST /matrices/{id}/rerun`, `POST /matrices/{id}/gaps`, `POST /matrices/{id}/synthesis`, `GET /matrices/{id}/table`, `GET /matrices/{id}/export?format=xlsx\|csv\|docx` |
-| Settings | `GET/PATCH /settings` (preferences, validated against `USER_SETTINGS` in `library.py`), `GET/PUT /settings/model` (Muse or mock, key, reasoning effort; the key is never returned), `GET/PUT /settings/search` (where embeddings and reranking run, Baseten key and model IDs; tried before they're applied) |
+| Settings | `GET/PATCH /settings` (preferences, validated against `USER_SETTINGS` in `library.py`), `GET/PUT /settings/model` (Muse or mock, key, reasoning effort; the key is never returned), `GET /settings/search` (the embedding and reranking models, both local) |
 | Files | `GET /documents/{id}/file`: a library document's file, for the PDF viewer and pdf.js. Only files the library holds. |
 | Other | `POST /export/docx`, `GET /search` |
 

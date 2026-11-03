@@ -10,7 +10,7 @@ gaps, overstatements and contradictions, each with the verdict a careful reviewe
     python scripts/eval_matrix_check.py --provider mock # the offline mock, to try the script itself
     python scripts/eval_matrix_check.py --save          # write eval/matrix_check_results.json
 
-It reads RC_PROVIDER, MUSE_API_KEY / BASETEN_API_KEY and MUSE_ROUTE like the app (environment first,
+It reads RC_PROVIDER and MUSE_API_KEY like the app (environment first,
 then the data folder's .env). Nothing is stored in the library.
 """
 
@@ -117,10 +117,10 @@ def main() -> None:
     try:
         provider = make_provider(settings)
     except ValueError as e:
-        sys.exit(f"{e}. Set RC_PROVIDER=muse and MUSE_API_KEY (or BASETEN_API_KEY) in the environment or in "
+        sys.exit(f"{e}. Set RC_PROVIDER=muse and MUSE_API_KEY in the environment or in "
                  f"{settings.data_dir / '.env'}, or try the script with --provider mock.")
     table = _table_text(ROWS, quotes=True)
-    print(f"Provider: {settings.provider}{' (' + settings.route + ')' if settings.provider == 'muse' else ''}")
+    print(f"Provider: {settings.provider}{' (' + settings.muse_model + ')' if settings.provider == 'muse' else ''}")
     print(f"Matrix: {len(ROWS)} studies, {len(table)} characters; {len(CASES)} sentences × {args.runs} run(s)\n")
 
     results, exact, acceptable, flips, seconds = [], 0, 0, 0, []

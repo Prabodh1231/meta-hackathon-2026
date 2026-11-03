@@ -85,9 +85,7 @@ const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mo
 
 /** "Muse · BGE-small": a short form of the backend's model ids. */
 function modelLine(h: Health): string {
-  // "Muse via Baseten" when Baseten takes Muse's requests first.
-  const via = h.provider === 'muse' && h.muse_route?.[0] === 'baseten' ? ' via Baseten' : ''
-  const ai = `${PROVIDER_NAMES[h.provider] ?? h.provider}${via}`
+  const ai = PROVIDER_NAMES[h.provider] ?? h.provider
   // The backend answers before its search model has loaded (downloading it, on first launch).
   if (h.embedder === 'loading') return `${ai} · loading search model…`
   if (h.embedder === 'failed') return `${ai} · search model failed to load`

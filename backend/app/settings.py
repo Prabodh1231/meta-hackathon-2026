@@ -8,8 +8,8 @@ class Settings:
     data_dir: Path
     provider: str = "mock"  # mock | muse
     embedder: str = "auto"  # bge-small (fastembed); "hash" for tests and scripts
-    # Cross-encoder reranker: auto | local | baseten | none | a fastembed model name. "none" by default here
-    # (tests, scripts); from_env() defaults to "auto" so the app uses it.
+    # Cross-encoder reranker, always on this computer: auto | local | none | a fastembed model name.
+    # "none" by default here (tests, scripts); from_env() defaults to "auto" so the app uses it.
     reranker: str = "none"
     api_token: str = ""  # set by Electron per launch; empty disables the check
     parent_pid: int = 0  # set by Electron; the backend exits when that process does
@@ -19,25 +19,9 @@ class Settings:
     muse_reasoning_effort: str = "low"  # minimal | low | medium | high | xhigh
     contact_email: str = ""  # sent to OpenAlex, Semantic Scholar and Crossref when finding cited papers (polite pool)
     core_api_key: str = ""  # CORE (core.ac.uk) is searched for free copies only with the user's own key
-    # Muse Spark is also served by Baseten's Model APIs. "baseten-first" sends each request there
-    # and to Meta's API if Baseten fails; "meta" and "baseten" use one only. Empty: Baseten first
-    # when a Baseten key is set, else Meta.
-    muse_route: str = ""
-    baseten_muse_base: str = "https://inference.baseten.co/v1"
-    baseten_muse_model: str = "meta-models/muse-spark-open-1026"
-    # A reranker deployed on Baseten (see make_reranker): model ID or URL. The key also serves Muse.
-    baseten_api_key: str = ""
-    baseten_rerank_model: str = ""
     # The search models shipped with the installer (scripts/fetch_models.py), read-only. A model
     # found there loads from it; otherwise it downloads into <data dir>/models on first use.
     models_dir: Path | None = None
-
-    @property
-    def route(self) -> str:
-        """Where Muse requests go: muse_route, or its default."""
-        if self.muse_route in ("baseten-first", "meta", "baseten"):
-            return self.muse_route
-        return "baseten-first" if self.baseten_api_key else "meta"
 
     @property
     def db_path(self) -> Path:
@@ -67,12 +51,7 @@ class Settings:
             muse_reasoning_effort=env("MUSE_REASONING_EFFORT", cls.muse_reasoning_effort),
             contact_email=env("RC_CONTACT_EMAIL"),
             core_api_key=env("CORE_API_KEY"),
-            muse_route=env("MUSE_ROUTE").lower(),
-            baseten_muse_base=env("BASETEN_MUSE_BASE", cls.baseten_muse_base),
-            baseten_muse_model=env("BASETEN_MUSE_MODEL", cls.baseten_muse_model),
-            baseten_api_key=env("BASETEN_API_KEY"),
             models_dir=Path(os.environ["RC_MODELS_DIR"]) if os.environ.get("RC_MODELS_DIR") else None,
-            baseten_rerank_model=env("BASETEN_RERANK_MODEL"),
         )
 
 

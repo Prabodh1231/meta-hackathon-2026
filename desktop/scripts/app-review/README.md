@@ -9,7 +9,7 @@ Several AI models each **use the real app** and then mark it out of 10 from four
 ```bash
 cd desktop
 npm run build                                   # reviewers use the built UI
-node scripts/app-review/review.mjs run --reviewers muse,muse-open,nemotron-ultra,nemotron-vl --steps 20
+node scripts/app-review/review.mjs run --reviewers muse,nemotron-ultra,nemotron-vl --steps 20
 node scripts/app-review/review.mjs run --reviewers gemma --run scripts/app-review/results/<run>   # add to a run
 node scripts/app-review/review.mjs marksheet scripts/app-review/results/<run>                     # rebuild the page
 ```
@@ -17,7 +17,6 @@ node scripts/app-review/review.mjs marksheet scripts/app-review/results/<run>   
 | Reviewer key | Model | Through | Cost |
 |---|---|---|---|
 | `muse` | Muse Spark 1.3 (Meta) | Meta's Model API, key from `~/.research-companion/.env` | hackathon |
-| `muse-open` | Muse Spark open (Meta) | Baseten Model APIs (the hackathon key covers only Muse) | hackathon |
 | `nemotron-ultra` | Nemotron 3 Ultra 550B (NVIDIA), text only | OpenRouter `:free` | free |
 | `nemotron-vl` | Nemotron 3.5 Super VL (NVIDIA), sees screenshots | OpenRouter `:free` | free |
 | `gemma` | Gemma 4 31B (Google, open) | OpenRouter `:free` | free |
@@ -37,7 +36,7 @@ Five reviewers, about 20 steps each; Gemini took 27.
 |---|---|---|---|---|---|
 | Gemini 3.8 Flash (Antigravity agent, browser version) | 7 | 7.8 | 8.0 | 7.4 | 8.0 |
 | Muse Spark 1.3 (Meta) | 7 | 7.0 | 6.8 | 7.2 | 7.4 |
-| Muse Spark open (Meta, Baseten) | 7 | 6.8 | 6.2 | 6.6 | 7.0 |
+| Muse Spark open (Meta, Baseten; reviewer since removed) | 7 | 6.8 | 6.2 | 6.6 | 7.0 |
 | Nemotron 3 Ultra 550B (NVIDIA) | 6 | 5.6 | 6.0 | 6.6 | 6.8 |
 | Nemotron 3.5 Super VL (NVIDIA) | 6 | 5.6 | 5.8 | 5.6 | 6.0 |
 | **Average** | **6.6** | | | | |
@@ -77,7 +76,7 @@ In the order the reviewers' marks suggest:
 2. **Import progress.** The Library shows "0 sources" and "0/6" for the first ~15 s of an import, with no per-file detail. Two reviewers flagged it.
 3. **Layout overlaps.** The sticky formatting toolbar covered the Assistant's Insert button for one reviewer. The right panel feels crowded with the citation queue, source view and drafting controls together.
 4. **Search palette backdrop.** Clicking near the search pill opens the palette, whose backdrop blocks clicks on the tabs until Esc.
-5. **Perceived speed on demo day.** Drafting takes 7–30 s on Muse, more when a shared key is rate-limited. Use your own Muse key for the demo, and keep the Baseten route first; it's about twice as fast.
+5. **Perceived speed on demo day.** Drafting takes 7–30 s on Muse, more when a shared key is rate-limited. Use your own Meta Model API key for the demo, not a shared one.
 6. **Reach of the demo path.** Reviewers rarely reached Network or Matrix within 20 steps, so those features scored "not tried". A checklist step pointing at the review matrix would show more of what the app does.
 
 ## Next time

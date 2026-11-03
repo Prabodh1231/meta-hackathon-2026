@@ -387,7 +387,6 @@ export interface Health {
   provider: string
   embedder: string // the model's id, or "loading" / "failed" while the backend starts
   embedder_device?: string // "cuda" or "cpu"; missing from older backends
-  muse_route?: string[] // Muse's services in the order requests try them, e.g. ["baseten", "meta"]
 }
 
 export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
@@ -455,15 +454,10 @@ export interface SourceSettings {
   core_key_hint: string // last 4 characters of the saved key
 }
 
-/** Where embeddings and reranking run. The Baseten key is never sent back, only whether there is one. */
+/** The search models. Both run on this computer. */
 export interface SearchSettings {
-  where: 'auto' | 'local' | 'baseten' // where reranking runs; embeddings always run on this computer
   embedder: string // the model's id, or "loading" / "failed" while the backend starts
   reranker: string | null
-  reranker_on: string | null // "cpu" or "baseten"
-  has_key: boolean
-  key_hint: string
-  rerank_model: string // a Baseten model ID or address
 }
 
 /** The language model in use. The API key is never sent back, only whether there is one. */
@@ -475,10 +469,6 @@ export interface ModelSettings {
   reasoning_effort: string
   efforts: string[]
   env_locked: string[] // set in the environment, which wins over the app's .env at the next start
-  route: 'baseten-first' | 'meta' | 'baseten' // where Muse requests go
-  routes: string[] // the services in use, in the order requests try them
-  has_baseten_key: boolean
-  baseten_model: string
 }
 
 /** A draft in the drafts menu (without its content). */

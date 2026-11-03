@@ -8,9 +8,9 @@ Built for the **Meta Global AI Developer Hackathon** (Oct 27 – Nov 4, 2026).
 
 | Model | Where | What it does here |
 |---|---|---|
-| **Muse Spark** (`muse-spark-1.3`) via the [Meta Model API](https://api.meta.ai/v1), and `muse-spark-open-1026` via [Baseten's Model APIs](https://www.baseten.co/) | `backend/app/providers/muse.py`, `failover.py` | Everything that needs a language model: title, author and summary extraction, tagging, naming topics, OCR for scans and images, drafting with cited quotes, and judging whether each quote supports its claim. It takes text and images natively and returns strict JSON. |
+| **Muse Spark** (`muse-spark-1.3`) via the [Meta Model API](https://dev.meta.ai/products/meta-model-api) (`https://api.meta.ai/v1`) | `backend/app/providers/muse.py` | Everything that needs a language model: title, author and summary extraction, tagging, naming topics, OCR for scans and images, drafting with cited quotes, and judging whether each quote supports its claim. It takes text and images natively and returns strict JSON. |
 
-Muse is the only language model the app uses: every piece of reading, writing and judging above, plus review matrices, gap finding and research proposals, is Muse's work. Search uses the open-source models listed next. Embeddings always run on this computer; only the optional reranker can run on Baseten (see [Reranking on Baseten](#reranking-on-baseten)). Only text chunks and images that need OCR leave the machine for Muse; with reranking on Baseten, so do each search's question and candidate passages. Without a key the app falls back to an offline **mock model** (see [Using Muse](#using-muse)).
+Muse is the only language model the app uses: every piece of reading, writing and judging above, plus review matrices, gap finding and research proposals, is Muse's work. Every Muse request goes to Meta's Model API. Search uses the open-source models listed next, which always run on this computer. Only text chunks and images that need OCR leave the machine, for Muse. Without a key the app falls back to an offline **mock model** (see [Using Muse](#using-muse)).
 
 ## Open-source models (not Meta's)
 
@@ -20,9 +20,8 @@ These models only embed and rank text for search. They never write, summarize or
 |---|---|---|---|---|
 | [`BAAI/bge-small-en-v1.5`](https://huggingface.co/BAAI/bge-small-en-v1.5) | MIT | This computer's CPU (fastembed, ONNX) | Embeds passages and questions for search | `backend/app/embeddings.py` |
 | [`cross-encoder/ms-marco-MiniLM-L-6-v2`](https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-6-v2), as its ONNX build [`Xenova/ms-marco-MiniLM-L-6-v2`](https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2) | Apache-2.0 | This computer (fastembed) | Reranks search results | `backend/app/retrieval.py` |
-| [`BAAI/bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3) (optional) | Apache-2.0 | Your own Baseten deployment | Reranks search results instead, if you set it up | `backend/app/retrieval.py` |
 
-No closed third-party AI service is called. Baseten is only a host: it serves Meta's Muse Spark (`meta-models/muse-spark-open-1026`) through its Model APIs and, if you set up reranking there, the open-source reranker above, deployed on your own account. Only open-source models may be deployed there for the app. The other web services the app calls are scholarly indexes, not AI models: OpenAlex, Crossref, Semantic Scholar, CORE and arXiv, for paper details and free copies.
+No other AI service is called: the only model API the app uses is Meta's. The other web services the app calls are scholarly indexes, not AI models: OpenAlex, Crossref, Semantic Scholar, CORE and arXiv, for paper details and free copies.
 
 Used in evaluation only, never shipped or called by the app: `scripts/eval_retrieval.py` also compared `ms-marco-MiniLM-L-12-v2` and two `jina-reranker-v1` models, and `scripts/bench_embedders.py` and `scripts/eval_large.py --embedder bge-m3` compared BGE-M3 (with `sentence-transformers`, installed by hand). BGE-M3 was dropped from the app because its search ranked the same passage first as bge-small (see [backend/eval/README.md](backend/eval/README.md)).
 
@@ -158,20 +157,7 @@ MUSE_API_KEY=<your Meta Model API key>
 
 Restart the app. Or open **Settings → AI model**, paste the key and click **Save and switch**: it writes the same file and switches at once, with no restart. The backend reads that file on start; real environment variables override it. Defaults: `MUSE_API_BASE=https://api.meta.ai/v1`, `MUSE_MODEL=muse-spark-1.3`, `MUSE_REASONING_EFFORT=low`. Without the file, or with `RC_PROVIDER=mock`, everything runs offline on the mock.
 
-### Muse on Baseten
-
-Muse Spark is also served by Baseten (`meta-models/muse-spark-open-1026`), which measured about twice as fast as Meta's API on the app's own requests: folder scoring 4.1 s against 7.8 s, a summary 2.2 s against 3.6 s, with the same titles and authors and folder scores within a few points. With a Baseten key in the `.env` (`BASETEN_API_KEY`), each Muse request goes to Baseten first and to Meta's API if Baseten fails or is rate-limited; a failing service is passed over for a minute (`backend/app/providers/failover.py`). **Settings → AI model → Where Muse runs** chooses *Baseten, then Meta* (the default with both keys), *Meta's API* or *Baseten only*; it's `MUSE_ROUTE` (`baseten-first`, `meta`, `baseten`) in the `.env`.
-
 `backend/app/providers/muse.py` uses Meta's OpenAI-compatible Chat Completions with strict JSON schemas. Muse's hidden reasoning counts against the output limit (a one-line verdict used ~500 tokens), so every call gets 4,096 tokens of headroom. A reply that's still cut off raises an error rather than returning half a JSON object. Rate limits and gateway timeouts are retried with backoff. Only text chunks, and images that need OCR, are sent to the API.
-
-## Reranking on Baseten
-
-Embeddings always run on this computer. The reranker, which puts the best passages first, can instead run as a larger open-source model on [Baseten](https://www.baseten.co/):
-
-1. In your Baseten account, deploy the reranker `BAAI/bge-reranker-v2-m3` with Baseten's embeddings engine (BEI, with `webserver_default_route: /rerank`). Deploy open-source models only (see [Open-source models](#open-source-models-not-metas)); a closed model must not be called at runtime.
-2. In **Settings → Search**, paste your Baseten API key and the reranker's model ID, choose where reranking runs, and click **Save and check**. The app tries the deployment before switching.
-
-*Auto* (the default) reranks on Baseten when a reranker is set up there, and on this computer otherwise; *This computer* never uses Baseten. With reranking on Baseten, each search's question and its candidate passages are sent there; files, drafts and the rest of the library stay local. The settings are kept in the data folder's `.env` (`BASETEN_API_KEY`, `BASETEN_RERANK_MODEL`, `RC_RERANKER`).
 
 ## Known gaps / next steps
 

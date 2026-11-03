@@ -209,15 +209,12 @@ export const api = {
   updateSettings: (changes: Partial<Settings>) => request<Settings>('PATCH', '/settings', changes),
   modelSettings: () => request<ModelSettings>('GET', '/settings/model'),
   /** Switch model, set the API key or the reasoning effort; left-out fields stay as they are. */
-  updateModel: (changes: { provider?: string; api_key?: string; reasoning_effort?: string; route?: string }) =>
+  updateModel: (changes: { provider?: string; api_key?: string; reasoning_effort?: string }) =>
     request<ModelSettings>('PUT', '/settings/model', changes),
   searchSettings: () => request<SearchSettings>('GET', '/settings/search'),
   sourceSettings: () => request<SourceSettings>('GET', '/settings/sources'),
   /** Set the CORE key (checked with CORE before it's saved); '' removes it. */
   updateSources: (coreApiKey: string) => request<SourceSettings>('PUT', '/settings/sources', { core_api_key: coreApiKey }),
-  /** Where embeddings and reranking run, and the Baseten setup; checked before it's applied. */
-  updateSearch: (changes: { where?: string; api_key?: string; rerank_model?: string }) =>
-    request<SearchSettings>('PUT', '/settings/search', changes),
   /** A library document's file, e.g. a PDF to show in the app. */
   documentFile: async (docId: number) => (await send('GET', `/documents/${docId}/file`)).arrayBuffer(),
 

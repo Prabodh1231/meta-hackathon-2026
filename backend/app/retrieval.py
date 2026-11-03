@@ -8,12 +8,9 @@ put the best few on top. See eval/ for the test set these choices were measured 
 
 import logging
 import re
-import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Protocol
-
-import httpx
 
 from .embeddings import bundled_model
 
@@ -21,33 +18,6 @@ log = logging.getLogger(__name__)
 
 DEFAULT_RERANKER = "Xenova/ms-marco-MiniLM-L-6-v2"
 
-
-def baseten_base(model: str) -> str:
-    """A Baseten deployment's base URL from its model ID ("abcd1234") or any URL of it (the
-    dashboard's /v1/embeddings, /rerank or /predict address)."""
-    model = model.strip().rstrip("/")
-    if re.fullmatch(r"[A-Za-z0-9]{6,16}", model):
-        return f"https://model-{model}.api.baseten.co/environments/production/sync"
-    if not re.match(r"https://[\w.-]+\.baseten\.co/", model):
-        raise ValueError("Paste a Baseten model ID or its https://model-….api.baseten.co/… address")
-    return re.sub(r"/(v1/embeddings|v1|rerank|predict)$", "", model)
-
-
-def baseten_post(client: httpx.Client, url: str, body: dict) -> httpx.Response:
-    """POST with retries: a deployment that scaled to zero answers 503 or times out while it wakes."""
-    for attempt in range(5):
-        try:
-            res = client.post(url, json=body)
-        except httpx.TimeoutException:
-            if attempt == 4:
-                raise
-            continue
-        if res.status_code in (429, 500, 502, 503, 504) and attempt < 4:
-            time.sleep(min(2 ** attempt, 10))
-            continue
-        res.raise_for_status()
-        return res
-    raise RuntimeError("unreachable")
 
 # Only true function words: everything else may be the term that matters, and BM25's IDF
 # already discounts words that are common in this library.
@@ -104,44 +74,20 @@ class CrossEncoderReranker:
         return [float(s) for s in self.model.rerank(query, texts)]
 
 
-class BasetenReranker:
-    """A cross-encoder on a Baseten deployment (its /rerank route), e.g. BAAI/bge-reranker-v2-m3:
-    larger than the local one, for machines without a CUDA GPU or by choice."""
-
-    def __init__(self, model: str, api_key: str, transport: httpx.BaseTransport | None = None):
-        if not api_key:
-            raise ValueError("A Baseten API key is needed to rerank on Baseten")
-        self.url = baseten_base(model) + "/rerank"
-        self.client = httpx.Client(timeout=60.0, transport=transport, headers={"Authorization": f"Api-Key {api_key}"})
-        self.id = "baseten:rerank"
-        self.device = "baseten"
-
-    def score(self, query: str, texts: list[str]) -> list[float]:
-        if not texts:
-            return []
-        scores = [float("-inf")] * len(texts)
-        for item in baseten_post(self.client, self.url, {"query": query, "texts": texts}).json():
-            scores[int(item["index"])] = float(item["score"])
-        return scores
+# Values from older versions that reranked elsewhere ("baseten") mean the local default too.
+_DEFAULT_KINDS = ("auto", "local", "baseten")
 
 
-def make_reranker(kind: str, cache_dir: Path, baseten_model: str = "", baseten_key: str = "",
-                  models_dir: Path | None = None) -> Reranker | None:
-    """kind: "none"; "auto" (Baseten when a reranker is deployed there, else the local default,
-    skipped if it can't load); "local"; "baseten" (the local one when none is deployed there);
-    or a local model name."""
+def make_reranker(kind: str, cache_dir: Path, models_dir: Path | None = None) -> Reranker | None:
+    """kind: "none"; "auto" or "local" (the local default, skipped if it can't load); or a local
+    model name. Reranking always runs on this computer."""
     if kind == "none":
         return None
-    if baseten_model and baseten_key and kind in ("auto", "baseten"):
-        try:
-            return BasetenReranker(baseten_model, baseten_key)
-        except Exception as exc:
-            log.warning("Baseten reranker unavailable (%s); using the local one", exc)
-    model = DEFAULT_RERANKER if kind in ("auto", "local", "baseten") else kind
+    model = DEFAULT_RERANKER if kind in _DEFAULT_KINDS else kind
     try:
         return CrossEncoderReranker(cache_dir, model, bundled_model(models_dir, model))
     except Exception as exc:  # not installed, or download failed offline
-        if kind not in ("auto", "local", "baseten"):
+        if kind not in _DEFAULT_KINDS:
             raise
         log.warning("Reranker unavailable (%s); search will use fused keyword+vector ranking", exc)
         return None
