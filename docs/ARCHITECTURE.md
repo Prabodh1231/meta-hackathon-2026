@@ -62,7 +62,7 @@ All JSON. Main groups (see `main.py` for the full list):
 | Folders | `GET/POST /folders`, `PATCH/DELETE /folders/{id}`, `POST /folders/classify`, `POST /documents/{id}/folders`, `PUT /documents/{id}/folders/{folder}` |
 | Citation network | `GET /graph?q=`, `GET /missing?q=`, `GET /documents/{id}/cited`, `POST /documents/{id}/cited/{idx}/fetch` |
 | Writing | `POST /write/draft`, `POST /citations/verify`, `POST /citations/suggest`, `POST /citations/resolve`, `POST /references` |
-| Drafts | `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `POST /drafts/import`, `POST /drafts/convert-docx`, `POST /drafts/check-duplicates` |
+| Drafts | `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `PATCH /drafts/{id}` (name; empty: its first line), `POST /drafts/import`, `POST /drafts/convert-docx`, `POST /drafts/check-duplicates` |
 | Versions | `GET/POST /drafts/{id}/versions`, `GET/PATCH/DELETE /drafts/{id}/versions/{v}`, `POST …/compare`, `POST …/restore` |
 | Matrices | `GET/POST /matrices`, `GET /matrices/columns`, `POST /matrices/papers` (a folder's or a topic's papers), `GET/PATCH/DELETE /matrices/{id}`, `PUT /matrices/{id}/cells/{doc}/{column}`, `POST /matrices/{id}/rerun`, `POST /matrices/{id}/gaps`, `POST /matrices/{id}/synthesis`, `GET /matrices/{id}/table`, `GET /matrices/{id}/export?format=xlsx\|csv\|docx` |
 | Settings | `GET/PATCH /settings` (preferences, validated against `USER_SETTINGS` in `library.py`), `GET/PUT /settings/model` (Muse or mock, key, reasoning effort; the key is never returned), `GET/PUT /settings/search` (where embeddings and reranking run, Baseten key and model IDs; tried before they're applied) |
@@ -98,6 +98,7 @@ React 19 with Tiptap 3, built by Vite. Entry: [desktop/src/App.tsx](../desktop/s
 **PDFs** ([pdf.ts](../desktop/src/pdf.ts)) are fetched once per document with the app's token and shared:
 
 - In the desktop app, **Open PDF** asks the main process (`rc:open-pdf` in [main.cjs](../desktop/electron/main.cjs)) to show the file in a separate, resizable window running Chromium's PDF viewer, straight from disk. Only files the library holds are opened (the same check as Show in folder); the window has no preload, so no bridge to the backend; it's reused for the next PDF and remembers its size and place in `pdf-window.json` in Electron's user-data folder.
+- Double-clicking a library row opens the paper: a PDF as above, any other library file through `rc:open-file` (`shell.openPath`, after the same library check, and only for the kinds the library reads), a web page in the browser.
 - In a plain browser (`npm run web`) there's no main process, so `PdfViewerDialog` shows the file in the viewer inside the page, from a `blob:` URL, so the token never appears in an address. The page's Content-Security-Policy ([index.html](../desktop/index.html)) allows `blob:` frames for this.
 - `SourceViewer` draws a cited page with pdf.js (loaded on first use: about 430 KB, plus a 1.3 MB worker) and places the quote on it: the backend's matched text is compared with pdf.js's text items with case, spacing, ligatures and curly quotes folded away, and each item it covers gets a highlight box. When the quote can't be placed, it falls back to the extracted text.
 

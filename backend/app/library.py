@@ -2076,13 +2076,15 @@ class Library:
     def list_drafts(self) -> list[dict]:
         """Every draft, most recently edited first, with its word count (not its content)."""
         with self.lock:
-            rows = self.conn.execute("SELECT id, title, content, updated_at FROM drafts ORDER BY updated_at DESC, id DESC").fetchall()
-        return [{"id": r["id"], "title": r["title"], "updated_at": r["updated_at"],
+            rows = self.conn.execute(
+                "SELECT id, title, named, content, updated_at FROM drafts ORDER BY updated_at DESC, id DESC").fetchall()
+        return [{"id": r["id"], "title": r["title"], "named": bool(r["named"]), "updated_at": r["updated_at"],
                  "words": draft_review.word_count(draft_review.plain_text(r["content"]))} for r in rows]
 
-    def create_draft(self, title: str = "Untitled", content: str = "") -> dict:
+    def create_draft(self, title: str = "Untitled", content: str = "", named: bool = False) -> dict:
         with self.lock, self.conn:
-            draft_id = self.conn.execute("INSERT INTO drafts (title, content) VALUES (?, '')", (title,)).lastrowid
+            draft_id = self.conn.execute(
+                "INSERT INTO drafts (title, content, named) VALUES (?, '', ?)", (title, int(named))).lastrowid
         if content:
             return self.save_draft(draft_id, title, content)  # also takes its first version
         return self.get_draft(draft_id)
@@ -2109,18 +2111,21 @@ class Library:
     def import_docx(self, filename: str, data: bytes) -> dict:
         """Open a Word document as a new draft. Returns the draft and what was converted."""
         converted = self.convert_docx(filename, data)
-        return {"draft": self.create_draft(converted["title"], json.dumps(converted["content"])),
+        return {"draft": self.create_draft(converted["title"], json.dumps(converted["content"]), named=True),
                 "imported": converted["imported"]}
 
     def get_draft(self, draft_id: int) -> dict:
         with self.lock:
             row = self.conn.execute("SELECT * FROM drafts WHERE id = ?", (draft_id,)).fetchone()
         if not row:
-            return {"id": draft_id, "title": "Untitled", "content": "", "updated_at": None}
-        return dict(row)
+            return {"id": draft_id, "title": "Untitled", "named": False, "content": "", "updated_at": None}
+        return {**dict(row), "named": bool(row["named"])}
 
     def save_draft(self, draft_id: int, title: str, content: str, snapshot: bool = True) -> dict:
+        """Save a draft's content. `title` is its first line, kept only while the user hasn't named it."""
         previous = self.get_draft(draft_id)
+        if previous["named"]:
+            title = previous["title"]
         with self.lock, self.conn:
             self.conn.execute(
                 "INSERT INTO drafts (id, title, content, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) "
@@ -2130,6 +2135,21 @@ class Library:
             )
         if snapshot:
             self._auto_versions(draft_id, previous, title, content)
+        return self.get_draft(draft_id)
+
+    def rename_draft(self, draft_id: int, title: str) -> dict:
+        """Name a draft, so saves keep the name. An empty name goes back to the draft's first line."""
+        current = self.get_draft(draft_id)  # a blank page not saved yet is named all the same
+        name = " ".join(title.split())[:120]
+        if not name:
+            first = next((line.strip() for line in draft_review.plain_text(current["content"]).split("\n") if line.strip()), "")
+            name = first[:80] or "Untitled"
+        with self.lock, self.conn:
+            # Not an edit of the text: the draft keeps its place in the list.
+            self.conn.execute(
+                "INSERT INTO drafts (id, title, named) VALUES (?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET title = excluded.title, named = excluded.named",
+                (draft_id, name, int(bool(title.strip()))))
         return self.get_draft(draft_id)
 
     # ---------- draft versions ----------

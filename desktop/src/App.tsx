@@ -9,7 +9,7 @@ import type { CiteMarkAttrs } from './editor/citeMark'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
 import { CitedPapersDialog } from './components/CitedPapersDialog'
 import { DemoGuide } from './components/DemoGuide'
-import { DraftsPanel } from './components/DraftsPanel'
+import { DraftNameField, DraftsPanel } from './components/DraftsPanel'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { ExportControl } from './components/ExportControl'
 import { GettingStarted } from './components/GettingStarted'
@@ -205,7 +205,12 @@ export default function App() {
   const [toolsOpen, setToolsOpen] = useState(storedToolsOpen) // the writing tools beside the draft
   const [focusMode, setFocusMode] = useState(false) // only the page and its toolbar
   const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 })
-  const [title, setTitle] = useState('Untitled')
+  const [title, setTitle] = useState('Untitled') // the draft's first line
+  const [renamingTitle, setRenamingTitle] = useState(false) // editing the name in the app bar
+  // A name the user gave the open draft wins over its first line, here, in exports and versions.
+  const draftName = drafts.find((d) => d.id === draftId && d.named)?.title
+  const docTitle = draftName ?? title
+  const titleNow = () => draftName ?? editor.current?.getTitle() ?? 'Untitled'
   const [saveState, setSaveState] = useState<SaveState>({ state: 'idle' })
   const [versions, setVersions] = useState<VersionList | null>(null)
   // `error` stops the automatic re-checks after a failure until the user asks again.
@@ -456,7 +461,7 @@ export default function App() {
 
   async function openAsNewDraft(file: File, c: DocxConversion) {
     await editor.current?.flush()
-    const d = await api.createDraft(c.title)
+    const d = await api.createDraft(c.title, true) // named after the Word file
     const content = JSON.stringify(c.content)
     await api.saveDraft(d.id, c.title, content) // also takes its first version
     await refreshDrafts()
@@ -590,6 +595,17 @@ export default function App() {
       window.removeEventListener('drop', drop)
     }
   }, [])
+
+  /** Name a draft (an empty name: after its first line again). */
+  async function renameDraft(id: number, name: string) {
+    try {
+      const d = await api.renameDraft(id, name)
+      setDrafts((list) => list.map((x) => (x.id === id ? { ...x, title: d.title, named: d.named } : x)))
+      await refreshDrafts()
+    } catch (e) {
+      onError(`Could not rename the draft: ${e instanceof Error ? e.message : e}`)
+    }
+  }
 
   async function deleteDraft(id: number) {
     setDraftsBusy('Deleting…')
@@ -970,7 +986,7 @@ export default function App() {
     setDraftsBusy('Creating the proposal draft…')
     try {
       await editor.current?.flush()
-      const d = await api.createDraft(r.title)
+      const d = await api.createDraft(r.title, true)
       const content = JSON.stringify(r.doc)
       await api.saveDraft(d.id, r.title, content)
       await refreshDrafts()
@@ -1178,17 +1194,30 @@ export default function App() {
         <div className="doc-id" ref={draftsMenu}>
           <span className="logo" aria-hidden="true">rc</span>
           <div className="doc-id-text">
-            <button
-              className="doc-switch"
-              onClick={() => setDraftsOpen((o) => !o)}
-              aria-expanded={draftsOpen}
-              aria-haspopup="dialog"
-              title="Your drafts: switch, start a new one, import a Word file, or delete one"
-            >
-              <span className="doc-name">{title}</span>
-              <span className="doc-caret" aria-hidden="true">▾</span>
-              {drafts.length > 1 && <span className="doc-count">{drafts.length}</span>}
-            </button>
+            {renamingTitle ? (
+              <DraftNameField
+                draft={{ title: docTitle, named: !!draftName }}
+                className="doc-name"
+                onDone={(name) => {
+                  setRenamingTitle(false)
+                  if (name !== null) renameDraft(draftId, name)
+                }}
+              />
+            ) : (
+              <button
+                className="doc-switch"
+                // The second click of a double-click leaves the menu as the first left it; the double-click closes it.
+                onClick={(e) => e.detail < 2 && setDraftsOpen((o) => !o)}
+                onDoubleClick={() => (setDraftsOpen(false), setRenamingTitle(true))}
+                aria-expanded={draftsOpen}
+                aria-haspopup="dialog"
+                title="Your drafts: switch, start a new one, import a Word file, or delete one. Double-click to rename this draft."
+              >
+                <span className="doc-name">{docTitle}</span>
+                <span className="doc-caret" aria-hidden="true">▾</span>
+                {drafts.length > 1 && <span className="doc-count">{drafts.length}</span>}
+              </button>
+            )}
             <div className={`save-state save-${saveState.state}`}>
               {saveText(saveState)}
               {latest && (
@@ -1214,6 +1243,7 @@ export default function App() {
                   pickWord()
                 }}
                 onDelete={deleteDraft}
+                onRename={renameDraft}
               />
             </div>
           )}
@@ -1258,7 +1288,7 @@ export default function App() {
           <ExportControl
             style={settings.citation_style}
             getJSON={() => editor.current?.getJSON() ?? null}
-            getTitle={() => editor.current?.getTitle() ?? 'Untitled'}
+            getTitle={titleNow}
             onError={onError}
             onExported={() => markDemo('export')}
           />
@@ -1496,7 +1526,7 @@ export default function App() {
                   list={versions}
                   onRefresh={refreshVersions}
                   getJSON={() => editor.current?.getJSON() ?? null}
-                  getTitle={() => editor.current?.getTitle() ?? 'Untitled'}
+                  getTitle={titleNow}
                   onRestore={(content) => editor.current?.setContent(content)}
                   onFlush={async () => {
                     await editor.current?.flush()
@@ -1692,7 +1722,7 @@ export default function App() {
       {importing && (
         <WordImportDialog
           file={importing}
-          currentTitle={title}
+          currentTitle={docTitle}
           currentEmpty={editor.current?.isEmpty() ?? true}
           path={window.rc?.pathForFile?.(importing) ?? ''}
           onNewDraft={(c) => openAsNewDraft(importing, c)}

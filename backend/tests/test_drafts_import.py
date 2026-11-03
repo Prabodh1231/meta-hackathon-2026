@@ -160,6 +160,46 @@ def test_new_and_deleted_drafts(client):
     assert client.delete("/drafts/1").status_code == 404
 
 
+def doc_of(*lines: str) -> str:
+    return json.dumps({"type": "doc", "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": t}]} for t in lines]})
+
+
+def test_a_named_draft_keeps_its_name_while_you_write(client):
+    client.put("/drafts/1", json={"title": "Sleep spindles grow", "content": doc_of("Sleep spindles grow", "More.")})
+    assert client.get("/drafts/1").json()["named"] is False
+
+    named = client.patch("/drafts/1", json={"title": "  Chapter   two  "}).json()
+    assert named["title"] == "Chapter two" and named["named"] is True
+    # Saves send the first line as the title; a named draft ignores it, versions included.
+    client.put("/drafts/1", json={"title": "A new opening line", "content": doc_of("A new opening line", "More.")})
+    assert client.get("/drafts/1").json()["title"] == "Chapter two"
+    assert [(d["title"], d["named"]) for d in client.get("/drafts").json()] == [("Chapter two", True)]
+    assert {v["title"] for v in client.get("/drafts/1/versions").json()["versions"]} <= {"Sleep spindles grow", "Chapter two"}
+
+    # Clearing the name goes back to the first line, and saves update it again.
+    back = client.patch("/drafts/1", json={"title": " "}).json()
+    assert back["title"] == "A new opening line" and back["named"] is False
+    client.put("/drafts/1", json={"title": "Another start", "content": doc_of("Another start")})
+    assert client.get("/drafts/1").json()["title"] == "Another start"
+
+    # The blank page that's open may not be saved yet: naming it saves it.
+    assert client.patch("/drafts/7", json={"title": "Notes"}).json()["named"] is True
+    assert client.get("/drafts/7").json()["title"] == "Notes"
+
+
+def test_imported_and_named_new_drafts_keep_their_names(client):
+    d = client.post("/drafts", json={"title": "Proposal", "named": True}).json()
+    client.put(f"/drafts/{d['id']}", json={"title": "First line", "content": doc_of("First line")})
+    assert client.get(f"/drafts/{d['id']}").json()["title"] == "Proposal"
+
+    data = base64.b64encode(word_file()).decode()
+    imported = client.post("/drafts/import", json={"filename": "reefs.docx", "data": data}).json()["draft"]
+    assert imported["named"] is True
+    client.put(f"/drafts/{imported['id']}", json={"title": "Edited", "content": doc_of("Edited")})
+    assert client.get(f"/drafts/{imported['id']}").json()["title"] == imported["title"]
+
+
 def test_word_sources_include_table_text(client, tmp_path):
     f = tmp_path / "chapter.docx"
     f.write_bytes(word_file())

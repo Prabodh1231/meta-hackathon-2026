@@ -233,6 +233,11 @@ class CompareIn(BaseModel):
 
 class NewDraftIn(BaseModel):
     title: str = "Untitled"
+    named: bool = False  # the title is the user's (or the Word file's), not the first line
+
+
+class DraftNameIn(BaseModel):
+    title: str = ""  # empty: named after its first line again
 
 
 class ImportDocxIn(BaseModel):
@@ -683,7 +688,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.post("/drafts")
     def create_draft(body: NewDraftIn):
-        return lib.create_draft(body.title)
+        return lib.create_draft(body.title, named=body.named)
+
+    @app.patch("/drafts/{draft_id}")
+    def rename_draft(draft_id: int, body: DraftNameIn):
+        return lib.rename_draft(draft_id, body.title)
 
     def docx_bytes(body: ImportDocxIn) -> bytes:
         try:

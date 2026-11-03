@@ -315,7 +315,7 @@ const COLUMNS: { key: SortKey; label: string; first: 1 | -1 }[] = [
 ]
 
 /** The expanded library: every source as a row, sortable by any column. */
-function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle, onToggleAll, onOpen, ghosts, ghostsSince, openGhost, onOpenGhost }: {
+function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle, onToggleAll, onOpen, onOpenFile, ghosts, ghostsSince, openGhost, onOpenGhost }: {
   rows: Doc[]
   selected: Set<number>
   cited: Set<number>
@@ -326,6 +326,8 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
   onToggle: (id: number) => void
   onToggleAll: () => void
   onOpen: (id: number | null) => void
+  /** Double-click or Enter: the paper itself (a PDF in the viewer, other files in their app, a web page in the browser). */
+  onOpenFile: (d: Doc) => void
   /** The timeline's "as of" view: sources in the library then that were removed since, greyed. */
   ghosts: RemovedDoc[]
   ghostsSince: string
@@ -345,9 +347,14 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
       </th>
     )
   }
-  // ↑ ↓ move between papers while the table has focus, Esc closes the details.
+  // The paper a double-click opens is the one its first click landed on: that click shows the
+  // details, which narrows the table, so the second click can land on another row.
+  const firstClick = useRef<Doc | null>(null)
+  // ↑ ↓ move between papers while the table has focus, Enter opens one, Esc closes the details.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') return onOpen(null)
+    const current = rows.find((d) => d.id === open)
+    if (e.key === 'Enter' && current && e.target === e.currentTarget) return onOpenFile(current)
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
     e.preventDefault()
     const i = rows.findIndex((d) => d.id === open)
@@ -376,7 +383,18 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
             id={`lib-doc-${d.id}`}
             className={`${selected.has(d.id) ? 'on' : ''}${open === d.id ? ' active' : ''}`}
             aria-selected={open === d.id}
-            onClick={() => onOpen(open === d.id ? null : d.id)}
+            // A click shows or hides the details; a double-click opens the paper and leaves them shown.
+            onClick={(e) => {
+              if (e.detail >= 2) return
+              firstClick.current = d
+              onOpen(open === d.id ? null : d.id)
+            }}
+            onDoubleClick={(e) => {
+              if ((e.target as HTMLElement).closest('.c-pick')) return
+              const doc = firstClick.current ?? d
+              onOpen(doc.id)
+              onOpenFile(doc)
+            }}
             {...dragProps(d)}
           >
             <td className="c-pick" onClick={(e) => e.stopPropagation()}>
@@ -996,6 +1014,11 @@ export const LibraryPanel = memo(function LibraryPanel({
     setOpenRemoved(null)
     setOpen(id)
   }
+  const openFile = (d: Doc) => {
+    if (/^https?:\/\//i.test(d.source)) window.open(d.url || d.source, '_blank', 'noreferrer')
+    else if (d.kind === 'pdf') onOpenPdf(d)
+    else if (window.rc?.openFile) window.rc.openFile(d.source).catch((e) => onError(`Could not open “${d.title}”: ${e instanceof Error ? e.message : e}`))
+  }
   const openGhost = (id: number | null) => {
     setOpen(null)
     setOpenRemoved(id)
@@ -1349,6 +1372,7 @@ export const LibraryPanel = memo(function LibraryPanel({
                 onToggle={onToggle}
                 onToggleAll={() => toggleMany(rows)}
                 onOpen={openDoc}
+                onOpenFile={openFile}
                 ghosts={ghosts}
                 ghostsSince={tl && axis ? `the end of ${posLabel(axis, tl.hi)}` : ''}
                 openGhost={openRemoved}

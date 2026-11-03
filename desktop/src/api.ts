@@ -225,7 +225,10 @@ export const api = {
     (await send('POST', '/export/docx', { content, style, title })).arrayBuffer(),
 
   drafts: () => request<DraftSummary[]>('GET', '/drafts'),
-  createDraft: (title = 'Untitled') => request<{ id: number; title: string; content: string }>('POST', '/drafts', { title }),
+  createDraft: (title = 'Untitled', named = false) =>
+    request<{ id: number; title: string; content: string }>('POST', '/drafts', { title, named }),
+  /** Name a draft so saves keep the name; an empty name goes back to its first line. */
+  renameDraft: (id: number, title: string) => request<{ id: number; title: string; named: boolean }>('PATCH', `/drafts/${id}`, { title }),
   deleteDraft: (id: number) => request<{ ok: boolean }>('DELETE', `/drafts/${id}`),
   importDocx: (filename: string, data: string) => request<DocxImport>('POST', '/drafts/import', { filename, data }),
   convertDocx: (filename: string, data: string) => request<DocxConversion>('POST', '/drafts/convert-docx', { filename, data }),
