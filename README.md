@@ -63,7 +63,7 @@ Other commands:
 - `cd backend && .venv/Scripts/python -m pytest`: runs the backend tests.
 - `RC_BACKEND_URL=http://127.0.0.1:8765 npm run dev`: points Electron at a backend you started yourself, for example `uvicorn app.main:app --reload --port 8765` (the token check is off in this mode).
 
-On first launch the backend downloads the embedding and reranking models (bge-small and MiniLM, about 150 MB) into the data folder. It loads them in the background, so the library and drafts open at once while the status bar says "loading search model…"; search, cite suggestions and imports wait for it. After the first launch that takes about a second. A library embedded with another model (BGE-M3, from older versions) is re-embedded once, also in the background.
+The installed app ships the embedding and reranking models (bge-small and MiniLM, about 160 MB), so it needs no download and works offline from the first start. In development the backend uses `backend/dist/models` when `npm run fetch-models` has put them there; otherwise it downloads them into the data folder on first launch. It loads them in the background, so the library and drafts open at once while the status bar says "loading search model…"; search, cite suggestions and imports wait for it. After the first launch that takes about a second. A library embedded with another model (BGE-M3, from older versions) is re-embedded once, also in the background.
 
 Your library lives in `~/.research-companion/`: a SQLite database plus the embedding model cache. Set `RC_DATA_DIR` to put it somewhere else.
 
@@ -76,14 +76,14 @@ cd backend && .venv/Scripts/pip install pyinstaller
 cd ../desktop && npm run dist
 ```
 
-`npm run dist` builds the UI, freezes the backend with PyInstaller (`backend/rc-backend.spec`, into `backend/dist/rc-backend`) and packages both with electron-builder into `desktop/release/Research-Companion-Setup-<version>.exe`, about 200 MB. The installed app runs that bundled backend instead of `backend/.venv`. It installs for the current user without admin rights.
+`npm run dist` builds the UI, freezes the backend with PyInstaller (`backend/rc-backend.spec`, into `backend/dist/rc-backend`), fetches the search models into `backend/dist/models` (`npm run fetch-models`, [scripts/fetch_models.py](backend/scripts/fetch_models.py); skipped when they're already there) and packages them with electron-builder into `desktop/release/Research-Companion-Setup-<version>.exe`, about 340 MB. The installed app runs that bundled backend instead of `backend/.venv`. It installs for the current user without admin rights.
 
 Things to tell testers:
 
 - Windows says the installer is from an **unknown publisher**, because it isn't signed. They click **More info → Run anyway**.
 - Until they paste a key in **Settings → Model** and pick Muse, the app runs on the offline mock, which matches words instead of reading. Getting started and the amber *Offline mock* in the status bar both lead there. Give each tester their own key if you can; a shared key spends from your account.
 - **Try the sample library** in Getting started loads six demo files and a demo draft with a checklist of what to try (see the [user guide](docs/USER_GUIDE.md#try-the-demo)). The installer ships the files from `samples/`.
-- Their library lives in their own `~/.research-companion/`. On first launch the backend downloads the small embedding and reranking models (about 150 MB) there.
+- Their library lives in their own `~/.research-companion/`. The search models come with the installer, so the first start needs no internet (only Muse does).
 
 The bundle embeds with the same bge-small model as development. It leaves out PyMuPDF's optional layout add-on, which isn't in `requirements.txt`.
 

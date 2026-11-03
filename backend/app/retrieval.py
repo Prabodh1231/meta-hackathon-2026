@@ -15,6 +15,8 @@ from typing import Protocol
 
 import httpx
 
+from .embeddings import bundled_model
+
 log = logging.getLogger(__name__)
 
 DEFAULT_RERANKER = "Xenova/ms-marco-MiniLM-L-6-v2"
@@ -89,10 +91,11 @@ class Reranker(Protocol):
 
 
 class CrossEncoderReranker:
-    def __init__(self, cache_dir: Path, model: str = DEFAULT_RERANKER):
+    def __init__(self, cache_dir: Path, model: str = DEFAULT_RERANKER, path: str | None = None):
         from fastembed.rerank.cross_encoder import TextCrossEncoder
 
-        self.model = TextCrossEncoder(model_name=model, cache_dir=str(cache_dir))
+        # `path`: the installer's copy (see embeddings.bundled_model), loaded without downloading.
+        self.model = TextCrossEncoder(model_name=model, cache_dir=str(cache_dir), specific_model_path=path)
         self.id = f"fastembed:{model}"
 
     def score(self, query: str, texts: list[str]) -> list[float]:
@@ -122,7 +125,8 @@ class BasetenReranker:
         return scores
 
 
-def make_reranker(kind: str, cache_dir: Path, baseten_model: str = "", baseten_key: str = "") -> Reranker | None:
+def make_reranker(kind: str, cache_dir: Path, baseten_model: str = "", baseten_key: str = "",
+                  models_dir: Path | None = None) -> Reranker | None:
     """kind: "none"; "auto" (Baseten when a reranker is deployed there, else the local default,
     skipped if it can't load); "local"; "baseten" (the local one when none is deployed there);
     or a local model name."""
@@ -135,7 +139,7 @@ def make_reranker(kind: str, cache_dir: Path, baseten_model: str = "", baseten_k
             log.warning("Baseten reranker unavailable (%s); using the local one", exc)
     model = DEFAULT_RERANKER if kind in ("auto", "local", "baseten") else kind
     try:
-        return CrossEncoderReranker(cache_dir, model)
+        return CrossEncoderReranker(cache_dir, model, bundled_model(models_dir, model))
     except Exception as exc:  # not installed, or download failed offline
         if kind not in ("auto", "local", "baseten"):
             raise

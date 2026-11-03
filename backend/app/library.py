@@ -141,10 +141,11 @@ class Library:
         # The embedding model loads in the background (see LoadingEmbedder), re-embedding the
         # library first if it's a different model, so the library lists at once.
         self.embedder = self._reembed_if_needed(embedder) if embedder is not None else LoadingEmbedder(
-            lambda: self._reembed_if_needed(make_embedder(settings.embedder, settings.data_dir / "models")))
+            lambda: self._reembed_if_needed(
+                make_embedder(settings.embedder, settings.data_dir / "models", settings.models_dir)))
         self.reranker = (
             make_reranker(settings.reranker, settings.data_dir / "models", settings.baseten_rerank_model,
-                          settings.baseten_api_key)
+                          settings.baseten_api_key, settings.models_dir)
             if reranker is _FROM_SETTINGS else reranker
         )
         self.open_access = open_access or openaccess.OpenAccess(settings.contact_email, core_key=settings.core_api_key)
@@ -2055,7 +2056,8 @@ class Library:
         if api_key is not None:
             updates["BASETEN_API_KEY"] = api_key
         write_env_file(new.data_dir / ".env", updates)
-        reranker = make_reranker(new.reranker, new.data_dir / "models", new.baseten_rerank_model, new.baseten_api_key)
+        reranker = make_reranker(new.reranker, new.data_dir / "models", new.baseten_rerank_model, new.baseten_api_key,
+                                 new.models_dir)
         with self._embed_lock:
             self.reranker = reranker
         self.settings = new

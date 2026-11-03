@@ -37,7 +37,7 @@ How Research Companion is put together, for anyone changing it. For using the ap
 | `db.py` | Schema and migrations (SQLite in WAL mode, FTS5 for keyword search). |
 | `ingest.py` | Parsers for PDF, DOCX, PPTX, Markdown/text, HTML and URLs, and images. Each returns page-addressed text. |
 | `jobs.py` | Background imports: eight files at a time (`INGEST_WORKERS` in `library.py`), with per-file stages for the progress card. Within a file, the Muse calls (metadata, summary, tags, folder scoring) run alongside the embedding; folder scoring starts once the vectors are ready. |
-| `embeddings.py` | Embedders: bge-small via fastembed on this computer, the only model the app ships (BGE-M3 was measured and dropped: see [backend/eval/README.md](../backend/eval/README.md)), a hashing fallback, and `LoadingEmbedder`, which loads it in the background. |
+| `embeddings.py` | Embedders: bge-small via fastembed on this computer, the only model the app ships (BGE-M3 was measured and dropped: see [backend/eval/README.md](../backend/eval/README.md)), a hashing fallback, and `LoadingEmbedder`, which loads it in the background. `bundled_model` finds the installer's copy of a model in `RC_MODELS_DIR` (Electron passes `resources/models`, filled by [scripts/fetch_models.py](../backend/scripts/fetch_models.py)); the embedder and the local reranker load from there instead of downloading. |
 | `retrieval.py` | Keyword (BM25) queries, reciprocal rank fusion, the optional reranker: local, or on Baseten (`BasetenReranker`, BEI `/rerank`, with the Baseten URL and retry helpers). |
 | `citations.py` | Finding a model's quote in the source, tolerant of whitespace, case, curly quotes and OCR slips. |
 | `references.py` | APA 7, MLA 9, IEEE and BibTeX from stored metadata. |

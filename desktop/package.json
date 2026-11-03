@@ -11,8 +11,9 @@
     "start": "electron .",
     "smoke": "vite build && cross-env RC_SMOKE_TEST=1 electron .",
     "typecheck": "tsc --noEmit",
-    "bundle-backend": "cd ../backend && .venv/Scripts/python -m PyInstaller rc-backend.spec --noconfirm",
-    "dist": "npm run build && npm run bundle-backend && electron-builder --win"
+    "bundle-backend": "cd ../backend && .venv\\Scripts\\python -m PyInstaller rc-backend.spec --noconfirm",
+    "fetch-models": "cd ../backend && .venv\\Scripts\\python scripts/fetch_models.py dist/models",
+    "dist": "npm run build && npm run bundle-backend && npm run fetch-models && electron-builder --win"
   },
   "dependencies": {
     "@tiptap/core": "^3.32.0",
@@ -59,6 +60,10 @@
       {
         "from": "../samples",
         "to": "samples"
+      },
+      {
+        "from": "../backend/dist/models",
+        "to": "models"
       }
     ],
     "win": {
