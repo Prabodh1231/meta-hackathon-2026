@@ -24,6 +24,11 @@ const MAX_RESTARTS_PER_MINUTE = 3
 // library reads a copy in the data folder, so removing the samples never touches the app's files.
 const SAMPLES_SOURCE = app.isPackaged ? path.join(process.resourcesPath, 'samples') : path.join(__dirname, '..', '..', 'samples')
 const SAMPLES_DIR = path.join(DATA_DIR, 'samples')
+// The search models shipped in resources/models (backend/scripts/fetch_models.py), so the first
+// start needs no download and works offline. In development, backend/dist/models if fetched;
+// without them the backend downloads the models into the data folder as before.
+const MODELS_DIR = process.env.RC_MODELS_DIR
+  || (app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(BACKEND_DIR, 'dist', 'models'))
 
 let backend = null
 let backendConfig = null
@@ -78,7 +83,7 @@ function spawnBackend() {
     {
       cwd,
       // RC_PARENT_PID: the backend exits by itself if this app dies without cleaning up.
-      env: { ...process.env, RC_API_TOKEN: token, RC_PARENT_PID: String(process.pid) },
+      env: { ...process.env, RC_API_TOKEN: token, RC_PARENT_PID: String(process.pid), RC_MODELS_DIR: MODELS_DIR },
       stdio: ['ignore', 'pipe', 'pipe'],
       // Its own hidden console: a Ctrl+C or close in the terminal that launched the app
       // used to kill the backend silently while the window stayed open.

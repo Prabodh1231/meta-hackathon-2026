@@ -17,6 +17,17 @@ from .text_utils import tokenize
 
 log = logging.getLogger(__name__)
 
+EMBED_MODEL = "BAAI/bge-small-en-v1.5"
+
+
+def bundled_model(models_dir: Path | None, model: str) -> str | None:
+    """The folder of a model shipped with the installer (scripts/fetch_models.py puts each in
+    <models_dir>/<org>--<name>), or None when it isn't there and has to be downloaded."""
+    if models_dir is None:
+        return None
+    folder = models_dir / model.replace("/", "--")
+    return str(folder) if folder.is_dir() and any(folder.glob("*.json")) else None
+
 
 class Embedder(Protocol):
     id: str
@@ -51,11 +62,12 @@ class FastEmbedder:
     # (20-thread CPU); batches of 1-8 ran at 42-52, so imports and re-embedding are ~3x faster.
     BATCH = 4
 
-    def __init__(self, cache_dir: Path, model: str = "BAAI/bge-small-en-v1.5"):
+    def __init__(self, cache_dir: Path, model: str = EMBED_MODEL, path: str | None = None):
         from fastembed import TextEmbedding
 
-        # fastembed defaults to the OS temp dir, which Windows cleanup may wipe.
-        self.model = TextEmbedding(model_name=model, cache_dir=str(cache_dir))
+        # fastembed defaults to the OS temp dir, which Windows cleanup may wipe. `path`: the
+        # installer's copy, loaded without downloading; the id is the same, so are the vectors.
+        self.model = TextEmbedding(model_name=model, cache_dir=str(cache_dir), specific_model_path=path)
         self.id = f"fastembed:{model}"
 
     def embed(self, texts: list[str]) -> np.ndarray:
@@ -112,14 +124,15 @@ class LoadingEmbedder:
         return getattr(self.wait(), name)
 
 
-def make_embedder(kind: str, cache_dir: Path) -> Embedder:
+def make_embedder(kind: str, cache_dir: Path, models_dir: Path | None = None) -> Embedder:
     """kind: "hash" (tests, scripts) or anything else for bge-small, falling back to the hashing
     embedder when fastembed can't load (not installed, or the model can't download offline).
-    Values from older versions ("auto", "local", "baseten", "bge-m3", "gpu") mean bge-small."""
+    Values from older versions ("auto", "local", "baseten", "bge-m3", "gpu") mean bge-small.
+    The installer's copy in `models_dir` is used when it's there."""
     if kind == "hash":
         return HashEmbedder()
     try:
-        return FastEmbedder(cache_dir)
+        return FastEmbedder(cache_dir, path=bundled_model(models_dir, EMBED_MODEL))
     except Exception as exc:
         if kind == "fastembed":
             raise

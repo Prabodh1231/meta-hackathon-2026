@@ -89,7 +89,7 @@ def test_auto_reranks_on_baseten_only_when_a_reranker_is_deployed_there(fake, tm
 @pytest.mark.parametrize("old", ["auto", "local", "baseten", "bge-m3", "gpu"])
 def test_every_embedder_setting_from_older_versions_means_the_local_model(old, tmp_path, monkeypatch):
     class Small(HashEmbedder):  # stands in for bge-small, so no model downloads
-        def __init__(self, _cache_dir):
+        def __init__(self, _cache_dir, path=None):
             super().__init__(dim=384)
 
     monkeypatch.setattr("app.embeddings.FastEmbedder", Small)

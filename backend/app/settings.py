@@ -28,6 +28,9 @@ class Settings:
     # A reranker deployed on Baseten (see make_reranker): model ID or URL. The key also serves Muse.
     baseten_api_key: str = ""
     baseten_rerank_model: str = ""
+    # The search models shipped with the installer (scripts/fetch_models.py), read-only. A model
+    # found there loads from it; otherwise it downloads into <data dir>/models on first use.
+    models_dir: Path | None = None
 
     @property
     def route(self) -> str:
@@ -68,6 +71,7 @@ class Settings:
             baseten_muse_base=env("BASETEN_MUSE_BASE", cls.baseten_muse_base),
             baseten_muse_model=env("BASETEN_MUSE_MODEL", cls.baseten_muse_model),
             baseten_api_key=env("BASETEN_API_KEY"),
+            models_dir=Path(os.environ["RC_MODELS_DIR"]) if os.environ.get("RC_MODELS_DIR") else None,
             baseten_rerank_model=env("BASETEN_RERANK_MODEL"),
         )
 
