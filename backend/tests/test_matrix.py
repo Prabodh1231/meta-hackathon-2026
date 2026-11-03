@@ -1,5 +1,6 @@
 """Literature review matrices, read by the offline mock from small papers written for the test."""
 import io
+import json
 import time
 
 import docx
@@ -304,6 +305,31 @@ def test_gaps_and_passages_are_kept_as_findings(setup):
     assert seen["claim"] == "Savings rose in Kenya." and seen["topic"] == "Digital finance"
     assert "412 farmers" in seen["table"] and '["' in seen["table"]
     assert client.post(f"/findings/{written['finding']}/check", json={"claim": " "}).status_code == 400
+
+
+def test_new_gaps_replace_old_ones_except_those_a_draft_cites(setup):
+    client, lib, ids = setup
+    mid = client.post("/matrices", json={"name": "Digital finance", "doc_ids": list(ids.values())}).json()["id"]
+    wait(client, mid)
+    runs = iter([[{"title": "Cited", "detail": "In the draft."}, {"title": "Dropped", "detail": "Not used."}],
+                 [{"title": "Versioned", "detail": "In an old version."}],
+                 [{"title": "Fresh", "detail": "New."}]])
+    lib.provider.find_gaps = lambda topic, table: next(runs)
+    first = {g["title"]: g["id"] for g in client.post(f"/matrices/{mid}/gaps").json()["gaps"]}
+    chip = {"type": "citation", "attrs": {"cid": "c1", "docId": ids["kenya.md"], "finding": first["Cited"]}}
+    client.put("/drafts/1", json={"title": "D", "content": json.dumps(
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Gap. "}, chip]}]})})
+
+    second = client.post(f"/matrices/{mid}/gaps").json()["gaps"][0]["id"]
+    kept = {f["title"]: f["in_draft"] for f in client.get(f"/matrices/{mid}/findings").json()}
+    assert kept == {"Versioned": False, "Cited": True}  # "Dropped" went with the new run
+    assert client.get(f"/findings/{first['Dropped']}").status_code == 404
+
+    # A version of a draft counts too: restoring it would bring the citation back.
+    lib.create_version(1, "v", "D", json.dumps({"type": "doc", "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": "Old. "}, {**chip, "attrs": {**chip["attrs"], "finding": second}}]}]}))
+    client.post(f"/matrices/{mid}/gaps")
+    assert {f["title"] for f in client.get(f"/matrices/{mid}/findings").json()} == {"Fresh", "Versioned", "Cited"}
 
 
 def test_a_finding_outlives_changes_to_its_matrix(setup):

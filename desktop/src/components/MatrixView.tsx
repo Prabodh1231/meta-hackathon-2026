@@ -43,6 +43,34 @@ const STATUS_TEXT: Record<MatrixCell['status'], string> = {
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
+const FINDING_GAPS = 'Finding gaps…'
+
+/** Under a gap or passage: what it is to the draft, and what can be done with it. */
+function FindingMeta({ finding: f, isNew, earlier, onInsert, onDelete }: {
+  finding?: FindingSummary
+  isNew?: boolean
+  earlier?: boolean // from an earlier Find gaps, kept because a draft cites it
+  onInsert: () => void
+  onDelete?: () => void
+}) {
+  return (
+    <div className="mx-kept-meta muted">
+      {isNew && <span className="mx-tag mx-tag-new">New</span>}
+      {f?.in_draft && <span className="mx-tag">In your draft</span>}
+      {earlier && <span>Found {f ? ago(f.created_at) : 'earlier'}</span>}
+      {f?.kind === 'synthesis' && <span>{ago(f.created_at)}</span>}
+      {f?.matrix_changed && <em className="flag">the matrix has changed since</em>}
+      <button className="link" onClick={onInsert} title="Insert into the draft, citing every paper in this matrix">
+        Insert into draft
+      </button>
+      {onDelete && (
+        <button className="link danger-link" onClick={onDelete}>
+          Delete
+        </button>
+      )}
+    </div>
+  )
+}
 
 /** One chip per paper detail; a lit chip is a column the matrix shows. */
 function DetailChips({ fields, columns, onToggle, disabled }: {
@@ -553,7 +581,7 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   const [editingCol, setEditingCol] = useState<{ index: number; label: string; instruction: string } | null>(null)
   const [showGaps, setShowGaps] = useState(true)
   const [kept, setKept] = useState<FindingSummary[] | null>(null) // gaps and passages kept for the draft
-  const [showKept, setShowKept] = useState(false)
+  const [fresh, setFresh] = useState<Set<number>>(new Set()) // gaps the latest Find gaps added to earlier ones
   const [fields, setFields] = useState<MatrixDetailField[]>([])
   const [panel, setPanel] = useState<'details' | 'filter' | null>(null)
   const [sort, setSort] = useState<DetailSort | null>(null)
@@ -624,6 +652,7 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
 
   async function open(id: number) {
     setKept(null)
+    setFresh(new Set())
     setCreating(false)
     setCellAt(null)
     setSort(null)
@@ -633,6 +662,21 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
     } catch (e) {
       onError(message(e))
     }
+  }
+
+  /** Gaps from a new run replace the earlier ones (but those a draft cites); new ones are marked. */
+  function findGaps() {
+    if (!matrix) return
+    // New is by wording: the same gap from an edited matrix is kept again under a new id.
+    const said = (g: { title: string; detail: string }) => `${g.title}
+${g.detail}`
+    const before = matrix.gaps ? new Set(matrix.gaps.map(said)) : null
+    setShowGaps(true)
+    run(FINDING_GAPS, async () => {
+      const m = await api.matrixGaps(matrix.id)
+      setFresh(new Set(before ? (m.gaps ?? []).filter((g) => !before.has(said(g))).map((g) => g.id) : []))
+      return m
+    })
   }
 
   async function run(label: string, fn: () => Promise<Matrix | void>) {
@@ -648,6 +692,11 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
       setBusy(null)
     }
   }
+
+  const latestGaps = new Set(matrix?.gaps?.map((g) => g.id) ?? [])
+  const keptById = new Map((kept ?? []).map((f) => [f.id, f]))
+  const earlierGaps = (kept ?? []).filter((f) => f.kind === 'gap' && !latestGaps.has(f.id))
+  const passages = (kept ?? []).filter((f) => f.kind === 'synthesis')
 
   const needle = query.trim().toLowerCase()
   const rows = useMemo(() => {
@@ -767,7 +816,7 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                     </button>
                   </>
                 )}
-                <button onClick={() => run('Finding gaps…', () => api.matrixGaps(matrix.id).then((m) => (setShowGaps(true), m)))} disabled={!!matrix.pending || !!busy}>
+                <button onClick={findGaps} disabled={!!matrix.pending || !!busy}>
                   Find gaps
                 </button>
                 <button onClick={() => setDialog('synthesis')} disabled={!!matrix.pending}>
@@ -843,7 +892,7 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
                   )}
                 </div>
               </div>
-              {busy ? (
+              {busy && busy !== FINDING_GAPS ? ( // finding gaps waits in the gaps box
                 <WaitStatus label={busy} startedAt={busyAt} usual="This usually takes 10 to 40 seconds." />
               ) : (
                 matrix.pending > 0 && (
@@ -945,59 +994,50 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
               </section>
             )}
 
-            {matrix.gaps && matrix.gaps.length > 0 && (
+            {(busy === FINDING_GAPS || matrix.gaps !== null || earlierGaps.length > 0 || passages.length > 0) && (
               <section className="mx-gaps">
                 <button className="mx-gaps-head" onClick={() => setShowGaps((s) => !s)} aria-expanded={showGaps}>
                   <b>Gaps across these studies</b>
-                  <span className="muted">{showGaps ? 'Hide' : `Show ${matrix.gaps.length}`}</span>
+                  <span className="muted">{showGaps ? 'Hide' : `Show ${(matrix.gaps?.length ?? 0) + earlierGaps.length + passages.length}`}</span>
                 </button>
                 {showGaps && (
-                  <ul>
-                    {matrix.gaps.map((g, i) => (
-                      <li key={i}>
-                        <b>{g.title}</b> {g.detail}{' '}
-                        <button className="link mx-insert-gap" onClick={() => onInsertFinding(g.id)} title="Insert into the draft, citing every paper in this matrix">
-                          Insert into draft
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            )}
-            {matrix.gaps && matrix.gaps.length === 0 && <p className="muted mx-nogaps">No gaps stood out across these studies.</p>}
-
-            {kept && kept.length > 0 && (
-              <section className="mx-gaps mx-kept">
-                <button className="mx-gaps-head" onClick={() => setShowKept((s) => !s)} aria-expanded={showKept}>
-                  <b>Kept for the draft</b>
-                  <span className="muted">{showKept ? 'Hide' : `Show ${kept.length}`}</span>
-                </button>
-                {showKept && (
-                  <ul>
-                    {kept.map((f) => (
-                      <li key={f.id}>
-                        <span className="mx-kept-kind">{f.kind === 'gap' ? 'Gap' : 'Written'}</span>{' '}
-                        {f.kind === 'gap' ? (
-                          <>
+                  <div className="mx-gaps-body">
+                    {busy === FINDING_GAPS && <WaitStatus label={busy} startedAt={busyAt} usual="This usually takes 10 to 40 seconds." />}
+                    {matrix.gaps?.length === 0 && busy !== FINDING_GAPS && <p className="muted">No gaps stood out across these studies.</p>}
+                    {(matrix.gaps?.length ?? 0) + earlierGaps.length > 0 && (
+                      <ul>
+                        {matrix.gaps?.map((g) => (
+                          <li key={g.id}>
+                            <b>{g.title}</b> {g.detail}
+                            <FindingMeta
+                              finding={keptById.get(g.id)}
+                              isNew={fresh.has(g.id)}
+                              onInsert={() => onInsertFinding(g.id)}
+                            />
+                          </li>
+                        ))}
+                        {earlierGaps.map((f) => (
+                          <li key={f.id} className="mx-earlier">
                             <b>{f.title}</b> {f.text}
-                          </>
-                        ) : (
-                          <span className="mx-kept-text">{f.text}</span>
-                        )}
-                        <div className="mx-kept-meta muted">
-                          {ago(f.created_at)}
-                          {f.matrix_changed && <em className="flag"> · the matrix has changed since</em>}
-                          <button className="link" onClick={() => onInsertFinding(f.id)}>
-                            Insert into draft
-                          </button>
-                          <button className="link danger-link" onClick={() => removeKept(f)}>
-                            Delete
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                            <FindingMeta finding={f} earlier onInsert={() => onInsertFinding(f.id)} onDelete={() => removeKept(f)} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {passages.length > 0 && (
+                      <>
+                        <div className="eyebrow mx-passages-label">Written from this matrix</div>
+                        <ul className="mx-passages">
+                          {passages.map((f) => (
+                            <li key={f.id}>
+                              <span className="mx-kept-text">{f.text}</span>
+                              <FindingMeta finding={f} onInsert={() => onInsertFinding(f.id)} onDelete={() => removeKept(f)} />
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
                 )}
               </section>
             )}

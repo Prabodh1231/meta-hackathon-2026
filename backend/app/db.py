@@ -291,6 +291,8 @@ _ADDED_COLUMNS = [
     ("documents", "enriched", "TEXT NOT NULL DEFAULT ''"),
     ("documents", "enriched_at", "TEXT"),
     ("documents", "index_title", "TEXT NOT NULL DEFAULT ''"),  # the other work's title, for a mismatch
+    # 1 once the user named the draft: saves then keep its title instead of taking the first line.
+    ("drafts", "named", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

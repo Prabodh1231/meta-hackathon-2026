@@ -182,6 +182,7 @@ export interface FindingSummary {
   created_at: string
   papers: number
   matrix_changed: boolean // the matrix's rows differ from what this was written from
+  in_draft?: boolean // a draft or a version of one cites it (in a matrix's list of findings)
 }
 
 export interface FindingRow {
@@ -484,6 +485,7 @@ export interface ModelSettings {
 export interface DraftSummary {
   id: number
   title: string
+  named: boolean // the user named it; otherwise the title is its first line
   updated_at: string | null // UTC, "YYYY-MM-DD HH:MM:SS"
   words: number
 }
@@ -566,6 +568,8 @@ declare global {
       saveFile: (defaultName: string, data: ArrayBuffer) => Promise<string | null>
       trashFile?: (path: string) => Promise<boolean> // to the Recycle Bin / Trash; library files only
       showFile?: (path: string) => Promise<void>
+      /** A library file in the app the computer opens it with; library files only. */
+      openFile?: (path: string) => Promise<void>
       /** A library PDF in its own resizable window, at a page (the desktop app only). */
       openPdf?: (path: string, page: number, title: string) => Promise<void>
       /** Where a dropped or picked file is on disk ('' for one that isn't a file on disk). */

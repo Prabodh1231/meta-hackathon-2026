@@ -26,6 +26,9 @@ from .providers import Passage
 
 log = logging.getLogger(__name__)
 
+# A citation chip written from a finding, in a draft's saved editor JSON: {"finding": 12, …}.
+_FINDING_ATTR = re.compile(r'"finding"\s*:\s*(\d+)')
+
 # The columns systematic reviewers use. `query` is what each column's passages are searched with.
 DEFAULT_COLUMNS = [
     {"key": "sample", "label": "Sample",
@@ -518,8 +521,21 @@ class Matrices:
         with self.lib.lock, self.lib.conn:
             for g in gaps:  # each kept, so it can go into a draft and be checked against this matrix later
                 g["id"] = self._save_finding(mid, m["name"], "gap", g["title"], g["detail"], [], None, snap)
+            # The new gaps replace the earlier ones, except those a draft (or a version of one) cites.
+            keep = self._in_drafts() | {g["id"] for g in gaps}
+            for row in self.lib.conn.execute(
+                    "SELECT id FROM matrix_findings WHERE matrix_id = ? AND kind = 'gap'", (mid,)).fetchall():
+                if row["id"] not in keep:
+                    self.lib.conn.execute("DELETE FROM matrix_findings WHERE id = ?", (row["id"],))
             self.lib.conn.execute("UPDATE matrices SET gaps = ? WHERE id = ?", (json.dumps(gaps), mid))
         return self.get(mid)
+
+    def _in_drafts(self) -> set[int]:
+        """Ids of the findings cited in any draft or saved version of one."""
+        with self.lib.lock:
+            contents = [r[0] for r in self.lib.conn.execute(
+                "SELECT content FROM drafts UNION ALL SELECT content FROM draft_versions").fetchall()]
+        return {int(i) for c in contents for i in _FINDING_ATTR.findall(c or "")}
 
     def synthesis(self, mid: int, instruction: str = "", columns: list[str] | None = None) -> dict:
         """Sentences comparing the studies, written from the matrix's quotes and citing them."""
@@ -619,10 +635,11 @@ class Matrices:
             rows = self.lib.conn.execute(  # proposals live in their drafts
                 "SELECT * FROM matrix_findings WHERE matrix_id = ? AND kind != 'proposal' ORDER BY id DESC",
                 (mid,)).fetchall()
+        used = self._in_drafts()
         out = []
         for row in rows:
             current = _snapshot(m, json.loads(row["columns"]))
-            out.append(self._summary(row, current, m["name"]))
+            out.append({**self._summary(row, current, m["name"]), "in_draft": row["id"] in used})
         return out
 
     def finding(self, fid: int) -> dict:

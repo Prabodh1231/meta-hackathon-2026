@@ -246,6 +246,16 @@ ipcMain.handle('rc:show-file', async (_event, filePath) => {
   shell.showItemInFolder(await libraryFile(filePath))
 })
 
+// A library file in the app the computer opens it with (Word for .docx…). Only the kinds the
+// library reads (backend ingest.KINDS), so nothing that runs.
+const OPENABLE = /\.(pdf|docx|pptx|md|markdown|txt|html?|png|jpe?g|webp)$/i
+ipcMain.handle('rc:open-file', async (_event, filePath) => {
+  const file = await libraryFile(filePath)
+  if (!OPENABLE.test(file)) throw new Error('That kind of file opens from its folder')
+  const failed = await shell.openPath(file)
+  if (failed) throw new Error(failed)
+})
+
 // Library PDFs open in a window of their own, in Chromium's PDF viewer: resizable, movable to a
 // second screen, open beside the draft. One window, reused for the next PDF; it remembers where
 // it was. Only files the library holds are opened, straight from disk.

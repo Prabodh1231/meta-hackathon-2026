@@ -91,7 +91,8 @@ Your files stay where they are. The library keeps its own index in `~/.research-
 
 - **Find a paper:** type in the search box at the top. It matches titles, authors, journals, keywords, tags, JEL codes and summaries. The **All types** menu narrows to PDFs, slides, notes and so on.
 - **Sort:** click a column header (Title, Authors, Year, Type, Added). Click again to reverse.
-- **Open a paper:** click its row. Its details open on the right: summary, folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
+- **See a paper's details:** click its row. Its details open on the right: summary, folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
+- **Open a paper:** double-click its row (or press Enter with it selected). A PDF opens in the PDF window described below, a Word file, slides or an image in the app your computer opens it with, and a web page in your browser.
 - **Correct its details:** **Edit details** fixes the title, authors, year, journal, DOI or link. Reference lists are built from these, and your corrections are kept if the file is added again.
 - **Read the whole PDF:** **Open PDF** in its details opens it in a window of its own, with search, zoom, thumbnails and print. Resize it, snap it to half the screen or move it to another monitor and keep it open beside your draft; the next PDF you open replaces it in the same window, which remembers its size and place. **Show in folder** finds the file on disk.
 - **Remove it:** **Remove from library** at the bottom of its details. The file on disk isn't touched.
@@ -138,7 +139,9 @@ Click the draft's title in the top bar for your drafts:
 
 ![The drafts menu](images/drafts-menu.png)
 
-From there you can start a **New draft** (Ctrl+N), **Import a Word file** (Ctrl+O), switch to another draft, or delete one with its ×. A draft's title is its first line.
+From there you can start a **New draft** (Ctrl+N), **Import a Word file** (Ctrl+O), switch to another draft, rename one with its pencil, or delete one with its ×.
+
+**Name a draft:** double-click its title in the top bar (or use the pencil in the drafts menu), type a name and press Enter; Esc cancels. Until you name it, a draft is called after its first line. A name you give stays when the text changes, and it's the file name when you export. Clear the name to go back to the first line. A draft opened from a Word file or written as a proposal starts with that file's or proposal's name.
 
 ### Bring in a Word file
 
@@ -280,9 +283,9 @@ Edit the answer and **Save answer** (it keeps its quote as evidence), **Read aga
 
 **Use it.**
 
-- **Find gaps:** Muse reads the finished matrix and names what the studies leave out (populations, places, periods, methods) and where their findings conflict, naming the studies each gap rests on. **Insert into draft** beside a gap puts it in the draft, citing every paper in the matrix.
+- **Find gaps:** Muse reads the finished matrix and names what the studies leave out (populations, places, periods, methods) and where their findings conflict, naming the studies each gap rests on. They're listed in one box, **Gaps across these studies**, above the table. **Insert into draft** beside a gap puts it in the draft, citing every paper in the matrix. Running Find gaps again updates that box: the wait shows inside it, new gaps are marked **New**, and gaps the new run didn't find are removed, except those a draft (or a saved version of one) cites. Those stay, greyed and marked **In your draft**, so their citations can still be checked against the matrix.
 - **Write from this matrix:** Muse writes a comparison of the studies from the matrix's quotes, each sentence citing them. Tick the sentences to keep and insert them into the draft.
-- **Kept for the draft:** every gap and every written passage is kept with the matrix, with a copy of the rows it came from. Running Find gaps again on an unchanged matrix doesn't add copies. The list shows when the matrix has changed since one was written, and you can insert one again or delete it.
+- **Kept with the matrix:** every gap and every written passage keeps a copy of the rows it came from. Passages you insert are listed in the same box under **Written from this matrix**. The box shows when the matrix has changed since one was written, and you can insert one again or delete it.
 - **Write a proposal:** plans a study that addresses the gaps (see [Write a research proposal](#write-a-research-proposal)).
 - **Insert into draft:** the matrix as a table at the cursor, with the columns you choose. Each cell cites its quote, so the paper joins the reference list and the Word export; the citations are checked in the background, like the Assistant's. In the draft, **−Row**, **−Col** and **×Table** appear in the toolbar while the cursor is in a table.
 - **Export:** an *Excel workbook* or *CSV* (each column's answer, then its evidence: page and quote), or a *Word table* whose cells cite their sources in your citation style, with a reference list.
