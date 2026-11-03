@@ -36,13 +36,6 @@ class ModelIn(BaseModel):
     provider: str | None = None  # muse | mock
     api_key: str | None = None  # write-only; left out keeps the stored key
     reasoning_effort: str | None = None
-    route: str | None = None  # baseten-first | meta | baseten
-
-
-class SearchIn(BaseModel):
-    where: str | None = None  # where reranking runs: auto | local | baseten
-    api_key: str | None = None  # write-only; left out keeps the stored key
-    rerank_model: str | None = None  # a Baseten model ID or URL; "" clears it
 
 
 class MatrixColumn(BaseModel):
@@ -315,7 +308,6 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         # Answers while the embedding model is still loading (embedder: "loading"), never waiting for it.
         state = lib.embedder_state()
         return {"ok": True, "api": API_VERSION, "provider": lib.provider.name,
-                "muse_route": getattr(lib.provider, "route", []),
                 "embedder": lib.embedder.id if state == "ready" else state,
                 "embedder_device": getattr(lib.embedder, "device", "cpu") if state == "ready" else "",
                 "reranker": lib.reranker.id if lib.reranker else None}
@@ -547,15 +539,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.put("/settings/model")
     def set_model(body: ModelIn):
-        return lib.update_model(body.provider, body.api_key, body.reasoning_effort, body.route)
+        return lib.update_model(body.provider, body.api_key, body.reasoning_effort)
 
     @app.get("/settings/search")
     def get_search():
         return lib.search_settings()
-
-    @app.put("/settings/search")
-    def set_search(body: SearchIn):
-        return lib.update_search(body.where, body.api_key, body.rerank_model)
 
     @app.get("/settings/sources")
     def source_settings():

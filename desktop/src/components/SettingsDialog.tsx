@@ -219,114 +219,37 @@ function CoreKeySetting() {
   )
 }
 
-/** "bge-small on this computer": a model id and where it runs, in words. */
-function placeText(id: string | null, on: string | null): string {
+/** "bge-small": a model id in words. */
+function modelText(id: string | null): string {
   if (!id) return 'off'
   if (id === 'loading') return 'the model still loading'
   if (id === 'failed') return "a model that couldn't load (see the backend log)"
-  const name = id.includes('rerank') ? 'Baseten reranker' : (id.split(':').slice(1).join(':').split('/').pop() || id).replace(/-en-v[\d.]+$/, '')
-  return `${name} ${on === 'baseten' ? 'on Baseten' : 'on this computer'}`
+  return (id.split(':').slice(1).join(':').split('/').pop() || id).replace(/-en-v[\d.]+$/, '')
 }
 
-/** The search models: embeddings always on this computer, the reranker here or on Baseten. */
-function SearchSection({ onChanged }: { onChanged: () => void }) {
+/** The search models: embeddings and the reranker, both on this computer. */
+function SearchSection() {
   const [now, setNow] = useState<SearchSettings | null>(null)
-  const [where, setWhere] = useState<SearchSettings['where']>('auto')
-  const [key, setKey] = useState('')
-  const [rerankModel, setRerankModel] = useState('')
-  const [state, setState] = useState<{ busy?: boolean; error?: string; done?: string }>({})
+  const [error, setError] = useState<string | null>(null)
 
-  const load = (s: SearchSettings) => {
-    setNow(s)
-    setWhere(s.where)
-    setRerankModel(s.rerank_model)
-  }
   useEffect(() => {
     api
       .searchSettings()
-      .then(load)
-      .catch((e) => setState({ error: e instanceof Error ? e.message : String(e) }))
+      .then(setNow)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
 
-  if (!now) return <p className="muted">{state.error ?? 'Loading…'}</p>
-
-  const changed = where !== now.where || key.trim() !== '' || rerankModel.trim() !== now.rerank_model
-  async function save() {
-    setState({ busy: true })
-    try {
-      const s = await api.updateSearch({
-        where,
-        rerank_model: rerankModel.trim(),
-        ...(key.trim() ? { api_key: key.trim() } : {}),
-      })
-      load(s)
-      setKey('')
-      setState({ done: `Now reranking ${placeText(s.reranker, s.reranker_on)}.` })
-      onChanged()
-    } catch (e) {
-      setState({ error: e instanceof Error ? e.message : String(e) })
-    }
-  }
+  if (!now) return <p className="muted">{error ?? 'Loading…'}</p>
 
   return (
-    <>
-      <Setting title="Now" hint="Embeddings find the passages that match a question or a sentence you cite; the reranker puts the best first.">
-        <p className="setting-now">
-          Embeddings: <b>{placeText(now.embedder, 'cpu')}</b>
-          <br />
-          Reranking: <b>{placeText(now.reranker, now.reranker_on)}</b>
-        </p>
-        <p className="muted">Embeddings always run on this computer, so your library's text is never sent anywhere to be embedded.</p>
-      </Setting>
-      <Setting title="Where reranking runs">
-        <Choice
-          label="Where reranking runs"
-          value={where}
-          options={[
-            { value: 'auto', label: 'Auto' },
-            { value: 'local', label: 'This computer' },
-            { value: 'baseten', label: 'Baseten' },
-          ]}
-          onChange={setWhere}
-        />
-        <p className="muted">
-          {where === 'auto'
-            ? 'Baseten when a reranker is set up there below; otherwise this computer.'
-            : where === 'local'
-              ? 'Never uses Baseten.'
-              : 'Always on Baseten, using the reranker below.'}
-        </p>
-      </Setting>
-      <Setting
-        title="Baseten API key"
-        hint={now.has_key ? `A key is saved${now.key_hint ? ` (ending in ${now.key_hint})` : ''}. Paste a new one to replace it.` : 'Paste the API key from your Baseten account.'}
-      >
-        <input
-          className="setting-input"
-          type="password"
-          value={key}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={now.has_key ? '•••• •••• •••• ' + now.key_hint : 'Paste your key'}
-          aria-label="Baseten API key"
-          onChange={(e) => setKey(e.target.value)}
-        />
-      </Setting>
-      <Setting title="Reranker on Baseten (optional)" hint="An open-source reranker deployed with Baseten's embeddings engine (BEI), such as BAAI/bge-reranker-v2-m3: its model ID or address. Deploy open-source models only.">
-        <input className="setting-input" value={rerankModel} spellCheck={false} placeholder="e.g. efgh5678" aria-label="Baseten reranker model" onChange={(e) => setRerankModel(e.target.value)} />
-      </Setting>
-      <p className="setting-warn">
-        Reranking on Baseten sends each search's question and its candidate passages there. Your files, drafts and the
-        rest of your library stay on this computer.
+    <Setting title="Now" hint="Embeddings find the passages that match a question or a sentence you cite; the reranker puts the best first.">
+      <p className="setting-now">
+        Embeddings: <b>{modelText(now.embedder)} on this computer</b>
+        <br />
+        Reranking: <b>{now.reranker ? `${modelText(now.reranker)} on this computer` : 'off'}</b>
       </p>
-      <div className="setting-actions">
-        <button className="primary" disabled={!changed || state.busy} onClick={save}>
-          {state.busy ? 'Checking Baseten…' : 'Save and check'}
-        </button>
-        {state.done && !changed && <span className="setting-ok">{state.done}</span>}
-        {state.error && <span className="error-text">{state.error}</span>}
-      </div>
-    </>
+      <p className="muted">Both run on this computer, so your library's text is never sent anywhere to be searched.</p>
+    </Setting>
   )
 }
 
@@ -335,7 +258,6 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
   const [model, setModel] = useState<ModelSettings | null>(null)
   const [provider, setProvider] = useState<'muse' | 'mock'>('mock')
   const [effort, setEffort] = useState('low')
-  const [route, setRoute] = useState<ModelSettings['route']>('meta')
   const [key, setKey] = useState('')
   const [state, setState] = useState<{ busy?: boolean; error?: string; saved?: boolean }>({})
 
@@ -346,21 +268,19 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
         setModel(m)
         setProvider(m.provider)
         setEffort(m.reasoning_effort)
-        setRoute(m.route)
       })
       .catch((e) => setState({ error: e instanceof Error ? e.message : String(e) }))
   }, [])
 
   if (!model) return <p className="muted">{state.error ?? 'Loading…'}</p>
 
-  const changed = provider !== model.provider || effort !== model.reasoning_effort || route !== model.route || key.trim() !== ''
+  const changed = provider !== model.provider || effort !== model.reasoning_effort || key.trim() !== ''
   async function save() {
     setState({ busy: true })
     try {
       const m = await api.updateModel({
         provider,
         reasoning_effort: effort,
-        route,
         ...(key.trim() ? { api_key: key.trim() } : {}),
       })
       setModel(m)
@@ -385,28 +305,6 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
           onChange={setProvider}
         />
       </Setting>
-      {provider === 'muse' && (
-        <Setting title="Where Muse runs" hint="Muse Spark is served by Meta's Model API and by Baseten. Baseten measured about twice as fast.">
-          <Choice
-            label="Where Muse runs"
-            value={route}
-            options={[
-              { value: 'baseten-first', label: 'Baseten, then Meta' },
-              { value: 'meta', label: "Meta's API" },
-              { value: 'baseten', label: 'Baseten only' },
-            ]}
-            onChange={setRoute}
-          />
-          <p className="muted">
-            {route === 'baseten-first'
-              ? `Each request goes to ${model.baseten_model} on Baseten first, and to Meta's API if Baseten fails or is busy. A failing service is passed over for a minute.`
-              : route === 'meta'
-                ? `Only Meta's API (${model.model}).`
-                : `Only ${model.baseten_model} on Baseten: if it's down, Muse is unavailable until it's back.`}
-            {route !== 'meta' && !model.has_baseten_key && ' Add your Baseten API key in Search first.'}
-          </p>
-        </Setting>
-      )}
       <Setting
         title="Meta Model API key"
         hint={model.has_key ? `A key is saved${model.key_hint ? ` (ending in ${model.key_hint})` : ''}. Paste a new one to replace it.` : 'Paste the key from your Meta Model API account.'}
@@ -445,7 +343,7 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
         </button>
         {state.saved && !changed && (
           <span className="setting-ok">
-            Now using {model.provider === 'muse' ? `Muse via ${model.routes.map((r) => (r === 'baseten' ? 'Baseten' : "Meta's API")).join(', then ')}` : 'the offline mock'}.
+            Now using {model.provider === 'muse' ? `Muse (${model.model}) via Meta's Model API` : 'the offline mock'}.
           </span>
         )}
         {state.error && <span className="error-text">{state.error}</span>}
@@ -621,7 +519,7 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
             </>
           )}
 
-          {section === 'search' && <SearchSection onChanged={onModelChanged} />}
+          {section === 'search' && <SearchSection />}
 
           {section === 'model' && <ModelSection onModelChanged={onModelChanged} />}
         </div>

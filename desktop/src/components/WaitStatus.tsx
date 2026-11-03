@@ -17,11 +17,10 @@ interface Props {
 const LONG = 45 // seconds after which the wait is called longer than usual
 
 /** A long AI wait that explains itself: a spinner, what's happening, the seconds waited, and Muse's
- * latest note (retrying after a rate limit, switching from Baseten to Meta's API, or which step of a
- * long job is running), read from GET /model/activity. Optionally a Cancel button. */
+ * latest note (retrying after a rate limit, or which step of a long job is running), read from GET /model/activity. Optionally a Cancel button. */
 export function WaitStatus({ label, startedAt, usual, steps = false, onCancel, cancelTitle }: Props) {
   const [waited, setWaited] = useState(0)
-  const [note, setNote] = useState<string | null>(null) // the latest retry or route switch
+  const [note, setNote] = useState<string | null>(null) // the latest retry
   const [step, setStep] = useState<string | null>(null) // the latest "Step n of m" note
 
   useEffect(() => {

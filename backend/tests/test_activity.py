@@ -1,4 +1,4 @@
-"""A slow answer explains itself: Muse's retries and route switches show up at /model/activity."""
+"""A slow answer explains itself: Muse's retries show up at /model/activity."""
 import json
 import time
 
@@ -10,7 +10,6 @@ from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider, activity
-from app.providers.failover import FailoverProvider
 from app.providers.muse import MuseProvider
 from app.settings import Settings
 
@@ -43,15 +42,6 @@ def test_a_rate_limit_retry_is_noted():
     assert [n["kind"] for n in notes] == ["retry", "retry"]
     assert "busy (rate limit)" in notes[0]["text"] and "attempt 2 of 4" in notes[0]["text"]
     assert "server error (503)" in notes[1]["text"] and "attempt 3 of 4" in notes[1]["text"]
-
-
-def test_switching_routes_is_noted_with_their_names():
-    start = time.time()
-    down = MuseProvider("https://x/v1", "k", "m", retries=0, transport=httpx.MockTransport(Service(429)))
-    up = MuseProvider("https://y/v1", "k", "m", retries=0, transport=httpx.MockTransport(Service()))
-    FailoverProvider([("baseten", down), ("meta", up)]).extract_metadata("page one")
-    switch = [n for n in activity.since(start) if n["kind"] == "switch"]
-    assert len(switch) == 1 and "via Baseten didn't answer" in switch[0]["text"] and "via Meta's API" in switch[0]["text"]
 
 
 def test_the_endpoint_returns_only_newer_notes(tmp_path):

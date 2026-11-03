@@ -10,7 +10,7 @@
 // once (run `gemini` and pick "Sign in with Google"). Every step the reviewer sees a numbered list of
 // what it can click (plus a screenshot, for models that take images) and answers with one action.
 // Native dialogs are stubbed so nothing blocks or touches real files. Keys are read from
-// ~/.research-companion/.env (Muse, Baseten) and Hermes Agent's .env (OpenRouter), never printed.
+// ~/.research-companion/.env (Muse) and Hermes Agent's .env (OpenRouter), never printed.
 
 import { _electron as electron } from 'playwright'
 import fs from 'node:fs'
@@ -26,12 +26,11 @@ const HERMES_ENV = path.join(os.homedir(), 'AppData', 'Local', 'hermes', '.env')
 
 // ---------- reviewers ----------
 
-// Free or hackathon-provided only: Muse on Meta's API and on Baseten (the hackathon Baseten key covers
-// only Muse), Gemini through the Gemini CLI's Google sign-in, and OpenRouter's ":free" models, which
-// allow 50 requests a day on an account that never bought credit (one request per step).
+// Free or hackathon-provided only: Muse on Meta's Model API, Gemini through the Gemini CLI's Google
+// sign-in, and OpenRouter's ":free" models, which allow 50 requests a day on an account that never
+// bought credit (one request per step).
 const REVIEWERS = {
   muse: { name: 'Muse Spark 1.3 (Meta)', provider: 'meta', model: null, vision: true },
-  'muse-open': { name: 'Muse Spark open (Meta, on Baseten)', provider: 'baseten', model: 'meta-models/muse-spark-open-1026', vision: true },
   gemini: { name: 'Gemini (Google, via Gemini CLI)', provider: 'gemini-cli', model: null, vision: true },
   'nemotron-ultra': { name: 'Nemotron 3 Ultra 550B (NVIDIA)', provider: 'openrouter', model: 'nvidia/nemotron-3-ultra-550b-a55b:free', vision: false },
   'nemotron-vl': { name: 'Nemotron 3.5 Super VL (NVIDIA)', provider: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free', vision: true },
@@ -54,7 +53,6 @@ function endpoint(r) {
   if (r.provider === 'meta') {
     return { base: rcEnv.MUSE_API_BASE || 'https://api.meta.ai/v1', key: rcEnv.MUSE_API_KEY, model: rcEnv.MUSE_MODEL || 'muse-spark-1.3' }
   }
-  if (r.provider === 'baseten') return { base: 'https://inference.baseten.co/v1', key: rcEnv.BASETEN_API_KEY, model: r.model }
   if (r.provider === 'gemini-cli') return { model: "the Gemini CLI's default model" }
   return { base: 'https://openrouter.ai/api/v1', key: readEnv(HERMES_ENV).OPENROUTER_API_KEY, model: r.model }
 }
@@ -526,7 +524,7 @@ async function main() {
   for (const k of keys) if (!REVIEWERS[k]) throw new Error(`unknown reviewer ${k}; choose from ${Object.keys(REVIEWERS).join(', ')}`)
   const steps = Number(opt('steps', 20))
   // One app at a time by default: parallel apps share one Muse key, and its rate limit slowed every
-  // reviewer's session in the first panel run (Baseten 429s; drafts took minutes).
+  // reviewer's session in the first panel run (429s on the shared key; drafts took minutes).
   const parallel = Number(opt('parallel', 1))
   // --run adds reviewers to an earlier run, so they share its marksheet.
   const runDir = opt('run') ? path.resolve(opt('run')) : path.join(HERE, 'results', new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19))

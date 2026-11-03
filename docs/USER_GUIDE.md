@@ -164,7 +164,7 @@ The **Assistant** tab drafts from your sources. Type what you want (or pick an e
 | unsupported / quote not found (red) | The source doesn't back the sentence, or the quote isn't in it. |
 | from your matrix (blue, square mark) | Written from a review matrix and checked against the whole matrix (see [Review matrix](#review-matrix)). |
 
-While it drafts, the tab counts the seconds (it usually takes 10 to 30) and says why when it's slower: Muse is busy and retrying after a rate limit, or Baseten didn't answer and the request went to Meta's API instead. **Cancel** stops waiting; nothing is added to your draft (Muse may still finish in the background, and that answer is dropped).
+While it drafts, the tab counts the seconds (it usually takes 10 to 30) and says why when it's slower: Muse is busy and retrying after a rate limit. **Cancel** stops waiting; nothing is added to your draft (Muse may still finish in the background, and that answer is dropped).
 
 Click a citation to see its passage. Tick the sentences you want to keep (or click a sentence; **Select all** ticks every one), then **Insert N selected** puts just those in, in the draft's order, at the cursor, or at the end if you haven't clicked into the page yet.
 
@@ -369,14 +369,11 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 **Search**
 
-- **Now:** the models that find matching passages (embeddings, always bge-small on this computer) and put the best first (the reranker).
-- **Where reranking runs:** *Auto* uses Baseten when a reranker is set up there, and this computer otherwise; *This computer* never uses Baseten; *Baseten* always does.
-- **Baseten API key** and **Reranker on Baseten** (optional): the model ID of an open-source reranker such as `BAAI/bge-reranker-v2-m3`, deployed on your Baseten account (open-source models only: see [Open-source models](../README.md#open-source-models-not-metas)). **Save and check** tries it before switching. Reranking on Baseten sends each search's question and its candidate passages there; files, drafts and the rest of your library stay on your computer. See [Reranking on Baseten](../README.md#reranking-on-baseten).
+- **Now:** the models that find matching passages (embeddings, bge-small) and put the best first (the reranker). Both run on this computer.
 
 **AI model**
 
-- **Model:** Muse, or the offline mock (no key; rough results). **Save and switch** changes it at once, with no restart.
-- **Where Muse runs:** *Baseten, then Meta* sends each request to Muse on Baseten (about twice as fast) and to Meta's API if Baseten fails; *Meta's API* or *Baseten only* use one. It uses the Baseten key from **Search**. The status bar reads *Muse via Baseten* when Baseten goes first.
+- **Model:** Muse (through Meta's Model API), or the offline mock (no key; rough results). **Save and switch** changes it at once, with no restart.
 - **Meta Model API key:** paste a key to save or replace it. It's written to the `.env` file in your data folder and never shown again; only its last four characters are, so you can tell which one it is.
 - **Reasoning effort:** how much Muse thinks before answering, from *minimal* (fastest) to *xhigh* (most thorough). *low* is the default.
 
