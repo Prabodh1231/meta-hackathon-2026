@@ -22,7 +22,8 @@ import { FindingView } from './components/FindingView'
 import { ProposalDialog } from './components/ProposalDialog'
 import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { CitingPapersDialog } from './components/CitingPapersDialog'
-import { PdfViewerDialog } from './components/PdfViewerDialog'
+import { ReaderDialog } from './components/ReaderDialog'
+import { HighlightsPanel } from './components/HighlightsPanel'
 import { ReferencesPanel } from './components/ReferencesPanel'
 import { ReviewPanel } from './components/ReviewPanel'
 import { DEFAULT_SETTINGS, SettingsDialog, type Section as SettingsSection } from './components/SettingsDialog'
@@ -63,9 +64,10 @@ const MODES: { mode: Mode; label: string; icon: IconName; hint: string }[] = [
 ]
 
 /** The tabs of the panel beside the draft, in the order you use them while writing. */
-type Tab = 'assistant' | 'ask' | 'citations' | 'references' | 'review' | 'history'
+type Tab = 'assistant' | 'highlights' | 'ask' | 'citations' | 'references' | 'review' | 'history'
 const TABS: { tab: Tab; label: string; icon: IconName; hint: string }[] = [
   { tab: 'assistant', label: 'Assistant', icon: 'assistant', hint: 'Draft from your library with cited quotes' },
+  { tab: 'highlights', label: 'Highlights', icon: 'highlight', hint: 'What you highlighted and noted while reading, for the paragraph you are writing' },
   { tab: 'ask', label: 'Ask', icon: 'ask', hint: 'Chat with the AI about anything (Ctrl+J asks about the selection)' },
   { tab: 'citations', label: 'Citations', icon: 'cite', hint: 'Confirm cite markers and see each quote on its page' },
   { tab: 'references', label: 'References', icon: 'references', hint: 'Reference list for the sources you cite' },
@@ -191,15 +193,9 @@ export default function App() {
   const [citingFor, setCitingFor] = useState<number | null>(null) // paper whose citing works are listed
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [askAttach, setAskAttach] = useState<{ text: string; n: number } | null>(null) // text sent to the Ask tab
-  const [pdfView, setPdfView] = useState<{ doc: Doc; page: number } | null>(null) // a PDF in the app's viewer
-  // In the desktop app a PDF gets a resizable window of its own; in a plain browser, the viewer dialog.
-  const openPdf = useCallback((doc: Doc, page = 1) => {
-    if (!window.rc?.openPdf) return setPdfView({ doc, page })
-    window.rc.openPdf(doc.source, page, doc.title).catch((e) => {
-      const why = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e)
-      setErrors((es) => [...es.slice(-2), `Could not open the PDF: ${why}`])
-    })
-  }, [])
+  const [pdfView, setPdfView] = useState<{ doc: Doc; page: number } | null>(null) // a PDF in the app's reader
+  // The app's own reader, where text can be highlighted; it links to Chromium's viewer for search and print.
+  const openPdf = useCallback((doc: Doc, page = 1) => setPdfView({ doc, page }), [])
   const [toolsOpen, setToolsOpen] = useState(storedToolsOpen) // the writing tools beside the draft
   const [focusMode, setFocusMode] = useState(false) // only the page and its toolbar
   const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 })
@@ -1436,6 +1432,25 @@ export default function App() {
                   onError={onError}
                 />
               </div>
+              {/* Kept mounted, so what Write from these wrote survives a look at another tab. */}
+              <div hidden={tab !== 'highlights'}>
+                <HighlightsPanel
+                  visible={toolsOpen && tab === 'highlights'}
+                  getContext={() => {
+                    const f = editor.current?.getFocus()
+                    return f?.selection || f?.paragraph || (editor.current?.getText() ?? '').slice(-1500)
+                  }}
+                  getDraft={() => editor.current?.getText() ?? ''}
+                  onInsert={(s) => editor.current?.insertDraft(s)}
+                  onVerified={onVerified}
+                  onOpenCitation={openCitation}
+                  onOpenPage={(docId, page) => {
+                    const d = docs.find((x) => x.id === docId)
+                    if (d) openPdf(d, page)
+                  }}
+                  onError={onError}
+                />
+              </div>
               {/* Kept mounted too, so a question being answered survives a look at another tab. */}
               <div hidden={tab !== 'ask'}>
                 <AskPanel
@@ -1705,7 +1720,7 @@ export default function App() {
         />
       )}
 
-      {pdfView && <PdfViewerDialog doc={pdfView.doc} page={pdfView.page} onClose={() => setPdfView(null)} />}
+      {pdfView && <ReaderDialog doc={pdfView.doc} page={pdfView.page} onClose={() => setPdfView(null)} />}
 
       {showSettings && (
         <SettingsDialog

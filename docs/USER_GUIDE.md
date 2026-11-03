@@ -92,9 +92,9 @@ Your files stay where they are. The library keeps its own index in `~/.research-
 - **Find a paper:** type in the search box at the top. It matches titles, authors, journals, keywords, tags, JEL codes and summaries. The **All types** menu narrows to PDFs, slides, notes and so on.
 - **Sort:** click a column header (Title, Authors, Year, Type, Added). Click again to reverse.
 - **See a paper's details:** click its row. Its details open on the right: summary, folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
-- **Open a paper:** double-click its row (or press Enter with it selected). A PDF opens in the PDF window described below, a Word file, slides or an image in the app your computer opens it with, and a web page in your browser.
+- **Open a paper:** double-click its row (or press Enter with it selected). A PDF opens in the app's reader described below, a Word file, slides or an image in the app your computer opens it with, and a web page in your browser.
 - **Correct its details:** **Edit details** fixes the title, authors, year, journal, DOI or link. Reference lists are built from these, and your corrections are kept if the file is added again.
-- **Read the whole PDF:** **Open PDF** in its details opens it in a window of its own, with search, zoom, thumbnails and print. Resize it, snap it to half the screen or move it to another monitor and keep it open beside your draft; the next PDF you open replaces it in the same window, which remembers its size and place. **Show in folder** finds the file on disk.
+- **Read the whole PDF:** **Open PDF** in its details opens it in the app's reader, where you can highlight passages and add notes (see [Highlights and notes](#highlights-and-notes)). **Open in PDF viewer** at the top of the reader opens it in a window of its own instead, with search, zoom, thumbnails and print, which you can keep beside your draft; it reuses one window and remembers its size and place. **Show in folder** finds the file on disk.
 - **Remove it:** **Remove from library** at the bottom of its details. The file on disk isn't touched.
 
 ### Subject folders
@@ -167,6 +167,23 @@ The **Assistant** tab drafts from your sources. Type what you want (or pick an e
 While it drafts, the tab counts the seconds (it usually takes 10 to 30) and says why when it's slower: Muse is busy and retrying after a rate limit. **Cancel** stops waiting; nothing is added to your draft (Muse may still finish in the background, and that answer is dropped).
 
 Click a citation to see its passage. Tick the sentences you want to keep (or click a sentence; **Select all** ticks every one), then **Insert N selected** puts just those in, in the draft's order, at the cursor, or at the end if you haven't clicked into the page yet.
+
+### Highlights and notes
+
+**While reading.** Open a PDF (double-click it in the Library, or **Open PDF**). Select text on a page and a small bar appears:
+
+- **Highlight** marks it in yellow. It stays on the page every time you open the paper.
+- **Add note** highlights it and opens a note for an idea you have while reading. A ✎ mark in the margin shows a highlight has a note.
+
+Click a highlight to read or change its note, or **Remove highlight**. A highlight has to be on one page. Scanned pages without a text layer can't be selected.
+
+**While writing.** The **Highlights** tab beside the draft lists everything you highlighted, with your notes. It's ranked for the paragraph your cursor is in each time you open it; click into another paragraph and **Fetch** to rank it again. The ranking runs on your computer, with nothing sent anywhere.
+
+- **Insert quote** puts the highlight into the draft as a quote with its citation, already verified, because it's the paper's own words.
+- Tick a few and **Write from N**: Muse writes sentences from them, following on from your draft and guided by your notes. They're cited and checked like the Assistant's, and you tick the ones to insert.
+- Click a paper's label to open it at that page.
+
+Your notes are your own ideas: Muse may use them as guidance, but they're never cited as a source. A highlight whose text the app can't find in the paper's stored text (rare, mostly odd layouts) is listed but can't be cited.
 
 ### Ask
 

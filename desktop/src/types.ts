@@ -154,6 +154,27 @@ export interface DraftSentence {
   citations: Citation[]
 }
 
+/** Text highlighted while reading a PDF in the app, with the reader's note about it. */
+export interface Highlight {
+  id: number
+  doc_id: number
+  page: number
+  text: string // as selected
+  note: string // the reader's own idea; never treated as a source
+  start: number | null // where it is in the page's stored text; null when it couldn't be found there
+  end: number | null
+  created_at: string
+  updated_at: string
+}
+
+/** A highlight fetched for the paragraph being written. */
+export interface FetchedHighlight extends Highlight {
+  score: number | null // closeness to the paragraph; null when there was none
+  doc_title: string
+  label: string
+  citation: Citation | null // ready to insert; null when it can't be cited
+}
+
 /** One message in the Ask chat and the AI's reply (Markdown). */
 export interface AskTurn {
   id: number

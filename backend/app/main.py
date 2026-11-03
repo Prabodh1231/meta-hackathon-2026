@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from .export_docx import export_docx
 from .jobs import IngestJobs
 from .library import INGEST_WORKERS, Library
+from .highlights import MAX_NOTE, MAX_TEXT, Highlights
 from .matrix import DETAIL_FIELDS, Matrices, default_columns
 from .proposal import ROLES, Proposals
 from .parent_watch import exit_with_parent
@@ -95,6 +96,27 @@ class ProposalIn(ProposalSourcesIn):
 
 class NoveltyIn(BaseModel):
     query: str = Field(min_length=1)
+
+
+class HighlightIn(BaseModel):
+    page: int = Field(ge=1)
+    text: str = Field(min_length=1, max_length=MAX_TEXT * 2)  # whitespace is collapsed before the limit
+    note: str = Field("", max_length=MAX_NOTE)
+
+
+class HighlightNoteIn(BaseModel):
+    note: str = Field(max_length=MAX_NOTE)
+
+
+class HighlightFetchIn(BaseModel):
+    context: str = ""  # the paragraph being written; empty lists the newest first
+    limit: int = Field(20, ge=1, le=100)
+
+
+class HighlightWriteIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=30)
+    context: str = ""
+    instruction: str = ""
 
 
 class FindingCheckIn(BaseModel):
@@ -199,7 +221,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 17
+API_VERSION = 18
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -277,6 +299,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     app.state.jobs = jobs
     matrices = Matrices(lib)
     proposals = Proposals(lib, matrices)
+    highlights = Highlights(lib)
     app.state.matrices = matrices
 
     @app.middleware("http")
@@ -642,6 +665,33 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         """A research proposal addressing the chosen gaps, as content for a new draft."""
         return proposals.write(body.matrix_ids, body.finding_ids, [v.model_dump() for v in body.variables],
                                body.focus, body.exclusions, body.resources, body.avoid)
+
+    @app.get("/documents/{doc_id}/highlights")
+    def document_highlights(doc_id: int):
+        return highlights.for_document(doc_id)
+
+    @app.post("/documents/{doc_id}/highlights")
+    def add_highlight(doc_id: int, body: HighlightIn):
+        return highlights.create(doc_id, body.page, body.text, body.note)
+
+    @app.patch("/highlights/{hid}")
+    def set_highlight_note(hid: int, body: HighlightNoteIn):
+        return highlights.update(hid, body.note)
+
+    @app.delete("/highlights/{hid}")
+    def delete_highlight(hid: int):
+        highlights.delete(hid)
+        return {"ok": True}
+
+    @app.post("/highlights/fetch")
+    def fetch_highlights(body: HighlightFetchIn):
+        """Highlights and notes closest to the paragraph being written (ranked on this computer)."""
+        return highlights.fetch(body.context, body.limit)
+
+    @app.post("/highlights/write")
+    def write_from_highlights(body: HighlightWriteIn):
+        """Muse writes cited sentences from these highlights; the UI then verifies each citation."""
+        return highlights.write(body.ids, body.context, body.instruction)
 
     @app.post("/proposals/novelty")
     def proposal_novelty(body: NoveltyIn):
