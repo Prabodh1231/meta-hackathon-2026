@@ -119,7 +119,7 @@ Folders are subjects, not places on disk. Click **New folder**, type a subject (
 
 ### Pick the sources to draft from
 
-Tick the box in front of a paper to have Muse's drafts (Compose, Cite my sources) and the cite searches use only the ticked papers. The bar above the table says how many are ticked, with **Clear** to untick them. With nothing ticked, the whole library is used.
+Tick the box in front of a paper to have Muse's drafts (Compose, Cite my sources) and the cite searches use only the ticked papers. The bar above the table says **Drafting from: whole library** or **Drafting from: N selected**, and **Use whole library** unticks them all. A paper's details say the same, and whether that paper is included. A red **Retracted** pill or an amber **Needs metadata** flag (no year or author in its record) warns you before you rely on a source; both also show in Network, Sources and the reference list.
 
 ### Timeline
 
@@ -268,7 +268,7 @@ Close that window as you would any other. **‹ Back** returns to the tool you c
 
 ### Reference list
 
-**Sources** lists the sources the draft cites. **Cited sources** shows each one with a mark for every citation of it (click the source for its details in the Library, a mark for its quote); sentences still waiting for a source are listed last as **No source yet**. **Reference list** lists them as soon as it opens (**Rebuild** builds it again), in the style chosen in Settings: APA 7, MLA 9 or IEEE. **Copy** copies the list, and **Copy as BibTeX** copies the same sources as BibTeX entries for a reference manager or LaTeX.
+**Sources** lists the sources the draft cites. **Cited sources** shows each one with a mark for every citation of it and a count in words (such as *2 supported · 1 partly supported*; point at the count for the breakdown, click the source for its details in the Library, a mark for its quote); sentences still waiting for a source are listed last as **No source yet**. Your own reading notes are listed separately under **Your notes**, with a grey **Your note** pill, in both Cited sources and the reference list, so they aren't mistaken for published papers. **Reference list** lists them as soon as it opens (**Rebuild** builds it again), in the style chosen in Settings: APA 7, MLA 9 or IEEE. **Copy** copies the list, and **Copy as BibTeX** copies the same sources as BibTeX entries for a reference manager or LaTeX.
 
 ## 5. Check the draft
 
@@ -332,7 +332,7 @@ Esc returns to the draft.
 | Cell | Meaning |
 |---|---|
 | answer with a ✓ and a page | the quote was found on that page; click the page to open the PDF there |
-| answer with an amber dot | the quote wasn't found in the paper: check it |
+| answer with an amber **Needs check** pill | the quote wasn't found in the paper: check it before you rely on it |
 | *Not reported* | the passages read don't say; nothing is guessed |
 
 Answers say only what their quote shows, so they can be checked; a fuller answer spread over several passages is cut to the part the quote covers.
@@ -400,7 +400,7 @@ On a Mac, use Cmd in place of Ctrl.
 
 ## Settings
 
-The gear in the top bar opens Settings. Changes apply as you make them and are kept in your library, so they follow it.
+The gear in the top bar opens Settings. Changes apply as you make them and are kept in your library, so they follow it; the footer at the bottom says so (the AI model section is the exception: it saves with **Save and switch**). The section list and the open section scroll separately.
 
 ![Settings](images/settings.png)
 

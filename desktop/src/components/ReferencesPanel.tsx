@@ -1,21 +1,25 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { DocxStyle, RefStyle } from '../types'
+import type { Doc, DocxStyle, RefStyle } from '../types'
 import { CITATION_STYLES } from './SettingsDialog'
+import { TrustBadges } from './TrustBadges'
 
 interface Props {
   style: DocxStyle // from Settings
   citedDocIds: () => number[]
+  docs?: Doc[]
   onError: (msg: string) => void
 }
 
-export function ReferencesPanel({ style, citedDocIds, onError }: Props) {
+export function ReferencesPanel({ style, citedDocIds, docs, onError }: Props) {
   const [entries, setEntries] = useState<string[] | null>(null)
+  const [ids, setIds] = useState<number[]>([])
   const [copied, setCopied] = useState<string | null>(null)
 
   async function fetchEntries(s: RefStyle): Promise<string[]> {
-    const ids = citedDocIds()
-    return ids.length ? (await api.references(ids, s)).entries : []
+    const entryIds = citedDocIds()
+    setIds(entryIds)
+    return entryIds.length ? (await api.references(entryIds, s)).entries : []
   }
 
   async function build() {
@@ -71,6 +75,15 @@ export function ReferencesPanel({ style, citedDocIds, onError }: Props) {
     }
   }
 
+  const renderedEntries = (entries ?? []).map((e, i) => ({ e, i, doc: docs?.find((d) => d.id === ids[i]) }))
+  const paperEntries = renderedEntries.filter((x) => x.doc?.kind !== 'text')
+  const noteEntries = renderedEntries.filter((x) => x.doc?.kind === 'text')
+  const renderEntry = ({ e, i, doc }: (typeof renderedEntries)[number]) => (
+    <li key={i}>
+      <span>{e}</span>
+      <TrustBadges doc={doc} showNote />
+    </li>
+  )
   const label = CITATION_STYLES.find((s) => s.value === style)?.label ?? style
   return (
     <div className="references">
@@ -92,11 +105,19 @@ export function ReferencesPanel({ style, citedDocIds, onError }: Props) {
       )}
       {entries && entries.length > 0 && (
         <>
-          <ul className="ref-list" aria-label="Reference list">
-            {entries.map((e, i) => (
-              <li key={i}>{e}</li>
-            ))}
-          </ul>
+          {paperEntries.length > 0 && (
+            <ul className="ref-list" aria-label="Reference list">
+              {paperEntries.map(renderEntry)}
+            </ul>
+          )}
+          {noteEntries.length > 0 && (
+            <>
+              <h3 className="src-section-head">
+                Your notes <span>Your own reading notes, not published papers</span>
+              </h3>
+              <ul className="ref-list">{noteEntries.map(renderEntry)}</ul>
+            </>
+          )}
           <div className="row ref-actions" aria-label="Copy or export the reference list">
             <button className="primary" onClick={() => copy(entries.join('\n'), 'list')}>
               {copied === 'list' ? 'Copied list' : 'Copy list'}

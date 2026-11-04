@@ -2,6 +2,7 @@ import cytoscape, { type Core } from 'cytoscape'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { WaitStatus } from './WaitStatus'
+import { TrustBadges } from './TrustBadges'
 import type { CitationGraph, GraphNode } from '../types'
 
 interface Props {
@@ -385,6 +386,7 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
             <>
               <h3>{node.title}</h3>
               <p className="muted">{byline(node)}{node.kind === 'missing' ? ' · not in your library' : ''}</p>
+              <TrustBadges doc={node} />
               <p className="muted">{node.kind === 'paper' ? `Cites ${node.cites} shown here · ` : ''}cited by {node.cited_by} paper{node.cited_by === 1 ? '' : 's'} in your library</p>
               {node.match && <p className="muted">Matches “{topic}” through its {node.match.why.join(', ')}{node.match.hits ? ` (${node.match.hits} passages)` : ''}</p>}
               {node.kind === 'paper' && node.doc_id !== undefined && (
@@ -456,6 +458,7 @@ function NodeList({ title, items, onPick, badge }: { title: string; items: { nod
             <button onClick={() => onPick(node.id)}>
               <span className="node-title">{node.title}</span>
               <span className="muted">{[byline(node), badge?.(node), note, weight ? `${weight} shared` : ''].filter(Boolean).join(' · ')}</span>
+              <TrustBadges doc={node} />
             </button>
           </li>
         ))}
@@ -570,6 +573,7 @@ function NetworkTable({ graph, picked, onPick }: { graph: CitationGraph; picked:
                   {n.title}
                 </button>
                 <span className="muted">{byline(n)}</span>
+                <TrustBadges doc={n} />
               </td>
               <td>{n.year ?? ''}</td>
               <td>{citedHere}</td>

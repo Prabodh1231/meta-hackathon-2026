@@ -370,7 +370,7 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
         <nav className="settings-nav" aria-label="Settings sections">
           <h2 id="settings-title">Settings</h2>
           {SECTIONS.map((x) => (
-            <button key={x.id} className={section === x.id ? 'on' : ''} aria-current={section === x.id} onClick={() => setSection(x.id)}>
+            <button key={x.id} className={section === x.id ? 'on' : ''} aria-current={section === x.id ? 'page' : undefined} onClick={() => setSection(x.id)}>
               {x.label}
             </button>
           ))}
@@ -526,6 +526,12 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
 
           {section === 'model' && <ModelSection onModelChanged={onModelChanged} />}
         </div>
+        <footer className="settings-saved" role="status">
+          <span aria-hidden="true">✓</span>
+          <span>
+            <b>Settings save as you change them</b> — except AI model, which saves with “Save and switch”.
+          </span>
+        </footer>
       </div>
     </div>
   )

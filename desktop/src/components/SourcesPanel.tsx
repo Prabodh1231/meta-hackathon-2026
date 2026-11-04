@@ -2,6 +2,7 @@ import { CITATION_WORD } from '../editor/citeStatus'
 import type { CiteMarkAttrs } from '../editor/citeMark'
 import type { Doc, DocxStyle } from '../types'
 import { ReferencesPanel } from './ReferencesPanel'
+import { TrustBadges } from './TrustBadges'
 import type { ChipAttrs } from './WritingEditor'
 
 interface Props {
@@ -23,11 +24,20 @@ interface Props {
 /** "Chen & Martinez 2021, p. 342" → "Chen & Martinez 2021" */
 const sourceLabel = (label: string) => label.replace(/,\s*(pp?\.|page|slide|para\.?)\s*\S+$/i, '')
 
+/** “2 supported · 1 partly supported”, in the same words as the citation chips. */
+function statusCounts(cs: ChipAttrs[]): string {
+  const counts = new Map<ChipAttrs['status'], number>()
+  for (const c of cs) counts.set(c.status, (counts.get(c.status) ?? 0) + 1)
+  return [...counts.entries()].map(([status, n]) => `${n} ${CITATION_WORD[status].toLowerCase()}`).join(' · ')
+}
+
 /** Sources: what this draft cites, source by source with each citation's mark; and the reference list. */
 export function SourcesPanel({ view, onView: setView, chips, marks, docs, style, citedDocIds, onOpenPaper, onOpenChip, onOpenMark, onError }: Props) {
   const groups = new Map<number, ChipAttrs[]>()
   for (const c of chips) groups.set(c.docId, [...(groups.get(c.docId) ?? []), c])
   const unsourced = marks
+  const paperGroups = [...groups.entries()].filter(([docId]) => docs.find((d) => d.id === docId)?.kind !== 'text')
+  const noteGroups = [...groups.entries()].filter(([docId]) => docs.find((d) => d.id === docId)?.kind === 'text')
 
   return (
     <div className="sources-panel">
@@ -41,19 +51,29 @@ export function SourcesPanel({ view, onView: setView, chips, marks, docs, style,
       </div>
 
       {view === 'refs' ? (
-        <ReferencesPanel style={style} citedDocIds={citedDocIds} onError={onError} />
+        <ReferencesPanel style={style} citedDocIds={citedDocIds} docs={docs} onError={onError} />
       ) : groups.size + unsourced.length === 0 ? (
         <p className="empty">Nothing cited yet. Every source the draft cites is listed here, with each of its citations.</p>
       ) : (
         <ul className="src-list">
-          {[...groups.entries()].map(([docId, cs]) => {
+          {[...paperGroups, ...noteGroups].map(([docId, cs]) => {
             const doc = docs.find((d) => d.id === docId)
             return (
-              <li key={docId} className="src-row">
+              <li key={docId} className={`src-row${doc?.kind === 'text' ? ' src-note-row' : ''}`}>
+                {doc?.kind === 'text' && noteGroups[0]?.[0] === docId && (
+                  <span className="src-notes-label">Your notes — your own reading notes, not published papers</span>
+                )}
                 <button className="src-name" onClick={() => onOpenPaper(docId)} title="Open its details in the Library">
                   <b>{sourceLabel(cs[0].label)}</b>
                   {doc && <span className="muted">{doc.title}</span>}
+                  <TrustBadges doc={doc} showNote />
                 </button>
+                <span
+                  className="src-counts"
+                  title={`${cs.length} citation${cs.length === 1 ? '' : 's'} of this source: ${statusCounts(cs)}. Click a mark to see its quote.`}
+                >
+                  {cs.length} citation{cs.length === 1 ? '' : 's'} · {statusCounts(cs)}
+                </span>
                 <span className="src-marks" aria-label={`${cs.length} citation${cs.length === 1 ? '' : 's'}`}>
                   {cs.map((c) => (
                     <button
