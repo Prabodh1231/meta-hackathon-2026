@@ -23,7 +23,6 @@ Muse Spark drafts from your library, and each citation is checked against a quot
 - [What it does](#what-it-does)
 - [Run it](#run-it)
 - [Development](#development)
-- [Known limitations](#known-limitations)
 
 ## Why
 
@@ -133,10 +132,3 @@ cd ../backend && .venv/Scripts/python -m pytest
 - `npm run web` in `desktop/` serves the UI alone in a browser; it talks to a backend on `127.0.0.1:8765` with no token, so start one with `uvicorn app.main:app --port 8765` from `backend/`.
 - The backend log is `~/.groundwork/logs/backend.log`. If the backend exits, the app restarts it.
 - How the code fits together is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Known limitations
-
-- The installer is for Windows only, and unsigned.
-- Papers added while Muse was unavailable are marked *no summary yet*; use **Try again** in the Library once a key is saved, rather than adding them again.
-- Scanned pages without a text layer cannot be selected, so they cannot be highlighted.
-- The duplication check catches copied and lightly edited text; it does not catch heavy paraphrase.
