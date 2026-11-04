@@ -1,13 +1,7 @@
+import { CITATION_WORD } from '../editor/citeStatus'
 import type { CitationStatus } from '../types'
 
-const LABELS: Record<CitationStatus, string> = {
-  pending: 'checking…',
-  verified: 'verified',
-  weak: 'partial support',
-  unsupported: 'unsupported',
-  quote_not_found: 'quote not found',
-}
-
+/** A verdict as a small badge, in the same words as the chips (see citeStatus.ts). */
 export function StatusBadge({ status, text }: { status: CitationStatus; text?: string }) {
-  return <span className={`badge badge-${status}`}>{text ?? LABELS[status]}</span>
+  return <span className={`badge badge-${status}`}>{text ?? CITATION_WORD[status].toLowerCase()}</span>
 }

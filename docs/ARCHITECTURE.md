@@ -88,14 +88,15 @@ React 19 with Tiptap 3, built by Vite. Entry: [desktop/src/App.tsx](../desktop/s
 
 **Layout.** `App` holds the shared state and draws:
 
-- the **app bar**: the title (opening the drafts menu, `DraftsPanel`), save state and version, the search box, `ExportControl`, Settings;
+- the **app bar**: the draft's name (click to rename; an unnamed draft shows its first line in italics), save state, the version button that opens `HistoryPanel` as a menu (`versionsOpen`) and the change since it, a **Drafts** button for the drafts menu (`DraftsPanel`), the search box, `ExportControl`, Settings;
 - the **rail**, which sets `mode`: `write`, `library` or `network`;
 - one **view** per mode:
-  - *Write:* `WritingEditor` and the side panel. Its tabs are `AssistantPanel`, `AskPanel` (a plain chatbot, kept per draft in `ask_turns`), Citations (`CitePanel`, or `SourceViewer` while a cited passage is open), `ReferencesPanel`, `ReviewPanel` and `HistoryPanel`. `CitationWire` draws the line from a citation to its quote. Closed, the panel is a strip of the tabs' icons (`toolsOpen`); focus mode (`focusMode`) hides the rail, panel, app bar and dock.
+  - *Write:* `WritingEditor` and the side panel, which has three tools (`tab`): **Compose** (`HighlightsPanel`, ranked for the cursor's paragraph by itself, then one Muse box switching, by `compose`, between `AssistantPanel` for drafting from sources and `AskPanel`, a plain chatbot kept per draft in `ask_turns`); **Check** (`CheckSummary`, `CitePanel`, then `ReviewPanel`; `SourceViewer` or `FindingView` while a cited passage is open); **Sources** (`SourcesPanel`: the cited sources with their citations' marks, and `ReferencesPanel`). Panels that hold work in progress stay mounted while hidden. `CitationWire` draws the line from a citation to its quote. Closed, the panel is a strip of the three icons (`toolsOpen`); focus mode (`focusMode`) hides the rail, panel, app bar and dock. The duplication check runs in the background while Write is open (`runCheck`: once the draft has text, then 15 s after edits settle, or 4 s while Check is open); its underlines show only while Check is.
   - *Library:* `LibraryPanel`: folders, a sortable table and the open paper's details.
   - *Network:* `NetworkView`, which loads Cytoscape only when it's first opened.
 - the **dock** (status bar) and the dialogs: `CommandPalette` (Ctrl K: a combobox over a listbox, in sections), `WordImportDialog`, `DuplicateFilesDialog`, `CitedPapersDialog`, `MissingPapersDialog`, `SettingsDialog`, `ReaderDialog`. Settings, the palette and the reader dialog keep Tab inside them with `useFocusTrap`, which gives focus back when they close.
-- `ChipCard`: pointing at a citation in the draft shows its verdict, quote and reason (chips carry an `aria-label` with the verdict in words, and no `title`). Verdict words and the order flagged-first live in `editor/citeStatus.ts`, shared by the chips, the Citations list and the card.
+- `ChipCard`: pointing at a citation in the draft shows its verdict, quote and reason (chips carry an `aria-label` with the verdict in words, and no `title`).
+- **One vocabulary.** `editor/citeStatus.ts` holds the verdict words (`CITATION_WORD`, `MARK_WORD`: Supported, Partly supported, Not supported, Checking…, plus a marker's Finding a source… and No source found), the flagged-first order, and `tally()`, the one counting rule (supported, needs attention, of which to confirm, checking) used by the status bar, Check's badge and `CheckSummary`. The chips' CSS words, `StatusBadge`, `CiteLegend` and the marker tooltips use the same words.
 
 **PDFs** ([pdf.ts](../desktop/src/pdf.ts)) are fetched once per document with the app's token and shared:
 
@@ -112,7 +113,8 @@ React 19 with Tiptap 3, built by Vite. Entry: [desktop/src/App.tsx](../desktop/s
 
 - `citation`: a verified citation chip with its quote, page and offsets;
 - `citeMark`: the fixed-size `cite` marker whose search runs in the background (three at a time);
-- `reviewMarks`: decorations for duplication underlines.
+- `reviewMarks`: decorations for duplication underlines;
+- `museMark`: the `muse` mark on text Muse wrote (`insertDraft(…, { muse: true })` and `insertHTML` go through `insertMuse`). A plugin takes the mark off whatever the writer types or pastes into it; transactions that insert Muse's text or load a draft carry `MUSE_META` so they keep it, and undo/redo and the app's own patches are skipped. Export ignores it.
 
 Autosave runs 0.8 s after the last edit. Saves are queued one at a time, so an older copy can't land after a newer one. `flush()` saves at once; it runs before switching drafts and before restoring a version.
 

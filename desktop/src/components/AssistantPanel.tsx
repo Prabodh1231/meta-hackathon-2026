@@ -68,7 +68,7 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
       <div className="assistant">
         <div className="lib-empty">
           <div className="lib-empty-title">Add sources first</div>
-          <p>The Assistant only writes from your own sources, and quotes them for every sentence. Add a few papers or notes to start.</p>
+          <p>Muse writes only from your own sources here, and quotes them for every sentence. Add a few papers or notes to start.</p>
           <button className="primary" onClick={onChooseSources}>Add sources</button>
         </div>
       </div>

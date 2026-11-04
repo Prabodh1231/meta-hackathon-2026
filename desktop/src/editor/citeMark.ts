@@ -13,11 +13,11 @@ export interface CiteMarkAttrs {
 }
 
 const TITLES: Record<CiteMarkState, string> = {
-  searching: 'Looking for a source… keep writing',
-  verified: 'A source supports this. Click to confirm it',
-  weak: 'Only partial support found. Click to review',
-  unsupported: 'Nothing found supports this. Click to review',
-  none: 'Nothing in your library matches. Click to review',
+  searching: 'Finding a source… keep writing',
+  verified: 'Source found. Click to confirm it',
+  weak: 'Partly supported. Click to review',
+  unsupported: 'Not supported by what was found. Click to review',
+  none: 'No source found in your library. Click to review',
   error: "The search didn't finish. Click to try again",
 }
 

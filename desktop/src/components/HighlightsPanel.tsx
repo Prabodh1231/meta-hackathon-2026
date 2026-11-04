@@ -5,33 +5,43 @@ import { DraftPreview, verifyAll, withCids } from './DraftPreview'
 import { WaitStatus } from './WaitStatus'
 
 interface Props {
-  /** Shown: each time the tab opens, it fetches for where the cursor is now. */
+  /** Shown: it ranks for where the cursor is when shown, and again as the cursor moves to another paragraph. */
   visible: boolean
   /** The paragraph being written (or the draft's end), to rank highlights for. */
   getContext: () => string
   getDraft: () => string
+  /** A highlight inserted as a quote: the paper's own words. */
   onInsert: (sentences: DraftSentence[]) => void
+  /** Sentences Muse wrote from the ticked highlights. */
+  onInsertDraft: (sentences: DraftSentence[]) => void
   onVerified: (cid: string, result: Citation) => void
   onOpenCitation: (c: Citation) => void
   onOpenPage: (docId: number, page: number) => void
   onError: (msg: string) => void
 }
 
-/** What was highlighted and noted while reading, fetched for the paragraph being written: insert a
- * highlight as a quote (already cited and verified), or have Muse write from the ticked ones. */
-export function HighlightsPanel({ visible, getContext, getDraft, onInsert, onVerified, onOpenCitation, onOpenPage, onError }: Props) {
+const SHOWN = 3 // highlights shown before "Show all", so the Muse box below stays in view
+
+/** What was highlighted and noted while reading, ranked for the paragraph being written: insert a
+ * highlight as a quote (already cited and verified), or have Muse write from the ticked ones. It
+ * updates by itself as the cursor moves between paragraphs. */
+export function HighlightsPanel({ visible, getContext, getDraft, onInsert, onInsertDraft, onVerified, onOpenCitation, onOpenPage, onError }: Props) {
   const [items, setItems] = useState<FetchedHighlight[] | null>(null)
   const [forText, setForText] = useState('') // the paragraph they were ranked for
   const [fetching, setFetching] = useState(false)
+  const [all, setAll] = useState(false)
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [sentences, setSentences] = useState<DraftSentence[] | null>(null)
   const [writing, setWriting] = useState(false)
   const [writeNo, setWriteNo] = useState(0)
   const [startedAt, setStartedAt] = useState(0)
   const controller = useRef<AbortController | null>(null)
+  const busy = useRef(false)
 
   async function fetchFor() {
+    if (busy.current) return
     const context = getContext().trim()
+    busy.current = true
     setFetching(true)
     try {
       setItems(await api.fetchHighlights(context))
@@ -39,6 +49,7 @@ export function HighlightsPanel({ visible, getContext, getDraft, onInsert, onVer
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e))
     } finally {
+      busy.current = false
       setFetching(false)
     }
   }
@@ -47,8 +58,18 @@ export function HighlightsPanel({ visible, getContext, getDraft, onInsert, onVer
     if (visible) fetchFor()
   }, [visible]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Back from the reader's window with new highlights: show them. (Only once nothing's ticked, so a
-  // pick in progress isn't reordered under the pointer.)
+  // The cursor moved to another paragraph: rank again for it (not while some are ticked, so a pick
+  // in progress isn't reordered under the pointer). Ranking is local and quick, so a light poll will do.
+  useEffect(() => {
+    if (!visible || picked.size || writing) return
+    const t = window.setInterval(() => {
+      const now = getContext().trim()
+      if (now && now !== forText) fetchFor()
+    }, 2500)
+    return () => window.clearInterval(t)
+  }, [visible, picked, writing, forText]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back from the reader's window with new highlights: show them. (Only once nothing's ticked.)
   useEffect(() => {
     if (!visible) return
     const onFocus = () => !picked.size && fetchFor()
@@ -91,34 +112,28 @@ export function HighlightsPanel({ visible, getContext, getDraft, onInsert, onVer
   }
 
   const citable = items?.filter((h) => h.citation) ?? []
+  // Ticked ones stay in view even past the first few.
+  const shown = items ? (all ? items : items.filter((h, i) => i < SHOWN || picked.has(h.id))) : []
 
   return (
-    <div className="assistant highlights-panel">
-      <div className="row">
-        <span className="muted">
-          {forText ? (
-            <>
-              For: <i title={forText}>“{forText.length > 70 ? forText.slice(0, 70) + '…' : forText}”</i>
-            </>
-          ) : (
-            'Newest first. Click into a paragraph and fetch to rank them for it.'
-          )}
+    <section className="highlights-panel" aria-label="From your reading">
+      <div className="hl-head">
+        <h4 className="eyebrow">From your reading{items && items.length > 0 ? ` · ${items.length}` : ''}</h4>
+        <span className="hl-for muted" title={forText || undefined}>
+          {fetching ? 'ranking…' : !items?.length ? '' : forText ? 'best for the paragraph at your cursor' : 'newest first'}
         </span>
-        <button className="primary" disabled={fetching} onClick={fetchFor} title="Rank your highlights and notes for the paragraph the cursor is in">
-          {fetching ? 'Fetching…' : 'Fetch'}
-        </button>
       </div>
 
       {items && items.length === 0 && (
-        <div className="lib-empty">
-          <div className="lib-empty-title">No highlights yet</div>
-          <p>Open a paper (double-click it in the Library), select text and click Highlight. Add a note for an idea while you read.</p>
-        </div>
+        <p className="hl-empty muted">
+          No highlights yet. Open a paper (double-click it in the Library), select text and click Highlight; add a note for an idea.
+          They show here, best first for the paragraph you're writing.
+        </p>
       )}
 
       {items && items.length > 0 && (
         <ul className="hl-list">
-          {items.map((h) => (
+          {shown.map((h) => (
             <li key={h.id} className={`hl-item${picked.has(h.id) ? ' picked' : ''}`}>
               <label className="hl-pick">
                 <input
@@ -153,8 +168,15 @@ export function HighlightsPanel({ visible, getContext, getDraft, onInsert, onVer
 
       {citable.length > 0 && (
         <div className="row hl-actions">
+          {items && items.length > SHOWN ? (
+            <button className="link" onClick={() => setAll((a) => !a)}>
+              {all ? 'Show fewer' : `Show all ${items.length}`}
+            </button>
+          ) : (
+            <span />
+          )}
           <button className="link" onClick={() => setPicked(picked.size ? new Set() : new Set(citable.map((h) => h.id)))}>
-            {picked.size ? 'Select none' : 'Select all'}
+            {picked.size ? 'Tick none' : 'Tick all'}
           </button>
           <button className="primary" disabled={!picked.size || writing} onClick={write} title="Muse writes sentences from the ticked highlights, guided by their notes, each cited and checked">
             {writing ? 'Writing…' : picked.size ? `Write from ${picked.size}` : 'Tick highlights to write from'}
@@ -176,8 +198,8 @@ export function HighlightsPanel({ visible, getContext, getDraft, onInsert, onVer
       )}
       {sentences && sentences.length === 0 && <p className="empty">Muse couldn't write anything these highlights back. Try ticking others.</p>}
       {sentences && sentences.length > 0 && (
-        <DraftPreview key={writeNo} sentences={sentences} onInsert={onInsert} onOpenCitation={onOpenCitation} />
+        <DraftPreview key={writeNo} sentences={sentences} onInsert={onInsertDraft} onOpenCitation={onOpenCitation} />
       )}
-    </div>
+    </section>
   )
 }

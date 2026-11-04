@@ -421,9 +421,12 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .cite-weak { background: var(--warn-bg); }
 .cite-unsupported, .cite-quote_not_found { background: var(--bad-bg); }
 .cite-weak::after, .cite-unsupported::after, .cite-quote_not_found::after { font-weight: 700; font-size: 11px; }
-.cite-weak::after { content: "partial" / ""; color: var(--warn); }
-.cite-unsupported::after { content: "unsupported" / ""; color: var(--bad); }
-.cite-quote_not_found::after { content: "quote not found" / ""; color: var(--bad); }
+/* The same words as everywhere else (citeStatus.ts): partly supported, not supported */
+.cite-weak::after { content: "partly supported" / ""; color: var(--warn); }
+.cite-unsupported::after, .cite-quote_not_found::after { content: "not supported" / ""; color: var(--bad); }
+/* A legend shows the word as its text instead */
+.cite.legend-chip::after { content: none; }
+.cite.legend-chip { cursor: default; }
 .ProseMirror-selectednode.cite { outline: 2px solid var(--accent); }
 /* Pointing at a citation: what backs it */
 .chip-card {
@@ -1049,8 +1052,8 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 /* The demo's next step: its button, tab or marker pulses (App sets data-demo-next) */
 .app[data-demo-next="confirm"] .writing .cite-mark-verified,
 .app[data-demo-next="quote"] .writing .cite,
-.app[data-demo-next="assistant"] [data-tab="assistant"]:not(.on),
-.app[data-demo-next="review"] [data-tab="review"]:not(.on),
+.app[data-demo-next="assistant"] [data-tab="compose"]:not(.on), .app[data-demo-next="assistant"] [data-compose="cite"]:not(.on),
+.app[data-demo-next="review"] [data-tab="check"]:not(.on),
 .app[data-demo-next="export"] .export .bar-btn { animation: demo-pulse 1.8s ease-out infinite; }
 @keyframes demo-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
@@ -1059,8 +1062,8 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 @media (prefers-reduced-motion: reduce) {
   .app[data-demo-next="confirm"] .writing .cite-mark-verified,
   .app[data-demo-next="quote"] .writing .cite,
-  .app[data-demo-next="assistant"] [data-tab="assistant"]:not(.on),
-  .app[data-demo-next="review"] [data-tab="review"]:not(.on),
+  .app[data-demo-next="assistant"] [data-tab="compose"]:not(.on), .app[data-demo-next="assistant"] [data-compose="cite"]:not(.on),
+  .app[data-demo-next="review"] [data-tab="check"]:not(.on),
   .app[data-demo-next="export"] .export .bar-btn { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -1213,7 +1216,9 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .cite-mark::before { content: "…" / ""; display: inline-block; width: 1.1em; margin-right: 2px; text-align: center; }
 .cite-mark-verified::before { content: "✓" / ""; }
 .cite-mark-weak::before { content: "◐" / ""; }
-.cite-mark-unsupported::before, .cite-mark-none::before { content: "✕" / ""; }
+.cite-mark-unsupported::before { content: "✕" / ""; }
+.cite-mark-none::before { content: "?" / ""; }
+.cite-mark-none { border-style: dashed; border-color: var(--bad); }
 .cite-mark-error::before { content: "!" / ""; }
 .cite-mark:hover { filter: brightness(0.96); }
 .ProseMirror-selectednode.cite-mark { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -1686,3 +1691,103 @@ tr:hover .mx-row-actions, .mx-row-actions:focus-within { opacity: 1; }
 .proposal-flagged li + li { margin-top: 6px; }
 .proposal-core { margin: 4px 0 8px; font-size: 13.5px; }
 .proposal-repaired summary { color: var(--matrix); }
+
+/* ---------- Writing tools: three jobs (Compose, Check, Sources) ---------- */
+.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 8px 12px 0; padding: 4px; border-radius: 12px; background: var(--rail); flex: none; }
+.tool {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 4px 6px;
+  border: none; border-radius: 9px; background: transparent; color: var(--muted); font-size: 13px;
+}
+.tool:hover:not(:disabled) { color: var(--text); }
+.tool.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+.tool.on svg { color: var(--accent); }
+.tool .tab-badge { top: 3px; right: 12px; }
+/* A badge is only ever "needs your attention": the same red as the words for it */
+.tab-badge { background: var(--bad); color: var(--panel); }
+.side-panel .tab-hint { margin-top: 8px; }
+
+/* Two-way switches inside a tool (Cite my sources | Just chat; Cited sources | Reference list) */
+.seg-tabs { display: flex; gap: 2px; padding: 3px; margin: 0 0 8px; border-radius: 10px; background: var(--rail); }
+.seg-tabs button { flex: 1; padding: 5px 8px; border: none; border-radius: 8px; background: none; color: var(--muted); font-size: 12.5px; }
+.seg-tabs button:hover:not(:disabled) { color: var(--text); }
+.seg-tabs button.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+
+/* Compose: your reading on top, the Muse box below */
+.compose-tool .eyebrow { margin: 0 0 8px; }
+.hl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hl-for { font-size: 11.5px; }
+.hl-empty { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.compose-muse { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.compose-hint { margin: 0 0 10px; font-size: 12px; line-height: 1.45; color: var(--muted); }
+
+/* Check: the summary card */
+.check-summary {
+  margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 55%, var(--panel));
+}
+.cs-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.cs-big { display: block; font: 600 22px/1.15 var(--doc-font); color: var(--text); }
+.cs-sub { font-size: 12.5px; color: var(--muted); }
+.cs-meter { display: flex; height: 6px; margin: 12px 0 10px; border-radius: 3px; overflow: hidden; background: var(--pending-bg); }
+.cs-meter i { display: block; height: 100%; }
+.cs-meter .ok { background: var(--ok); }
+.cs-meter .bad { background: var(--bad); }
+.cs-meter .warn { background: var(--warn); }
+.cs-meter .pend { background: var(--pending); }
+.cs-dup { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; }
+.cs-dup .link { font-size: 12.5px; }
+/* The legend: each mark drawn as the draft draws it, with its word */
+.cite-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12px; color: var(--muted); }
+.cite-legend .cite { padding: 2px 8px 2px 5px; font-size: 11.5px; }
+.cite-legend-mark { display: inline-flex; align-items: center; gap: 6px; }
+.cite-all-good { margin: 0 0 12px; font-size: 13px; color: var(--ok); }
+.cite-supported summary { cursor: pointer; }
+.cite-supported[open] summary { margin-bottom: 8px; }
+.cite-queue-state { font-weight: 600; font-size: 11.5px; }
+.cite-queue-text { min-width: 0; display: flex; flex-direction: column; }
+.cite-queue-verified { color: var(--ok); }
+.cite-queue-weak { color: var(--warn); }
+.cite-queue-unsupported, .cite-queue-none, .cite-queue-error { color: var(--bad); }
+.check-dup { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+/* Sources: each cited source with its citations' marks */
+.src-list { list-style: none; margin: 0; padding: 0; }
+.src-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.src-name {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 3px 6px;
+  border: none; border-radius: 8px; background: none; text-align: left; font-size: 13px; color: var(--text);
+}
+button.src-name:hover { background: var(--hover); }
+.src-name span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.src-marks { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; max-width: 45%; }
+.cite.src-mark { padding: 2px 5px; gap: 0; }
+.src-marks .cite-mark { width: auto; padding: 1px 6px; font-size: 10.5px; }
+
+/* App bar: the draft's own name (click to rename), its versions, and the drafts menu beside it */
+.doc-id-text { flex: 0 1 auto; }
+.doc-title {
+  display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 1px 6px 1px 4px; margin-left: -4px;
+  border: 1px solid transparent; border-radius: 7px; background: none; text-align: left; color: var(--text);
+}
+.doc-title:hover:not(:disabled) { background: var(--hover); border-color: var(--border); }
+.doc-title .doc-name { min-width: 0; }
+.doc-title svg { flex: none; color: var(--muted); opacity: 0.55; }
+.doc-title:hover svg { opacity: 1; }
+/* Not named yet: it's the first line standing in, so it reads as provisional */
+.doc-title.unnamed .doc-name { font-style: italic; color: var(--muted); }
+.drafts-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: none; color: var(--muted); font-size: 12.5px; white-space: nowrap;
+}
+.drafts-btn:hover:not(:disabled), .drafts-btn[aria-expanded="true"] { background: var(--hover); color: var(--text); }
+.save-change { color: var(--muted); }
+.versions-menu { display: block; width: min(460px, calc(100vw - 32px)); max-height: min(78vh, 680px); padding: 14px 16px; overflow-y: auto; }
+.dock .stat b.ok-word { color: var(--ok); }
+
+/* Text Muse wrote: a faint tint, and a dashed bar in the margin of its paragraph */
+.prose .muse-text { background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 2px; }
+.prose p:has(.muse-text) { position: relative; }
+.prose p:has(.muse-text)::before {
+  content: ""; position: absolute; left: -18px; top: 0.35em; bottom: 0.35em; width: 3px; border-radius: 2px;
+  background: repeating-linear-gradient(var(--accent) 0 6px, transparent 6px 10px); opacity: 0.5;
+}

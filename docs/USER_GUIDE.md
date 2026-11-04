@@ -26,20 +26,32 @@ The window has four parts:
 
 | Part | What it holds |
 |---|---|
-| **Top bar** | The draft's title (click it for your drafts), whether it's saved and its version; one search box; Export; Focus mode; Settings. |
+| **Top bar** | The draft's name (click it to rename), whether it's saved, its version (**v8 ▾** opens Versions) and how much changed since; **Drafts** beside it; one search box; Export; Focus mode; Settings. |
 | **Rail** (left) | The places in the app: **Write**, **Library**, **Network** and **Matrix**. One fills the window at a time. |
 | **Main area** | The place you picked. In Write, the draft with the writing tools beside it. |
-| **Status bar** (bottom) | Live counts for the draft: words, citations verified, duplication, and how much it changed since the last version. Click any of them to open the matching tool. Outside Write they're marked **Draft**, since they're the open draft's numbers. |
+| **Status bar** (bottom) | Live counts for the draft: words, citations (*12 supported · 1 needs attention · 1 checking*, in the same words as Check) and duplication. Click one to open Check. Outside Write they're marked **Draft**, since they're the open draft's numbers. |
 
 **One search box.** In Write, the box searches everything (sources, drafts, folders) and runs any action; Ctrl K opens it from anywhere. In the Library it filters your sources, and in the Network it finds papers about a topic. The green chip in the box says which one it's doing. Esc clears it, and Ctrl K still searches everything. Ctrl K lists **Actions** first, then **Go to**, **Drafts**, **Folders** and **Sources**, each with how many match; ↑ ↓ move, Enter runs or opens.
 
+### The writing tools
+
+The panel beside the draft has three tools, one for each job:
+
+| Tool | What it's for |
+|---|---|
+| **Compose** | Writing with Muse. On top, **From your reading**: your highlights, best first for the paragraph you're in. Below, **Ask Muse**, one box with a switch: **Cite my sources** (Muse drafts from your library, every sentence cited and checked) or **Just chat** (Muse answers from its own knowledge, uncited). See [Compose](#compose). |
+| **Check** | Everything that needs you, worst first. A summary at the top counts the citations in the same words as the draft's marks, with a legend, and gives the duplication share; then **Needs your attention**, **Still checking** and **Supported** (folded); then **Duplication**. The red number on Check is how many need attention. See [Back up each claim](#4-back-up-each-claim). |
+| **Sources** | What the draft cites, source by source, each with its citations' marks; and the **Reference list**. See [Reference list](#reference-list). |
+
+Versions aren't a tool: they open from **v8 ▾** under the draft's name (see [Versions](#versions)).
+
 ### Open and close the writing tools
 
-The **>|** button at the top-right of the panel, beside its *Writing tools* title, or `Ctrl+\`, closes the writing tools and gives the page the room. A slim strip of their icons stays on the right, with their counts (citations to confirm, duplication, change since the last version):
+The **>|** button at the top-right of the panel, beside its *Writing tools* title, or `Ctrl+\`, closes the writing tools and gives the page the room. A slim strip of their three icons stays on the right, with Check's count of what needs attention:
 
 ![The writing tools closed to a strip of icons](images/tools-closed.png)
 
-Click an icon to open that tab, or the **|<** button at the top of the strip (the same corner) to open the panel as it was. Anything that needs a tool opens it by itself: clicking a citation or a cite marker, a count in the status bar, or an action from Ctrl K. The app remembers whether you left it open; Settings can make it always start open or closed.
+Click an icon to open that tool, or the **|<** button at the top of the strip (the same corner) to open the panel as it was. Anything that needs a tool opens it by itself: clicking a citation or a cite marker, a count in the status bar, or an action from Ctrl K. The app remembers whether you left it open; Settings can make it always start open or closed.
 
 ### Focus mode
 
@@ -55,12 +67,12 @@ A new library opens on **Getting started**. If its first step says *Connect the 
 
 **Try the sample library** (under *Add your sources*, or **Load sample library** in Ctrl K) adds six small files on sleep and coral reefs: two papers, reading notes, a fieldwork log, lab slides and a chapter outline. When they're in, the demo draft opens: four sentences from those papers, each with a cite marker that starts checking it at once. One sentence is false on purpose: the sleep paper found that reactivation during REM sleep did nothing, so Muse marks the claim that it helped as unsupported. (On the mock it may only be marked partial, or even pass.)
 
-Above the draft, a checklist walks through the app, and each step ticks itself off when you do it. The button, tab or marker for the next step pulses:
+Above the draft, a checklist walks through the app, and each step ticks itself off when you do it. The button, tool or marker for the next step pulses:
 
 1. **Confirm a source:** click a green marker, then **Use this source**.
 2. **See the quote on its page:** click the citation that replaced it.
-3. **Draft with the Assistant:** ask for a paragraph and insert it.
-4. **Check for duplication:** open **Review**.
+3. **Draft with Muse:** in **Compose**, with **Cite my sources** on, ask for a paragraph and insert it.
+4. **Check for duplication:** open **Check**.
 5. **Export to Word.**
 
 **Reset demo** puts the draft back as it was written and clears the checklist, to run it again. **Remove samples** takes the sample files out of the library (they don't stay in *Removed* either) and deletes the demo draft; your own sources and drafts stay. **Hide** puts the checklist away; **Open demo draft** in Ctrl K brings it back. The sample files are copied into the data folder (`samples`) and read from there.
@@ -107,7 +119,7 @@ Folders are subjects, not places on disk. Click **New folder**, type a subject (
 
 ### Pick the sources to draft from
 
-Tick the box in front of a paper to have the Assistant and the cite searches use only the ticked papers. The bar above the table says how many are ticked, with **Clear** to untick them. With nothing ticked, the whole library is used.
+Tick the box in front of a paper to have Muse's drafts (Compose, Cite my sources) and the cite searches use only the ticked papers. The bar above the table says how many are ticked, with **Clear** to untick them. With nothing ticked, the whole library is used.
 
 ### Timeline
 
@@ -135,13 +147,13 @@ Click **Write** in the rail. The draft is saved as you type; the top bar says *S
 
 ### Drafts
 
-Click the draft's title in the top bar for your drafts:
+Click **Drafts** beside the draft's name in the top bar for your drafts:
 
 ![The drafts menu](images/drafts-menu.png)
 
 From there you can start a **New draft** (Ctrl+N), **Import a Word file** (Ctrl+O), switch to another draft, rename one with its pencil, or delete one with its ×.
 
-**Name a draft:** double-click its title in the top bar (or use the pencil in the drafts menu), type a name and press Enter; Esc cancels. Until you name it, a draft is called after its first line. A name you give stays when the text changes, and it's the file name when you export. Clear the name to go back to the first line. A draft opened from a Word file or written as a proposal starts with that file's or proposal's name.
+**Name a draft:** click its name in the top bar (or use the pencil in the drafts menu), type a name and press Enter; Esc cancels. Until you name it, a draft is called after its first line, shown in grey italics so you can tell it isn't a name yet. A name you give stays when the text changes, and it's the file name when you export. Clear the name to go back to the first line. A draft opened from a Word file or written as a proposal starts with that file's or proposal's name.
 
 ### Bring in a Word file
 
@@ -153,20 +165,30 @@ Ctrl+O, the drafts menu, or dropping a .docx on the window opens a preview of wh
 
 Headings, lists, quotes, bold, italic, underline, strikethrough, links and line breaks come across. Tables become one line per row and images are left out; the preview says when that happened.
 
-### The Assistant
+### Compose
 
-The **Assistant** tab drafts from your sources. Type what you want (or pick an example) and click **Draft with citations**. Every sentence comes with a quote from a source, and each quote is checked in the background:
+**Compose** is where you write with Muse. **Ask Muse** has one box and a switch above it:
+
+- **Cite my sources** drafts from your library. Type what you want (or pick an example) and click **Draft with citations**. Every sentence comes with a quote from a source, and each quote is checked in the background.
+- **Just chat** is a plain chatbot (see [Just chat](#just-chat)).
+
+Every citation, here and everywhere else in the app, says what its check found with the same symbol and the same word:
 
 | Mark | Meaning |
 |---|---|
-| verified (green) | The quote is in the source and supports the sentence. |
-| weak (amber) | The quote is there but only partly supports it. |
-| unsupported / quote not found (red) | The source doesn't back the sentence, or the quote isn't in it. |
-| from your matrix (blue, square mark) | Written from a review matrix and checked against the whole matrix (see [Review matrix](#review-matrix)). |
+| ✓ **Supported** (green) | The quote is in the source and supports the sentence. |
+| ◐ **Partly supported** (amber) | The quote is there but only partly supports it. |
+| ✕ **Not supported** (red) | The source doesn't back the sentence, or the quote is no longer in it (its reason says which). |
+| … **Checking…** (grey, dashed) | Not checked yet. |
+| blue, square mark | Written from a review matrix and checked against the whole matrix (see [Review matrix](#review-matrix)). |
 
-While it drafts, the tab counts the seconds (it usually takes 10 to 30) and says why when it's slower: Muse is busy and retrying after a rate limit. **Cancel** stops waiting; nothing is added to your draft (Muse may still finish in the background, and that answer is dropped).
+The chip in the draft says *partly supported* or *not supported* after its label, so the ones that need you stand out; supported ones stay quiet. The legend at the top of **Check** shows them all.
+
+While it drafts, Compose counts the seconds (it usually takes 10 to 30) and says why when it's slower: Muse is busy and retrying after a rate limit. **Cancel** stops waiting; nothing is added to your draft (Muse may still finish in the background, and that answer is dropped).
 
 Click a citation to see its passage. Tick the sentences you want to keep (or click a sentence; **Select all** ticks every one), then **Insert N selected** puts just those in, in the draft's order, at the cursor, or at the end if you haven't clicked into the page yet.
+
+**What Muse wrote stays marked.** Text Muse wrote (a draft from your sources, sentences written from highlights or a matrix, a chat reply you insert) has a faint tint and a dashed bar in the margin of its paragraph; point at it for *Written by Muse*. Words you type, even in the middle of it, aren't marked, so the mark keeps to Muse's own words. It's saved with the draft and isn't exported.
 
 ### Highlights and notes
 
@@ -186,49 +208,53 @@ Click a highlight to read or change its note, or **Remove highlight**. A highlig
 - **− 100% +** zooms the pages (50–300%). 100% is a comfortable reading width; **Fit width** stretches the page to fill the window. Ctrl + and Ctrl − zoom, Ctrl 0 goes back to 100%. The page you were on stays in view, and pages are drawn again sharp at each size.
 - **Find in this paper** (Ctrl F) counts the matches, *2 of 7*. The current one is marked in orange and the page's other matches more lightly. Enter or **↓** goes to the next, Shift+Enter or **↑** to the one before, and Esc clears it.
 
-**While writing.** The **Highlights** tab beside the draft lists everything you highlighted, with your notes. It's ranked for the paragraph your cursor is in each time you open it or come back from the reader's window; click into another paragraph and **Fetch** to rank it again. The ranking runs on your computer, with nothing sent anywhere.
+**While writing.** **From your reading**, at the top of **Compose**, lists what you highlighted, with your notes, best first for the paragraph your cursor is in. It ranks again by itself when you move to another paragraph or come back from the reader's window (not while you have some ticked). The first three show; **Show all N** lists the rest. The ranking runs on your computer, with nothing sent anywhere.
 
 - **Insert quote** puts the highlight into the draft as a quote with its citation, already verified, because it's the paper's own words.
-- Tick a few and **Write from N**: Muse writes sentences from them, following on from your draft and guided by your notes. They're cited and checked like the Assistant's, and you tick the ones to insert.
+- Tick a few and **Write from N**: Muse writes sentences from them, following on from your draft and guided by your notes. They're cited and checked like any draft from your sources, and you tick the ones to insert. **Tick all** ticks every one.
 - Click a paper's label to open it at that page.
 
 Your notes are your own ideas: Muse may use them as guidance, but they're never cited as a source. A highlight whose text the app can't find in the paper's stored text (rare, mostly odd layouts) is listed but can't be cited.
 
-### Ask
+### Just chat
 
-The **Ask** tab is a plain AI chatbot: ask it to explain a concept, reword a sentence, suggest a title, or anything else. Type a message and press Enter (Shift+Enter starts a new line). It remembers the conversation, so follow-ups work, and it also sees the paragraph your cursor is in.
+**Just chat**, in Compose's **Ask Muse**, is a plain AI chatbot: ask it to explain a concept, reword a sentence, suggest a title, or anything else. Type a message and press Enter (Shift+Enter starts a new line). It remembers the conversation, so follow-ups work, and it also sees the paragraph your cursor is in.
 
-Ask answers from the AI's own knowledge, not your library, and its replies have no citations: check facts before you rely on them. To write from your sources with cited quotes, use the Assistant.
+It answers from Muse's own knowledge, not your library, and its replies have no citations: check facts before you rely on them. To write from your sources with cited quotes, switch to **Cite my sources**.
 
-To ask about part of your draft, select it and press **Ctrl J**, or click **Ask** in the toolbar beside Cite. The Ask tab opens with the text attached above the message box (× removes it).
+To ask about part of your draft, select it and press **Ctrl J**, or click **Ask Muse** in the toolbar beside Cite. Compose opens on Just chat with the text attached above the message box (× removes it).
 
 Replies show formatted (bold, lists, headings, tables, code). **Insert into draft** under a reply puts it at the cursor with that formatting.
 
-Each draft keeps its own chat, also after you close the app; **Clear conversation** at the top of the tab starts it over.
+Each draft keeps its own chat, also after you close the app; **Clear conversation** at the top of the chat starts it over.
 
-While Muse answers, the tab counts the seconds and says why when it's slower (Muse busy and retrying, or switched to Meta's API). **Cancel** stops waiting and puts your question back in the box; if Muse still answers, the reply appears the next time the chat loads.
+While Muse answers, the chat counts the seconds and says why when it's slower (Muse busy and retrying, or switched to Meta's API). **Cancel** stops waiting and puts your question back in the box; if Muse still answers, the reply appears the next time the chat loads.
 
 ## 4. Back up each claim
 
 Put the cursor in a sentence you wrote (or select some text) and press **Cite** in the toolbar, or Ctrl+Shift+C. A small grey `cite` marker appears at the end of the sentence and you keep writing; the search runs in the background and the cursor doesn't move.
 
-The marker turns green with a ✓ when a source supports the sentence, amber with a ◐ for partial support, and red with a ✕ when nothing does. The symbol says the same as the colour, so it reads without colour too, and a screen reader hears it in words. The marker never changes size, so the line you're typing doesn't shift.
+The marker turns green with a ✓ when a source is found that supports the sentence (*Source found, confirm it*), amber with a ◐ when it's only partly supported, red with a ✕ when what was found doesn't support it, and red with a ? and a dashed border when nothing in your library matches (*No source found*). The symbol says the same as the colour, so it reads without colour too, and a screen reader hears it in words. The marker never changes size, so the line you're typing doesn't shift.
 
-Click a marker to open the **Citations** tab with what was found. **Use this source** turns the marker into a citation (Ctrl+Z undoes it). You can also search again for a reworded sentence, or **Remove marker**.
+Click a marker to open **Check** with what was found. **Use this source** turns the marker into a citation (Ctrl+Z undoes it). You can also search again for a reworded sentence, or **Remove marker**.
 
-Citations carry the same symbols: ✓ supported, ◐ partial, ✕ not supported or quote not found, and … while one is being checked. Blue ones, with the ✓ in a square, were written from a review matrix.
+Citations carry the same symbols and words: ✓ Supported, ◐ Partly supported, ✕ Not supported, and … Checking… while one is being checked. Blue ones, with the ✓ in a square, were written from a review matrix.
 
-With no marker open, the tab lists every marker still waiting, then every citation in the draft under **In this draft**, flagged ones first, with the reason Muse gave. Click a row, or **See quote ›**, to see its quote on its page, as clicking the citation does; **Show in draft** selects it in the draft and **Check again** checks it against its sentence as it reads now. **‹ ›** step through the flagged citations in the draft. Clicking *citations verified* in the status bar opens this list. Once the draft has citations, the how-to at the top folds into **How citing works**.
+**Check** counts them all one way, the way the status bar and Check's badge do: a citation **needs attention** when it's partly or not supported, and so does every marker whose search has finished (it found a source for you to confirm, or found nothing); one is **checking** while its check or search is still running. The summary at the top says how many need attention out of how many, with a bar (green supported, red flagged, amber a source found and waiting for you to confirm it, grey checking) and the legend. Then:
 
-While markers are still searching, the top of the tab says how many sentences are being checked and for how long. Three are checked at a time, so each waiting row says **Checking…** or **Waiting its turn**.
+- **Needs your attention:** markers waiting for you, then citations that aren't fully supported, each with the reason Muse gave. **‹ ›** step through them in the draft.
+- **Still checking:** markers still searching (each says **Finding a source…** or **Waiting its turn**; three are checked at a time) and citations being checked.
+- **Supported:** folded away; click to see them.
+
+Click a row, or **See quote ›**, to see its quote on its page, as clicking the citation does; **Show in draft** selects it in the draft and **Check again** checks it against its sentence as it reads now. Clicking the citations count in the status bar opens Check.
 
 ### Recheck every citation
 
-After rewording sentences, or adding and removing sources, press **Recheck all citations** in the **Citations** tab, or pick it from Ctrl K. Each citation's quote is found in your library as it is now and checked again against its sentence as it reads now. Blue citations, written from a review matrix, are checked against the matrix instead. Every `cite` marker searches again. Citations turn grey while they're checked and you can keep writing. When it's done, a note says how many were verified and how many were flagged. If the backend didn't answer for a citation, it keeps its earlier result.
+After rewording sentences, or adding and removing sources, press **Recheck all** in Check's summary, or pick **Recheck all citations** from Ctrl K. Each citation's quote is found in your library as it is now and checked again against its sentence as it reads now. Blue citations, written from a review matrix, are checked against the matrix instead. Every `cite` marker searches again. Citations turn grey while they're checked and you can keep writing. When it's done, a note says how many were supported and how many weren't. If the backend didn't answer for a citation, it keeps its earlier result.
 
 ### See the quote on its page
 
-Point at a citation to see what backs it: its verdict, the quote and Muse's reason. Click it and the **Citations** tab shows its passage highlighted on the page, and a dashed line joins the citation to the quote:
+Point at a citation to see what backs it: its verdict, the quote and Muse's reason. Click it and **Check** shows its passage highlighted on the page, and a dashed line joins the citation to the quote:
 
 ![A citation and its quote highlighted on the PDF page, joined by a dashed line](images/citation-source.png)
 
@@ -238,25 +264,25 @@ The page line gives both numbers when they differ: the printed page (p. 342) and
 
 ![The PDF in its own window, at the cited page](images/pdf-viewer.png)
 
-Close that window as you would any other. **‹ Back** returns to the tab you came from.
+Close that window as you would any other. **‹ Back** returns to the tool you came from.
 
 ### Reference list
 
-The **References** tab lists every source the draft cites as soon as it opens (**Rebuild** builds it again), in the style chosen in Settings: APA 7, MLA 9 or IEEE. **Copy** copies the list, and **Copy as BibTeX** copies the same sources as BibTeX entries for a reference manager or LaTeX.
+**Sources** lists the sources the draft cites. **Cited sources** shows each one with a mark for every citation of it (click the source for its details in the Library, a mark for its quote); sentences still waiting for a source are listed last as **No source yet**. **Reference list** lists them as soon as it opens (**Rebuild** builds it again), in the style chosen in Settings: APA 7, MLA 9 or IEEE. **Copy** copies the list, and **Copy as BibTeX** copies the same sources as BibTeX entries for a reference manager or LaTeX.
 
 ## 5. Check the draft
 
 ### Duplication
 
-The **Review** tab checks the draft for sentences that repeat each other, and for text that matches a source closely, cited or not:
+The draft is checked in the background as you write, for sentences that repeat each other and for text that matches a source closely, cited or not: once when it has text, and again after your edits settle (sooner while Check is open; **Re-check automatically** in Settings turns the re-checks off). The share is in the status bar and in Check's summary; **Duplication**, under the citations in **Check**, has the details:
 
-![The Review tab](images/review.png)
+![Duplication in Check](images/review.png)
 
-It checks when you open it, and again a few seconds after you edit while it stays open. While the first check runs, the tab says what it's doing and counts the seconds. Matching passages are underlined in the draft: red for an uncited match, dotted for a cited one, wavy for a repeat. Click a finding to jump to it, or its source to see the matching passage. The status bar says *Checking duplication…* while a check runs, then shows the overall percentage.
+While Check is open, matching passages are underlined in the draft: red for an uncited match, dotted for a cited one, wavy for a repeat. Click a finding to jump to it, or its source to see the matching passage. If a check fails, **Check now** in the summary runs it again.
 
 ### Versions
 
-The **History** tab keeps versions of the draft. Snapshots are taken automatically as you write; **Save a version** makes a named milestone (say, *Sent to advisor*). Pick a version to see what changed, by document, section or paragraph, each with a percentage. **Restore** brings an old version back and keeps a snapshot of the draft as it was first, so nothing is lost.
+**v8 ▾** under the draft's name (or **Versions ▾** before the first one) opens the draft's versions; the number beside it says how much changed since the newest. Snapshots are taken automatically as you write; **Save a version** makes a named milestone (say, *Sent to advisor*). Pick a version to see what changed, by document, section or paragraph, each with a percentage. **Restore** brings an old version back and keeps a snapshot of the draft as it was first, so nothing is lost.
 
 ## 6. Export
 
@@ -363,7 +389,7 @@ The draft has a title and Background, The gap, Research questions, Hypotheses, V
 | Ctrl N | New draft |
 | Ctrl O | Import a Word file |
 | Ctrl Shift C | Cite the sentence at the cursor |
-| Ctrl J | Ask about the selected text (or open the Ask tab) |
+| Ctrl J | Ask Muse about the selected text (Compose, Just chat) |
 | Ctrl \ | Open or close the writing tools |
 | Ctrl Shift F | Focus mode on or off |
 | Ctrl Z / Ctrl Y | Undo / redo in the draft |
@@ -387,14 +413,14 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 **Writing & citations**
 
-- **Citation style:** APA 7, MLA 9 or IEEE, for the References tab and Export.
-- **Passages the Assistant reads** (3 to 20, default 8): fewer is faster and sticks to the closest matches; more covers more ground.
+- **Citation style:** APA 7, MLA 9 or IEEE, for the reference list in Sources and for Export.
+- **Passages Muse drafts from** (3 to 20, default 8): fewer is faster and sticks to the closest matches; more covers more ground.
 - **Cite markers search:** the sources ticked in the Library (all of them when none are ticked), or always the whole library.
 
 **Review & history**
 
 - **Duplication sensitivity** (30–90%, default 50%): a sentence is flagged when at least this share of its wording is found in a source. Lower catches more paraphrase; higher flags only near-copies. It applies from the next check.
-- **Re-check automatically** while the Review tab is open.
+- **Re-check automatically:** check duplication again after edits settle.
 - **Automatic snapshots:** at most every N minutes (default 10), and **Snapshots to keep** (default 40). Versions you name are always kept.
 
 **Library**

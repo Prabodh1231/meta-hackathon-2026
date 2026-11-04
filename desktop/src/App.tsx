@@ -5,6 +5,9 @@ import { AskPanel } from './components/AskPanel'
 import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
 import { CitePanel } from './components/CitePanel'
+import { CheckSummary } from './components/CheckSummary'
+import { SourcesPanel } from './components/SourcesPanel'
+import { needWord, tally } from './editor/citeStatus'
 import type { CiteMarkAttrs } from './editor/citeMark'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
 import { CitedPapersDialog } from './components/CitedPapersDialog'
@@ -24,7 +27,6 @@ import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { CitingPapersDialog } from './components/CitingPapersDialog'
 import { ReaderDialog } from './components/ReaderDialog'
 import { HighlightsPanel } from './components/HighlightsPanel'
-import { ReferencesPanel } from './components/ReferencesPanel'
 import { ReviewPanel } from './components/ReviewPanel'
 import { DEFAULT_SETTINGS, SettingsDialog, type Section as SettingsSection } from './components/SettingsDialog'
 import { DEMO_STEPS, DEMO_TITLE, type DemoState, type DemoStep, demoDoc, inSamples, loadDemo, saveDemo } from './demo'
@@ -64,17 +66,16 @@ const MODES: { mode: Mode; label: string; icon: IconName; hint: string }[] = [
   { mode: 'matrix', label: 'Matrix', icon: 'matrix', hint: 'Literature review matrix: papers side by side, each cell backed by a quote' },
 ]
 
-/** The tabs of the panel beside the draft, in the order you use them while writing. */
-type Tab = 'assistant' | 'highlights' | 'ask' | 'citations' | 'references' | 'review' | 'history'
+/** The writing tools beside the draft: three jobs, in the order you do them. Versions open from the
+ * draft's name in the app bar. */
+type Tab = 'compose' | 'check' | 'sources'
 const TABS: { tab: Tab; label: string; icon: IconName; hint: string }[] = [
-  { tab: 'assistant', label: 'Assistant', icon: 'assistant', hint: 'Draft from your library with cited quotes' },
-  { tab: 'highlights', label: 'Highlights', icon: 'highlight', hint: 'What you highlighted and noted while reading, for the paragraph you are writing' },
-  { tab: 'ask', label: 'Ask', icon: 'ask', hint: 'Chat with the AI about anything (Ctrl+J asks about the selection)' },
-  { tab: 'citations', label: 'Citations', icon: 'cite', hint: 'Confirm cite markers and see each quote on its page' },
-  { tab: 'references', label: 'References', icon: 'references', hint: 'Reference list for the sources you cite' },
-  { tab: 'review', label: 'Review', icon: 'review', hint: 'Repeated passages and text matching your sources' },
-  { tab: 'history', label: 'History', icon: 'history', hint: 'Versions of the draft and what changed' },
+  { tab: 'compose', label: 'Compose', icon: 'assistant', hint: 'Write with Muse: draft from your sources with checked quotes, or just chat. Your highlights for this paragraph are on top.' },
+  { tab: 'check', label: 'Check', icon: 'review', hint: 'Everything that needs you, worst first: citations, then duplication. In the same words as the marks in the draft.' },
+  { tab: 'sources', label: 'Sources', icon: 'cite', hint: 'What this draft cites, source by source, and its reference list.' },
 ]
+/** Compose's Muse box: write from your sources (cited and checked), or a plain chat. */
+type ComposeKind = 'cite' | 'chat'
 const TAB = Object.fromEntries(TABS.map((t) => [t.tab, t])) as Record<Tab, (typeof TABS)[number]>
 
 /** What the one search box does in each place. */
@@ -157,7 +158,15 @@ export default function App() {
   const [folders, setFolders] = useState<Folder[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [mode, setMode] = useState<Mode>('write')
-  const [tab, setTab] = useState<Tab>('assistant')
+  const [tab, setTab] = useState<Tab>('compose')
+  const [compose, setCompose] = useState<ComposeKind>('cite')
+  const [sourcesView, setSourcesView] = useState<'cited' | 'refs'>('cited')
+  const [versionsOpen, setVersionsOpen] = useState(false) // the versions menu under the draft's name
+  const tabBody = useRef<HTMLDivElement>(null)
+  // Each tool opens at its top, not where the last one was scrolled to.
+  useEffect(() => {
+    if (tabBody.current) tabBody.current.scrollTop = 0
+  }, [tab])
   const [source, setSource] = useState<(SourceTarget & { cid?: string }) | null>(null)
   const [sourceFrom, setSourceFrom] = useState<Tab | null>(null) // showing `source`, opened from this tab
   // A citation written from a review matrix, shown with its finding (its quote, if asked, in `source`).
@@ -200,13 +209,13 @@ export default function App() {
   const [showSettings, setShowSettings] = useState<SettingsSection | null>(null) // open, at this section
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
   const [citeMarks, setCiteMarks] = useState<CiteMarkAttrs[]>([]) // "cite" markers in the draft, searching or waiting
-  const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker the Citations tab is showing
+  const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker Check is showing
   const [recheckingAll, setRecheckingAll] = useState(false)
   const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
   const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
   const [citingFor, setCitingFor] = useState<number | null>(null) // paper whose citing works are listed
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [askAttach, setAskAttach] = useState<{ text: string; n: number } | null>(null) // text sent to the Ask tab
+  const [askAttach, setAskAttach] = useState<{ text: string; n: number } | null>(null) // text sent to Compose's chat
   const [pdfView, setPdfView] = useState<{ doc: Doc; page: number } | null>(null) // a PDF in the app's reader
   // The app's own reader, where text can be highlighted; it links to Chromium's viewer for search and
   // print. In the desktop app it gets a resizable window of its own; in a plain browser, a dialog.
@@ -278,7 +287,7 @@ export default function App() {
     setToolsOpen(true)
   }, [])
 
-  /** Show a tab of the panel beside the draft. */
+  /** Show one of the writing tools beside the draft. */
   const showTab = useCallback(
     (t: Tab) => {
       revealTools()
@@ -289,13 +298,22 @@ export default function App() {
     [revealTools],
   )
 
-  /** Show a cited passage on its page, in the Citations tab; "back" returns to `from`. */
+  /** Compose, with its Muse box on writing from sources (`cite`) or on the chat. */
+  const showCompose = useCallback(
+    (kind: ComposeKind) => {
+      showTab('compose')
+      setCompose(kind)
+    },
+    [showTab],
+  )
+
+  /** Show a cited passage on its page, in Check; "back" returns to `from`. */
   function showSource(target: SourceTarget & { cid?: string }, from: Tab = tab) {
     setFindingChip(null)
     setSource(target)
     setSourceFrom(sourceFrom ?? from)
     revealTools()
-    setTab('citations')
+    setTab('check')
   }
 
   const toggleFocus = useCallback(() => {
@@ -332,21 +350,26 @@ export default function App() {
       } else if (e.key === 'Escape' && !paletteOpen && !importing && !pdfView) {
         if (focusMode) setFocusMode(false)
         else if (draftsOpen) setDraftsOpen(false)
+        else if (versionsOpen) setVersionsOpen(false)
         // Esc on the page itself (not in a field or the library table) goes back to the draft.
         else if (mode !== 'write' && e.target === document.body) setMode('write')
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [paletteOpen, importing, pdfView, pickWord, draftsOpen, mode, focusMode, revealTools, toggleFocus])
+  }, [paletteOpen, importing, pdfView, pickWord, draftsOpen, versionsOpen, mode, focusMode, revealTools, toggleFocus])
 
-  // The drafts menu closes on a click anywhere else.
+  // The drafts and versions menus close on a click anywhere else.
   useEffect(() => {
-    if (!draftsOpen) return
-    const close = (e: MouseEvent) => !draftsMenu.current?.contains(e.target as Node) && setDraftsOpen(false)
+    if (!draftsOpen && !versionsOpen) return
+    const close = (e: MouseEvent) => {
+      if (draftsMenu.current?.contains(e.target as Node)) return
+      setDraftsOpen(false)
+      setVersionsOpen(false)
+    }
     window.addEventListener('mousedown', close)
     return () => window.removeEventListener('mousedown', close)
-  }, [draftsOpen])
+  }, [draftsOpen, versionsOpen])
 
   const onError = useCallback((msg: string) => setErrors((e) => [...e.slice(-2), msg]), [])
 
@@ -446,12 +469,12 @@ export default function App() {
   const newDraftRef = useRef(newDraft)
   newDraftRef.current = newDraft
 
-  /** Ctrl+J or the toolbar's Ask: open the Ask tab, with the selected text attached to the question. */
+  /** Ctrl+J or the toolbar's Ask Muse: Compose's chat, with the selected text attached to the question. */
   const askAboutSelection = useCallback(() => {
     const text = editor.current?.getFocus().selection ?? ''
     setAskAttach((a) => ({ text: mode === 'write' ? text : '', n: (a?.n ?? 0) + 1 }))
-    showTab('ask')
-  }, [mode, showTab])
+    showCompose('chat')
+  }, [mode, showCompose])
   const askRef = useRef(askAboutSelection)
   askRef.current = askAboutSelection
 
@@ -678,7 +701,7 @@ export default function App() {
     if (job.state !== 'failed' && job.done) openDemoDraft()
   }, [jobs, demoJob]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Open the demo draft, writing it first if there isn't one, with the Citations tab beside it. */
+  /** Open the demo draft, writing it first if there isn't one, with Check beside it. */
   async function openDemoDraft() {
     try {
       const list = await refreshDrafts()
@@ -817,9 +840,10 @@ export default function App() {
     }
   }, [])
 
-  const reviewing = mode === 'write' && tab === 'review'
+  // Check is in view: what the duplication check found is underlined in the draft.
+  const reviewing = mode === 'write' && tab === 'check' && toolsOpen && !focusMode
 
-  // Underline what the check found while the Review tab is open.
+  // Underline what the check found while Check is open.
   useEffect(() => {
     const r = dup.report
     if (!reviewing || !r) {
@@ -842,26 +866,24 @@ export default function App() {
     ])
   }, [reviewing, dup.report])
 
-  // Opening the tab checks the draft; while it stays open, it re-checks a few seconds after edits.
+  // Checked in the background while writing, so the number is there wherever you look: once the
+  // draft has text, then again after edits settle (sooner while Check is open). A failed check
+  // waits for Check now.
+  const hasText = stats.words > 0
   useEffect(() => {
-    if (!reviewing || dup.busy || dup.error) return
+    if (mode !== 'write' || !hasText || dup.busy || dup.error) return
     if (!dup.report) {
-      runCheck()
-      return
+      const t = window.setTimeout(runCheck, 1500)
+      return () => window.clearTimeout(t)
     }
     if (!dup.stale || !settings.auto_recheck) return
-    const t = window.setTimeout(runCheck, 4000)
+    const t = window.setTimeout(runCheck, reviewing ? 4000 : 15000)
     return () => window.clearTimeout(t)
-  }, [reviewing, dup.stale, dup.report, dup.busy, dup.error, runCheck, settings.auto_recheck])
+  }, [mode, hasText, reviewing, dup.stale, dup.report, dup.busy, dup.error, runCheck, settings.auto_recheck])
 
   useEffect(() => {
     if (reviewing && dup.report) markDemo('review')
   }, [reviewing, dup.report, markDemo])
-
-  // Leaving the tab forgets a failed check, so opening it again tries once more.
-  useEffect(() => {
-    if (!reviewing) setDup((d) => (d.error ? { ...d, error: null } : d))
-  }, [reviewing])
 
   function onStats(s: DraftStats) {
     setStats(s)
@@ -917,7 +939,7 @@ export default function App() {
       setFindingChip(a)
       setSourceFrom(sourceFrom ?? tab)
       revealTools()
-      setTab('citations')
+      setTab('check')
       return
     }
     showSource({ ...a })
@@ -987,7 +1009,7 @@ export default function App() {
         quote: '', start: null, end: null, match: 0, label: r.label, status: 'pending', reason: '', finding: f.id,
       })) as unknown as Citation[]
       revealTools()
-      editor.current?.insertDraft([{ text, citations }])
+      editor.current?.insertDraft([{ text, citations }], { muse: true })
       setNotice(`Inserted the gap, citing the ${plural(citations.length, 'paper')} in “${f.matrix_name}”; checking it against the matrix.`)
       if (citations.length) checkFromMatrix([citations[0].cid!])
     } catch (e) {
@@ -1094,15 +1116,18 @@ export default function App() {
       citations: s.citations.map((c, j) => ({ ...c, cid: `ms-${stamp}-${i}-${j}`, finding, status: 'pending' as const, reason: '' })),
     }))
     revealTools()
-    editor.current?.insertDraft(withIds)
+    editor.current?.insertDraft(withIds, { muse: true })
     if (finding != null) checkFromMatrix(withIds.filter((s) => s.citations.length).map((s) => s.citations[0].cid))
     else verifyInDraft(withIds.flatMap((s) => s.citations.map((c) => ({ cid: c.cid!, claim: s.text, chunkId: c.chunk_id, quote: c.quote }))))
   }
 
   function showCitations(focus: string | null = null) {
-    showTab('citations')
+    showTab('check')
     setCiteFocus(focus)
   }
+
+  // The draft's citations, counted one way for the status bar, Check's badge and its summary.
+  const cites = useMemo(() => tally(stats.chips, citeMarks), [stats.chips, citeMarks])
 
   const paletteItems: PaletteItem[] = [
     ...docs.map((d) => ({
@@ -1119,11 +1144,12 @@ export default function App() {
     { group: 'GO', name: 'Library', hint: 'add and organize sources', run: openLibrary },
     { group: 'GO', name: 'Citation network', hint: 'who cites whom, shared references', run: () => setMode('network') },
     { group: 'GO', name: 'Review matrix', hint: 'papers side by side: sample, setting, method, findings', run: () => setMode('matrix') },
-    { group: 'DO', name: 'Ask the assistant', hint: 'draft with citations', run: () => showTab('assistant') },
+    { group: 'DO', name: 'Draft with citations', hint: 'Compose: Muse writes from your sources', run: () => showCompose('cite') },
+    { group: 'DO', name: 'Ask Muse', hint: 'Compose: just chat · Ctrl+J', run: askAboutSelection },
     {
       group: 'DO',
-      name: 'Citations to confirm',
-      hint: citeMarks.length ? `${citeMarks.length} waiting` : 'Ctrl+Shift+C marks a sentence',
+      name: 'Check citations',
+      hint: cites.attention ? `${cites.attention} ${needWord(cites.attention)}` : 'Ctrl+Shift+C marks a sentence',
       run: () => showCitations(),
     },
     {
@@ -1135,10 +1161,10 @@ export default function App() {
         recheckAll()
       },
     },
-    { group: 'DO', name: 'Show references', hint: settings.citation_style.toUpperCase(), run: () => showTab('references') },
+    { group: 'DO', name: 'Show references', hint: settings.citation_style.toUpperCase(), run: () => (showTab('sources'), setSourcesView('refs')) },
     { group: 'DO', name: 'Write a research proposal', hint: 'from the gaps in your review matrices', run: () => setProposalFrom({ matrixId: null }) },
-    { group: 'DO', name: 'Check for duplication', hint: 'repeats and text matching sources', run: () => showTab('review') },
-    { group: 'DO', name: 'Version history', hint: 'save, compare and restore versions', run: () => showTab('history') },
+    { group: 'DO', name: 'Check for duplication', hint: 'repeats and text matching sources', run: () => showTab('check') },
+    { group: 'DO', name: 'Version history', hint: 'save, compare and restore versions', run: () => (setMode('write'), setVersionsOpen(true)) },
     { group: 'DO', name: 'New draft', hint: 'a blank page · Ctrl+N', run: () => newDraft() },
     { group: 'DO', name: 'Show drafts', hint: 'switch, import or delete', run: () => setDraftsOpen(true) },
     { group: 'DO', name: 'Import a Word file', hint: '.docx · Ctrl+O', run: pickWord },
@@ -1167,27 +1193,20 @@ export default function App() {
   const latest = versions?.versions[0]
   const change = versions?.current_change ?? null
   const dupPct = dup.report?.overall ?? null
-  const showingSource = tab === 'citations' && sourceFrom !== null
+  const showingSource = tab === 'check' && sourceFrom !== null
 
-  // Tabs carry a badge only for things waiting on the writer. The duplication and change percentages
-  // live in the status bar, where they're captioned; as bare "57%" badges on tabs they read as noise.
-  function badgeFor(t: Tab): string | null {
-    if (t === 'citations' && citeMarks.length) return String(citeMarks.length)
-    return null
-  }
-
-  /** A tab (or strip icon) was clicked. Clicking Citations again goes back to the list of markers. */
+  /** A tool (or strip icon) was clicked. Clicking Check again goes back to the whole list. */
   function pickTab(t: Tab) {
-    if (t === 'citations') showCitations(tab === 'citations' && toolsOpen ? null : citeFocus)
+    if (t === 'check') showCitations(tab === 'check' && toolsOpen ? null : citeFocus)
     else showTab(t)
   }
 
+  // Only Check carries a badge: the citations that need the writer, counted as the status bar counts them.
   function tabBadge(t: Tab) {
-    const badge = badgeFor(t)
-    if (!badge) return null
+    if (t !== 'check' || !cites.attention) return null
     return (
-      <em className="tab-badge" title={`${badge} cite marker${badge === '1' ? '' : 's'} waiting for you to confirm a source`}>
-        {badge}
+      <em className="tab-badge" title={`${cites.attention} citation${cites.attention === 1 ? '' : 's'} ${needWord(cites.attention)}`}>
+        {cites.attention}
       </em>
     )
   }
@@ -1220,31 +1239,58 @@ export default function App() {
               />
             ) : (
               <button
-                className="doc-switch"
-                // The second click of a double-click leaves the menu as the first left it; the double-click closes it.
-                onClick={(e) => e.detail < 2 && setDraftsOpen((o) => !o)}
-                onDoubleClick={() => (setDraftsOpen(false), setRenamingTitle(true))}
-                aria-expanded={draftsOpen}
-                aria-haspopup="dialog"
-                title="Your drafts: switch, start a new one, import a Word file, or delete one. Double-click to rename this draft."
+                className={`doc-title${draftName ? '' : ' unnamed'}`}
+                onClick={() => (setDraftsOpen(false), setVersionsOpen(false), setRenamingTitle(true))}
+                title={draftName ? `${docTitle}\nClick to rename this draft` : `Not named yet, so it's titled by its first line:\n${docTitle}\nClick to name it`}
+                aria-label={draftName ? `Draft: ${docTitle}. Rename` : `Unnamed draft, titled by its first line: ${docTitle}. Name it`}
               >
-                <span className="doc-name" title={docTitle}>{shortTitle(docTitle)}</span>
-                <span className="doc-caret" aria-hidden="true">▾</span>
-                {drafts.length > 1 && <span className="doc-count">{drafts.length} drafts</span>}
+                <span className="doc-name">{shortTitle(docTitle)}</span>
+                <Icon name="write" size={13} />
               </button>
             )}
             <div className={`save-state save-${saveState.state}`}>
               {saveText(saveState)}
-              {latest && (
-                <>
-                  {' · '}
-                  <button className="link" onClick={() => showTab('history')} title="Version history">
-                    v{latest.number}
-                  </button>
-                </>
-              )}
+              {' · '}
+              <button
+                className="link versions-btn"
+                onClick={() => (setDraftsOpen(false), setVersionsOpen((o) => !o))}
+                aria-expanded={versionsOpen}
+                aria-haspopup="dialog"
+                title="Versions: save, compare and restore"
+              >
+                {latest ? `v${latest.number}` : 'Versions'} ▾
+              </button>
+              {change != null && latest && <span className="save-change"> · {change}% changed since v{latest.number}</span>}
             </div>
           </div>
+          <button
+            className="drafts-btn"
+            onClick={() => (setVersionsOpen(false), setDraftsOpen((o) => !o))}
+            aria-expanded={draftsOpen}
+            aria-haspopup="dialog"
+            title="Your drafts: switch, start a new one, import a Word file, or delete one"
+          >
+            <Icon name="drafts" size={15} />
+            Drafts{drafts.length > 1 ? ` · ${drafts.length}` : ''}
+            <span className="doc-caret" aria-hidden="true">▾</span>
+          </button>
+          {versionsOpen && (
+            <div className="drafts-menu versions-menu" role="dialog" aria-label="Versions">
+              <HistoryPanel
+                key={draftId}
+                draftId={draftId}
+                list={versions}
+                onRefresh={refreshVersions}
+                getJSON={() => editor.current?.getJSON() ?? null}
+                getTitle={titleNow}
+                onRestore={(content) => editor.current?.setContent(content)}
+                onFlush={async () => {
+                  await editor.current?.flush()
+                }}
+                onError={onError}
+              />
+            </div>
+          )}
           {draftsOpen && (
             <div className="drafts-menu" role="dialog" aria-label="Drafts">
               <DraftsPanel
@@ -1369,7 +1415,7 @@ export default function App() {
                     onConnectModel={() => setShowSettings('model')}
                     onAddSources={openLibrary}
                     onTrySamples={window.rc?.copySamples ? trySamples : undefined}
-                    onAsk={() => showTab('assistant')}
+                    onAsk={() => showCompose('cite')}
                     onOpenWord={pickWord}
                     onHide={() => {
                       setHideGuide(true)
@@ -1403,14 +1449,14 @@ export default function App() {
                     <Icon name="collapse" size={18} />
                   </button>
                 </header>
-                <div className="tabs" role="tablist" aria-label="Writing tools">
+                <div className="tools" role="tablist" aria-label="Writing tools">
                   {TABS.map((t) => (
                     <button
                       key={t.tab}
                       role="tab"
                       data-tab={t.tab}
                       aria-selected={tab === t.tab}
-                      className={`tab${tab === t.tab ? ' on' : ''}`}
+                      className={`tool${tab === t.tab ? ' on' : ''}`}
                       onClick={() => pickTab(t.tab)}
                       title={t.hint}
                     >
@@ -1435,34 +1481,19 @@ export default function App() {
                 ))}
               </nav>
             )}
-            {/* Kept mounted while closed, so a draft from the Assistant or a cite search's results survive. */}
-            <div className="tab-body" hidden={!toolsOpen}>
-              <div hidden={tab !== 'assistant'}>
-                <AssistantPanel
-                  passages={settings.assistant_passages}
-                  scope={[...selected]}
-                  sourceCount={docs.length}
-                  onChooseSources={openLibrary}
-                  getContext={() => editor.current?.getText() ?? ''}
-                  onInsert={(s) => {
-                    editor.current?.insertDraft(s)
-                    markDemo('assistant')
-                  }}
-                  onVerified={onVerified}
-                  onOpenCitation={openCitation}
-                  onError={onError}
-                />
-              </div>
-              {/* Kept mounted, so what Write from these wrote survives a look at another tab. */}
-              <div hidden={tab !== 'highlights'}>
+            {/* Kept mounted while closed, so a draft from Muse or a cite search's results survive. */}
+            <div className="tab-body" hidden={!toolsOpen} ref={tabBody}>
+              {/* Compose: your reading for this paragraph, then one Muse box that writes from your sources or chats. */}
+              <div hidden={tab !== 'compose'} className="compose-tool">
                 <HighlightsPanel
-                  visible={toolsOpen && tab === 'highlights'}
+                  visible={toolsOpen && tab === 'compose' && mode === 'write' && !focusMode}
                   getContext={() => {
                     const f = editor.current?.getFocus()
                     return f?.selection || f?.paragraph || (editor.current?.getText() ?? '').slice(-1500)
                   }}
                   getDraft={() => editor.current?.getText() ?? ''}
                   onInsert={(s) => editor.current?.insertDraft(s)}
+                  onInsertDraft={(s) => editor.current?.insertDraft(s, { muse: true })}
                   onVerified={onVerified}
                   onOpenCitation={openCitation}
                   onOpenPage={(docId, page) => {
@@ -1471,18 +1502,52 @@ export default function App() {
                   }}
                   onError={onError}
                 />
+                <section className="compose-muse" aria-label="Ask Muse">
+                  <h4 className="eyebrow">Ask Muse</h4>
+                  <div className="seg-tabs" role="tablist" aria-label="What Muse should do">
+                    <button role="tab" data-compose="cite" aria-selected={compose === 'cite'} className={compose === 'cite' ? 'on' : ''} onClick={() => setCompose('cite')}>
+                      Cite my sources
+                    </button>
+                    <button role="tab" data-compose="chat" aria-selected={compose === 'chat'} className={compose === 'chat' ? 'on' : ''} onClick={() => setCompose('chat')}>
+                      Just chat
+                    </button>
+                  </div>
+                  <p className="compose-hint">
+                    {compose === 'cite'
+                      ? 'Muse writes from your library; every sentence cites a quote, checked against its page. Text you insert keeps a dashed bar in the margin: Muse’s mark.'
+                      : 'Muse answers from its own knowledge, not your library; nothing it says is cited.'}
+                  </p>
+                  {/* Both kept mounted, so a draft or an answer on its way survives a switch. */}
+                  <div hidden={compose !== 'cite'}>
+                    <AssistantPanel
+                      passages={settings.assistant_passages}
+                      scope={[...selected]}
+                      sourceCount={docs.length}
+                      onChooseSources={openLibrary}
+                      getContext={() => editor.current?.getText() ?? ''}
+                      onInsert={(s) => {
+                        editor.current?.insertDraft(s, { muse: true })
+                        markDemo('assistant')
+                      }}
+                      onVerified={onVerified}
+                      onOpenCitation={openCitation}
+                      onError={onError}
+                    />
+                  </div>
+                  <div hidden={compose !== 'chat'}>
+                    <AskPanel
+                      draftId={draftId}
+                      attach={askAttach}
+                      getParagraph={() => editor.current?.getFocus().paragraph ?? ''}
+                      onInsert={(html) => editor.current?.insertHTML(html)}
+                      onError={onError}
+                    />
+                  </div>
+                </section>
               </div>
-              {/* Kept mounted too, so a question being answered survives a look at another tab. */}
-              <div hidden={tab !== 'ask'}>
-                <AskPanel
-                  draftId={draftId}
-                  attach={askAttach}
-                  getParagraph={() => editor.current?.getFocus().paragraph ?? ''}
-                  onInsert={(html) => editor.current?.insertHTML(html)}
-                  onError={onError}
-                />
-              </div>
-              {tab === 'citations' && sourceFrom && (
+
+              {/* Check: the summary, then citations (what needs you first), then duplication. */}
+              {tab === 'check' && sourceFrom && (
                 <>
                   {findingChip && source ? (
                     <button className="link cite-back" onClick={() => setSource(null)}>
@@ -1490,7 +1555,7 @@ export default function App() {
                     </button>
                   ) : (
                     <button className="link cite-back" onClick={() => showTab(sourceFrom)}>
-                      ‹ Back to {sourceFrom === 'citations' ? 'citations to confirm' : TAB[sourceFrom].label}
+                      ‹ Back to {TAB[sourceFrom].label}
                     </button>
                   )}
                   {findingChip && !source ? (
@@ -1509,12 +1574,12 @@ export default function App() {
                 </>
               )}
               {/* Kept mounted (hidden) so results survive a look at a source. */}
-              <div hidden={tab !== 'citations' || showingSource}>
+              <div hidden={tab !== 'check' || showingSource} className="check-tool">
+                {!citeFocus && (
+                  <CheckSummary tally={cites} rechecking={recheckingAll} onRecheckAll={recheckAll} dup={dup} onCheckDup={runCheck} />
+                )}
                 <CitePanel
                   marks={citeMarks}
-                  citations={stats.citations}
-                  rechecking={recheckingAll}
-                  onRecheckAll={recheckAll}
                   focus={citeFocus}
                   onFocus={(cid) => {
                     setCiteFocus(cid)
@@ -1541,38 +1606,36 @@ export default function App() {
                       .catch((e) => onError(`Could not check the citation: ${e instanceof Error ? e.message : e}`))
                   }
                 />
+                {tab === 'check' && !citeFocus && (
+                  <section className="check-dup" aria-label="Duplication">
+                    <h4 className="eyebrow">Duplication</h4>
+                    <ReviewPanel
+                      report={dup.report}
+                      checkedAt={dup.at}
+                      busy={dup.busy}
+                      stale={dup.stale}
+                      error={dup.error}
+                      onRun={runCheck}
+                      onReveal={(block, text) => editor.current?.reveal(block, text)}
+                      onOpenSource={openMatch}
+                    />
+                  </section>
+                )}
               </div>
-              {tab === 'references' && (
-                <ReferencesPanel
+
+              {/* Sources: what the draft cites, and the reference list. */}
+              {tab === 'sources' && (
+                <SourcesPanel
+                  view={sourcesView}
+                  onView={setSourcesView}
+                  chips={stats.chips}
+                  marks={citeMarks}
+                  docs={docs}
                   style={settings.citation_style}
                   citedDocIds={() => editor.current?.citedDocIds() ?? []}
-                  onError={onError}
-                />
-              )}
-              {tab === 'review' && (
-                <ReviewPanel
-                  report={dup.report}
-                  checkedAt={dup.at}
-                  busy={dup.busy}
-                  stale={dup.stale}
-                  error={dup.error}
-                  onRun={runCheck}
-                  onReveal={(block, text) => editor.current?.reveal(block, text)}
-                  onOpenSource={openMatch}
-                />
-              )}
-              {tab === 'history' && (
-                <HistoryPanel
-                  key={draftId}
-                  draftId={draftId}
-                  list={versions}
-                  onRefresh={refreshVersions}
-                  getJSON={() => editor.current?.getJSON() ?? null}
-                  getTitle={titleNow}
-                  onRestore={(content) => editor.current?.setContent(content)}
-                  onFlush={async () => {
-                    await editor.current?.flush()
-                  }}
+                  onOpenPaper={showPaper}
+                  onOpenChip={openChip}
+                  onOpenMark={(cid) => showCitations(cid)}
                   onError={onError}
                 />
               )}
@@ -1655,31 +1718,34 @@ export default function App() {
           <span className="stat" title="Words in the draft">
             <b>{stats.words.toLocaleString()}</b> <span className="lbl">words</span>
           </span>
-          <button
-            className="stat"
-            onClick={() => showCitations()}
-            title={stats.unconfirmed ? 'Cite markers waiting for you to confirm a source' : 'Citations verified against their source: open the list'}
-          >
-            <span className="mini-bar">
-              <span style={{ width: `${stats.citations ? (100 * stats.verified) / stats.citations : 0}%` }} />
-            </span>
-            <b>{stats.verified}</b>/{stats.citations} <span className="lbl">citations verified</span>
-            {stats.flagged > 0 && <em className="flag">{stats.flagged} flagged</em>}
-            {stats.unconfirmed > 0 && <em className="flag to-confirm">{stats.unconfirmed} to confirm</em>}
-          </button>
-          <button className="stat" onClick={() => showTab('review')} title="Share of the draft that repeats itself or matches a source">
-            <span className={`dot${dup.busy ? ' dot-busy' : ''}`} style={{ background: dup.busy || dupPct == null ? 'var(--pending)' : toneOf(dupPct, 'risk') }} />
-            {dup.busy ? (
-              <span className="lbl">Checking duplication…</span>
-            ) : dupPct == null ? (
-              <span className="lbl">Duplication not checked</span>
+          {/* Counted and worded as Check counts them, and as the chips say it. */}
+          <button className="stat" onClick={() => showCitations()} title="Open Check: what needs your attention first">
+            {cites.total === 0 ? (
+              <span className="lbl">No citations yet</span>
             ) : (
-              <><b>{dupPct}%</b> <span className="lbl">duplication{dup.stale ? ' (outdated)' : ''}</span></>
+              <>
+                <span className="lbl">Citations:</span>
+                <b className="ok-word">{cites.supported} supported</b>
+                {cites.attention > 0 && (
+                  <em className="flag">
+                    · {cites.attention} {needWord(cites.attention)}
+                  </em>
+                )}
+                {cites.checking > 0 && <span className="lbl">· {cites.checking} checking</span>}
+              </>
             )}
           </button>
-          <button className="stat" onClick={() => showTab('history')} title="How much the draft changed since the newest version">
-            <Icon name="history" size={14} />
-            {change == null ? <span className="lbl">No versions yet</span> : <><b>{change}%</b> <span className="lbl">changed since v{latest?.number}</span></>}
+          <button className="stat" onClick={() => showTab('check')} title="Share of the draft that repeats itself or matches a source: open Check">
+            <span className={`dot${dup.busy ? ' dot-busy' : ''}`} style={{ background: dup.busy || dupPct == null ? 'var(--pending)' : toneOf(dupPct, 'risk') }} />
+            <span className="lbl">Duplication</span>
+            {dupPct == null ? (
+              <span className="lbl">{dup.busy ? 'checking…' : 'not checked yet'}</span>
+            ) : (
+              <>
+                <b>{dupPct}%</b>
+                {dup.stale && <span className="lbl">(outdated)</span>}
+              </>
+            )}
           </button>
         </div>
         <span className="spacer" />

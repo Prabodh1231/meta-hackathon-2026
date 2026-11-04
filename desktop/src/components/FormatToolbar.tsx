@@ -150,12 +150,12 @@ export function FormatToolbar({ editor, onCite, onAsk }: { editor: Editor | null
       </button>
       <button
         className="cite-button"
-        title="Ask the AI about the selected text, or anything else, in the Ask tab (Ctrl+J)"
+        title="Ask Muse about the selected text, or anything else: opens Compose, Just chat (Ctrl+J)"
         onMouseDown={keep}
         onClick={onAsk}
       >
         <Glyph d={ICONS.ask} />
-        <span className="cite-label">Ask</span>
+        <span className="cite-label">Ask Muse</span>
       </button>
       {state?.table && (
         <>

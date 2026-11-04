@@ -11,7 +11,7 @@ export const DEMO_STEPS: { step: DemoStep; title: string; text: string }[] = [
   {
     step: 'confirm',
     title: 'Confirm a source',
-    text: 'Click a green cite marker, then Use this source in the Citations tab. The marker becomes a citation.',
+    text: 'Click a green cite marker, then Use this source in Check. The marker becomes a citation.',
   },
   {
     step: 'quote',
@@ -20,13 +20,13 @@ export const DEMO_STEPS: { step: DemoStep; title: string; text: string }[] = [
   },
   {
     step: 'assistant',
-    title: 'Draft with the Assistant',
-    text: 'Ask the Assistant for a paragraph (say, on coral bleaching) and insert it. Every sentence cites a quote.',
+    title: 'Draft with Muse',
+    text: 'In Compose, with Cite my sources on, ask Muse for a paragraph (say, on coral bleaching) and insert it. Every sentence cites a quote.',
   },
   {
     step: 'review',
     title: 'Check for duplication',
-    text: 'Open Review: it underlines sentences that copy a source, and says which ones are cited.',
+    text: 'Open Check: it underlines sentences that copy a source, and says which ones are cited.',
   },
   {
     step: 'export',
