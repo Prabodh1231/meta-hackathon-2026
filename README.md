@@ -1,6 +1,10 @@
-# Research Companion
+<img src="desktop/src/assets/logo.svg" alt="" width="72" />
 
-A personal AI research companion. It turns one researcher's scattered documents (papers, notes, slides, scans, web pages) into an organized local knowledge base, then helps them write from it with citations that are checked against the source.
+# Groundwork
+
+**Write only what your sources say.**
+
+Groundwork is a personal AI research assistant. It turns one researcher's scattered documents (papers, notes, slides, scans, web pages) into an organized local knowledge base, then helps them write from it with citations that are checked against the source.
 
 Built for the **Meta Global AI Developer Hackathon** (Oct 27 – Nov 4, 2026).
 
@@ -57,7 +61,7 @@ Other commands:
 
 The app ships no search model, so it needs no model download and its keyword search works offline from the first start; Muse (and the scholarly indexes) need internet and, for Muse, a key. The library and drafts open at once: nothing has to load before searching, cite suggestions or imports.
 
-Your library lives in `~/.research-companion/`: a SQLite database plus logs and settings. Set `RC_DATA_DIR` to put it somewhere else.
+Your library lives in `~/.groundwork/`: a SQLite database plus logs and settings. Set `RC_DATA_DIR` to put it somewhere else. A library from before the app was renamed, in `~/.research-companion/`, moves to `~/.groundwork/` the first time the app starts.
 
 ### Build a Windows installer
 
@@ -68,18 +72,18 @@ cd backend && .venv/Scripts/pip install pyinstaller
 cd ../desktop && npm run dist
 ```
 
-`npm run dist` builds the UI, freezes the backend with PyInstaller (`backend/rc-backend.spec`, into `backend/dist/rc-backend`) and packages it with electron-builder into `desktop/release/Research-Companion-Setup-<version>.exe`. The installed app runs that bundled backend instead of `backend/.venv`. It installs for the current user without admin rights.
+`npm run dist` builds the UI, freezes the backend with PyInstaller (`backend/groundwork-backend.spec`, into `backend/dist/groundwork-backend`) and packages it with electron-builder into `desktop/release/Groundwork-Setup-<version>.exe`. The installed app runs that bundled backend instead of `backend/.venv`. It installs for the current user without admin rights.
 
 Things to tell testers:
 
 - Windows says the installer is from an **unknown publisher**, because it isn't signed. They click **More info → Run anyway**.
 - Until they paste a key in **Settings → Model** and pick Muse, the app runs on the offline mock, which matches words instead of reading. Getting started and the amber *Offline mock* in the status bar both lead there. Give each tester their own key if you can; a shared key spends from your account.
 - **Try the sample library** in Getting started loads six demo files and a demo draft with a checklist of what to try (see the [user guide](docs/USER_GUIDE.md#try-the-demo)). The installer ships the files from `samples/`.
-- Their library lives in their own `~/.research-companion/`. The first start needs no internet (only Muse and the scholarly indexes do).
+- Their library lives in their own `~/.groundwork/`. The first start needs no internet (only Muse and the scholarly indexes do).
 
 The packaged backend is the same code as in development. It leaves out PyMuPDF's optional layout add-on, which isn't in `requirements.txt`.
 
-The backend runs detached from the terminal you launched from, so a Ctrl+C there doesn't kill it. If it exits anyway, the app restarts it (up to 3 times a minute) and the status bar shows "Backend offline, reconnecting…" meanwhile. Its output is appended to `~/.research-companion/logs/backend.log`. On Windows, run the app with `npm.cmd run dev` if PowerShell blocks `npm`.
+The backend runs detached from the terminal you launched from, so a Ctrl+C there doesn't kill it. If it exits anyway, the app restarts it (up to 3 times a minute) and the status bar shows "Backend offline, reconnecting…" meanwhile. Its output is appended to `~/.groundwork/logs/backend.log`. On Windows, run the app with `npm.cmd run dev` if PowerShell blocks `npm`.
 
 ## Using the app
 
@@ -122,7 +126,7 @@ Each entry in a paper's reference list is looked up in open scholarly indexes: *
 
 Only open-access copies those indexes list are downloaded: open-access journals, arXiv and university or preprint repositories. A link only counts when it actually serves a PDF; publisher pages that answer with a login wall are skipped for the next link. Each entry ends as one of:
 
-- **Downloaded:** saved to `~/.research-companion/papers/` as `Author Year - Title.pdf` and imported like any other file (metadata, summary, folders, citation network). The index's title, DOI and year replace what the PDF itself claims, since PDF titles are often file names, and a later look-up then finds the paper already in the library.
+- **Downloaded:** saved to `~/.groundwork/papers/` as `Author Year - Title.pdf` and imported like any other file (metadata, summary, folders, citation network). The index's title, DOI and year replace what the PDF itself claims, since PDF titles are often file names, and a later look-up then finds the paper already in the library.
 - **Free to read online:** a free page exists but no PDF could be downloaded; "Read online" opens it in the browser.
 - **No free copy / Not found:** paywalled, or unknown to both indexes; "Search Google Scholar" opens a search for it. Nothing is downloaded.
 
@@ -141,7 +145,7 @@ A field you corrected under Edit details is never changed. When the DOI printed 
 
 ## Using Muse
 
-Put the key in `~/.research-companion/.env`, the app's data folder, outside the repository:
+Put the key in `~/.groundwork/.env`, the app's data folder, outside the repository:
 
 ```
 RC_PROVIDER=muse

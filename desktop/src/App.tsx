@@ -28,6 +28,7 @@ import { CitingPapersDialog } from './components/CitingPapersDialog'
 import { ReaderDialog } from './components/ReaderDialog'
 import { HighlightsPanel } from './components/HighlightsPanel'
 import { ReviewPanel } from './components/ReviewPanel'
+import logoUrl from './assets/logo.svg?no-inline'
 import { DEFAULT_SETTINGS, SettingsDialog, type Section as SettingsSection } from './components/SettingsDialog'
 import { DEMO_STEPS, DEMO_TITLE, type DemoState, type DemoStep, demoDoc, inSamples, loadDemo, saveDemo } from './demo'
 import { WordImportDialog, convertedSummary, simplifiedNotes } from './components/WordImportDialog'
@@ -1223,7 +1224,7 @@ export default function App() {
       )}
       <header className="app-bar">
         <div className="doc-id" ref={draftsMenu}>
-          <span className="logo" aria-hidden="true">rc</span>
+          <img className="logo" src={logoUrl} alt="" title="Groundwork: write only what your sources say" />
           <div className="doc-id-text">
             {renamingTitle ? (
               <DraftNameField

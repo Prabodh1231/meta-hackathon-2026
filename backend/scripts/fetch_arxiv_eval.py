@@ -38,7 +38,7 @@ def main() -> None:
     manifest_path = OUT / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
 
-    with httpx.Client(timeout=60, follow_redirects=True, headers={"User-Agent": "research-companion-eval/0.1"}) as client:
+    with httpx.Client(timeout=60, follow_redirects=True, headers={"User-Agent": "groundwork-eval/0.1"}) as client:
         for query in QUERIES:
             resp = client.get(API, params={"search_query": query, "max_results": args.per_query * 2, "sortBy": "relevance"})
             resp.raise_for_status()

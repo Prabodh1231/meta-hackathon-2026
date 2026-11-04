@@ -1,6 +1,8 @@
-# Research Companion: user guide
+# Groundwork: user guide
 
-Research Companion keeps the papers, notes, slides, scans and web pages you're writing from in one local library, and helps you write from them with citations that are checked against the source.
+*Write only what your sources say.*
+
+Groundwork keeps the papers, notes, slides, scans and web pages you're writing from in one local library, and helps you write from them with citations that are checked against the source.
 
 This guide is about using the app. For setup, see the [README](../README.md#run-it). For how the code fits together, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -95,7 +97,7 @@ While files are being added, a card at the top of the library shows each file's 
 
 Files are added in the background. A card under the Library's header shows each file's progress (reading, Muse reading it, filing into folders), and **Stop** cancels the rest. When Muse can't write a summary or tags (it's offline or rate-limited), the paper is still searchable and citable; it's marked *no summary yet* and the library offers **Try again**.
 
-Your files stay where they are. The library keeps its own index in `~/.research-companion/`; only text passages, and images that need OCR, are sent to Muse.
+Your files stay where they are. The library keeps its own index in `~/.groundwork/`; only text passages, and images that need OCR, are sent to Muse.
 
 ## 2. Organize the library
 

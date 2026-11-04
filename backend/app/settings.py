@@ -3,6 +3,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def default_data_dir() -> Path:
+    """~/.groundwork. A library from before the rename, in ~/.research-companion, is used where
+    it is until the desktop app moves it on its next start."""
+    new, legacy = Path.home() / ".groundwork", Path.home() / ".research-companion"
+    return legacy if not new.exists() and legacy.exists() else new
+
+
 @dataclass
 class Settings:
     data_dir: Path
@@ -24,7 +31,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         """Settings from environment variables, falling back to `<data dir>/.env`. The key
         lives there, in the user's data folder, so it never sits inside the repository."""
-        data_dir = Path(os.environ.get("RC_DATA_DIR") or Path.home() / ".research-companion")
+        data_dir = Path(os.environ.get("RC_DATA_DIR") or default_data_dir())
         file_vars = read_env_file(data_dir / ".env")
 
         def env(name: str, default: str = "") -> str:

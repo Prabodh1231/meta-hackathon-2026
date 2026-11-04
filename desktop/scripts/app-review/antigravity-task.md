@@ -1,10 +1,10 @@
-# Review task: test Research Companion and mark it
+# Review task: test Groundwork and mark it
 
 You are one reviewer on an AI review panel. Other AI models are testing the same app with the same goals and marking it on the same scale, and the marks are compared. Test the app yourself, in a browser, as a first-time user. Nobody explains it to you: work it out from the screen.
 
 ## The app
 
-Research Companion helps a researcher write from their own sources with citations that are checked against the source. Open it at **http://localhost:5173** in your browser. This is the app's browser version, running against a local test library. It already holds six sample files (two papers, notes, a fieldwork log, slides and a chapter outline) and a demo draft, **Sleep, memory and reefs (demo)**, which opens first. The app's AI is Meta's Muse: drafting and checking take time, so wait (up to 30 s) instead of clicking again.
+Groundwork helps a researcher write from their own sources with citations that are checked against the source. Open it at **http://localhost:5173** in your browser. This is the app's browser version, running against a local test library. It already holds six sample files (two papers, notes, a fieldwork log, slides and a chapter outline) and a demo draft, **Sleep, memory and reefs (demo)**, which opens first. The app's AI is Meta's Muse: drafting and checking take time, so wait (up to 30 s) instead of clicking again.
 
 ## What to try, in roughly this order
 

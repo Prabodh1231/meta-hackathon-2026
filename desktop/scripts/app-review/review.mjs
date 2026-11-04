@@ -6,11 +6,11 @@
 //   node scripts/app-review/review.mjs marksheet scripts/app-review/results/<run>
 //
 // Each reviewer gets a fresh, throwaway library (copied search models, no papers) and the app runs on
-// Muse with the keys in ~/.research-companion/.env. Gemini needs the Gemini CLI signed in with Google
+// Muse with the keys in ~/.groundwork/.env. Gemini needs the Gemini CLI signed in with Google
 // once (run `gemini` and pick "Sign in with Google"). Every step the reviewer sees a numbered list of
 // what it can click (plus a screenshot, for models that take images) and answers with one action.
 // Native dialogs are stubbed so nothing blocks or touches real files. Keys are read from
-// ~/.research-companion/.env (Muse) and Hermes Agent's .env (OpenRouter), never printed.
+// ~/.groundwork/.env (Muse) and Hermes Agent's .env (OpenRouter), never printed.
 
 import { _electron as electron } from 'playwright'
 import fs from 'node:fs'
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const DESKTOP = path.resolve(HERE, '..', '..')
 const REPO = path.resolve(DESKTOP, '..')
-const RC_DATA = process.env.RC_DATA_DIR || path.join(os.homedir(), '.research-companion')
+const RC_DATA = process.env.RC_DATA_DIR || [path.join(os.homedir(), '.groundwork'), path.join(os.homedir(), '.research-companion')].find((d) => fs.existsSync(d)) || path.join(os.homedir(), '.groundwork')
 const HERMES_ENV = path.join(os.homedir(), 'AppData', 'Local', 'hermes', '.env')
 
 // ---------- reviewers ----------
@@ -272,7 +272,7 @@ async function act(page, a) {
 
 // ---------- the session ----------
 
-const GOALS = `You are testing "Research Companion", a desktop app for researchers, as a first-time user. Nobody explains it to you: work it out from the screen.
+const GOALS = `You are testing "Groundwork", a desktop app for researchers, as a first-time user. Nobody explains it to you: work it out from the screen.
 Try to, in roughly this order:
 1. Work out what the app is for.
 2. Load the sample library and work through the demo checklist that appears above the demo draft (confirm a source, see a quote on its page, draft with the Assistant, check for duplication, export to Word).
@@ -289,7 +289,7 @@ async function session(key, r, { steps, runDir }) {
   const outDir = path.join(runDir, key)
   const shots = path.join(outDir, 'screens')
   fs.mkdirSync(shots, { recursive: true })
-  const dataDir = path.join(os.tmpdir(), 'rc-app-review', path.basename(runDir), key)
+  const dataDir = path.join(os.tmpdir(), 'groundwork-app-review', path.basename(runDir), key)
   freshDataDir(dataDir)
   const log = []
   const usage = { calls: 0, tokensIn: 0, tokensOut: 0, ms: 0 }
@@ -387,7 +387,7 @@ function reviewPrompt(log, archNotes) {
     reasons: Object.fromEntries(p.criteria.map((c) => [c, 'one sentence: why this score, citing what you saw'])),
     verdict: 'two sentences from this point of view',
   }]))
-  return `You just tested the desktop app "Research Companion" yourself. Here is everything you did and noticed:
+  return `You just tested the desktop app "Groundwork" yourself. Here is everything you did and noticed:
 
 ${lines}
 
@@ -498,7 +498,7 @@ td.hi{background:var(--hi)}td.mid{background:var(--mid)}td.lo{background:var(--l
 tr.spread td{color:var(--muted);font-size:12.5px}.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
 .card h3{margin:0 0 8px}.note{color:var(--muted);font-size:13.5px}.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}h4{margin:10px 0 4px;font-size:13px;color:var(--muted)}
 @media (max-width:640px){.cols{grid-template-columns:1fr}}</style></head><body><main>
-<h1>AI Review Marksheet</h1><p class="lead">${rows.length} AI models each used Research Companion (the real desktop app, on a fresh sample library) and marked it out of 10 from four points of view. Hover a score for the reviewer's reason. Run ${esc(path.basename(runDir))}.</p>
+<h1>AI Review Marksheet</h1><p class="lead">${rows.length} AI models each used Groundwork (the real desktop app, on a fresh sample library) and marked it out of 10 from four points of view. Hover a score for the reviewer's reason. Run ${esc(path.basename(runDir))}.</p>
 <div class="wrap"><table><thead><tr><th></th>${head}<th>Overall</th></tr><tr><th></th>${sub}<th></th></tr></thead><tbody>${body}${avgRow}${spreadRow}</tbody></table></div>
 <h2>What each reviewer said</h2>${notes}</main></body></html>`
   fs.writeFileSync(path.join(runDir, 'marksheet.html'), html)

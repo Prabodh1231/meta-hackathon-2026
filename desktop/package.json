@@ -1,8 +1,8 @@
 {
-  "name": "research-companion",
+  "name": "groundwork",
   "version": "0.1.0",
   "private": true,
-  "description": "Personal AI research companion: organize documents, write with verified citations.",
+  "description": "Groundwork: write only what your sources say. Organize your documents and write from them with verified citations.",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k -n vite,electron \"vite\" \"wait-on tcp:127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
@@ -11,7 +11,7 @@
     "start": "electron .",
     "smoke": "vite build && cross-env RC_SMOKE_TEST=1 electron .",
     "typecheck": "tsc --noEmit",
-    "bundle-backend": "cd ../backend && .venv\\Scripts\\python -m PyInstaller rc-backend.spec --noconfirm",
+    "bundle-backend": "cd ../backend && .venv\\Scripts\\python -m PyInstaller groundwork-backend.spec --noconfirm",
     "dist": "npm run build && npm run bundle-backend && electron-builder --win"
   },
   "dependencies": {
@@ -40,20 +40,21 @@
     "wait-on": "^9.5.1"
   },
   "build": {
-    "appId": "com.researchcompanion.app",
-    "productName": "Research Companion",
+    "appId": "com.groundwork.app",
+    "productName": "Groundwork",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**",
       "electron/**",
+      "build/icon.*",
       "package.json",
       "!**/node_modules/**"
     ],
     "extraResources": [
       {
-        "from": "../backend/dist/rc-backend",
+        "from": "../backend/dist/groundwork-backend",
         "to": "backend"
       },
       {
@@ -62,13 +63,14 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Research-Companion-Setup-${version}.${ext}"
+      "artifactName": "Groundwork-Setup-${version}.${ext}"
     }
   }
 }

@@ -135,7 +135,7 @@ def test_unverified_and_missing_citations_get_word_comments(setup):
     assert len(notes) == 2
     assert "does not support" in notes[0] and "Says recall, not memory." in notes[0] and CHEN_Q in notes[0]
     assert "not found" in notes[1]
-    assert all(c.author == "Research Companion" for c in d.comments)
+    assert all(c.author == "Groundwork" for c in d.comments)
 
 
 def test_unconfirmed_cite_markers_leave_no_text_and_become_comments(setup):
