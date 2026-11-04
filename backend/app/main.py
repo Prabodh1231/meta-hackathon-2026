@@ -293,7 +293,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     if settings.parent_pid:
         exit_with_parent(settings.parent_pid)
     lib = library or Library(settings)
-    app = FastAPI(title="Research Companion")
+    app = FastAPI(title="Groundwork")
     app.state.library = lib
     jobs = IngestJobs(lib, INGEST_WORKERS)
     app.state.jobs = jobs

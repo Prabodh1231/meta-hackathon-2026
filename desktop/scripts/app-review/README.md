@@ -16,7 +16,7 @@ node scripts/app-review/review.mjs marksheet scripts/app-review/results/<run>   
 
 | Reviewer key | Model | Through | Cost |
 |---|---|---|---|
-| `muse` | Muse Spark 1.3 (Meta) | Meta's Model API, key from `~/.research-companion/.env` | hackathon |
+| `muse` | Muse Spark 1.3 (Meta) | Meta's Model API, key from `~/.groundwork/.env` | hackathon |
 | `nemotron-ultra` | Nemotron 3 Ultra 550B (NVIDIA), text only | OpenRouter `:free` | free |
 | `nemotron-vl` | Nemotron 3.5 Super VL (NVIDIA), sees screenshots | OpenRouter `:free` | free |
 | `gemma` | Gemma 4 31B (Google, open) | OpenRouter `:free` | free |

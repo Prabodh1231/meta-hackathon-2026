@@ -1,6 +1,6 @@
 # Architecture
 
-How Research Companion is put together, for anyone changing it. For using the app, see the [user guide](USER_GUIDE.md). The [README](../README.md#how-it-works) describes the pipeline (ingest, index, folders, write, verify, references) in more depth.
+How Groundwork is put together, for anyone changing it. For using the app, see the [user guide](USER_GUIDE.md). The [README](../README.md#how-it-works) describes the pipeline (ingest, index, folders, write, verify, references) in more depth.
 
 ## Processes
 
@@ -22,7 +22,7 @@ How Research Companion is put together, for anyone changing it. For using the ap
           Meta Model API (Muse)
 ```
 
-- **Electron main** ([desktop/electron/main.cjs](../desktop/electron/main.cjs)) starts `uvicorn app.main:app` from `backend/.venv` on a free port, with `RC_API_TOKEN` (a random token per launch) and `RC_PARENT_PID`. Output goes to `~/.research-companion/logs/backend.log`. If the backend exits, it's restarted on the same port and token, at most 3 times a minute. Set `RC_BACKEND_URL` to use a backend you started yourself (the token check is off then).
+- **Electron main** ([desktop/electron/main.cjs](../desktop/electron/main.cjs)) starts `uvicorn app.main:app` from `backend/.venv` on a free port, with `RC_API_TOKEN` (a random token per launch) and `RC_PARENT_PID`. Output goes to `~/.groundwork/logs/backend.log`. If the backend exits, it's restarted on the same port and token, at most 3 times a minute. Set `RC_BACKEND_URL` to use a backend you started yourself (the token check is off then).
 - **Preload** ([desktop/electron/preload.cjs](../desktop/electron/preload.cjs)) exposes `window.rc`: the backend address and token, file and folder pickers, saving an export, moving a library file to the Recycle Bin, showing it in its folder, and the path of a dropped file. The renderer has no Node access (`contextIsolation`, `sandbox`).
 - **Backend** ([backend/app/main.py](../backend/app/main.py)) is one FastAPI app around a `Library` object. Every request except `/health` needs the token. `API_VERSION` there must match `API_VERSION` in [desktop/src/api.ts](../desktop/src/api.ts); the status bar asks for a restart when they differ. No search model loads, so the backend answers at once and `/health` reports `search: "keyword+muse"`.
 - **Parent watch** ([parent_watch.py](../backend/app/parent_watch.py)): the backend exits by itself if the Electron process that started it is gone.
@@ -71,7 +71,7 @@ All JSON. Main groups (see `main.py` for the full list):
 
 ## Data
 
-Everything lives in `~/.research-companion/` (or `RC_DATA_DIR`):
+Everything lives in `~/.groundwork/` (or `RC_DATA_DIR`):
 
 - `library.db`: SQLite. Documents, their pages (the unit a citation points to), chunks with text and character offsets (plus a legacy vector column older databases carry, which nothing reads), tags, folders and scores, parsed reference lists, drafts and their versions, review matrices (`matrices`, `matrix_rows`, `matrix_cells`), settings.
 - `logs/backend.log`.

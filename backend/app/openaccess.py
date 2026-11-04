@@ -203,7 +203,7 @@ class OpenAccess:
     def set_contact(self, contact_email: str) -> None:
         """The email the indexes may write to about our requests (their polite pool)."""
         self.mailto = contact_email
-        self.client.headers["User-Agent"] = "ResearchCompanion/1.0" + (f" (mailto:{contact_email})" if contact_email else "")
+        self.client.headers["User-Agent"] = "Groundwork/1.0" + (f" (mailto:{contact_email})" if contact_email else "")
 
     def _get(self, url: str, params: dict | None = None, headers: dict | None = None) -> httpx.Response | None:
         """GET with one retry on rate limits and gateway errors; None when the work isn't there."""

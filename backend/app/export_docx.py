@@ -22,7 +22,7 @@ from .references import _split_name, format_references
 
 DOCX_STYLES = ("apa", "mla", "ieee")
 REFERENCE_HEADING = {"apa": "References", "mla": "Works Cited", "ieee": "References"}
-COMMENT_AUTHOR = "Research Companion"
+COMMENT_AUTHOR = "Groundwork"
 FLAGS = {
     "weak": "Citation check: the source only partly supports this.",
     "unsupported": "Citation check: the source does not support this claim.",
@@ -247,7 +247,7 @@ class _Writer:
                         if c.matrix:
                             flag = flag.replace("the source", "the review matrix")
                         note = flag + (f" {c.reason}" if c.reason else "") + (f"\nQuoted: “{c.quote}”" if c.quote else "")
-                        self.doc.add_comment(run, text=note, author=COMMENT_AUTHOR, initials="RC")
+                        self.doc.add_comment(run, text=note, author=COMMENT_AUTHOR, initials="GW")
                 if suffix:
                     para.add_run(suffix)
 
@@ -260,7 +260,7 @@ class _Writer:
             note += f"\nBest match: {results[0].get('label', '')}, “{results[0].get('quote', '')}”"
         if attrs.get("claim"):
             note += f"\nSentence: “{attrs['claim']}”"
-        self.doc.add_comment(run or para.add_run(" "), text=note, author=COMMENT_AUTHOR, initials="RC")
+        self.doc.add_comment(run or para.add_run(" "), text=note, author=COMMENT_AUTHOR, initials="GW")
 
     def _references(self) -> None:
         if not self.order:

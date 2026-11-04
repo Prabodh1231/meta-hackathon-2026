@@ -125,10 +125,7 @@ textarea { width: 100%; resize: vertical; }
   position: relative; z-index: 50; /* the drafts menu opens over the page */
 }
 .doc-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.logo {
-  flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px;
-  background: var(--accent); color: var(--accent-text); font: 700 13px/1 var(--doc-font); letter-spacing: 0.02em;
-}
+.logo { flex: none; display: block; width: 32px; height: 32px; }
 .doc-id-text { flex: 1; min-width: 0; }
 .doc-name { font: 600 15px/1.25 var(--doc-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .save-state { font-size: 12px; color: var(--muted); white-space: nowrap; }

@@ -1,4 +1,4 @@
-# PyInstaller spec for the packaged backend: `pyinstaller rc-backend.spec` writes dist/rc-backend/,
+# PyInstaller spec for the packaged backend: `pyinstaller groundwork-backend.spec` writes dist/groundwork-backend/,
 # a folder (not one file, which unpacks itself on every start) that the installer ships beside the app.
 #
 # torch and sentence-transformers are excluded in case they're installed in the venv; the app
@@ -33,9 +33,9 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="rc-backend",
+    name="groundwork-backend",
     # A console program, so uvicorn has somewhere to write; the app starts it hidden and keeps its output.
     console=True,
     upx=False,
 )
-coll = COLLECT(exe, a.binaries, a.datas, name="rc-backend", upx=False)
+coll = COLLECT(exe, a.binaries, a.datas, name="groundwork-backend", upx=False)

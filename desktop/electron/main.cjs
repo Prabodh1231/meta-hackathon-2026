@@ -11,13 +11,26 @@ const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 
 // Dev layout: the repo's backend folder and its .venv. The installed app instead runs the
-// PyInstaller build of it (backend/rc-backend.spec), shipped in resources/backend.
+// PyInstaller build of it (backend/groundwork-backend.spec), shipped in resources/backend.
 const BACKEND_DIR = path.join(__dirname, '..', '..', 'backend')
 const BUNDLED_BACKEND = app.isPackaged
-  ? path.join(process.resourcesPath, 'backend', process.platform === 'win32' ? 'rc-backend.exe' : 'rc-backend')
+  ? path.join(process.resourcesPath, 'backend', process.platform === 'win32' ? 'groundwork-backend.exe' : 'groundwork-backend')
   : null
 const SUPPORTED = ['pdf', 'docx', 'pptx', 'md', 'markdown', 'txt', 'html', 'htm', 'png', 'jpg', 'jpeg', 'webp']
-const DATA_DIR = process.env.RC_DATA_DIR || path.join(os.homedir(), '.research-companion')
+const DATA_DIR = process.env.RC_DATA_DIR || defaultDataDir()
+// ~/.groundwork. A library from before the app was renamed, in ~/.research-companion, moves
+// there on the first start; if the move fails (a file in use), it is used where it is.
+function defaultDataDir() {
+  const dir = path.join(os.homedir(), '.groundwork')
+  const legacy = path.join(os.homedir(), '.research-companion')
+  if (fs.existsSync(dir) || !fs.existsSync(legacy)) return dir
+  try {
+    fs.renameSync(legacy, dir)
+    return dir
+  } catch {
+    return legacy
+  }
+}
 const LOG_PATH = path.join(DATA_DIR, 'logs', 'backend.log')
 const MAX_RESTARTS_PER_MINUTE = 3
 // The demo corpus: the repo's samples folder, or its copy shipped in resources/samples. The
@@ -125,7 +138,8 @@ function createWindow() {
     height: 900,
     minWidth: 1000,
     minHeight: 640,
-    title: 'Research Companion',
+    title: 'Groundwork',
+    icon: path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -447,7 +461,7 @@ ipcMain.handle('rc:open-reader', async (_event, docId, page, title) => {
 
 // Windows shows a page's notifications (a matrix or proposal finished) only for an app with an id:
 // the installer's appId when installed, the Electron executable in development.
-if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.researchcompanion.app' : process.execPath)
+if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.groundwork.app' : process.execPath)
 
 app.whenReady().then(async () => {
   backendConfig = await startBackend()

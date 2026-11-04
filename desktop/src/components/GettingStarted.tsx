@@ -59,7 +59,7 @@ export function GettingStarted({ mock, sources, words, citations, onConnectModel
       <header>
         <div>
           <h2>Getting started</h2>
-          <p className="muted">From your sources to a cited draft.</p>
+          <p className="muted">Write only what your sources say: from your sources to a cited draft.</p>
         </div>
         <button className="link" onClick={onHide}>Hide</button>
       </header>
