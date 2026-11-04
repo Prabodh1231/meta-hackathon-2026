@@ -94,7 +94,7 @@ Your files stay where they are. The library keeps its own index in `~/.research-
 - **See a paper's details:** click its row. Its details open on the right: summary (marked **Written by Muse**: it's Muse's reading, not the paper's words), folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
 - **Open a paper:** double-click its row (or press Enter with it selected). A PDF opens in the app's reader described below, a Word file, slides or an image in the app your computer opens it with, and a web page in your browser.
 - **Correct its details:** **Edit details** fixes the title, authors, year, journal, DOI or link. Reference lists are built from these, and your corrections are kept if the file is added again.
-- **Read the whole PDF:** **Open PDF** in its details opens it in the app's reader, in a window of its own, where you can highlight passages and add notes (see [Highlights and notes](#highlights-and-notes)). It opens maximized; resize it, snap it to half the screen or move it to another monitor to keep it beside your draft, and it remembers that. The next paper you open replaces it in the same window. **Open in PDF viewer** at the top opens the file in Chromium's viewer instead, for search, thumbnails and print. **Show in folder** finds the file on disk.
+- **Read the whole PDF:** **Open PDF** in its details opens it in the app's reader, in a window of its own, where you can highlight passages and add notes (see [Highlights and notes](#highlights-and-notes)). It opens maximized; resize it, snap it to half the screen or move it to another monitor to keep it beside your draft, and it remembers that. The next paper you open replaces it in the same window. **Open in PDF viewer** at the top opens the file in Chromium's viewer instead, for thumbnails and print. The reader has its own page counter, zoom and search (see [Highlights and notes](#highlights-and-notes)). **Show in folder** finds the file on disk.
 - **Remove it:** **Remove from library** at the bottom of its details. The file on disk isn't touched.
 
 ### Subject folders
@@ -176,6 +176,14 @@ Click a citation to see its passage. Tick the sentences you want to keep (or cli
 - **Add note** highlights it and opens a note for an idea you have while reading. A ✎ mark in the margin shows a highlight has a note.
 
 Click a highlight to read or change its note, or **Remove highlight**. A highlight has to be on one page. Scanned pages without a text layer can't be selected.
+
+**Highlights · N** at the right of the toolbar lists the paper's highlights in page order, with your notes; it opens by itself when the paper has some. Click one to scroll to it, and it flashes on the page.
+
+**Getting around.** The toolbar under the title:
+
+- **Page 3 of 12** follows as you scroll. Type a number and press Enter to jump; **‹ ›** turn pages.
+- **− 100% +** zooms the pages (50–300%). 100% is a comfortable reading width; **Fit width** stretches the page to fill the window. Ctrl + and Ctrl − zoom, Ctrl 0 goes back to 100%. The page you were on stays in view, and pages are drawn again sharp at each size.
+- **Find in this paper** (Ctrl F) counts the matches, *2 of 7*. The current one is marked in orange and the page's other matches more lightly. Enter or **↓** goes to the next, Shift+Enter or **↑** to the one before, and Esc clears it.
 
 **While writing.** The **Highlights** tab beside the draft lists everything you highlighted, with your notes. It's ranked for the paragraph your cursor is in each time you open it or come back from the reader's window; click into another paragraph and **Fetch** to rank it again. The ranking runs on your computer, with nothing sent anywhere.
 

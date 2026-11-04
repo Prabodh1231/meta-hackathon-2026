@@ -1247,7 +1247,36 @@ a.link { text-decoration: none; }
 /* The app's own reader: pages with selectable text, highlights and notes */
 .reader-count { font-size: 12.5px; white-space: nowrap; }
 .pdf-view-head > button { white-space: nowrap; flex: none; }
-.reader { flex: 1; overflow: auto; background: #525659; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+/* The reader's tools: page, zoom, find, and the highlights list */
+.reader-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 6px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.reader-group { display: inline-flex; align-items: center; gap: 4px; }
+.reader-tools .icon { width: 32px; height: 32px; font-size: 18px; }
+.reader-pager { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.reader-pager input, .reader-find input { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+.reader-pager input { width: 3.4em; text-align: center; font-variant-numeric: tabular-nums; }
+.reader-zoom { min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.reader-find input { width: 230px; }
+.reader-find-count { margin-left: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.reader-rail-toggle.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.reader-body { flex: 1; display: flex; min-height: 0; }
+/* "safe": a page zoomed wider than the window can still be scrolled to its left edge */
+.reader { flex: 1; min-width: 0; overflow: auto; background: #525659; padding: 24px; display: flex; flex-direction: column; align-items: safe center; gap: 16px; }
+.reader-rail { width: 300px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; }
+.reader-rail-head { position: sticky; top: 0; display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.reader-rail ul { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.reader-rail li button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; padding: 8px 10px; border: none; border-radius: 8px; background: none; text-align: left; }
+.reader-rail li button:hover { background: var(--hover); }
+.reader-rail-page { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.reader-rail-text { padding-left: 8px; border-left: 3px solid rgb(255 214 10 / 0.9); font: 13px/1.45 var(--doc-font); color: var(--text); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.reader-rail-note { font-size: 12.5px; font-style: italic; color: var(--muted); }
+.reader-rail-empty { margin: 0; padding: 14px; font-size: 13px; line-height: 1.55; }
+.reader-hl.flash { animation: reader-hl-flash 1.4s ease-out; }
+@keyframes reader-hl-flash { 0%, 40% { background: rgb(255 140 0 / 0.7); box-shadow: 0 0 0 3px rgb(255 140 0 / 0.45); } }
+/* The current Find match (a CSS custom highlight over the invisible text layer) */
+::highlight(reader-find) { background-color: rgb(255 120 0 / 0.55); }
+/* The page's other matches: lighter, so you see where they cluster */
+::highlight(reader-find-all) { background-color: rgb(255 170 60 / 0.22); }
+@media (max-width: 760px) { .reader-rail { position: absolute; right: 0; top: 0; bottom: 0; z-index: 3; box-shadow: var(--shadow); } .reader-body { position: relative; } }
 .reader-page { position: relative; flex: none; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.35); --scale-round-x: 1px; --scale-round-y: 1px; }
 .reader-page canvas { display: block; }
 .reader-hl { position: absolute; background: rgb(255 214 10 / 0.45); mix-blend-mode: multiply; border-radius: 2px; pointer-events: none; }
