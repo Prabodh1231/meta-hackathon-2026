@@ -221,7 +221,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 18
+API_VERSION = 19
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -328,12 +328,8 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.get("/health")
     def health():
-        # Answers while the embedding model is still loading (embedder: "loading"), never waiting for it.
-        state = lib.embedder_state()
-        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name,
-                "embedder": lib.embedder.id if state == "ready" else state,
-                "embedder_device": getattr(lib.embedder, "device", "cpu") if state == "ready" else "",
-                "reranker": lib.reranker.id if lib.reranker else None}
+        # Search is keyword search plus the provider, so there is no search model to wait for.
+        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name, "search": "keyword+muse"}
 
     @app.post("/ingest/path")
     def ingest_path(body: IngestPathIn):
@@ -685,7 +681,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.post("/highlights/fetch")
     def fetch_highlights(body: HighlightFetchIn):
-        """Highlights and notes closest to the paragraph being written (ranked on this computer)."""
+        """Highlights and notes closest to the paragraph being written (keyword scoring, on this computer)."""
         return highlights.fetch(body.context, body.limit)
 
     @app.post("/highlights/write")

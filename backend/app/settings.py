@@ -7,9 +7,8 @@ from pathlib import Path
 class Settings:
     data_dir: Path
     provider: str = "mock"  # mock | muse
-    embedder: str = "auto"  # bge-small (fastembed); "hash" for tests and scripts
-    # Cross-encoder reranker, always on this computer: auto | local | none | a fastembed model name.
-    # "none" by default here (tests, scripts); from_env() defaults to "auto" so the app uses it.
+    embedder: str = "auto"  # legacy setting, kept until phase 3: search no longer loads an embedder
+    # Legacy reranker setting, likewise kept until phase 3: no reranker runs any more.
     reranker: str = "none"
     api_token: str = ""  # set by Electron per launch; empty disables the check
     parent_pid: int = 0  # set by Electron; the backend exits when that process does

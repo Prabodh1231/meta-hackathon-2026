@@ -177,7 +177,8 @@ def test_unknown_mode_is_rejected(lib):
         lib.search("x", mode="psychic")
 
 
-def test_health_reports_reranker(tmp_path):
+def test_health_reports_keyword_plus_muse_search(tmp_path):
     settings = Settings(data_dir=tmp_path / "d")
     client = TestClient(create_app(settings, Library(settings, provider=MockProvider(), embedder=HashEmbedder())))
-    assert client.get("/health").json()["reranker"] is None
+    h = client.get("/health").json()
+    assert h["search"] == "keyword+muse" and "embedder" not in h and "reranker" not in h

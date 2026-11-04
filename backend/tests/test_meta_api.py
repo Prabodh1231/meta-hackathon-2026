@@ -50,9 +50,9 @@ def test_every_embedder_setting_from_older_versions_means_the_local_model(old, t
     assert make_embedder("hash", tmp_path).dim == 512
 
 
-def test_settings_show_the_search_models(tmp_path):
-    settings = Settings(data_dir=tmp_path / "data", embedder="hash", reranker="local")
+def test_settings_show_how_search_works(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data")
     lib = Library(settings, provider=MockProvider(), embedder=HashEmbedder(), reranker=None)
     client = TestClient(create_app(lib.settings, lib))
-    assert client.get("/settings/search").json() == {"embedder": "hash-512", "reranker": None}
+    assert client.get("/settings/search").json() == {"search": "keyword", "ranking": "mock", "model": None}
     assert client.put("/settings/search", json={"where": "local"}).status_code == 405  # nothing to set any more

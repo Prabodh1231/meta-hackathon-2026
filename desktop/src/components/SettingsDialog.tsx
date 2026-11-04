@@ -220,15 +220,7 @@ function CoreKeySetting() {
   )
 }
 
-/** "bge-small": a model id in words. */
-function modelText(id: string | null): string {
-  if (!id) return 'off'
-  if (id === 'loading') return 'the model still loading'
-  if (id === 'failed') return "a model that couldn't load (see the backend log)"
-  return (id.split(':').slice(1).join(':').split('/').pop() || id).replace(/-en-v[\d.]+$/, '')
-}
-
-/** The search models: embeddings and the reranker, both on this computer. */
+/** How the library is searched: keyword search here, ranking by the provider. */
 function SearchSection() {
   const [now, setNow] = useState<SearchSettings | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -242,14 +234,24 @@ function SearchSection() {
 
   if (!now) return <p className="muted">{error ?? 'Loading…'}</p>
 
+  const ranking =
+    now.ranking === 'muse'
+      ? `Muse${now.model ? ` (${now.model})` : ''} via Meta's Model API`
+      : now.ranking === 'mock'
+        ? 'the offline mock (word overlap, on this computer)'
+        : now.ranking
+
   return (
-    <Setting title="Now" hint="Embeddings find the passages that match a question or a sentence you cite; the reranker puts the best first.">
+    <Setting title="Now" hint="Keyword search finds the passages that match a question or a sentence you cite; the provider then puts the best first.">
       <p className="setting-now">
-        Embeddings: <b>{modelText(now.embedder)} on this computer</b>
+        Search: <b>keyword (BM25) on this computer</b>
         <br />
-        Reranking: <b>{now.reranker ? `${modelText(now.reranker)} on this computer` : 'off'}</b>
+        Ranking: <b>{ranking}</b>
       </p>
-      <p className="muted">Both run on this computer, so your library's text is never sent anywhere to be searched.</p>
+      <p className="muted">
+        No embedding or reranker model is downloaded or run. With Muse, your query and the best-matching passages
+        (trimmed) are sent to Meta's Model API to be ranked; the keyword search itself never leaves this computer.
+      </p>
     </Setting>
   )
 }
