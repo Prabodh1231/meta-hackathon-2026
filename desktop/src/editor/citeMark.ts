@@ -1,5 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import type { Suggestion } from '../types'
+import { MARK_WORD } from './citeStatus'
 
 /** Where the background search for a cite marker stands. */
 export type CiteMarkState = 'searching' | 'verified' | 'weak' | 'unsupported' | 'none' | 'error'
@@ -52,6 +53,8 @@ export const CiteMarkNode = Node.create({
         'data-cite-mark': '',
         'data-cid': node.attrs.cid ?? '',
         class: `cite-mark cite-mark-${state}`,
+        role: 'button',
+        'aria-label': `Cite marker: ${MARK_WORD[state] ?? state}`,
         title: TITLES[state] ?? '',
       }),
       'cite',

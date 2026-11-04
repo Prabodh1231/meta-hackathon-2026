@@ -108,10 +108,15 @@ export function AssistantPanel({ scope, passages, sourceCount, onChooseSources, 
               {scope.length ? 'Change' : 'Choose sources'}
             </button>
           </span>
-          <button className="primary" disabled={busy || !instruction.trim()}>
+          <button className="primary" disabled={busy || !instruction.trim()} aria-describedby={!busy && !instruction.trim() ? 'draft-needs' : undefined}>
             {busy ? 'Drafting…' : 'Draft with citations'}
           </button>
         </div>
+        {!busy && !instruction.trim() && (
+          <p id="draft-needs" className="hint draft-needs">
+            Type a request or pick a suggestion to draft.
+          </p>
+        )}
       </form>
 
       {busy && (

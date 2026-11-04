@@ -148,17 +148,19 @@ export interface DraftStats {
   verified: number
   flagged: number // weak, unsupported or quote not found
   unconfirmed: number // cite markers waiting for the writer to pick a source
+  chips: ChipAttrs[] // the citation chips, in document order, for the Citations tab
 }
 
 export type SaveState = { state: 'idle' | 'saving' | 'saved' | 'error'; at?: number }
 
 function statsOf(editor: Editor): DraftStats {
-  const s: DraftStats = { words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 }
+  const s: DraftStats = { words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0, chips: [] }
   s.words = (editor.getText().match(/\w+(?:['’-]\w+)*/g) ?? []).length
   editor.state.doc.descendants((node) => {
     if (node.type.name === 'citeMark') s.unconfirmed++
     if (node.type.name !== 'citation') return
     s.citations++
+    s.chips.push(node.attrs as ChipAttrs)
     if (node.attrs.status === 'verified') s.verified++
     else if (node.attrs.status !== 'pending') s.flagged++
   })
