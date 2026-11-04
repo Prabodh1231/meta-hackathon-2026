@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.providers import make_provider
-from app.providers.muse import REASONING_HEADROOM, MuseError, MuseProvider
+from app.providers.muse import REASONING_HEADROOM, SEARCH_EFFORT, MuseError, MuseProvider
 from app.settings import Settings
 
 
@@ -52,7 +52,7 @@ def test_schemas_meet_strict_mode(name):
     walk(getattr(prompts, f"{name}_SCHEMA"))
 
 
-def test_expand_query_is_one_low_effort_call():
+def test_expand_query_is_one_search_effort_call():
     seen = []
 
     def handler(request):
@@ -61,9 +61,24 @@ def test_expand_query_is_one_low_effort_call():
 
     muse = provider(handler, reasoning_effort="high")
     assert muse.expand_query("how does sleep help memory") == ["sleep spindle memory", "targeted memory reactivation"]
-    assert len(seen) == 1 and seen[0]["reasoning_effort"] == "low"
+    assert len(seen) == 1 and seen[0]["reasoning_effort"] == SEARCH_EFFORT
     assert seen[0]["response_format"]["json_schema"]["strict"] is True
     assert seen[0]["response_format"]["json_schema"]["schema"]["additionalProperties"] is False
+
+
+def test_search_calls_are_not_retried_after_a_timeout():
+    # A retry after a timeout once turned one slow ranking call into a minute-long search;
+    # search help gives up at once and the caller keeps the keyword order.
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        raise httpx.ReadTimeout("slow", request=request)
+
+    muse = provider(handler)
+    assert muse.expand_query("how does sleep help memory") == []
+    assert muse.rank_passages("sleep", [(7, "a passage")]) is None
+    assert len(calls) == 2  # one attempt each, no retries
 
 
 def test_rank_passages_scores_in_input_order_from_one_trimmed_call():
@@ -75,7 +90,7 @@ def test_rank_passages_scores_in_input_order_from_one_trimmed_call():
 
     muse = provider(handler, reasoning_effort="high")
     assert muse.rank_passages("sleep", [(7, "x" * 800), (9, "short passage")]) == [0.9, 0.2]
-    assert len(seen) == 1 and seen[0]["reasoning_effort"] == "low"
+    assert len(seen) == 1 and seen[0]["reasoning_effort"] == SEARCH_EFFORT
     user = seen[0]["messages"][1]["content"]
     assert "x" * 700 in user and "x" * 701 not in user
 

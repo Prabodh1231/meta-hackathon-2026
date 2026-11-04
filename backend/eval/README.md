@@ -27,16 +27,21 @@ The rows that scored the earlier, non-Meta search models have been removed: thos
 models were taken out of the app for the Meta-only rule (every model the app calls is
 now a Meta model through Meta's Model API), so their numbers no longer describe any
 search the app can run. Search is now keyword search (SQLite FTS5/BM25, no model) plus
-Muse expansion and ranking through the provider layer. The measured numbers from
-running the script above go in this table:
+Muse expansion and ranking through the provider layer. Measured 5 Nov 2026 with
+muse-spark-1.3, both search calls at "minimal" reasoning effort, ranking 20 passages of
+450 characters:
 
 | Configuration | R@1 | R@3 | MRR | keyword | paraphrase | precision | identifier | ms/query |
 |---|---|---|---|---|---|---|---|---|
-| keyword (BM25) | — | — | — | — | — | — | — | — |
-| keyword + expansion | — | — | — | — | — | — | — | — |
-| keyword + expansion + ranking | — | — | — | — | — | — | — | — |
+| keyword (BM25) | 0.75 | 0.84 | 0.80 | 0.92 | 0.33 | 0.83 | 1.00 | 0 |
+| keyword + expansion | 0.82 | 0.93 | 0.88 | 0.92 | 0.75 | 0.67 | 1.00 | 3122 |
+| keyword + expansion + ranking | 0.98 | 1.00 | 0.98 | 1.00 | 0.92 | 1.00 | 1.00 | 7173 |
 
-Per-type columns are R@1.
+Per-type columns are R@1. For comparison, the removed bge-small + MiniLM search scored
+R@1 0.91 and R@3 0.98 on this set, at about 0.45 s per query. "low" effort gave the same
+accuracy as "minimal" (R@1 0.98) at 14.2 s per query. On the real 157-paper library a
+search with expansion and ranking takes about 13 s, a Cite suggestion (search plus four
+support checks run side by side) about 28 s, and drafting with citations about 31 s.
 
 ## What the three configurations are
 

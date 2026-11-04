@@ -38,6 +38,12 @@ UNCHECKED_CAP = 30
 
 
 INGEST_WORKERS = 8
+# Muse ranks this many fused keyword hits, each cut to this length, in one call. Fewer and
+# shorter passages keep that call well inside its short search timeout.
+RANK_POOL = 20
+RANK_CHARS = 450
+# Cite's support checks are separate Muse calls; they run side by side.
+CHECK_WORKERS = 4
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
 MAX_KEYWORD_TAGS = 8
 MIN_TEXT_HITS = 3  # chunks of a paper that must mention a searched topic for it to count as about it
@@ -1261,7 +1267,7 @@ class Library:
         rankings = [[cid for cid, _ in self._keyword(q, wide, doc_ids)] for q in queries]
         ranked = reciprocal_rank_fusion(*rankings)[:pool] if rankings else []
         if rerank and ranked:
-            ranked = self._rank_with_provider(query, ranked[:30]) + ranked[30:]
+            ranked = self._rank_with_provider(query, ranked[:RANK_POOL]) + ranked[RANK_POOL:]
         return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
 
     def _rank_with_provider(self, query: str, ranked: list[tuple[int, float]]) -> list[tuple[int, float]]:
@@ -1280,7 +1286,7 @@ class Library:
         if not ids:
             return ranked
         try:
-            scores = self.provider.rank_passages(query, [(cid, texts[cid][:700]) for cid in ids])
+            scores = self.provider.rank_passages(query, [(cid, texts[cid][:RANK_CHARS]) for cid in ids])
             if scores is None or len(scores) != len(ids):
                 return ranked
             scores = [float(s) for s in scores]
@@ -1800,8 +1806,10 @@ class Library:
             if hit["id"] not in per_chunk or score > per_chunk[hit["id"]][0]:
                 per_chunk[hit["id"]] = (score, hit, quote)
         top = sorted(per_chunk.values(), key=lambda c: -c[0])[:limit]
-        # Each check is a model call, so only the top few candidates are judged.
-        results = [{**self.verify_citation(claim, hit["id"], quote), "score": round(score, 4)} for score, hit, quote in top]
+        # Each check is a model call, so only the top few candidates are judged, side by side.
+        with ThreadPoolExecutor(max_workers=CHECK_WORKERS) as pool:
+            checked = list(pool.map(lambda c: self.verify_citation(claim, c[1]["id"], c[2]), top))
+        results = [{**v, "score": round(score, 4)} for v, (score, _, _) in zip(checked, top)]
         rank = {"verified": 0, "weak": 1, "unsupported": 2, "quote_not_found": 3}
         return sorted(results, key=lambda r: (rank.get(r["status"], 4), -r["score"]))
 
