@@ -7,7 +7,7 @@ import { CitationWire } from './components/CitationWire'
 import { CitePanel } from './components/CitePanel'
 import { CheckSummary } from './components/CheckSummary'
 import { SourcesPanel } from './components/SourcesPanel'
-import { needWord, tally } from './editor/citeStatus'
+import { CITATION_WORD, needWord, tally } from './editor/citeStatus'
 import type { CiteMarkAttrs } from './editor/citeMark'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
 import { CitedPapersDialog } from './components/CitedPapersDialog'
@@ -1128,6 +1128,7 @@ export default function App() {
 
   // The draft's citations, counted one way for the status bar, Check's badge and its summary.
   const cites = useMemo(() => tally(stats.chips, citeMarks), [stats.chips, citeMarks])
+  const focusedMark = citeFocus ? citeMarks.find((m) => m.cid === citeFocus) ?? null : null
 
   const paletteItems: PaletteItem[] = [
     ...docs.map((d) => ({
@@ -1577,6 +1578,28 @@ export default function App() {
               <div hidden={tab !== 'check' || showingSource} className="check-tool">
                 {!citeFocus && (
                   <CheckSummary tally={cites} rechecking={recheckingAll} onRecheckAll={recheckAll} dup={dup} onCheckDup={runCheck} />
+                )}
+                {focusedMark && (focusedMark.state === 'none' || focusedMark.state === 'weak' || focusedMark.state === 'unsupported') && (
+                  <div className="cite-focus-actions" role="group" aria-label="Actions for this cite marker">
+                    <div className="cite-focus-text">
+                      <b>{focusedMark.state === 'none' ? 'No source found' : focusedMark.state === 'weak' ? CITATION_WORD.weak : CITATION_WORD.unsupported}</b>
+                      <span>{focusedMark.claim}</span>
+                    </div>
+                    <div className="cite-focus-buttons">
+                      <button className="primary" onClick={() => editor.current?.recheckCite(focusedMark.cid)}>
+                        Find a source
+                      </button>
+                      <button onClick={() => editor.current?.showCite(focusedMark.cid)}>Show in draft</button>
+                      <button
+                        onClick={() => {
+                          editor.current?.removeCite(focusedMark.cid)
+                          setCiteFocus(null)
+                        }}
+                      >
+                        Remove marker
+                      </button>
+                    </div>
+                  </div>
                 )}
                 <CitePanel
                   marks={citeMarks}

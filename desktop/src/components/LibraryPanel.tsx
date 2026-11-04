@@ -657,9 +657,10 @@ function EditDetails({ doc: d, run, onDone }: { doc: Doc; run: Run; onDone: () =
 }
 
 /** Everything about one source, and what can be done with it. */
-function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onCiting, onRetry, onOpenPdf, run }: {
+function DocDetails({ doc: d, on, scopeCount, cited, onToggle, onClose, onCited, onCiting, onRetry, onOpenPdf, run }: {
   doc: Doc
   on: boolean
+  scopeCount: number // sources ticked for drafting in all, this one included when `on`
   cited: boolean
   onOpenPdf: () => void
   onToggle: () => void
@@ -719,9 +720,16 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onCiting, o
                 Open PDF
               </button>
             )}
-            <label className={`lib-use${on ? ' on' : ''}`} title="Tick sources to have Muse draft only from them (Compose, Cite my sources)">
-              <input type="checkbox" checked={on} onChange={onToggle} /> Use for drafting
+            <label className={`lib-use${on ? ' on' : ''}`} title="On: Muse drafts and searches for citations in this source. When any source is ticked, only the ticked ones are used.">
+              <input type="checkbox" checked={on} onChange={onToggle} /> Use for drafting: {on ? 'On' : 'Off'}
             </label>
+            <span className="lib-use-state" role="status">
+              {on
+                ? `On — one of ${scopeCount} ticked source${scopeCount === 1 ? '' : 's'} used for drafting.`
+                : scopeCount > 0
+                  ? 'Off — drafting uses only the ticked sources.'
+                  : 'Off — nothing is ticked, so drafting uses the whole library.'}
+            </span>
             <button onClick={onCited} title="List the works this paper cites and download free copies of them">Cited papers…</button>
             <button onClick={onCiting} title="Newer works that cite this paper, from OpenAlex">
               Citing papers{d.cited_by_count ? ` (${d.cited_by_count.toLocaleString()})` : ''}…
@@ -1322,14 +1330,16 @@ export const LibraryPanel = memo(function LibraryPanel({
                   </span>
                 )}
                 <span className="spacer" />
-                <span className={`lib-scope${selected.size ? ' some' : ''}`} title="Tick sources to have Muse drafts and cite searches use only them">
+                <span className={`lib-scope${selected.size ? ' some' : ''}`} role="status" aria-live="polite" title="The sources Muse drafts from and searches for citations in (Compose, Cite my sources). Nothing ticked means the whole library.">
                   {selected.size === 0 ? (
-                    'Tick sources to draft from only those'
+                    <>
+                      <b>Drafting scope:</b> whole library — tick sources to use only those
+                    </>
                   ) : (
                     <>
-                      <b>{selected.size}</b> ticked for drafting
+                      <b>Drafting scope:</b> only {selected.size} of {docs.length} source{docs.length === 1 ? '' : 's'} ticked
                       <button className="link" onClick={() => toggleMany(docs.filter((d) => selected.has(d.id)))}>
-                        Clear
+                        Clear ticks
                       </button>
                     </>
                   )}
@@ -1436,6 +1446,7 @@ export const LibraryPanel = memo(function LibraryPanel({
               key={current.id}
               doc={current}
               on={selected.has(current.id)}
+              scopeCount={selected.size}
               cited={citedSet.has(current.id)}
               onToggle={() => onToggle(current.id)}
               onClose={() => setOpen(null)}
