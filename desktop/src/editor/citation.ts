@@ -1,4 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core'
+import type { CitationStatus } from '../types'
+import { CITATION_WORD } from './citeStatus'
 
 /** Inline, non-editable citation chip. All the data needed to open and re-verify the
  * source lives in its attributes, so drafts saved as JSON keep working citations. */
@@ -41,6 +43,8 @@ export const CitationNode = Node.create({
         'data-citation': '',
         'data-cid': cid ?? '',
         class: `cite cite-${status}${finding ? ' cite-matrix' : ''}`,
+        role: 'button',
+        'aria-label': `${label}, ${CITATION_WORD[status as CitationStatus] ?? status}${finding ? ', from your review matrix' : ''}`,
         title: [from + reason, quoted].filter((t) => t.trim()).join('\n\n'),
       }),
       label,

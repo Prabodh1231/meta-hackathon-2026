@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { MuseTag } from './MuseTag'
 import { api } from '../api'
 import {
   type DetailFilter, type DetailSort, NUMERIC, detailColumn, detailText, filterText, isDetail, passes, sortRows,
@@ -579,7 +580,7 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   const readingFrom = useRef<{ id: number; at: number; done: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [editingCol, setEditingCol] = useState<{ index: number; label: string; instruction: string } | null>(null)
-  const [showGaps, setShowGaps] = useState(true)
+  const [showGaps, setShowGaps] = useState(false) // collapsed, so the table shows first
   const [kept, setKept] = useState<FindingSummary[] | null>(null) // gaps and passages kept for the draft
   const [fresh, setFresh] = useState<Set<number>>(new Set()) // gaps the latest Find gaps added to earlier ones
   const [fields, setFields] = useState<MatrixDetailField[]>([])
@@ -997,7 +998,9 @@ ${g.detail}`
             {(busy === FINDING_GAPS || matrix.gaps !== null || earlierGaps.length > 0 || passages.length > 0) && (
               <section className="mx-gaps">
                 <button className="mx-gaps-head" onClick={() => setShowGaps((s) => !s)} aria-expanded={showGaps}>
-                  <b>Gaps across these studies</b>
+                  <span className="mx-gaps-title">
+                    <b>Gaps across these studies</b> <MuseTag from="this matrix's cells" />
+                  </span>
                   <span className="muted">{showGaps ? 'Hide' : `Show ${(matrix.gaps?.length ?? 0) + earlierGaps.length + passages.length}`}</span>
                 </button>
                 {showGaps && (
@@ -1008,7 +1011,7 @@ ${g.detail}`
                       <ul>
                         {matrix.gaps?.map((g) => (
                           <li key={g.id}>
-                            <b>{g.title}</b> {g.detail}
+                            <b>{g.title}</b> <GapText text={g.detail} rows={rows} />
                             <FindingMeta
                               finding={keptById.get(g.id)}
                               isNew={fresh.has(g.id)}
@@ -1018,7 +1021,7 @@ ${g.detail}`
                         ))}
                         {earlierGaps.map((f) => (
                           <li key={f.id} className="mx-earlier">
-                            <b>{f.title}</b> {f.text}
+                            <b>{f.title}</b> <GapText text={f.text} rows={rows} />
                             <FindingMeta finding={f} earlier onInsert={() => onInsertFinding(f.id)} onDelete={() => removeKept(f)} />
                           </li>
                         ))}
@@ -1068,7 +1071,7 @@ ${g.detail}`
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.doc_id}>
+                      <tr key={r.doc_id} id={`mx-row-${r.doc_id}`}>
                         <th className="mx-study" scope="row">
                           <b>{r.label}</b>
                           <span className="mx-study-title" title={r.title}>
@@ -1158,4 +1161,35 @@ ${g.detail}`
       </div>
     </section>
   )
+}
+
+/** Gap text with each study it names ("Saputra & Darma 2022") as a link to that study's row. */
+function GapText({ text, rows }: { text: string; rows: { doc_id: number; label: string }[] }) {
+  const byLabel = new Map<string, number>()
+  for (const r of rows) if (r.label && !byLabel.has(r.label)) byLabel.set(r.label, r.doc_id)
+  if (!byLabel.size) return <>{text}</>
+  const escape = (l: string) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(`(${[...byLabel.keys()].sort((a, b) => b.length - a.length).map(escape).join('|')})`, 'g')
+  return (
+    <>
+      {text.split(pattern).map((part, i) => {
+        const id = byLabel.get(part)
+        if (id == null) return part
+        return (
+          <button key={i} className="link mx-gap-ref" onClick={() => jumpToRow(id)} title="Show this study's row">
+            {part}
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
+function jumpToRow(docId: number) {
+  const row = document.getElementById(`mx-row-${docId}`)
+  if (!row) return
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  row.classList.remove('mx-row-flash')
+  void row.offsetWidth // restart the animation
+  row.classList.add('mx-row-flash')
 }

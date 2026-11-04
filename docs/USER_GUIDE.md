@@ -91,7 +91,7 @@ Your files stay where they are. The library keeps its own index in `~/.research-
 
 - **Find a paper:** type in the search box at the top. It matches titles, authors, journals, keywords, tags, JEL codes and summaries. The **All types** menu narrows to PDFs, slides, notes and so on.
 - **Sort:** click a column header (Title, Authors, Year, Type, Added). Click again to reverse.
-- **See a paper's details:** click its row. Its details open on the right: summary, folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
+- **See a paper's details:** click its row. Its details open on the right: summary (marked **Written by Muse**: it's Muse's reading, not the paper's words), folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
 - **Open a paper:** double-click its row (or press Enter with it selected). A PDF opens in the app's reader described below, a Word file, slides or an image in the app your computer opens it with, and a web page in your browser.
 - **Correct its details:** **Edit details** fixes the title, authors, year, journal, DOI or link. Reference lists are built from these, and your corrections are kept if the file is added again.
 - **Read the whole PDF:** **Open PDF** in its details opens it in the app's reader, in a window of its own, where you can highlight passages and add notes (see [Highlights and notes](#highlights-and-notes)). It opens maximized; resize it, snap it to half the screen or move it to another monitor to keep it beside your draft, and it remembers that. The next paper you open replaces it in the same window. **Open in PDF viewer** at the top opens the file in Chromium's viewer instead, for thumbnails and print. The reader has its own page counter, zoom and search (see [Highlights and notes](#highlights-and-notes)). **Show in folder** finds the file on disk.
@@ -211,9 +211,13 @@ While Muse answers, the tab counts the seconds and says why when it's slower (Mu
 
 Put the cursor in a sentence you wrote (or select some text) and press **Cite** in the toolbar, or Ctrl+Shift+C. A small grey `cite` marker appears at the end of the sentence and you keep writing; the search runs in the background and the cursor doesn't move.
 
-The marker turns green when a source supports the sentence, amber for partial support, and red when nothing does. It never changes size, so the line you're typing doesn't shift.
+The marker turns green with a ✓ when a source supports the sentence, amber with a ◐ for partial support, and red with a ✕ when nothing does. The symbol says the same as the colour, so it reads without colour too, and a screen reader hears it in words. The marker never changes size, so the line you're typing doesn't shift.
 
-Click a marker to open the **Citations** tab with what was found. **Use this source** turns the marker into a citation (Ctrl+Z undoes it). You can also search again for a reworded sentence, or **Remove marker**. With no marker open, the tab lists every marker still waiting.
+Click a marker to open the **Citations** tab with what was found. **Use this source** turns the marker into a citation (Ctrl+Z undoes it). You can also search again for a reworded sentence, or **Remove marker**.
+
+Citations carry the same symbols: ✓ supported, ◐ partial, ✕ not supported or quote not found, and … while one is being checked. Blue ones, with the ✓ in a square, were written from a review matrix.
+
+With no marker open, the tab lists every marker still waiting, then every citation in the draft under **In this draft**, flagged ones first, with the reason Muse gave. Click a row to see its quote on its page, as clicking the citation does. **‹ ›** step through the flagged citations in the draft. Clicking *citations verified* in the status bar opens this list. Once the draft has citations, the how-to at the top folds into **How citing works**.
 
 While markers are still searching, the top of the tab says how many sentences are being checked and for how long. Three are checked at a time, so each waiting row says **Checking…** or **Waiting its turn**.
 
@@ -247,7 +251,7 @@ The **Review** tab checks the draft for sentences that repeat each other, and fo
 
 ![The Review tab](images/review.png)
 
-It checks when you open it, and again a few seconds after you edit while it stays open. Matching passages are underlined in the draft: red for an uncited match, dotted for a cited one, wavy for a repeat. Click a finding to jump to it, or its source to see the matching passage. The status bar shows the overall percentage.
+It checks when you open it, and again a few seconds after you edit while it stays open. Matching passages are underlined in the draft: red for an uncited match, dotted for a cited one, wavy for a repeat. Click a finding to jump to it, or its source to see the matching passage. The status bar says *Checking duplication…* while a check runs, then shows the overall percentage.
 
 ### Versions
 
@@ -308,7 +312,7 @@ Edit the answer and **Save answer** (it keeps its quote as evidence), **Read aga
 
 **Use it.**
 
-- **Find gaps:** Muse reads the finished matrix and names what the studies leave out (populations, places, periods, methods) and where their findings conflict, naming the studies each gap rests on. They're listed in one box, **Gaps across these studies**, above the table. **Insert into draft** beside a gap puts it in the draft, citing every paper in the matrix. Running Find gaps again updates that box: the wait shows inside it, new gaps are marked **New**, and gaps the new run didn't find are removed, except those a draft (or a saved version of one) cites. Those stay, greyed and marked **In your draft**, so their citations can still be checked against the matrix.
+- **Find gaps:** Muse reads the finished matrix and names what the studies leave out (populations, places, periods, methods) and where their findings conflict, naming the studies each gap rests on. They're listed in one box, **Gaps across these studies**, above the table, marked **Written by Muse** (it isn't checked against a quote, so read the studies before citing it). The box starts folded so the table shows first; **Show** opens it. Each study a gap names is a link to that study's row. **Insert into draft** beside a gap puts it in the draft, citing every paper in the matrix. Running Find gaps again updates that box: the wait shows inside it, new gaps are marked **New**, and gaps the new run didn't find are removed, except those a draft (or a saved version of one) cites. Those stay, greyed and marked **In your draft**, so their citations can still be checked against the matrix.
 - **Write from this matrix:** Muse writes a comparison of the studies from the matrix's quotes, each sentence citing them. Tick the sentences to keep and insert them into the draft.
 - **Kept with the matrix:** every gap and every written passage keeps a copy of the rows it came from. Passages you insert are listed in the same box under **Written from this matrix**. The box shows when the matrix has changed since one was written, and you can insert one again or delete it.
 - **Write a proposal:** plans a study that addresses the gaps (see [Write a research proposal](#write-a-research-proposal)).
