@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { MuseTag } from './MuseTag'
 import { api } from '../api'
 import type { Doc, Folder, IngestJob, RemovedDoc } from '../types'
 import {
@@ -736,7 +737,9 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onCiting, o
 
       {d.summary && (
         <>
-          <h4 className="lib-doc-label">{d.abstract ? "Muse's summary" : 'Summary'}</h4>
+          <h4 className="lib-doc-label">
+            Summary <MuseTag from="this paper's text" />
+          </h4>
           <p className="lib-doc-summary">{d.summary}</p>
         </>
       )}

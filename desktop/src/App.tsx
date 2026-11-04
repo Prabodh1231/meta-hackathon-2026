@@ -198,7 +198,7 @@ export default function App() {
   const openPdf = useCallback((doc: Doc, page = 1) => setPdfView({ doc, page }), [])
   const [toolsOpen, setToolsOpen] = useState(storedToolsOpen) // the writing tools beside the draft
   const [focusMode, setFocusMode] = useState(false) // only the page and its toolbar
-  const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 })
+  const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0, chips: [] })
   const [title, setTitle] = useState('Untitled') // the draft's first line
   const [renamingTitle, setRenamingTitle] = useState(false) // editing the name in the app bar
   // A name the user gave the open draft wins over its first line, here, in exports and versions.
@@ -1511,6 +1511,9 @@ export default function App() {
                     setCiteFocus(null)
                   }}
                   onOpenSource={(c) => openCitation(c)}
+                  chips={stats.chips}
+                  onOpenChip={openChip}
+                  onShowChip={(cid) => editor.current?.showCite(cid)}
                 />
               </div>
               {tab === 'references' && (
@@ -1622,8 +1625,8 @@ export default function App() {
           </span>
           <button
             className="stat"
-            onClick={() => (stats.unconfirmed ? showCitations() : showTab('references'))}
-            title={stats.unconfirmed ? 'Cite markers waiting for you to confirm a source' : 'Citations verified against their source'}
+            onClick={() => showCitations()}
+            title={stats.unconfirmed ? 'Cite markers waiting for you to confirm a source' : 'Citations verified against their source: open the list'}
           >
             <span className="mini-bar">
               <span style={{ width: `${stats.citations ? (100 * stats.verified) / stats.citations : 0}%` }} />
@@ -1633,8 +1636,14 @@ export default function App() {
             {stats.unconfirmed > 0 && <em className="flag to-confirm">{stats.unconfirmed} to confirm</em>}
           </button>
           <button className="stat" onClick={() => showTab('review')} title="Share of the draft that repeats itself or matches a source">
-            <span className="dot" style={{ background: dupPct == null ? 'var(--pending)' : toneOf(dupPct, 'risk') }} />
-            {dupPct == null ? <span className="lbl">Duplication not checked</span> : <><b>{dupPct}%</b> <span className="lbl">duplication{dup.stale ? ' (outdated)' : ''}</span></>}
+            <span className={`dot${dup.busy ? ' dot-busy' : ''}`} style={{ background: dup.busy || dupPct == null ? 'var(--pending)' : toneOf(dupPct, 'risk') }} />
+            {dup.busy ? (
+              <span className="lbl">Checking duplication…</span>
+            ) : dupPct == null ? (
+              <span className="lbl">Duplication not checked</span>
+            ) : (
+              <><b>{dupPct}%</b> <span className="lbl">duplication{dup.stale ? ' (outdated)' : ''}</span></>
+            )}
           </button>
           <button className="stat" onClick={() => showTab('history')} title="How much the draft changed since the newest version">
             <Icon name="history" size={14} />

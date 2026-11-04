@@ -3,7 +3,8 @@ import type { CiteMarkAttrs, CiteMarkState } from '../editor/citeMark'
 import type { Citation } from '../types'
 import { StatusBadge } from './StatusBadge'
 import { WaitStatus } from './WaitStatus'
-import { useCheckingMarkers } from './WritingEditor'
+import { useCheckingMarkers, type ChipAttrs } from './WritingEditor'
+import { CITATION_RANK, CITATION_WORD, isFlagged } from '../editor/citeStatus'
 
 interface Props {
   /** The draft's cite markers, in document order. */
@@ -19,6 +20,67 @@ interface Props {
   onRecheckAll: () => void
   onRemove: (cid: string) => void
   onOpenSource: (c: Citation) => void
+  /** The draft's citation chips, in document order. */
+  chips: ChipAttrs[]
+  /** Open a chip's quote on its page, as clicking it in the draft does. */
+  onOpenChip: (chip: ChipAttrs) => void
+  /** Select a chip in the draft and scroll to it, leaving this tab open. */
+  onShowChip: (cid: string) => void
+}
+
+/** Every citation in the draft, what needs attention first; ‹ › step through the flagged ones in
+ * the draft. A row opens the quote, as the chip does. */
+function CitationList({ chips, onOpen, onShow }: { chips: ChipAttrs[]; onOpen: (c: ChipAttrs) => void; onShow: (cid: string) => void }) {
+  const flagged = chips.filter((c) => isFlagged(c.status)) // in document order, for ‹ ›
+  const [current, setCurrent] = useState<string | null>(null)
+  const at = flagged.findIndex((c) => c.cid === current)
+  const sorted = [...chips].sort((a, b) => CITATION_RANK[a.status] - CITATION_RANK[b.status]) // stable: draft order within a state
+
+  function step(by: 1 | -1) {
+    if (!flagged.length) return
+    const next = flagged[at < 0 ? (by > 0 ? 0 : flagged.length - 1) : (at + by + flagged.length) % flagged.length]
+    setCurrent(next.cid)
+    onShow(next.cid)
+  }
+
+  return (
+    <section className="cite-list" aria-label="Citations in this draft">
+      <div className="cite-list-head">
+        <h4 className="eyebrow">
+          In this draft · {chips.length}
+          {flagged.length > 0 && <span className="cite-list-flagged"> · {flagged.length} flagged</span>}
+        </h4>
+        {flagged.length > 0 && (
+          <div className="cite-step">
+            <button className="icon" onClick={() => step(-1)} aria-label="Previous flagged citation" title="Previous flagged citation">‹</button>
+            <span aria-live="polite">{at < 0 ? `${flagged.length} flagged` : `${at + 1} of ${flagged.length}`}</span>
+            <button className="icon" onClick={() => step(1)} aria-label="Next flagged citation" title="Next flagged citation">›</button>
+          </div>
+        )}
+      </div>
+      <ul className="cite-list-rows">
+        {sorted.map((c) => (
+          <li key={c.cid}>
+            <button
+              className={`cite-list-row${isFlagged(c.status) ? ' flagged' : ''}${c.cid === current ? ' current' : ''}`}
+              onClick={() => {
+                setCurrent(c.cid)
+                onOpen(c)
+              }}
+              title="Show this citation's quote on its page"
+              // A short name; the reason, when flagged, is read as the description.
+              aria-label={`${c.label}, ${CITATION_WORD[c.status]}${c.claim ? `: ${c.claim.length > 90 ? c.claim.slice(0, 90) + '…' : c.claim}` : ''}`}
+              aria-describedby={isFlagged(c.status) && c.reason ? `cite-why-${c.cid}` : undefined}
+            >
+              <span className={`cite cite-${c.status}${c.finding != null ? ' cite-matrix' : ''}`} aria-hidden="true">{c.label}</span>
+              <span className="cite-list-claim" aria-hidden="true">{c.claim || 'No sentence recorded'}</span>
+              {isFlagged(c.status) && c.reason && <span className="cite-list-reason" id={`cite-why-${c.cid}`}>{c.reason}</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }
 
 const HEADLINE: Record<CiteMarkState, string> = {
@@ -31,7 +93,7 @@ const HEADLINE: Record<CiteMarkState, string> = {
 }
 
 /** Cite markers waiting for the writer: what each search found, and confirming a source. */
-export function CitePanel({ marks, citations, rechecking, onRecheckAll, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource }: Props) {
+export function CitePanel({ marks, chips, citations, rechecking, onRecheckAll, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource, onOpenChip, onShowChip }: Props) {
   const mark = focus ? marks.find((m) => m.cid === focus) : undefined
   const checking = useCheckingMarkers()
   // While any marker is still searching: since when (the wait line counts from the first).
@@ -42,6 +104,19 @@ export function CitePanel({ marks, citations, rechecking, onRecheckAll, focus, o
   }, [searchingCount])
 
   if (!mark) {
+    const intro = (
+      <p className="cite-intro">
+        Put the cursor in a sentence (or select text) and press <strong>Cite</strong> (Ctrl+Shift+C). A grey{' '}
+        <span className="cite-mark cite-mark-searching">cite</span> marker appears and you keep writing; it turns{' '}
+        <span className="cite-mark cite-mark-verified">cite</span> when a source supports the sentence,{' '}
+        <span className="cite-mark cite-mark-weak">cite</span> for partial support, and{' '}
+        <span className="cite-mark cite-mark-unsupported">cite</span> when nothing does. Click it to confirm a source.
+        <br />
+        Confirmed citations show the same symbols: <span className="cite cite-verified">supported</span>{' '}
+        <span className="cite cite-weak">partial</span> <span className="cite cite-unsupported">not supported</span>. Blue ones,{' '}
+        <span className="cite cite-verified cite-matrix">from a matrix</span>, were written from a review matrix and are checked against it.
+      </p>
+    )
     return (
       <div className="cite-panel">
         {searchingCount > 0 && searchingSince && (
@@ -51,13 +126,14 @@ export function CitePanel({ marks, citations, rechecking, onRecheckAll, focus, o
             usual="Three are checked at a time; each takes a few seconds. Keep writing."
           />
         )}
-        <p className="cite-intro">
-          Put the cursor in a sentence (or select text) and press <strong>Cite</strong> (Ctrl+Shift+C). A grey{' '}
-          <span className="cite-mark cite-mark-searching">cite</span> marker appears and you keep writing; it turns{' '}
-          <span className="cite-mark cite-mark-verified">cite</span> when a source supports the sentence,{' '}
-          <span className="cite-mark cite-mark-weak">cite</span> for partial support, and{' '}
-          <span className="cite-mark cite-mark-unsupported">cite</span> when nothing does. Click it to confirm a source.
-        </p>
+        {chips.length + marks.length > 0 ? (
+          <details className="cite-howto">
+            <summary>How citing works</summary>
+            {intro}
+          </details>
+        ) : (
+          intro
+        )}
         {citations + marks.length > 0 && (
           <div className="cite-recheck">
             <button onClick={onRecheckAll} disabled={rechecking}>
@@ -88,6 +164,7 @@ export function CitePanel({ marks, citations, rechecking, onRecheckAll, focus, o
             </ul>
           </>
         )}
+        {chips.length > 0 && <CitationList chips={chips} onOpen={onOpenChip} onShow={onShowChip} />}
       </div>
     )
   }
