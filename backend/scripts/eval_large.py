@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app.library import Library  # noqa: E402
 from app.providers import MockProvider  # noqa: E402
 from app.settings import Settings  # noqa: E402
+from eval_retrieval import CONFIGS, compute_metrics, search_args  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1] / "eval" / "large"
 QUESTIONS = ROOT / "questions.json"
@@ -90,12 +91,15 @@ def sample(n: int, seed: int) -> None:
         print(f"\n### chunk {r['id']} | {origin} | p.{r['page']} | {r['title'][:80]}\n{norm(r['text'])}")
 
 
-def evaluate(lib: Library, questions: list[dict], mode: str, chunk_text: dict[int, str]) -> dict:
+def evaluate(lib: Library, questions: list[dict], mode, chunk_text: dict[int, str],
+             rerank: bool | None = None) -> dict:
+    """Score one of eval_retrieval's three configurations (keyword / expanded / ranked)."""
+    lib_mode, do_rerank = search_args(mode, rerank)
     ranks, pool_hits, times, by_type = [], [], [], {}
     for q in questions:
         gold = norm(q["answer"])
         start = time.perf_counter()
-        hits = lib.search(q["q"], k=K, mode=mode)
+        hits = lib.search(q["q"], k=K, mode=lib_mode, rerank=do_rerank)
         times.append(time.perf_counter() - start)
         rank = next((i + 1 for i, h in enumerate(hits) if gold in norm(h["text"])), None)
         ranks.append(rank)
@@ -105,14 +109,12 @@ def evaluate(lib: Library, questions: list[dict], mode: str, chunk_text: dict[in
         pool_hits.append(any(gold in chunk_text[c] for c in pool))
 
     def metrics(rs: list) -> dict:
-        return {
-            "R@1": sum(r == 1 for r in rs) / len(rs),
-            "R@3": sum(r is not None and r <= 3 for r in rs) / len(rs),
-            "R@10": sum(r is not None for r in rs) / len(rs),
-            "MRR": sum(1 / r for r in rs if r) / len(rs),
-        }
+        return {**compute_metrics(rs), "R@10": sum(r is not None for r in rs) / len(rs) if rs else 0.0}
 
     return {
+        "mode": mode["key"] if isinstance(mode, dict) else mode,
+        "search_mode": lib_mode,
+        "rerank": do_rerank,
         "overall": metrics(ranks),
         "by_type": {t: metrics(rs) for t, rs in by_type.items()},
         "candidate_recall@24": sum(pool_hits) / len(pool_hits),
@@ -132,14 +134,13 @@ def run(out: Path | None) -> None:
     multi = sum(q["_holders"] > 1 for q in questions)
     docs = lib.conn.execute("SELECT count(*) FROM documents").fetchone()[0]
 
-    configs = [("keyword (BM25)", "keyword"), ("keyword + expansion + ranking", "hybrid")]
     results = {}
-    for label, mode in configs:
-        lib.search("warm up", k=K, mode=mode)
-        results[label] = evaluate(lib, questions, mode, chunk_text)
+    for config in CONFIGS:
+        lib.search("warm up", k=K, mode=config["mode"], rerank=config["rerank"])
+        results[config["label"]] = evaluate(lib, questions, config, chunk_text)
 
     types = sorted({q["type"] for q in questions})
-    print(f"\nsearch: keyword + {lib.provider.name} expansion and ranking")
+    print(f"\nsearch: keyword (BM25), plus {lib.provider.name} expansion and ranking in the last two configurations")
     print(f"\n{len(questions)} questions ({', '.join(f'{sum(q['type'] == t for q in questions)} {t}' for t in types)}); "
           f"library: {docs} documents, {len(chunk_text)} chunks; {multi} golds occur in more than one chunk\n")
     header = (f"{'configuration':<28}{'R@1':>6}{'R@3':>6}{'R@10':>6}{'MRR':>6}{'cand@24':>9}  "

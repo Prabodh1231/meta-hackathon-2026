@@ -107,6 +107,12 @@ def test_keyword_mode_makes_no_provider_calls(lib):
     assert (lib.provider.expand_calls, lib.provider.rank_calls) == (0, 0)
 
 
+def test_expansion_without_ranking_expands_but_does_not_rank(lib):
+    lib.provider = RankingProvider("Spindle")
+    hits = lib.search("cue", k=2, mode="hybrid", rerank=False)
+    assert hits and (lib.provider.expand_calls, lib.provider.rank_calls) == (1, 0)
+
+
 def test_expanded_queries_are_fused_into_results(lib):
     class ExpandingProvider(MockProvider):
         def __init__(self):
