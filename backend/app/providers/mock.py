@@ -244,3 +244,51 @@ class MockProvider(LLMProvider):
             "verdict": verdict,
             "reason": f"Mock check: {overlap:.0%} of the claim's key terms appear in the source.",
         }
+
+    # A few lay words and the technical words a paper would use for them. The rest of the
+    # expansion is the query's own words, in shorter combinations keyword search can match.
+    _QUERY_SYNONYMS = {
+        "asleep": "sleep slow-wave sleep",
+        "sleeping": "sleep slow-wave sleep",
+        "remember": "memory recall retention",
+        "remembering": "memory recall retention",
+        "replaying": "memory reactivation cues",
+        "sounds": "auditory cues cueing",
+        "kids": "children adolescents",
+        "brain": "neural cognition",
+        "heart": "cardiac cardiovascular",
+        "drugs": "medication treatment therapy",
+        "medicine": "medication treatment therapy",
+    }
+
+    def expand_query(self, query: str) -> list[str]:
+        # Deterministic and offline: the query's content words, any known technical
+        # equivalents, then its first and last word pairs as shorter keyword queries.
+        tokens = list(dict.fromkeys(tokenize(query)))
+        if not tokens:
+            return []
+        out: list[str] = []
+
+        def add(text: str) -> None:
+            text = " ".join(text.split())
+            if text and text.lower() not in {q.lower() for q in out}:
+                out.append(text)
+
+        add(" ".join(tokens))
+        for token in tokens:
+            if token in self._QUERY_SYNONYMS:
+                add(self._QUERY_SYNONYMS[token])
+        if len(tokens) > 2:
+            add(" ".join(tokens[:2]))
+            add(" ".join(tokens[-2:]))
+        elif len(tokens) == 2:
+            add(tokens[0])
+            add(tokens[1])
+        return out[:4]
+
+    def rank_passages(self, query: str, passages: list[tuple[int, str]]) -> list[float]:
+        # Word overlap: the share of the query's content words that a passage contains.
+        wanted = set(tokenize(query))
+        if not wanted:
+            return [0.0 for _ in passages]
+        return [len(wanted & set(tokenize(text))) / len(wanted) for _, text in passages]

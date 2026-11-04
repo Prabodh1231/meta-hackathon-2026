@@ -1,4 +1,5 @@
-"""The backend answers while the embedding model is still loading; only embedding waits for it."""
+"""The backend answers while the embedding model is still loading; search no longer waits
+for it at all, and only the work that still embeds does."""
 import threading
 
 import pytest
@@ -37,15 +38,10 @@ def test_the_library_lists_while_the_model_loads(tmp_path, slow_model):
         assert client.get(path).status_code == 200, path
     assert client.get("/settings/search").json()["embedder"] == "loading"
 
-    # Something that embeds waits for the model instead of failing.
-    found = {}
-    search = threading.Thread(target=lambda: found.setdefault("hits", lib.search("coral bleaching")))
-    search.start()
-    search.join(0.3)
-    assert search.is_alive()
+    # Search is keyword search plus the provider now: it answers at once, without
+    # waiting for the embedding model to load.
+    assert lib.search("coral bleaching") == []
     slow_model["release"].set()
-    search.join(5)
-    assert found["hits"] == []
 
     assert client.get("/health").json()["embedder"] == "hash-512"
 

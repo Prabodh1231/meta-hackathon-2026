@@ -132,6 +132,41 @@ JUDGE_SCHEMA = {
     "additionalProperties": False,
 }
 
+EXPAND_QUERY_SYSTEM = (
+    "You expand a library search query into keyword queries. Return 2 to 4 short keyword "
+    "queries, at most six words each, using the words a research paper would likely use: "
+    "synonyms and the technical term for a lay phrase. Return only the queries, with no "
+    "explanations, and do not repeat the original query unchanged."
+)
+EXPAND_QUERY_SCHEMA = {
+    "type": "object",
+    "properties": {"queries": {"type": "array", "items": {"type": "string"}}},
+    "required": ["queries"],
+    "additionalProperties": False,
+}
+
+RANK_PASSAGES_SYSTEM = (
+    "You score passages for relevance to a search query. Return one score for every passage "
+    "id given, using that same id: 1 means the passage directly answers the query, 0.5 means "
+    "it is partly relevant, and 0 means it is unrelated. Judge only the passage text given."
+)
+RANK_PASSAGES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "scores": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"id": {"type": "integer"}, "score": {"type": "number"}},
+                "required": ["id", "score"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["scores"],
+    "additionalProperties": False,
+}
+
 MATRIX_JUDGE_SYSTEM = (
     "Decide whether a literature review matrix supports a sentence written from it. The matrix has "
     "one line per study: its details, and for each column a short answer with the quote it rests on. "

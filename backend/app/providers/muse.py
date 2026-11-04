@@ -11,7 +11,9 @@ returning half a JSON object.
 """
 
 import base64
+import json
 import random
+import re
 import time
 
 import httpx
@@ -21,6 +23,9 @@ from .base import LLMProvider
 
 REASONING_HEADROOM = 4096
 RETRY_STATUS = {429, 500, 502, 503, 504}
+# Search help is one small call behind an interactive search, so it gets a much shorter
+# wait than the 180 s a long drafting or proposal call may need.
+SEARCH_TIMEOUT = 20.0
 
 
 class MuseError(RuntimeError):
@@ -44,21 +49,23 @@ class MuseProvider(LLMProvider):
             transport=transport,
         )
 
-    def chat(self, messages, *, schema=None, max_tokens=1024, temperature=0.2) -> str:
+    def chat(self, messages, *, schema=None, max_tokens=1024, temperature=0.2,
+             reasoning_effort: str | None = None, timeout: float | None = None) -> str:
         # temperature is not sent: Meta's docs say Muse Spark does best at its default.
         payload: dict = {
             "model": self.model,
             "messages": messages,
             "max_completion_tokens": max_tokens + REASONING_HEADROOM,
         }
-        if self.reasoning_effort:
-            payload["reasoning_effort"] = self.reasoning_effort
+        effort = self.reasoning_effort if reasoning_effort is None else reasoning_effort
+        if effort:
+            payload["reasoning_effort"] = effort
         if schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {"name": "result", "schema": schema, "strict": True},
             }
-        choice = self._post(payload)["choices"][0]
+        choice = self._post(payload, timeout=timeout)["choices"][0]
         content = choice["message"].get("content") or ""
         if choice.get("finish_reason") == "length":
             raise MuseError("Muse hit its output limit before finishing the answer")
@@ -66,10 +73,11 @@ class MuseProvider(LLMProvider):
             raise MuseError(choice["message"].get("refusal") or "Muse returned an empty answer")
         return content
 
-    def _post(self, payload: dict) -> dict:
+    def _post(self, payload: dict, timeout: float | None = None) -> dict:
         for attempt in range(self.retries + 1):
             try:
-                resp = self.client.post("/chat/completions", json=payload)
+                resp = (self.client.post("/chat/completions", json=payload, timeout=timeout)
+                        if timeout is not None else self.client.post("/chat/completions", json=payload))
             except httpx.TransportError:
                 if attempt == self.retries:
                     raise
@@ -97,3 +105,16 @@ class MuseProvider(LLMProvider):
             }
         ]
         return self.chat(messages, max_tokens=4096, temperature=0.0)
+
+    def _search_json(self, system: str, user: str, schema: dict, max_tokens: int) -> dict:
+        # Low effort and a short timeout: search should fall back to keyword order rather
+        # than stall. The base task methods turn any error here into that fallback.
+        raw = self.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            schema=schema,
+            max_tokens=max_tokens,
+            reasoning_effort="low",
+            timeout=SEARCH_TIMEOUT,
+        )
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+        return json.loads(raw)

@@ -25,7 +25,7 @@ from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
 from .retrieval import Reranker, fts_query, make_reranker, reciprocal_rank_fusion
 from .settings import Settings, write_env_file
-from .text_utils import sentence_spans
+from .text_utils import sentence_spans, tokenize
 from .topics import choose_k, jaccard, kmeans
 
 log = logging.getLogger(__name__)
@@ -1277,30 +1277,72 @@ class Library:
                mode: str = "auto", rerank: bool = True) -> list[dict]:
         """Best chunks for a query.
 
-        Candidates come from embeddings ("dense"), BM25 ("keyword") or both merged by
-        reciprocal rank fusion ("hybrid"); the reranker, when loaded and `rerank` is set,
-        then reorders them. "auto" is hybrid, reranked when a reranker is loaded: on the
-        14,000-chunk eval (eval/README.md) fusion beat embeddings alone even without one
-        (R@1 0.37 vs 0.27), though it trailed slightly on the 40-passage set."""
+        Keyword search (FTS5/BM25) runs for the query and for each short expansion the
+        provider suggests, and reciprocal rank fusion merges those lists: an expansion can
+        use the words a paper would use, while the original query keeps exact terms and
+        identifiers. When `rerank` is set, the provider scores the top 30 fused passages
+        in one call; any failure keeps the fused order. mode="keyword" is the instant
+        filter: BM25 for the query alone, with no provider call at all. The old "dense"
+        and "hybrid" names are accepted for this same search, which no longer uses
+        embeddings or a reranker."""
         if mode == "auto":
             mode = "hybrid"
-        use_reranker = rerank and self.reranker is not None
-        pool = max(k * 3, 24) if use_reranker else k
         if mode == "dense":
-            ranked = self._dense(query, pool, doc_ids)
-        elif mode == "keyword":
-            ranked = self._keyword(query, pool, doc_ids)
-        elif mode == "hybrid":
-            wide = max(pool, 40)
-            ranked = reciprocal_rank_fusion(
-                [cid for cid, _ in self._dense(query, wide, doc_ids)],
-                [cid for cid, _ in self._keyword(query, wide, doc_ids)],
-            )[:pool]
-        else:
+            mode = "hybrid"
+        if mode not in ("keyword", "hybrid"):
             raise ValueError(f"Unknown search mode {mode!r}")
-        if use_reranker and ranked:
-            ranked = self._rerank(query, ranked)
+        if mode == "keyword":
+            ranked = self._keyword(query, k, doc_ids)
+            return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
+
+        expansions: list[str] = []
+        try:
+            expansions = self.provider.expand_query(query) or []
+        except Exception:
+            log.exception("Query expansion failed; searching with the query alone")
+        if isinstance(expansions, str):
+            expansions = [expansions]
+        queries: list[str] = []
+        for text in [query, *expansions]:
+            text = " ".join(str(text).split())
+            if text and text.lower() not in {q.lower() for q in queries}:
+                queries.append(text)
+            if len(queries) >= 5:  # the query plus at most four expansions
+                break
+        pool = max(k, 30)
+        wide = max(pool, 40)
+        rankings = [[cid for cid, _ in self._keyword(q, wide, doc_ids)] for q in queries]
+        ranked = reciprocal_rank_fusion(*rankings)[:pool] if rankings else []
+        if rerank and ranked:
+            ranked = self._rank_with_provider(query, ranked[:30]) + ranked[30:]
         return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
+
+    def _rank_with_provider(self, query: str, ranked: list[tuple[int, float]]) -> list[tuple[int, float]]:
+        """The provider's scores for the fused candidates, from one call that sees them all
+        (trimmed to about 700 characters each). The fused keyword order is kept whenever
+        ranking fails or doesn't score every candidate."""
+        with self.lock:
+            texts = {
+                r["id"]: r["text"]
+                for r in self.conn.execute(
+                    f"SELECT id, text FROM chunks WHERE id IN ({','.join('?' * len(ranked))})",
+                    [cid for cid, _ in ranked],
+                )
+            }
+        ids = [cid for cid, _ in ranked if cid in texts]
+        if not ids:
+            return ranked
+        try:
+            scores = self.provider.rank_passages(query, [(cid, texts[cid][:700]) for cid in ids])
+            if scores is None or len(scores) != len(ids):
+                return ranked
+            scores = [float(s) for s in scores]
+        except Exception:
+            log.exception("Passage ranking failed; keeping the keyword order")
+            return ranked
+        if not all(np.isfinite(scores)):
+            return ranked
+        return sorted(zip(ids, scores), key=lambda kv: -kv[1])
 
     def _rerank(self, query: str, ranked: list[tuple[int, float]]) -> list[tuple[int, float]]:
         with self.lock:
@@ -1814,11 +1856,14 @@ class Library:
         ]
         if not sentences:
             return []
-        if self.reranker:  # reads claim and sentence together: better at "which sentence says this"
-            scores = self.reranker.score(claim, [q for _, q in sentences])
-        else:
-            vecs = self.embedder.embed([claim] + [q for _, q in sentences])
-            scores = vecs[1:] @ vecs[0]
+        # Word overlap picks the quoted sentence: no embedder and no reranker runs here.
+        # The support check in verify_citation below, a provider call, is what judges
+        # whether the chosen sentence actually backs the claim.
+        claim_words = set(tokenize(claim))
+        scores = [
+            len(claim_words & set(tokenize(quote))) / len(claim_words) if claim_words else 0.0
+            for _, quote in sentences
+        ]
         best: dict[tuple[int, str], tuple[float, dict, str]] = {}  # one entry per (doc, quote)
         for (hit, quote), score in zip(sentences, scores):
             key = (hit["doc_id"], quote)

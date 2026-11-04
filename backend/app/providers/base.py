@@ -171,3 +171,50 @@ class LLMProvider(ABC):
         if out.get("verdict") not in ("supported", "partial", "unsupported"):
             out["verdict"] = "unsupported"
         return out
+
+    def _search_json(self, system: str, user: str, schema: dict, max_tokens: int) -> dict:
+        """One JSON call made for search. Muse overrides this to keep search calls quick
+        and at low reasoning effort; other providers use the ordinary JSON helper."""
+        return self._json(system, user, schema, max_tokens=max_tokens)
+
+    def expand_query(self, query: str) -> list[str]:
+        """2-4 short keyword queries in the words a paper would likely use, for keyword
+        search. Empty on any failure, so callers search with the query alone."""
+        query = " ".join(str(query).split())
+        if not query:
+            return []
+        try:
+            out = self._search_json(prompts.EXPAND_QUERY_SYSTEM, f"Query: {query}",
+                                    prompts.EXPAND_QUERY_SCHEMA, max_tokens=200)
+        except Exception:
+            return []
+        queries: list[str] = []
+        for item in out.get("queries", []) if isinstance(out, dict) else []:
+            text = " ".join(str(item).split())
+            if text and text.lower() != query.lower() and text.lower() not in {q.lower() for q in queries}:
+                queries.append(text)
+        return queries[:4]
+
+    def rank_passages(self, query: str, passages: list[tuple[int, str]]) -> list[float] | None:
+        """A relevance score per passage, in input order, from one call that sees every
+        candidate (each trimmed to about 700 characters). None on any failure, so callers
+        keep their keyword order."""
+        if not passages:
+            return []
+        listing = "\n\n".join(f"[{pid}] {str(text)[:700]}" for pid, text in passages)
+        try:
+            out = self._search_json(prompts.RANK_PASSAGES_SYSTEM, f"Query: {query}\n\nPassages:\n{listing}",
+                                    prompts.RANK_PASSAGES_SCHEMA, max_tokens=100 + 40 * len(passages))
+        except Exception:
+            return None
+        ids = {pid for pid, _ in passages}
+        by_id: dict[int, float] = {}
+        for item in out.get("scores", []) if isinstance(out, dict) else []:
+            if not isinstance(item, dict):
+                continue
+            pid, score = item.get("id"), item.get("score")
+            if pid in ids and isinstance(score, (int, float)) and not isinstance(score, bool):
+                by_id[pid] = max(0.0, min(1.0, float(score)))
+        if any(pid not in by_id for pid, _ in passages):
+            return None
+        return [by_id[pid] for pid, _ in passages]

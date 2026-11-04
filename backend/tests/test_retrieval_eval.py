@@ -1,8 +1,10 @@
-"""Retrieval quality on eval/retrieval_set.json with the real local models.
+"""Retrieval quality on eval/retrieval_set.json.
 
-Guards the measured gains (see eval/README.md) against regressions. Skipped when the
-models aren't in the local cache, so the suite never downloads ~150 MB by surprise; run
-`python scripts/eval_retrieval.py` once to fetch them.
+Phase 1: search is keyword (BM25) plus provider expansion and ranking, with no
+embeddings or reranker in the search path, so this no longer guards the old
+reranker's measured gains; phase 4 rewrites the eval to compare the new modes.
+Skipped when the old local models aren't in the cache (building the eval library
+still embeds on ingest for now), so the suite never downloads them by surprise.
 """
 
 import importlib.util
@@ -48,11 +50,14 @@ def results():
     return out
 
 
-def test_reranked_hybrid_beats_embeddings_alone(results):
+def test_keyword_search_with_provider_ranking_matches_dense_alias(results):
+    # "dense" is now only an old name for the same keyword + expansion + provider
+    # ranking search, so the reranker's old measured gain (0.82 -> 0.91) no longer
+    # applies; phase 4 measures keyword-only against expanded and ranked search.
     before, after = results["dense"]["overall"], results["hybrid_rerank"]["overall"]
-    assert after["R@1"] >= before["R@1"] + 0.05  # measured: 0.82 -> 0.91
-    assert after["R@3"] >= before["R@3"]  # measured: 0.93 -> 0.98
-    assert after["MRR"] >= before["MRR"] + 0.03  # measured: 0.89 -> 0.94
+    assert after["R@1"] >= before["R@1"]
+    assert after["R@3"] >= before["R@3"]
+    assert after["MRR"] >= before["MRR"]
 
 
 def test_no_query_type_gets_worse(results):

@@ -34,7 +34,7 @@ def test_request_shape_and_json_task():
     assert body["response_format"]["json_schema"]["strict"] is True
 
 
-@pytest.mark.parametrize("name", ["METADATA", "TAGS", "TOPIC", "DRAFT", "JUDGE"])
+@pytest.mark.parametrize("name", ["METADATA", "TAGS", "TOPIC", "DRAFT", "JUDGE", "EXPAND_QUERY", "RANK_PASSAGES"])
 def test_schemas_meet_strict_mode(name):
     # Muse's strict json_schema rejects (HTTP 400) any object that isn't closed with
     # additionalProperties: false; strict mode also needs every property required.
@@ -50,6 +50,40 @@ def test_schemas_meet_strict_mode(name):
             walk(schema["items"])
 
     walk(getattr(prompts, f"{name}_SCHEMA"))
+
+
+def test_expand_query_is_one_low_effort_call():
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return reply('{"queries": ["sleep spindle memory", "targeted memory reactivation"]}')
+
+    muse = provider(handler, reasoning_effort="high")
+    assert muse.expand_query("how does sleep help memory") == ["sleep spindle memory", "targeted memory reactivation"]
+    assert len(seen) == 1 and seen[0]["reasoning_effort"] == "low"
+    assert seen[0]["response_format"]["json_schema"]["strict"] is True
+    assert seen[0]["response_format"]["json_schema"]["schema"]["additionalProperties"] is False
+
+
+def test_rank_passages_scores_in_input_order_from_one_trimmed_call():
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return reply('{"scores": [{"id": 9, "score": 0.2}, {"id": 7, "score": 0.9}]}')
+
+    muse = provider(handler, reasoning_effort="high")
+    assert muse.rank_passages("sleep", [(7, "x" * 800), (9, "short passage")]) == [0.9, 0.2]
+    assert len(seen) == 1 and seen[0]["reasoning_effort"] == "low"
+    user = seen[0]["messages"][1]["content"]
+    assert "x" * 700 in user and "x" * 701 not in user
+
+
+def test_search_calls_fall_back_on_a_bad_answer():
+    muse = provider(lambda request: reply("not json"))
+    assert muse.expand_query("sleep memory") == []
+    assert muse.rank_passages("sleep memory", [(1, "A passage about sleep.")]) is None
 
 
 def test_retries_rate_limits_then_succeeds(monkeypatch):
