@@ -87,14 +87,10 @@ const SEARCH: Record<Exclude<Mode, 'write'>, { scope: string; placeholder: strin
 
 const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mock' }
 
-/** "Muse · BGE-small": a short form of the backend's model ids. */
+/** "Muse · keyword + Muse search": the AI in use, and how the library is searched. */
 function modelLine(h: Health): string {
   const ai = PROVIDER_NAMES[h.provider] ?? h.provider
-  // The backend answers before its search model has loaded (downloading it, on first launch).
-  if (h.embedder === 'loading') return `${ai} · loading search model…`
-  if (h.embedder === 'failed') return `${ai} · search model failed to load`
-  const model = h.embedder.split(':').slice(1).join(':').split('/').pop() || h.embedder
-  return `${ai} · ${model.replace(/-en-v[\d.]+$/, '').replace(/^bge/, 'BGE')}`
+  return h.provider === 'mock' ? `${ai} · keyword search` : `${ai} · keyword + Muse search`
 }
 
 // Whether the writing tools are open beside the draft; Settings can override it at launch.
@@ -770,7 +766,7 @@ export default function App() {
     }
   }
 
-  // The backend may take a while on first launch (embedding model download).
+  // The backend may take a while on first launch.
   useEffect(() => {
     let stop = false
     const poll = async () => {
@@ -814,8 +810,8 @@ export default function App() {
     const timer = window.setInterval(async () => {
       try {
         const h = await api.health()
-        // The search model finished loading (or the backend restarted with another): show it.
-        setHealth((prev) => (prev && prev.embedder === h.embedder && prev.provider === h.provider ? prev : h))
+        // The provider changed (or the backend restarted with another): show it.
+        setHealth((prev) => (prev && prev.search === h.search && prev.provider === h.provider ? prev : h))
         if (wasOffline) await refresh() // back after a restart: reload what may have changed
         wasOffline = false
       } catch {
@@ -1798,7 +1794,7 @@ export default function App() {
               {`${docs.length} source${docs.length === 1 ? '' : 's'} · ${modelLine(health)}`}
             </button>
           ) : (
-            <span className="status" title={health ? `model: ${health.provider} · embeddings: ${health.embedder}` : undefined}>
+            <span className="status" title={health ? `model: ${health.provider} · search: ${health.search}` : undefined}>
               <span className={`dot${health ? ' live' : ''}`} />
               {health ? `${docs.length} source${docs.length === 1 ? '' : 's'} · ${modelLine(health)}` : 'Starting backend…'}
             </span>

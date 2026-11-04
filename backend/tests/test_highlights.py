@@ -1,8 +1,8 @@
-"""Highlights and notes made while reading, fetched while writing (no network: mock model, hash embedder)."""
+"""Highlights and notes made while reading, fetched while writing (no network: mock model,
+keyword scoring instead of any embedder)."""
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -24,7 +24,7 @@ CORAL = "Coral bleaching mortality was lower on reefs exposed to moderate heat s
 @pytest.fixture
 def setup(tmp_path):
     settings = Settings(data_dir=tmp_path / "data")
-    lib = Library(settings, provider=MockProvider(), embedder=HashEmbedder())
+    lib = Library(settings, provider=MockProvider())
     c = TestClient(create_app(settings, lib))
     ids = {}
     for name, text in [("sleep", SLEEP), ("reef", REEF)]:
@@ -72,6 +72,9 @@ def test_fetch_puts_what_fits_the_paragraph_first(setup):
     out = c.post("/highlights/fetch", json={"context": "Coral reefs that met moderate heat stress bleached less."}).json()
     assert [h["text"] for h in out] == [CORAL, SPINDLES]
     assert out[0]["score"] > out[1]["score"] and out[0]["doc_title"]
+    # The reader's note is scored too: it alone can bring a highlight to the top.
+    noted = c.post("/highlights/fetch", json={"context": "what did I think about memory and spindles"}).json()
+    assert noted[0]["text"] == SPINDLES
     # Without a paragraph, the newest first.
     assert [h["text"] for h in c.post("/highlights/fetch", json={}).json()] == [CORAL, SPINDLES]
 

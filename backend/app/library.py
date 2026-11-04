@@ -19,28 +19,31 @@ from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
 from .citegraph import build_graph, focus, keyword_links, missing_works
 from .refparse import Reference, match_reference, norm, parse_references
-from .embeddings import Embedder, LoadingEmbedder, from_blob, make_embedder, to_blob
 from .ingest import ParsedDocument, chunk_page, clean_page_label, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
-from .retrieval import Reranker, fts_query, make_reranker, reciprocal_rank_fusion
+from .retrieval import fts_query, reciprocal_rank_fusion
 from .settings import Settings, write_env_file
-from .text_utils import sentence_spans
-from .topics import choose_k, jaccard, kmeans
+from .text_utils import sentence_spans, tokenize
+from .topics import choose_k, jaccard, kmeans, tfidf_cosines, tfidf_matrix
 
 log = logging.getLogger(__name__)
 
 
-_FROM_SETTINGS = object()
-
 # Filing a paper into a folder: below this many papers the library has no average to compare
-# against, so every paper is read by the model. Papers the embeddings rank under the library's
-# average for a folder are never sent to the model, and keep at most this score.
+# against, so every paper is read by the model. Papers the word statistics rank under the
+# library's average for a folder are never sent to the model, and keep at most this score.
 MIN_DOCS_FOR_RELATIVE = 8
 UNCHECKED_CAP = 30
 
 
 INGEST_WORKERS = 8
+# Muse ranks this many fused keyword hits, each cut to this length, in one call. Fewer and
+# shorter passages keep that call well inside its short search timeout.
+RANK_POOL = 20
+RANK_CHARS = 450
+# Cite's support checks are separate Muse calls; they run side by side.
+CHECK_WORKERS = 4
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
 MAX_KEYWORD_TAGS = 8
 MIN_TEXT_HITS = 3  # chunks of a paper that must mention a searched topic for it to count as about it
@@ -54,9 +57,6 @@ MAX_AUTO_VERSIONS = 40
 # Duplication: share of a draft sentence's word 3-grams found in one library passage.
 SOURCE_MATCH = 0.5  # closely matches the source
 SOURCE_COPIED = 0.85  # copied nearly word for word
-# Duplicate files: documents whose mean chunk embeddings are this close are compared in detail.
-# Only picks candidates; shared passages and metadata decide what's shown.
-DUP_DOC_COS = 0.9
 INDEX_LOOKUP_WORKERS = 4  # papers looked up in OpenAlex at once; it asks for a polite pace
 REMOVAL_REASONS = ("removed", "duplicate")
 
@@ -128,30 +128,19 @@ USER_SETTINGS_DEFAULTS = {k: _setting_default(v) for k, v in USER_SETTINGS.items
 
 
 class Library:
-    def __init__(self, settings: Settings, provider: LLMProvider | None = None, embedder: Embedder | None = None,
-                 reranker: "Reranker | None | object" = _FROM_SETTINGS, open_access: openaccess.OpenAccess | None = None):
+    def __init__(self, settings: Settings, provider: LLMProvider | None = None,
+                 open_access: openaccess.OpenAccess | None = None):
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         self.settings = settings
         self.conn = db.connect(settings.db_path)
         self.lock = threading.RLock()
-        self._embed_lock = threading.Lock()  # one GPU/model call at a time while files ingest in parallel
         self.provider = provider or make_provider(settings)
-        # The embedding model loads in the background (see LoadingEmbedder), re-embedding the
-        # library first if it's a different model, so the library lists at once.
-        self.embedder = self._reembed_if_needed(embedder) if embedder is not None else LoadingEmbedder(
-            lambda: self._reembed_if_needed(
-                make_embedder(settings.embedder, settings.data_dir / "models", settings.models_dir)))
-        self.reranker = (
-            make_reranker(settings.reranker, settings.data_dir / "models", settings.models_dir)
-            if reranker is _FROM_SETTINGS else reranker
-        )
+        # Search is keyword search plus the provider, and folders, highlights and
+        # duplication use word statistics. No search model is loaded here, so the
+        # library lists at once.
         self.open_access = open_access or openaccess.OpenAccess(settings.contact_email, core_key=settings.core_api_key)
         if self.pref("contact_email"):
             self.open_access.set_contact(self.pref("contact_email"))
-        self._ids: np.ndarray | None = None  # in-memory vector index, rebuilt lazily
-        self._docs: np.ndarray | None = None
-        self._mat: np.ndarray | None = None
-        self._name_vectors: dict[tuple[str, str], np.ndarray] = {}  # (embedder id, folder name) -> vector
         self._backfill_keywords()
         self._fix_page_labels()
         self._backfill_file_dates()
@@ -283,11 +272,7 @@ class Library:
             for s, e in chunk_page(text)
         ]
 
-        def embed_chunks() -> np.ndarray:
-            with self._embed_lock:
-                return self.embedder.embed([c[3] for c in chunks]) if chunks else np.zeros((0, 1))
-
-        # Metadata, summary, tags and embeddings don't depend on each other, so all of them run
+        # Metadata, summary, tags and filing don't depend on each other, so all of them run
         # at once: a file takes about one model call's time instead of three in a row. The summary
         # and tags only use the title as a heading, so the file's own title (or name) does.
         # A failed model call (rate limit, timeout, Muse down) doesn't lose the file: it's stored
@@ -299,16 +284,14 @@ class Library:
 
         def file_early():
             # Filing used to wait for the stored summary, the slowest step of an import. It only
-            # needs the paper's vectors, to pick the folders worth asking about, and its text, so
-            # it starts as soon as the embedding is done, alongside the other model calls.
-            vectors = embed_job.result()
-            return self._judge_folders(hint, "", self._folder_text(keywords, jel_codes, parsed.pages[:4]), vectors)
+            # needs the paper's subject words, to pick the folders worth asking about, and its
+            # text, so it starts alongside the other model calls.
+            return self._judge_folders(hint, "", self._folder_text(keywords, jel_codes, parsed.pages[:4]))
 
-        with ThreadPoolExecutor(max_workers=5) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             meta_job = pool.submit(self.provider.extract_metadata, parsed.pages[0] or full_text)
             summary_job = pool.submit(self.provider.summarize, hint, full_text)
             tags_job = None if own_keywords else pool.submit(self.provider.tag_document, hint, full_text)
-            embed_job = pool.submit(embed_chunks)
             folders_job = pool.submit(file_early)
             try:
                 meta.update({k: v for k, v in meta_job.result().items() if v})
@@ -329,7 +312,6 @@ class Library:
                     log.exception("Tagging failed for %s", source)
                     tags = []
                     missing.append("tags")
-            vectors = embed_job.result()
             try:
                 judged = folders_job.result()
             except Exception:
@@ -392,14 +374,15 @@ class Library:
                 "INSERT INTO pages (doc_id, page, text, label) VALUES (?, ?, ?, ?)",
                 [(doc_id, i, t, lbl) for i, (t, lbl) in enumerate(zip(parsed.pages, labels), start=1)],
             )
+            # No embedding is stored: keyword search indexes the text itself (chunks_fts is
+            # kept in sync by triggers), and the old vector column stays in the table unused.
             self.conn.executemany(
-                "INSERT INTO chunks (id, doc_id, page, start, end, text, embedding) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO chunks (id, doc_id, page, start, end, text) VALUES (?, ?, ?, ?, ?, ?)",
                 [
-                    (cid, doc_id, pg, s, e, t, to_blob(v))
-                    for cid, (pg, s, e, t), v in zip(self._allocate_ids("chunks", len(chunks)), chunks, vectors)
+                    (cid, doc_id, pg, s, e, t)
+                    for cid, (pg, s, e, t) in zip(self._allocate_ids("chunks", len(chunks)), chunks)
                 ],
             )
-            self._invalidate_index()
         if on_stage:
             on_stage("filing")
         try:
@@ -422,26 +405,6 @@ class Library:
         start = max(int(db.get_meta(self.conn, key) or 1), highest + 1)
         db.set_meta(self.conn, key, str(start + n))
         return list(range(start, start + n))
-
-    def _reembed_if_needed(self, embedder: Embedder) -> Embedder:
-        """Re-embed every chunk when `embedder` isn't the model the library was embedded with; returns it.
-        The model runs outside the library lock, so the library stays usable meanwhile (search waits
-        for the embedder anyway); the new model is recorded only once every chunk has its vector."""
-        with self.lock:
-            stored = db.get_meta(self.conn, "embedder")
-            rows = self.conn.execute("SELECT id, text FROM chunks").fetchall() if stored and stored != embedder.id else []
-        if rows:
-            log.info("Embedder changed (%s -> %s); re-embedding %d chunks", stored, embedder.id, len(rows))
-            for i in range(0, len(rows), 256):
-                batch = rows[i : i + 256]
-                vecs = embedder.embed([r["text"] for r in batch])
-                with self.lock, self.conn:
-                    self.conn.executemany("UPDATE chunks SET embedding = ? WHERE id = ?",
-                                          [(to_blob(v), r["id"]) for r, v in zip(batch, vecs)])
-        with self.lock, self.conn:
-            db.set_meta(self.conn, "embedder", embedder.id)
-            self._ids = self._docs = self._mat = None  # the vector index is rebuilt from the new vectors
-        return embedder
 
     def _fix_page_labels(self) -> None:
         """Page labels stored before clean_page_label existed, as UTF-16 hex ('<FEFF0038>'): decode them."""
@@ -835,7 +798,6 @@ class Library:
                  row["added_at"], reason, duplicate_of if kept else None, kept["title"] if kept else "", int(trashed)),
             )
             self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
-            self._invalidate_index()
 
     # ---------- removal log ----------
 
@@ -1146,8 +1108,8 @@ class Library:
                 groups.append(self._dup_group("same_text", members, ["Extracted text is identical after normalizing formatting"], 100))
                 union(members)
 
-        # Near matches: pairs that share a DOI, have alike titles, or whose text embeddings are
-        # very close are candidates; metadata and shared passages then decide.
+        # Near matches: pairs that share a DOI or have alike titles are candidates; metadata
+        # and shared passages then decide.
         pairs: set[tuple[int, int]] = set()
         by_doi: dict[str, list[int]] = defaultdict(list)
         for d in docs.values():
@@ -1162,17 +1124,22 @@ class Library:
                 wa, wb = words[a], words[b]
                 if wa and wb and len(wa & wb) >= 0.6 * max(len(wa), len(wb)):
                     pairs.add((a, b))
-        with self.lock:
-            self._load_index()
-            chunk_docs, mat = self._docs, self._mat
-        if len(chunk_docs):
-            doc_ids = np.unique(chunk_docs)
-            vecs = np.stack([mat[chunk_docs == d].mean(axis=0) for d in doc_ids])
-            vecs /= np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-9
-            for i, j in np.argwhere(np.triu(vecs @ vecs.T, 1) >= DUP_DOC_COS):
-                a, b = int(doc_ids[i]), int(doc_ids[j])
-                if a in docs and b in docs:
-                    pairs.add((min(a, b), max(a, b)))
+        # Pairs whose texts share several word shingles are candidates too, whichever their
+        # titles and DOIs say. A shingle in very many documents (a shared boilerplate passage)
+        # proves little, so it isn't counted; the precise overlap below still decides.
+        postings: dict = {}
+        shared_counts: dict[tuple[int, int], int] = {}
+        for d in docs.values():
+            if not d["text"]:
+                continue
+            for gram in dupfiles.shingles(d["text"]):
+                prior = postings.setdefault(gram, [])
+                if len(prior) <= 20:
+                    for other in prior:
+                        pair = (other, d["id"])
+                        shared_counts[pair] = shared_counts.get(pair, 0) + 1
+                prior.append(d["id"])
+        pairs |= {pair for pair, count in shared_counts.items() if count >= 3}
 
         grams: dict[int, set[int]] = {}
 
@@ -1260,49 +1227,53 @@ class Library:
 
     # ---------- search ----------
 
-    def _invalidate_index(self) -> None:
-        self._ids = self._docs = self._mat = None
-
-    def _load_index(self) -> None:
-        if self._ids is not None:
-            return
-        rows = self.conn.execute("SELECT id, doc_id, embedding FROM chunks WHERE embedding IS NOT NULL").fetchall()
-        self._ids = np.array([r["id"] for r in rows], dtype=np.int64)
-        self._docs = np.array([r["doc_id"] for r in rows], dtype=np.int64)
-        # One buffer for every vector: much faster than a small array per chunk on a large library.
-        self._mat = (np.frombuffer(b"".join(r["embedding"] for r in rows), dtype=np.float32).reshape(len(rows), -1)
-                     if rows else np.zeros((0, 1), np.float32))
-
     def search(self, query: str, k: int = 8, doc_ids: list[int] | None = None,
                mode: str = "auto", rerank: bool = True) -> list[dict]:
         """Best chunks for a query.
 
-        Candidates come from embeddings ("dense"), BM25 ("keyword") or both merged by
-        reciprocal rank fusion ("hybrid"); the reranker, when loaded and `rerank` is set,
-        then reorders them. "auto" is hybrid, reranked when a reranker is loaded: on the
-        14,000-chunk eval (eval/README.md) fusion beat embeddings alone even without one
-        (R@1 0.37 vs 0.27), though it trailed slightly on the 40-passage set."""
+        Keyword search (FTS5/BM25) runs for the query and for each short expansion the
+        provider suggests, and reciprocal rank fusion merges those lists: an expansion can
+        use the words a paper would use, while the original query keeps exact terms and
+        identifiers. When `rerank` is set, the provider scores the top 30 fused passages
+        in one call; any failure keeps the fused order. mode="keyword" is the instant
+        filter: BM25 for the query alone, with no provider call at all. The old "dense"
+        and "hybrid" names are accepted for this same keyword search."""
         if mode == "auto":
             mode = "hybrid"
-        use_reranker = rerank and self.reranker is not None
-        pool = max(k * 3, 24) if use_reranker else k
         if mode == "dense":
-            ranked = self._dense(query, pool, doc_ids)
-        elif mode == "keyword":
-            ranked = self._keyword(query, pool, doc_ids)
-        elif mode == "hybrid":
-            wide = max(pool, 40)
-            ranked = reciprocal_rank_fusion(
-                [cid for cid, _ in self._dense(query, wide, doc_ids)],
-                [cid for cid, _ in self._keyword(query, wide, doc_ids)],
-            )[:pool]
-        else:
+            mode = "hybrid"
+        if mode not in ("keyword", "hybrid"):
             raise ValueError(f"Unknown search mode {mode!r}")
-        if use_reranker and ranked:
-            ranked = self._rerank(query, ranked)
+        if mode == "keyword":
+            ranked = self._keyword(query, k, doc_ids)
+            return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
+
+        expansions: list[str] = []
+        try:
+            expansions = self.provider.expand_query(query) or []
+        except Exception:
+            log.exception("Query expansion failed; searching with the query alone")
+        if isinstance(expansions, str):
+            expansions = [expansions]
+        queries: list[str] = []
+        for text in [query, *expansions]:
+            text = " ".join(str(text).split())
+            if text and text.lower() not in {q.lower() for q in queries}:
+                queries.append(text)
+            if len(queries) >= 5:  # the query plus at most four expansions
+                break
+        pool = max(k, 30)
+        wide = max(pool, 40)
+        rankings = [[cid for cid, _ in self._keyword(q, wide, doc_ids)] for q in queries]
+        ranked = reciprocal_rank_fusion(*rankings)[:pool] if rankings else []
+        if rerank and ranked:
+            ranked = self._rank_with_provider(query, ranked[:RANK_POOL]) + ranked[RANK_POOL:]
         return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
 
-    def _rerank(self, query: str, ranked: list[tuple[int, float]]) -> list[tuple[int, float]]:
+    def _rank_with_provider(self, query: str, ranked: list[tuple[int, float]]) -> list[tuple[int, float]]:
+        """The provider's scores for the fused candidates, from one call that sees them all
+        (trimmed to about 700 characters each). The fused keyword order is kept whenever
+        ranking fails or doesn't score every candidate."""
         with self.lock:
             texts = {
                 r["id"]: r["text"]
@@ -1312,21 +1283,19 @@ class Library:
                 )
             }
         ids = [cid for cid, _ in ranked if cid in texts]
-        scores = self.reranker.score(query, [texts[cid] for cid in ids])
+        if not ids:
+            return ranked
+        try:
+            scores = self.provider.rank_passages(query, [(cid, texts[cid][:RANK_CHARS]) for cid in ids])
+            if scores is None or len(scores) != len(ids):
+                return ranked
+            scores = [float(s) for s in scores]
+        except Exception:
+            log.exception("Passage ranking failed; keeping the keyword order")
+            return ranked
+        if not all(np.isfinite(scores)):
+            return ranked
         return sorted(zip(ids, scores), key=lambda kv: -kv[1])
-
-    def _dense(self, query: str, n: int, doc_ids: list[int] | None) -> list[tuple[int, float]]:
-        # Embed before taking the lock: the model call is the slow part, and holding the lock
-        # through it would stall every other request (saves, library listing) meanwhile.
-        vec = self.embedder.embed([query])[0]
-        with self.lock:
-            self._load_index()
-            if not len(self._ids):
-                return []
-            scores = self._mat @ vec
-            if doc_ids:
-                scores = np.where(np.isin(self._docs, doc_ids), scores, -np.inf)
-            return [(int(self._ids[i]), float(scores[i])) for i in np.argsort(-scores)[:n] if np.isfinite(scores[i])]
 
     def _keyword(self, query: str, n: int, doc_ids: list[int] | None) -> list[tuple[int, float]]:
         match = fts_query(query)
@@ -1352,7 +1321,7 @@ class Library:
         if not row:
             return None
         hit = dict(row)
-        hit.pop("embedding")
+        hit.pop("embedding", None)  # a legacy column in older databases; search never reads it
         hit["authors"] = json.loads(hit["authors"])
         hit["score"] = score
         # The model sees this label, so it cites printed page numbers too.
@@ -1371,21 +1340,24 @@ class Library:
 
     def rebuild_topics(self) -> list[dict]:
         with self.lock:
-            rows = self.conn.execute(
-                "SELECT doc_id, embedding, length(text) AS n FROM chunks WHERE embedding IS NOT NULL"
-            ).fetchall()
-            by_doc: dict[int, list[tuple[np.ndarray, int]]] = {}
-            for r in rows:
-                by_doc.setdefault(r["doc_id"], []).append((from_blob(r["embedding"]), r["n"]))
+            by_doc: dict[int, list[str]] = defaultdict(list)
+            for r in self.conn.execute("SELECT doc_id, text FROM chunks ORDER BY doc_id, id"):
+                by_doc[r["doc_id"]].append(r["text"])
             if not by_doc:
                 return []
             doc_ids = sorted(by_doc)
-            # Weight by chunk length so a short appendix or caption can't pull a document's topic.
-            x = np.stack([
-                np.average([v for v, _ in by_doc[d]], axis=0, weights=[n for _, n in by_doc[d]])
+            tags = self._all_tags()
+            docs = {r["id"]: r for r in self.conn.execute("SELECT id, title, summary, keywords FROM documents")}
+            # Word statistics instead of a model's vectors: the title counts most, then the
+            # summary, keywords and tags the paper carries, then its text as written.
+            texts = [
+                " ".join([docs[d]["title"]] * 3 + [docs[d]["summary"], " ".join(json.loads(docs[d]["keywords"])),
+                                                   " ".join(tags.get(d, [])), *by_doc[d]])
                 for d in doc_ids
-            ])
-            x /= np.linalg.norm(x, axis=1, keepdims=True) + 1e-9
+            ]
+            x = tfidf_matrix(texts)
+            if not np.any(x):
+                return []
             labels = kmeans(x, choose_k(len(doc_ids)))
 
             old = {
@@ -1500,52 +1472,53 @@ class Library:
         return self.list_folders()
 
     @staticmethod
-    def _blend(sims: np.ndarray) -> np.ndarray:
-        """(chunks, folders) cosines -> one cosine per folder: half the mean of the three closest
-        chunks, half the mean of all of them."""
-        return 0.5 * np.sort(sims, axis=0)[-3:].mean(axis=0) + 0.5 * sims.mean(axis=0)
+    def _folder_field_text(title: str, keywords: list[str], summary: str, tags: list[str]) -> str:
+        """The words a paper is filed by: its title counts most, then the keywords it prints
+        and its tags, then its summary. Body text is not counted here: these are the fields
+        the authors and the library themselves use to say what the paper is about."""
+        words = " ".join(keywords)
+        return " ".join([title] * 3 + [words] * 3 + [" ".join(tags)] * 2 + [summary])
 
-    def _folder_vectors(self, names: list[str]) -> np.ndarray:
-        """Embeddings of folder names, kept per embedder since the same few get scored against every paper."""
-        missing = [n for n in dict.fromkeys(names) if (self.embedder.id, n) not in self._name_vectors]
-        if missing:
-            with self._embed_lock:
-                vectors = self.embedder.embed(missing)
-            for name, vec in zip(missing, vectors):
-                self._name_vectors[(self.embedder.id, name)] = vec
-        return np.stack([self._name_vectors[(self.embedder.id, n)] for n in names])
+    def _folder_doc_texts(self) -> tuple[list[int], list[str]]:
+        """Every stored document's filing words (see _folder_field_text). Call under the lock."""
+        tags = self._all_tags()
+        rows = self.conn.execute("SELECT id, title, summary, keywords FROM documents ORDER BY id").fetchall()
+        return [r["id"] for r in rows], [
+            self._folder_field_text(r["title"], json.loads(r["keywords"]), r["summary"], tags.get(r["id"], []))
+            for r in rows
+        ]
+
+    def _folder_word_scores(self, names: list[str]) -> tuple[np.ndarray, np.ndarray]:
+        """Each stored document's TF-IDF cosine to each folder name: (document ids, (docs, folders)).
+        Call under the lock."""
+        doc_ids, texts = self._folder_doc_texts()
+        scores, _ = tfidf_cosines(texts, names)
+        return np.array(doc_ids, dtype=np.int64), scores
 
     def _relative_fit(self, names: list[str]) -> dict[int, np.ndarray]:
-        """First pass, from the chunk embeddings already stored: for each document, how far above
-        or below the library's average it sits for each folder, in standard deviations (z).
-        Raw cosines can't be read as percentages (a finance library scores every finance paper
-        high for every finance folder), but the ranking they give is reliable. Call under the lock."""
-        doc_ids, cosine = self._folder_cosines(names)
+        """First pass, from word statistics: for each document, how far above or below the
+        library's average it sits for each folder, in standard deviations (z). Raw cosines
+        can't be read as percentages (a finance library scores every finance paper high for
+        every finance folder), but the ranking they give is reliable. Call under the lock."""
+        doc_ids, cosine = self._folder_word_scores(names)
         if not len(doc_ids):
             return {}
         spread = cosine.std(axis=0)
         z = (cosine - cosine.mean(axis=0)) / np.where(spread > 0, spread, 1.0)
         return {int(d): z[i] for i, d in enumerate(doc_ids)}
 
-    def _folder_cosines(self, names: list[str]) -> tuple[np.ndarray, np.ndarray]:
-        """Each stored document's blended cosine to each folder name: (document ids, (docs, folders)).
-        Call under the lock."""
-        self._load_index()
-        if not len(self._ids):
-            return np.zeros(0, np.int64), np.zeros((0, len(names)), np.float32)
-        sims = self._mat @ self._folder_vectors(names).T  # (chunks, folders)
-        order = np.argsort(self._docs, kind="stable")
-        groups = np.split(order, np.flatnonzero(np.diff(self._docs[order])) + 1)
-        return np.array([self._docs[g[0]] for g in groups]), np.stack([self._blend(sims[g]) for g in groups])
-
-    def _new_paper_fit(self, vectors: np.ndarray, names: list[str]) -> np.ndarray | None:
+    def _new_paper_fit(self, title: str, summary: str, text: str, names: list[str]) -> np.ndarray | None:
         """Like _relative_fit, for a paper not stored yet: how far above or below the library's
-        average its own chunk vectors sit for each folder. None for a small library. Call under the lock."""
-        doc_ids, cosine = self._folder_cosines(names)
-        if len(doc_ids) < MIN_DOCS_FOR_RELATIVE or not len(vectors):
+        average its own words sit for each folder, weighted with the library's word statistics.
+        Its first pages count here, since its summary isn't written yet. None for a small
+        library. Call under the lock."""
+        doc_ids, texts = self._folder_doc_texts()
+        if len(doc_ids) < MIN_DOCS_FOR_RELATIVE:
             return None
+        cosine, mine = tfidf_cosines(texts, names, candidate=f"{title} {title} {title} {summary} {text}")
+        if mine is None or not np.any(cosine):
+            return mine if mine is not None and not np.any(cosine) else None
         spread = cosine.std(axis=0)
-        mine = self._blend(vectors @ self._folder_vectors(names).T)
         return (mine - cosine.mean(axis=0)) / np.where(spread > 0, spread, 1.0)
 
     @staticmethod
@@ -1567,16 +1540,16 @@ class Library:
         text = self._folder_text(doc["keywords"], [j["code"] for j in doc["jel_codes"]], pages)
         return self.provider.score_folders(doc["title"], doc["summary"], text, names)  # network call: no lock
 
-    def _judge_folders(self, title: str, summary: str, text: str, vectors: np.ndarray):
-        """Score a paper that isn't stored yet against every folder: the embedding ranking picks
-        the plausible folders, the model judges those. Returns what _save_scores needs, or None
-        when there are no folders."""
+    def _judge_folders(self, title: str, summary: str, text: str):
+        """Score a paper that isn't stored yet against every folder: the word-statistics
+        ranking picks the plausible folders, the model judges those. Returns what
+        _save_scores needs, or None when there are no folders."""
         with self.lock:
             folders = self.conn.execute("SELECT id, name FROM folders ORDER BY id").fetchall()
             if not folders:
                 return None
             names = [f["name"] for f in folders]
-            z = self._new_paper_fit(vectors, names)
+            z = self._new_paper_fit(title, summary, text, names)
         ask = [i for i in range(len(names)) if z is None or z[i] >= 0]
         verdict = self.provider.score_folders(title, summary, text, [names[i] for i in ask]) if ask else {}
         return folders, names, z, ask, verdict
@@ -1584,7 +1557,7 @@ class Library:
     def _save_scores(self, doc_id: int, folders: list, names: list[str], z: np.ndarray | None,
                      ask: list[int], verdict: dict[str, int]) -> None:
         """Keep a document's folder scores: the model's verdict where it judged, else the
-        embedding ranking, capped for folders the model wasn't asked about."""
+        word-statistics ranking, capped for folders the model wasn't asked about."""
         rows = []
         for i, f in enumerate(folders):
             if names[i] in verdict:
@@ -1608,10 +1581,11 @@ class Library:
     def _score(self, doc_ids: list[int] | None = None, folder_ids: list[int] | None = None) -> None:
         """Score documents (all by default) against folders (all by default) and keep the scores.
 
-        Two stages. Embeddings rank every document for every folder at no cost. Muse then judges
-        the pairs that could plausibly be a match (above the library's average for that folder),
-        which is where its reading of the content beats an embedding. The rest keep a low score
-        from the embedding alone, capped so an unchecked paper only joins at a very low threshold.
+        Two stages. Word statistics (TF-IDF over title, keywords, tags and summary) rank every
+        document for every folder at no cost. Muse then judges the pairs that could plausibly
+        be a match (above the library's average for that folder), which is where its reading of
+        the content beats word overlap. The rest keep a low score from the word statistics
+        alone, capped so an unchecked paper only joins at a very low threshold.
         Small libraries skip the first stage: there is no average to speak of, and few papers to read."""
         with self.lock:
             folders = self.conn.execute("SELECT id, name FROM folders ORDER BY id").fetchall()
@@ -1631,7 +1605,7 @@ class Library:
             if ask:
                 try:
                     verdict = self._ask_model(doc_id, [names[i] for i in ask])
-                except Exception:  # fall back to the embedding ranking for this document
+                except Exception:  # fall back to the word-statistics ranking for this document
                     log.exception("Folder scoring failed for document %s", doc_id)
             self._save_scores(doc_id, folders, names, z, ask, verdict)
 
@@ -1814,11 +1788,14 @@ class Library:
         ]
         if not sentences:
             return []
-        if self.reranker:  # reads claim and sentence together: better at "which sentence says this"
-            scores = self.reranker.score(claim, [q for _, q in sentences])
-        else:
-            vecs = self.embedder.embed([claim] + [q for _, q in sentences])
-            scores = vecs[1:] @ vecs[0]
+        # Word overlap picks the quoted sentence, on this computer.
+        # The support check in verify_citation below, a provider call, is what judges
+        # whether the chosen sentence actually backs the claim.
+        claim_words = set(tokenize(claim))
+        scores = [
+            len(claim_words & set(tokenize(quote))) / len(claim_words) if claim_words else 0.0
+            for _, quote in sentences
+        ]
         best: dict[tuple[int, str], tuple[float, dict, str]] = {}  # one entry per (doc, quote)
         for (hit, quote), score in zip(sentences, scores):
             key = (hit["doc_id"], quote)
@@ -1829,8 +1806,10 @@ class Library:
             if hit["id"] not in per_chunk or score > per_chunk[hit["id"]][0]:
                 per_chunk[hit["id"]] = (score, hit, quote)
         top = sorted(per_chunk.values(), key=lambda c: -c[0])[:limit]
-        # Each check is a model call, so only the top few candidates are judged.
-        results = [{**self.verify_citation(claim, hit["id"], quote), "score": round(score, 4)} for score, hit, quote in top]
+        # Each check is a model call, so only the top few candidates are judged, side by side.
+        with ThreadPoolExecutor(max_workers=CHECK_WORKERS) as pool:
+            checked = list(pool.map(lambda c: self.verify_citation(claim, c[1]["id"], c[2]), top))
+        results = [{**v, "score": round(score, 4)} for v, (score, _, _) in zip(checked, top)]
         rank = {"verified": 0, "weak": 1, "unsupported": 2, "quote_not_found": 3}
         return sorted(results, key=lambda r: (rank.get(r["status"], 4), -r["score"]))
 
@@ -1990,19 +1969,15 @@ class Library:
         self.settings, self.provider = new, model
         return self.model_settings()
 
-    # ---------- the search models ----------
-
-    def embedder_state(self) -> str:
-        """'loading', 'ready' or 'failed': whether search can embed yet."""
-        return getattr(self.embedder, "state", "ready")
+    # ---------- search ----------
 
     def search_settings(self) -> dict:
-        """The search models, for the Settings window: bge-small embeddings and the reranker,
-        both on this computer."""
-        state = self.embedder_state()
+        """How search works, for the Settings window: keyword search on this computer, with
+        the provider expanding the query and ranking the best matches. No other model runs."""
         return {
-            "embedder": self.embedder.id if state == "ready" else state,
-            "reranker": self.reranker.id if self.reranker else None,
+            "search": "keyword",
+            "ranking": self.provider.name,
+            "model": self.settings.muse_model if self.provider.name == "muse" else None,
         }
 
     def document_file(self, doc_id: int) -> tuple[Path, str]:
@@ -2229,17 +2204,13 @@ class Library:
         total = sum(len(s.tokens) for s in sents)
         checked = [k for k, s in enumerate(sents) if len(s.tokens) >= draft_review.MIN_SENTENCE_WORDS]
 
-        # Candidate chunks per sentence: keyword hits catch copied wording, embeddings catch
-        # rewordings the keywords miss. Overlap of word n-grams then decides.
-        candidates: dict[int, set[int]] = {k: {cid for cid, _ in self._keyword(sents[k].text, 5, None)}
+        # Candidate chunks per sentence: keyword hits (FTS5/BM25) over the sentence's own
+        # words, a few more than are likely to be needed so a lightly reworded copy is
+        # still among them. Overlap of word n-grams then decides, so a passage that only
+        # shares the sentence's subject isn't flagged.
+        candidates: dict[int, set[int]] = {k: {cid for cid, _ in self._keyword(sents[k].text, 10, None)}
                                            for k in checked}
-        vecs = self.embedder.embed([sents[k].text for k in checked]) if checked else None  # outside the lock
         with self.lock:
-            self._load_index()
-            if len(self._ids) and checked:
-                top = min(3, len(self._ids))
-                for k, scores in zip(checked, vecs @ self._mat.T):
-                    candidates[k] |= {int(self._ids[i]) for i in np.argpartition(-scores, top - 1)[:top]}
             ids = sorted(set().union(*candidates.values())) if candidates else []
             chunk_text = {
                 r["id"]: r["text"]

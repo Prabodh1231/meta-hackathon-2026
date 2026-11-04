@@ -2,7 +2,6 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -11,7 +10,7 @@ from app.settings import Settings, read_env_file
 
 @pytest.fixture
 def lib(tmp_path):
-    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder())
+    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
 
 
 @pytest.fixture

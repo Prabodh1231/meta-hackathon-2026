@@ -1,71 +1,114 @@
-"""Retrieval quality on eval/retrieval_set.json with the real local models.
+"""Retrieval quality on eval/retrieval_set.json.
 
-Guards the measured gains (see eval/README.md) against regressions. Skipped when the
-models aren't in the local cache, so the suite never downloads ~150 MB by surprise; run
-`python scripts/eval_retrieval.py` once to fetch them.
+Search is keyword (BM25) plus provider expansion and ranking, so this checks the
+eval script against the offline mock provider: the metric helpers, the three
+configurations it compares (keyword only, keyword + expansion, and that plus
+ranking), and the table it prints. Nothing here downloads or loads a model, and
+no test reaches the network.
 """
 
 import importlib.util
-import os
 import tempfile
 from pathlib import Path
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "eval_retrieval.py"
-CACHE = Path(os.environ.get("RC_MODEL_CACHE") or Path.home() / ".research-companion" / "models")
-RERANKER = "Xenova/ms-marco-MiniLM-L-6-v2"
 
 
-def _cached(fragment: str) -> bool:
-    return CACHE.exists() and any(fragment in p.name for p in CACHE.iterdir())
-
-
-pytestmark = pytest.mark.skipif(
-    not (_cached("bge-small-en-v1.5") and _cached("ms-marco-MiniLM-L-6-v2")),
-    reason="local embedding/reranker models not cached",
-)
+def load_script(name: str, filename: str):
+    spec = importlib.util.spec_from_file_location(name, SCRIPT.parent / filename)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture(scope="module")
-def results():
-    os.environ["HF_HUB_OFFLINE"] = "1"  # use the cache, never the network
-    spec = importlib.util.spec_from_file_location("eval_retrieval", SCRIPT)
-    ev = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(ev)
-    from app.retrieval import CrossEncoderReranker
+def ev():
+    return load_script("eval_retrieval", SCRIPT.name)
 
+
+@pytest.fixture(scope="module")
+def results(ev):
     data = ev.load_set()
     with tempfile.TemporaryDirectory() as tmp:
-        lib = ev.build_library(data, CACHE, Path(tmp))
-        out = {"dense": ev.evaluate(lib, data, "dense"), "hybrid_norerank": ev.evaluate(lib, data, "hybrid")}
-        lib.reranker = CrossEncoderReranker(CACHE, RERANKER)
-        out["hybrid_rerank"] = ev.evaluate(lib, data, "hybrid")
+        lib = ev.build_library(data, None, Path(tmp))
+        out = {config["key"]: ev.evaluate(lib, data, config) for config in ev.CONFIGS}
+        out["hybrid"] = out["ranked"]  # the Library.search name for the ranked configuration
         out["auto"] = ev.evaluate(lib, data, "auto")
-        lib.reranker = None
-        out["auto_without_reranker"] = ev.evaluate(lib, data, "auto")
         lib.conn.close()
     return out
 
 
-def test_reranked_hybrid_beats_embeddings_alone(results):
-    before, after = results["dense"]["overall"], results["hybrid_rerank"]["overall"]
-    assert after["R@1"] >= before["R@1"] + 0.05  # measured: 0.82 -> 0.91
-    assert after["R@3"] >= before["R@3"]  # measured: 0.93 -> 0.98
-    assert after["MRR"] >= before["MRR"] + 0.03  # measured: 0.89 -> 0.94
-
-
-def test_no_query_type_gets_worse(results):
-    for qtype, before in results["dense"]["by_type"].items():
-        assert results["hybrid_rerank"]["by_type"][qtype]["R@1"] >= before["R@1"], qtype
+def test_eval_script_builds_a_keyword_library_offline(results):
+    assert results["keyword"]["overall"]["R@3"] > 0
+    assert results["auto"]["overall"] == results["hybrid"]["overall"]  # auto is the hybrid search
 
 
 def test_identifier_lookups_found(results):
-    assert results["hybrid_rerank"]["by_type"]["identifier"]["R@1"] == 1.0
+    assert results["keyword"]["by_type"]["identifier"]["R@1"] == 1.0
 
 
-def test_default_mode_is_hybrid_with_or_without_reranker(results):
-    # Plain fusion trails embeddings slightly on this 40-passage set but clearly beats them
-    # on the 14,000-chunk library (eval/README.md), so "auto" stays hybrid without a reranker.
-    assert results["auto"]["overall"] == results["hybrid_rerank"]["overall"]
-    assert results["auto_without_reranker"]["overall"] == results["hybrid_norerank"]["overall"]
+def test_compute_metrics_on_known_ranks(ev):
+    m = ev.compute_metrics([1, 2, 4, None])
+    assert m["R@1"] == 0.25 and m["R@3"] == 0.5 and m["MRR"] == (1 + 0.5 + 0.25) / 4
+    assert ev.compute_metrics([]) == {"R@1": 0.0, "R@3": 0.0, "MRR": 0.0}
+    assert ev.compute_metrics([1, 1]) == {"R@1": 1.0, "R@3": 1.0, "MRR": 1.0}
+
+
+def test_rank_of_answer(ev):
+    hits = [{"text": "a sleep passage"}, {"text": "the gold sentence"}]
+    assert ev.rank_of_answer(hits, "gold sentence") == 2
+    assert ev.rank_of_answer(hits, "not there") is None
+
+
+def test_configs_are_the_three_search_modes(ev):
+    assert [(c["key"], c["mode"], c["rerank"]) for c in ev.CONFIGS] == [
+        ("keyword", "keyword", False),  # no provider call
+        ("expanded", "hybrid", False),  # expansion only
+        ("ranked", "hybrid", True),  # expansion and ranking
+    ]
+    assert ev.search_args("keyword") == ("keyword", False)
+    assert ev.search_args("expanded") == ("hybrid", False)
+    assert ev.search_args("ranked") == ("hybrid", True)
+    assert ev.search_args("hybrid") == ("hybrid", True)  # older name for the ranked mode
+    assert ev.search_args("expanded", rerank=True) == ("hybrid", True)  # explicit override wins
+    with pytest.raises(ValueError):
+        ev.search_args("psychic")
+
+
+def test_three_modes_all_score_the_set(ev, results):
+    types = set(results["keyword"]["by_type"])
+    assert types == {"keyword", "paraphrase", "precision", "identifier"}
+    for key in ("keyword", "expanded", "ranked"):
+        r = results[key]
+        assert set(r["overall"]) == {"R@1", "R@3", "MRR"}
+        assert all(0.0 <= v <= 1.0 for v in r["overall"].values())
+        assert set(r["by_type"]) == types and r["ms_per_query"] >= 0
+        assert isinstance(r["misses"], list)
+
+
+def test_format_table_has_the_required_columns(ev, results):
+    types = list(results["keyword"]["by_type"])
+    table = ev.format_table(results, types)
+    for heading in ("configuration", "R@1", "R@3", "MRR", "ms/query", "paraphrase R@1"):
+        assert heading in table
+    for config in ev.CONFIGS:
+        assert config["label"] in table
+
+
+def test_configured_provider_falls_back_to_offline_mock(ev, tmp_path):
+    mock_settings = ev.Settings(data_dir=tmp_path, provider="mock")
+    assert isinstance(ev.configured_provider(mock_settings), ev.MockProvider)
+    # Muse chosen but no key set: the eval falls back rather than failing or calling out.
+    muse_settings = ev.Settings(data_dir=tmp_path, provider="muse", muse_api_key="")
+    assert isinstance(ev.configured_provider(muse_settings), ev.MockProvider)
+
+
+def test_eval_large_shares_the_three_modes(ev):
+    large = load_script("eval_large", "eval_large.py")
+    assert [(c["key"], c["mode"], c["rerank"]) for c in large.CONFIGS] == [
+        (c["key"], c["mode"], c["rerank"]) for c in ev.CONFIGS
+    ]
+    assert large.search_args("expanded") == ("hybrid", False)
+    assert large.compute_metrics([1, None])["MRR"] == 0.5

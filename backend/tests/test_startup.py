@@ -1,104 +1,50 @@
-"""The backend answers while the embedding model is still loading; only embedding waits for it."""
-import threading
-
-import pytest
+"""The backend answers at once: search is keyword search plus the provider, so no search
+model loads, nothing is embedded at ingest, and no library is ever re-embedded."""
 from fastapi.testclient import TestClient
 
-from app import library as library_module
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
 from app.settings import Settings
 
 
-@pytest.fixture
-def slow_model(monkeypatch):
-    """make_embedder blocks until the test lets it finish (or fail), like BGE-M3 loading."""
-    gate = {"release": threading.Event(), "fail": False}
-
-    def make(*_args, **_kwargs):
-        gate["release"].wait(10)
-        if gate["fail"]:
-            raise OSError("no such model")
-        return HashEmbedder()
-
-    monkeypatch.setattr(library_module, "make_embedder", make)
-    return gate
-
-
-def test_the_library_lists_while_the_model_loads(tmp_path, slow_model):
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), reranker=None)
+def test_the_library_lists_and_searches_without_a_search_model(tmp_path):
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
     client = TestClient(create_app(lib.settings, lib))
 
     h = client.get("/health").json()
-    assert (h["embedder"], h["embedder_device"]) == ("loading", "")
+    assert h["search"] == "keyword+muse" and "embedder" not in h and "reranker" not in h
     for path in ("/documents", "/folders", "/drafts", "/settings"):
         assert client.get(path).status_code == 200, path
-    assert client.get("/settings/search").json()["embedder"] == "loading"
+    assert client.get("/settings/search").json() == {"search": "keyword", "ranking": "mock", "model": None}
 
-    # Something that embeds waits for the model instead of failing.
-    found = {}
-    search = threading.Thread(target=lambda: found.setdefault("hits", lib.search("coral bleaching")))
-    search.start()
-    search.join(0.3)
-    assert search.is_alive()
-    slow_model["release"].set()
-    search.join(5)
-    assert found["hits"] == []
-
-    assert client.get("/health").json()["embedder"] == "hash-512"
+    assert lib.search("coral bleaching") == []
+    note = tmp_path / "note.txt"
+    note.write_text("Coral reefs bleach in marine heatwaves.")
+    lib.ingest_path(str(note))
+    assert lib.search("coral heatwaves")
 
 
-def test_a_model_that_fails_to_load_is_reported_not_replaced(tmp_path, slow_model):
-    slow_model["fail"] = True
-    slow_model["release"].set()
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), reranker=None)
-    with pytest.raises(RuntimeError, match="search model couldn't load"):
-        lib.embedder.embed(["anything"])
-    client = TestClient(create_app(lib.settings, lib))
-    assert client.get("/health").json()["embedder"] == "failed"
-    assert client.get("/documents").status_code == 200
+def test_ingest_stores_no_vectors(tmp_path):
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
+    note = tmp_path / "note.txt"
+    note.write_text("Coral reefs bleach in marine heatwaves and recover in shade.")
+    [res] = lib.ingest_path(str(note))
+    assert res["ok"], res
+    assert [r["embedding"] for r in lib.conn.execute("SELECT embedding FROM chunks")] == [None]
+    assert lib.search("coral heatwaves")
+    assert lib.check_duplicates({"type": "doc", "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": "Unrelated words of my own."}]}]})
 
 
-def test_the_library_lists_while_it_is_reembedded(tmp_path, monkeypatch):
+def test_reopening_a_library_reembeds_nothing(tmp_path):
     data = tmp_path / "data"
-    first = Library(Settings(data_dir=data), provider=MockProvider(), embedder=HashEmbedder(dim=64), reranker=None)
-    for i in range(3):
-        note = data / f"note{i}.txt"
-        note.write_text(f"Note {i}: coral reefs bleach in marine heatwaves.")
-        first.ingest_path(str(note))
-    first.conn.close()
-
-    started, release = threading.Event(), threading.Event()
-
-    class SlowModel(HashEmbedder):  # a new model, mid-way through re-embedding the library
-        def embed(self, texts):
-            started.set()
-            release.wait(10)
-            return super().embed(texts)
-
-    monkeypatch.setattr(library_module, "make_embedder", lambda *_a, **_k: SlowModel())
-    lib = Library(Settings(data_dir=data), provider=MockProvider(), reranker=None)
-    assert started.wait(5)
-    client = TestClient(create_app(lib.settings, lib))
-    assert len(client.get("/documents").json()) == 3  # answered while the model is still embedding
-    assert client.get("/health").json()["embedder"] == "loading"
-    release.set()
-    assert lib.embedder.id == "hash-512" and lib.search("coral heatwaves")
-
-
-def test_a_new_model_reembeds_before_it_is_used(tmp_path, slow_model):
-    data = tmp_path / "data"
-    first = Library(Settings(data_dir=data), provider=MockProvider(), embedder=HashEmbedder(dim=64), reranker=None)
-    note = data / "note.txt"
+    first = Library(Settings(data_dir=data), provider=MockProvider())
+    note = tmp_path / "note.txt"
     note.write_text("Coral reefs bleach in marine heatwaves.")
     first.ingest_path(str(note))
     first.conn.close()
 
-    slow_model["release"].set()
-    lib = Library(Settings(data_dir=data), provider=MockProvider(), reranker=None)
-    assert lib.embedder.id == "hash-512"  # waits for the load, which re-embedded with the new model
-    dims = {len(r["embedding"]) for r in lib.conn.execute("SELECT embedding FROM chunks")}
-    assert dims == {512 * 4}
-    assert lib.search("coral heatwaves")
+    lib = Library(Settings(data_dir=data), provider=MockProvider())
+    assert len(lib.list_documents()) == 1 and lib.search("coral heatwaves")
+    assert [r["embedding"] for r in lib.conn.execute("SELECT embedding FROM chunks")] == [None]

@@ -5,7 +5,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
-from app.embeddings import HashEmbedder
 from app.ingest import printed_page_labels
 from app.library import Library, short_label
 from app.main import create_app
@@ -92,7 +91,7 @@ def test_short_label_formats():
 @pytest.fixture
 def client(tmp_path):
     settings = Settings(data_dir=tmp_path / "data")
-    return TestClient(create_app(settings, Library(settings, provider=MockProvider(), embedder=HashEmbedder())))
+    return TestClient(create_app(settings, Library(settings, provider=MockProvider())))
 
 
 def test_printed_pages_flow_into_citations_viewer_and_references(client, tmp_path):

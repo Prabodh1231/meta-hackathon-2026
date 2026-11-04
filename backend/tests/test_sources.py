@@ -4,7 +4,6 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.openaccess import OpenAccess, Record
@@ -96,7 +95,7 @@ def test_a_core_look_alike_is_skipped_and_the_reason_names_core(tmp_path):
 
 def test_a_lookup_fills_in_a_missing_doi(tmp_path):
     index = FakeIndex({"Mobile money and household savings": Record(title="", doi=HONG_DOI, doi_found=True)})
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder(), open_access=index)
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), open_access=index)
     client = TestClient(create_app(lib.settings, lib))
     f = tmp_path / "hong.md"
     f.write_text("Mobile money and household savings\n\n" + prose(30), encoding="utf-8")
@@ -114,7 +113,7 @@ def lib(tmp_path):
         ok = req.headers.get("Authorization") == f"Bearer {KEY}"
         return httpx.Response(200, json={"results": []}) if ok else httpx.Response(401)
     oa = OpenAccess(transport=httpx.MockTransport(core), retry_wait=0)
-    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder(), open_access=oa)
+    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), open_access=oa)
 
 
 def test_the_core_key_is_checked_saved_and_never_sent_back(lib):

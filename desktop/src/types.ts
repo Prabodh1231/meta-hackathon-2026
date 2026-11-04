@@ -406,8 +406,7 @@ export interface Health {
   ok: boolean
   api?: number // backend API version; missing from backends older than the version check
   provider: string
-  embedder: string // the model's id, or "loading" / "failed" while the backend starts
-  embedder_device?: string // "cuda" or "cpu"; missing from older backends
+  search: string // how search works: "keyword+muse" (keyword search, ranked by the provider)
 }
 
 export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
@@ -475,10 +474,11 @@ export interface SourceSettings {
   core_key_hint: string // last 4 characters of the saved key
 }
 
-/** The search models. Both run on this computer. */
+/** How search works: keyword search on this computer, expanded and ranked by the provider. */
 export interface SearchSettings {
-  embedder: string // the model's id, or "loading" / "failed" while the backend starts
-  reranker: string | null
+  search: string // "keyword"
+  ranking: string // the provider that ranks the best matches: "muse" or "mock"
+  model: string | null // the Muse model, when Muse does the ranking
 }
 
 /** The language model in use. The API key is never sent back, only whether there is one. */

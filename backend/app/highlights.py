@@ -5,29 +5,52 @@ is on and, when it can be found in the page's stored text, its offsets there, wh
 citation like any other: the chunk is looked up when it's cited, so a paper added again (new chunk
 ids) keeps its highlights. A note is the reader's own idea about it, never treated as a source.
 
-Fetch ranks every highlight and note by how close it is to the paragraph being written, with the
-library's own embedder, on this computer. Writing from highlights is the one step that asks Muse:
-the highlighted passages become the passages a draft is written and cited from.
+Fetch ranks every highlight and note by how close its words are to the paragraph being written:
+BM25-style keyword scoring over the highlight's text and the reader's note, on this computer,
+with no model. Writing from highlights is the one step that asks Muse: the highlighted
+passages become the passages a draft is written and cited from.
 """
 
-import threading
-
-import numpy as np
+import math
+from collections import Counter
 
 from .citations import locate_quote
 from .library import short_label
 from .providers import Passage
+from .text_utils import tokenize
 
 MAX_TEXT = 4000  # characters of one highlight; a selection longer than that is a few pages
 MAX_NOTE = 2000
 VERIFIED = "Your highlight, quoted word for word from the page."
 
 
+def keyword_scores(context: str, texts: list[str]) -> list[float]:
+    """BM25-style scores of each text for the paragraph being written: rare words of the
+    paragraph count most, and a word repeated in one highlight counts with diminishing
+    returns, so a long note can't win by saying the word over and over."""
+    query = list(dict.fromkeys(tokenize(context)))
+    if not query or not texts:
+        return [0.0] * len(texts)
+    docs = [Counter(tokenize(t)) for t in texts]
+    lengths = [sum(d.values()) for d in docs]
+    average = sum(lengths) / len(lengths) or 1.0
+    df = {w: sum(w in d for d in docs) for w in query}
+    scores = []
+    for counts, length in zip(docs, lengths):
+        score = 0.0
+        for word in query:
+            tf = counts.get(word, 0)
+            if not tf:
+                continue
+            idf = math.log(1 + (len(docs) - df[word] + 0.5) / (df[word] + 0.5))
+            score += idf * (tf * 2.2) / (tf + 1.2 * (0.25 + 0.75 * length / average))
+        scores.append(round(score, 4))
+    return scores
+
+
 class Highlights:
     def __init__(self, lib):
         self.lib = lib
-        self._vectors: dict[tuple[int, str, str], np.ndarray] = {}  # (id, updated_at, embedder id) -> vector
-        self._vec_lock = threading.Lock()
 
     def _row(self, r) -> dict:
         return {"id": r["id"], "doc_id": r["doc_id"], "page": r["page"], "text": r["text"], "note": r["note"],
@@ -101,20 +124,6 @@ class Highlights:
         # The sentence inserted is the quote itself, so it is backed by definition.
         return {**c, "status": "verified", "reason": VERIFIED}
 
-    def _embed(self, rows: list[dict]) -> np.ndarray:
-        embedder = self.lib.embedder
-        keys = [(h["id"], h["updated_at"], embedder.id) for h in rows]
-        with self._vec_lock:
-            todo = [i for i, k in enumerate(keys) if k not in self._vectors]
-        if todo:
-            with self.lib._embed_lock:
-                vecs = embedder.embed([(rows[i]["text"] + "\n" + rows[i]["note"]).strip() for i in todo])
-            with self._vec_lock:
-                for i, v in zip(todo, vecs):
-                    self._vectors[keys[i]] = v
-        with self._vec_lock:
-            return np.array([self._vectors[k] for k in keys])
-
     def fetch(self, context: str = "", limit: int = 20) -> list[dict]:
         """Highlights and notes for what is being written: closest to `context` first, or the
         newest first without one. Each comes with its paper's label and, when it can be cited,
@@ -126,12 +135,9 @@ class Highlights:
         context = " ".join(context.split())[-2000:]
         scores = [None] * len(rows)
         if context:
-            vecs = self._embed(rows)
-            with self.lib._embed_lock:
-                q = self.lib.embedder.embed([context])[0]
-            sims = vecs @ q
-            scores = [round(float(s), 4) for s in sims]
-            order = sorted(range(len(rows)), key=lambda i: -sims[i])
+            # The reader's note counts too: it says why the passage was kept, in their words.
+            scores = keyword_scores(context, [(h["text"] + "\n" + h["note"]).strip() for h in rows])
+            order = sorted(range(len(rows)), key=lambda i: -scores[i])
             rows, scores = [rows[i] for i in order], [scores[i] for i in order]
         out = []
         docs: dict[int, dict] = {}

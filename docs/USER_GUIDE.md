@@ -432,7 +432,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 **Search**
 
-- **Now:** the models that find matching passages (embeddings, bge-small) and put the best first (the reranker). Both run on this computer.
+- **Now:** keyword (BM25) search on this computer finds the matching passages, and the AI model — Muse through Meta's Model API, or the offline mock — expands the search and puts the best first. No search model is downloaded or run.
 
 **AI model**
 
@@ -446,8 +446,6 @@ If one of these is also set as a system environment variable, Settings says so: 
 
 | What you see | What to do |
 |---|---|
-| *loading search model…* in the status bar | The search model loads in the background when the app starts: about a second (the installer includes it, so nothing downloads), or longer once after an update that changed the model, while your library is re-embedded. Your library and drafts work meanwhile; searching, cite markers and imports wait until it's ready. |
-| *search model failed to load* | The backend log (`~/.research-companion/logs/backend.log`) says why. The installed app has the model with it; a development setup without `npm run fetch-models` downloads it on first launch and needs internet then. |
 | *Backend offline, reconnecting…* | The backend stopped; the app restarts it by itself (up to 3 times a minute). Hover the message for the log file's location. |
 | *Restart the app to finish updating* | The backend is older than the window. Close and reopen the app. |
 | *no summary yet* on papers | Muse was unavailable when they were added. Click **Try again** in the Library. |

@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.providers import make_provider
-from app.providers.muse import REASONING_HEADROOM, MuseError, MuseProvider
+from app.providers.muse import REASONING_HEADROOM, SEARCH_EFFORT, MuseError, MuseProvider
 from app.settings import Settings
 
 
@@ -34,7 +34,7 @@ def test_request_shape_and_json_task():
     assert body["response_format"]["json_schema"]["strict"] is True
 
 
-@pytest.mark.parametrize("name", ["METADATA", "TAGS", "TOPIC", "DRAFT", "JUDGE"])
+@pytest.mark.parametrize("name", ["METADATA", "TAGS", "TOPIC", "DRAFT", "JUDGE", "EXPAND_QUERY", "RANK_PASSAGES"])
 def test_schemas_meet_strict_mode(name):
     # Muse's strict json_schema rejects (HTTP 400) any object that isn't closed with
     # additionalProperties: false; strict mode also needs every property required.
@@ -50,6 +50,55 @@ def test_schemas_meet_strict_mode(name):
             walk(schema["items"])
 
     walk(getattr(prompts, f"{name}_SCHEMA"))
+
+
+def test_expand_query_is_one_search_effort_call():
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return reply('{"queries": ["sleep spindle memory", "targeted memory reactivation"]}')
+
+    muse = provider(handler, reasoning_effort="high")
+    assert muse.expand_query("how does sleep help memory") == ["sleep spindle memory", "targeted memory reactivation"]
+    assert len(seen) == 1 and seen[0]["reasoning_effort"] == SEARCH_EFFORT
+    assert seen[0]["response_format"]["json_schema"]["strict"] is True
+    assert seen[0]["response_format"]["json_schema"]["schema"]["additionalProperties"] is False
+
+
+def test_search_calls_are_not_retried_after_a_timeout():
+    # A retry after a timeout once turned one slow ranking call into a minute-long search;
+    # search help gives up at once and the caller keeps the keyword order.
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        raise httpx.ReadTimeout("slow", request=request)
+
+    muse = provider(handler)
+    assert muse.expand_query("how does sleep help memory") == []
+    assert muse.rank_passages("sleep", [(7, "a passage")]) is None
+    assert len(calls) == 2  # one attempt each, no retries
+
+
+def test_rank_passages_scores_in_input_order_from_one_trimmed_call():
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return reply('{"scores": [{"id": 9, "score": 0.2}, {"id": 7, "score": 0.9}]}')
+
+    muse = provider(handler, reasoning_effort="high")
+    assert muse.rank_passages("sleep", [(7, "x" * 800), (9, "short passage")]) == [0.9, 0.2]
+    assert len(seen) == 1 and seen[0]["reasoning_effort"] == SEARCH_EFFORT
+    user = seen[0]["messages"][1]["content"]
+    assert "x" * 700 in user and "x" * 701 not in user
+
+
+def test_search_calls_fall_back_on_a_bad_answer():
+    muse = provider(lambda request: reply("not json"))
+    assert muse.expand_query("sleep memory") == []
+    assert muse.rank_passages("sleep memory", [(1, "A passage about sleep.")]) is None
 
 
 def test_retries_rate_limits_then_succeeds(monkeypatch):

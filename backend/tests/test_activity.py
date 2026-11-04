@@ -6,7 +6,6 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider, activity
@@ -45,7 +44,7 @@ def test_a_rate_limit_retry_is_noted():
 
 
 def test_the_endpoint_returns_only_newer_notes(tmp_path):
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder())
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
     client = TestClient(create_app(lib.settings, lib))
     activity.note("retry", "old")
     time.sleep(0.05)  # the clock moves on (coarse on Windows)

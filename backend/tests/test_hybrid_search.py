@@ -4,7 +4,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -21,24 +20,27 @@ Spindle bursts after each cue predicted which pairs were remembered.
 """
 
 
-class FakeReranker:
-    """Scores by whether the passage contains a marker word: lets a test see the
-    reranker's order win over the fused order."""
-
-    id = "fake"
+class RankingProvider(MockProvider):
+    """Scores by whether the passage contains a marker word, and counts its search calls:
+    lets a test see the provider's ranking win over the fused keyword order."""
 
     def __init__(self, marker: str):
         self.marker = marker
-        self.calls = 0
+        self.expand_calls = 0
+        self.rank_calls = 0
 
-    def score(self, query, texts):
-        self.calls += 1
-        return [1.0 if self.marker in t else 0.0 for t in texts]
+    def expand_query(self, query):
+        self.expand_calls += 1
+        return []
+
+    def rank_passages(self, query, passages):
+        self.rank_calls += 1
+        return [1.0 if self.marker in text else 0.0 for _, text in passages]
 
 
 @pytest.fixture
 def lib(tmp_path):
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder())
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
     for name, text in [("notebook.md", NOTEBOOK), ("study.md", STUDY)]:
         (tmp_path / name).write_text(text, encoding="utf-8")
         lib.ingest_path(str(tmp_path / name))
@@ -91,10 +93,71 @@ def test_reciprocal_rank_fusion_rewards_agreement():
     assert {cid for cid, _ in fused} == {1, 2, 3, 4}
 
 
-def test_hybrid_uses_reranker_order(lib):
-    lib.reranker = FakeReranker("Spindle")
+def test_search_uses_provider_ranking_order(lib):
+    lib.provider = RankingProvider("Spindle")
     hits = lib.search("cue", k=2, mode="hybrid")
-    assert "Spindle" in hits[0]["text"] and lib.reranker.calls == 1
+    assert "Spindle" in hits[0]["text"]
+    assert (lib.provider.expand_calls, lib.provider.rank_calls) == (1, 1)
+
+
+def test_keyword_mode_makes_no_provider_calls(lib):
+    lib.provider = RankingProvider("Spindle")
+    hits = lib.search("S-208", k=3, mode="keyword")
+    assert "S-208" in hits[0]["text"]
+    assert (lib.provider.expand_calls, lib.provider.rank_calls) == (0, 0)
+
+
+def test_expansion_without_ranking_expands_but_does_not_rank(lib):
+    lib.provider = RankingProvider("Spindle")
+    hits = lib.search("cue", k=2, mode="hybrid", rerank=False)
+    assert hits and (lib.provider.expand_calls, lib.provider.rank_calls) == (1, 0)
+
+
+def test_expanded_queries_are_fused_into_results(lib):
+    class ExpandingProvider(MockProvider):
+        def __init__(self):
+            self.rank_calls = 0
+
+        def expand_query(self, query):
+            return ["spindle bursts"]
+
+        def rank_passages(self, query, passages):
+            self.rank_calls += 1
+            return None
+
+    lib.provider = ExpandingProvider()
+    hits = lib.search("unmatchedword", k=3, rerank=False)
+    assert hits and "Spindle" in hits[0]["text"] and lib.provider.rank_calls == 0
+
+
+def test_ranking_failure_keeps_the_fused_keyword_order(lib):
+    class FailingProvider(MockProvider):
+        def expand_query(self, query):
+            return []
+
+        def rank_passages(self, query, passages):
+            raise RuntimeError("ranking unavailable")
+
+    expected = lib.search("cue", k=2, mode="keyword")
+    lib.provider = FailingProvider()
+    hits = lib.search("cue", k=2)
+    assert [h["id"] for h in hits] == [h["id"] for h in expected]
+
+
+def test_mock_search_helpers_are_deterministic():
+    provider = MockProvider()
+    queries = provider.expand_query("sleep memory recall")
+    assert queries == provider.expand_query("sleep memory recall") and 2 <= len(queries) <= 4
+    scores = provider.rank_passages(
+        "coral bleaching heatwave",
+        [(7, "Coral bleaching followed the marine heatwave."), (9, "Sleep spindles predicted recall.")],
+    )
+    assert len(scores) == 2 and scores[0] > scores[1]
+
+
+def test_cite_sentence_choice_uses_word_overlap(lib):
+    out = lib.suggest_citations("Spindle bursts after each cue predicted which pairs were remembered.")
+    assert out and "Spindle bursts" in out[0]["quote"] and out[0]["status"] == "verified"
 
 
 def test_scope_applies_to_keyword_results(lib):
@@ -108,7 +171,8 @@ def test_unknown_mode_is_rejected(lib):
         lib.search("x", mode="psychic")
 
 
-def test_health_reports_reranker(tmp_path):
+def test_health_reports_keyword_plus_muse_search(tmp_path):
     settings = Settings(data_dir=tmp_path / "d")
-    client = TestClient(create_app(settings, Library(settings, provider=MockProvider(), embedder=HashEmbedder())))
-    assert client.get("/health").json()["reranker"] is None
+    client = TestClient(create_app(settings, Library(settings, provider=MockProvider())))
+    h = client.get("/health").json()
+    assert h["search"] == "keyword+muse" and "embedder" not in h and "reranker" not in h

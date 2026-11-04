@@ -5,7 +5,6 @@ import fitz
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -18,7 +17,7 @@ OKAFOR_Q = "Reefs exposed to moderate heat stress showed lower bleaching mortali
 @pytest.fixture
 def setup(tmp_path):
     settings = Settings(data_dir=tmp_path / "data")
-    client = TestClient(create_app(settings, Library(settings, provider=MockProvider(), embedder=HashEmbedder())))
+    client = TestClient(create_app(settings, Library(settings, provider=MockProvider())))
 
     chen = tmp_path / "chen.pdf"
     d = fitz.open()

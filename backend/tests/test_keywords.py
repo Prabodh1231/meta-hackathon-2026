@@ -1,6 +1,5 @@
 import pytest
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.providers import MockProvider
 from app.settings import Settings
@@ -41,7 +40,7 @@ class Spy(MockProvider):
 
 @pytest.fixture
 def lib(tmp_path):
-    return Library(Settings(data_dir=tmp_path / "data"), provider=Spy(), embedder=HashEmbedder())
+    return Library(Settings(data_dir=tmp_path / "data"), provider=Spy())
 
 
 def add(lib, tmp_path, name, text):
@@ -82,14 +81,14 @@ def test_the_folder_scoring_model_is_shown_the_authors_keywords_and_jel(lib, tmp
 
 def test_a_library_from_before_keywords_are_filled_in_once_at_startup(tmp_path):
     settings = Settings(data_dir=tmp_path / "data")
-    first = Library(settings, provider=Spy(), embedder=HashEmbedder())
+    first = Library(settings, provider=Spy())
     doc = add(first, tmp_path, "a.txt", WITH_KEYWORDS)
     with first.conn:  # what a library from before this feature looks like
         first.conn.execute("UPDATE documents SET keywords = '[]', jel_codes = '[]'")
         first.conn.execute("DELETE FROM meta WHERE key = 'keywords_backfill'")
     first.conn.close()
 
-    second = Library(settings, provider=Spy(), embedder=HashEmbedder())
+    second = Library(settings, provider=Spy())
     got = second.get_document(doc["id"])
     assert got["keywords"][0] == "mobile money"
     assert [j["code"] for j in got["jel_codes"]] == ["G21", "O16"]

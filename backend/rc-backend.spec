@@ -1,16 +1,16 @@
 # PyInstaller spec for the packaged backend: `pyinstaller rc-backend.spec` writes dist/rc-backend/,
 # a folder (not one file, which unpacks itself on every start) that the installer ships beside the app.
 #
-# Embeddings use bge-small (fastembed), as in development. torch and sentence-transformers, which
-# only the evaluation scripts use, are excluded in case they're installed in the venv.
+# torch and sentence-transformers are excluded in case they're installed in the venv; the app
+# calls only Meta models, through the provider layer, and searches by keyword.
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 hidden = collect_submodules("app") + collect_submodules("uvicorn")
 datas = []
-# Packages that read files of their own at run time: Word and PowerPoint templates, the web-page
-# extractor's settings and word lists, fastembed's model list.
-for pkg in ("docx", "pptx", "trafilatura", "justext", "htmldate", "courlan", "fastembed"):
+# Packages that read files of their own at run time: Word and PowerPoint templates and the
+# web-page extractor's settings and word lists.
+for pkg in ("docx", "pptx", "trafilatura", "justext", "htmldate", "courlan"):
     datas += collect_data_files(pkg)
 
 a = Analysis(

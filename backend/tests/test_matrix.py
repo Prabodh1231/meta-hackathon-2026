@@ -8,7 +8,6 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -43,7 +42,7 @@ def wait(client_or_matrices, mid, timeout=20.0):
 
 @pytest.fixture
 def setup(tmp_path):
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder())
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
     ids = {}
     for name, text in PAPERS.items():
         f = tmp_path / name
@@ -189,7 +188,7 @@ def test_hex_page_labels_are_decoded(setup):
     assert [clean_page_label(x) for x in ("<FEFF0038>", "<FEFF00310031>", "342", " ", None)] == ["8", "11", "342", None, None]
     with lib.conn:  # a label stored before the fix
         lib.conn.execute("UPDATE pages SET label = '<FEFF00310032>' WHERE doc_id = ?", (ids["kenya.md"],))
-    again = Library(lib.settings, provider=MockProvider(), embedder=HashEmbedder())
+    again = Library(lib.settings, provider=MockProvider())
     assert again.get_page(ids["kenya.md"], 1)["label"] == "12"
 
 

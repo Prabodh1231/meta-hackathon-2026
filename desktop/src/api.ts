@@ -61,7 +61,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 18
+export const API_VERSION = 19
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -204,7 +204,7 @@ export const api = {
     request<Highlight>('POST', `/documents/${docId}/highlights`, { page, text, note }),
   setHighlightNote: (id: number, note: string) => request<Highlight>('PATCH', `/highlights/${id}`, { note }),
   deleteHighlight: (id: number) => request<{ ok: boolean }>('DELETE', `/highlights/${id}`),
-  /** Highlights and notes closest to the paragraph being written, ranked on this computer. */
+  /** Highlights and notes closest to the paragraph being written, ranked by keyword scoring on this computer. */
   fetchHighlights: (context: string) => request<FetchedHighlight[]>('POST', '/highlights/fetch', { context }),
   /** Muse writes cited sentences from these highlights; each citation still needs verifying. */
   writeFromHighlights: (ids: number[], context: string, signal?: AbortSignal) =>

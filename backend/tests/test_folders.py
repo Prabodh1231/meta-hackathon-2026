@@ -1,30 +1,10 @@
 import re
 
-import numpy as np
 import pytest
 
 from app.library import MIN_DOCS_FOR_RELATIVE, UNCHECKED_CAP, Library
 from app.providers import MockProvider
 from app.settings import Settings
-
-AXES = {"blockchain": 0, "financial_inclusion": 1, "digital_finance": 2}
-
-
-class AxisEmbedder:
-    """A folder name embeds to its own axis; a document written as `cos_blockchain=0.9` embeds
-    with exactly that cosine to the folder's vector. Lets tests set how the first pass ranks papers."""
-
-    id = "axis-test"
-
-    def embed(self, texts):
-        out = np.zeros((len(texts), 8), dtype=np.float32)
-        for row, text in enumerate(texts):
-            key = text.lower().replace(" ", "_")
-            if key in AXES:  # a folder name
-                out[row, AXES[key]] = 1.0
-            for name, value in re.findall(r"cos_(\w+)=([\d.]+)", text):
-                out[row, AXES[name]] = float(value)
-        return out
 
 
 class FakeMuse(MockProvider):
@@ -44,12 +24,13 @@ class FakeMuse(MockProvider):
         self.asked.append(list(folders))
         self.summaries.append(summary)
         found = {k: int(v) for k, v in re.findall(r"fit_(\w+)=(\d+)", text)}
-        return {f: found.get(f.lower().replace(" ", "_"), 0) for f in folders}
+        generic = re.search(r"(?<![\w])fit=(\d+)", text)  # one folder in play: the score is for it
+        return {f: found.get(f.lower().replace(" ", "_"), int(generic.group(1)) if generic else 0) for f in folders}
 
 
 @pytest.fixture
 def lib(tmp_path):
-    return Library(Settings(data_dir=tmp_path / "data"), provider=FakeMuse(), embedder=AxisEmbedder())
+    return Library(Settings(data_dir=tmp_path / "data"), provider=FakeMuse())
 
 
 def add(lib, tmp_path, name, text):
@@ -73,13 +54,13 @@ def make(lib, name, similarity=50):
 
 
 def many_papers(lib, tmp_path, close=4, far=6):
-    """A library big enough for the first pass: `close` papers the embeddings put near the
-    Blockchain folder and `far` they put away from it. Muse would rate every one of them 90."""
+    """A library big enough for the first pass: `close` papers whose words put them near the
+    Blockchain folder and `far` ones with none of its words. Muse would rate every one 90."""
     docs = []
     for i in range(close):
-        docs.append(add(lib, tmp_path, f"close{i}.txt", f"Paper {i} on ledgers. cos_blockchain=0.9 fit_blockchain=90"))
+        docs.append(add(lib, tmp_path, f"close{i}.txt", f"Paper {i} on blockchain ledgers and blockchain payments. fit=90"))
     for i in range(far):
-        docs.append(add(lib, tmp_path, f"far{i}.txt", f"Paper {i} on sleep. cos_blockchain=0.1 fit_blockchain=90"))
+        docs.append(add(lib, tmp_path, f"far{i}.txt", f"Paper {i} on sleep and memory consolidation. fit=90"))
     return docs
 
 
@@ -141,7 +122,7 @@ def test_a_small_library_is_read_by_the_model_in_full(lib, tmp_path):
     assert len(lib.provider.asked) == MIN_DOCS_FOR_RELATIVE - 1
 
 
-def test_only_papers_the_embeddings_rank_above_average_go_to_the_model(lib, tmp_path):
+def test_only_papers_the_word_statistics_rank_above_average_go_to_the_model(lib, tmp_path):
     many_papers(lib, tmp_path)
     make(lib, "Blockchain")
     assert len(lib.provider.asked) == 4  # the 4 close papers; the 6 far ones were never sent
@@ -156,19 +137,19 @@ def test_papers_the_model_never_saw_stay_below_the_cap(lib, tmp_path):
     assert len(scores) == 6 and all(s <= UNCHECKED_CAP for s in scores)
 
 
-def test_when_the_model_fails_the_embedding_ranking_files_the_papers(lib, tmp_path):
+def test_when_the_model_fails_the_word_statistics_ranking_files_the_papers(lib, tmp_path):
     many_papers(lib, tmp_path)
     lib.provider.fail = True
     make(lib, "Blockchain")
     assert lib.list_folders()[0]["doc_count"] == 4
 
 
-def test_scores_blend_the_closest_chunks_with_the_whole_paper():
-    # One chunk at 0.9 among four: the three closest average 0.3, the whole paper 0.225.
-    sims = np.array([[0.9], [0.0], [0.0], [0.0]])
-    assert Library._blend(sims)[0] == pytest.approx(0.2625)
-    # A paper that is on the subject throughout scores as high as its chunks do.
-    assert Library._blend(np.full((6, 1), 0.7))[0] == pytest.approx(0.7)
+def test_word_statistics_score_a_paper_by_its_title_keywords_and_summary(lib, tmp_path):
+    close = add(lib, tmp_path, "close.txt", "Blockchain ledgers for payments. fit=90")
+    far = add(lib, tmp_path, "far.txt", "Sleep and memory consolidation. fit=90")
+    doc_ids, scores = lib._folder_word_scores(["Blockchain"])
+    by_id = {int(d): float(s) for d, s in zip(doc_ids, scores[:, 0])}
+    assert by_id[close["id"]] > by_id[far["id"]] == 0.0
 
 
 def test_a_match_the_user_removed_stays_out(lib, tmp_path):
@@ -260,11 +241,11 @@ def test_a_new_paper_is_only_asked_about_folders_it_plausibly_fits(lib, tmp_path
     many_papers(lib, tmp_path)
     make(lib, "Blockchain")
     before = len(lib.provider.asked)
-    far = add(lib, tmp_path, "new-far.txt", "New paper on sleep. cos_blockchain=0.1 fit_blockchain=90")
+    far = add(lib, tmp_path, "new-far.txt", "New paper on sleep and memory consolidation. fit=90")
     assert len(lib.provider.asked) == before  # below the library's average: never sent
     score = lib.conn.execute("SELECT score FROM folder_scores WHERE doc_id = ?", (far["id"],)).fetchone()[0]
     assert score <= UNCHECKED_CAP and names(far) == []
-    close = add(lib, tmp_path, "new-close.txt", "New paper on ledgers. cos_blockchain=0.9 fit_blockchain=90")
+    close = add(lib, tmp_path, "new-close.txt", "New paper on blockchain ledgers and blockchain payments. fit=90")
     assert len(lib.provider.asked) == before + 1 and names(close) == ["Blockchain"]
 
 
