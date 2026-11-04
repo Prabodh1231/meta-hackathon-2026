@@ -117,7 +117,9 @@ export function AskPanel({ draftId, attach, getParagraph, onInsert, onError }: P
     <div className="ask">
       {turns.length > 0 && (
         <div className="row ask-top">
-          <span className="muted">Chat about this draft</span>
+          <span className="muted" title="The Assistant tab writes from your sources, with every citation checked">
+            Chat about this draft · general knowledge, <b>not checked against your library</b>
+          </span>
           <button className="link" onClick={clear} disabled={!!asking}>
             Clear conversation
           </button>

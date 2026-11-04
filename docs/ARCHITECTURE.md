@@ -41,7 +41,7 @@ How Research Companion is put together, for anyone changing it. For using the ap
 | `embeddings.py` | Embedders: bge-small via fastembed on this computer, the only model the app ships (BGE-M3 was measured and dropped: see [backend/eval/README.md](../backend/eval/README.md)), a hashing fallback, and `LoadingEmbedder`, which loads it in the background. `bundled_model` finds the installer's copy of a model in `RC_MODELS_DIR` (Electron passes `resources/models`, filled by [scripts/fetch_models.py](../backend/scripts/fetch_models.py)); the embedder and the local reranker load from there instead of downloading. |
 | `retrieval.py` | Keyword (BM25) queries, reciprocal rank fusion, and the local cross-encoder reranker. |
 | `citations.py` | Finding a model's quote in the source, tolerant of whitespace, case, curly quotes and OCR slips. |
-| `references.py` | APA 7, MLA 9, IEEE and BibTeX from stored metadata. |
+| `references.py` | APA 7, MLA 9, IEEE and BibTeX from stored metadata, after `_clean` decodes HTML entities and drops a DOI or link that isn't one. |
 | `refparse.py`, `citegraph.py` | Reading reference lists; who cites whom, shared references, works the library lacks. |
 | `openaccess.py` | Free copies of cited works from open scholarly indexes. |
 | `paper_meta.py` | Keywords and JEL codes printed on a paper's first page, by pattern. |
@@ -94,7 +94,8 @@ React 19 with Tiptap 3, built by Vite. Entry: [desktop/src/App.tsx](../desktop/s
   - *Write:* `WritingEditor` and the side panel. Its tabs are `AssistantPanel`, `AskPanel` (a plain chatbot, kept per draft in `ask_turns`), Citations (`CitePanel`, or `SourceViewer` while a cited passage is open), `ReferencesPanel`, `ReviewPanel` and `HistoryPanel`. `CitationWire` draws the line from a citation to its quote. Closed, the panel is a strip of the tabs' icons (`toolsOpen`); focus mode (`focusMode`) hides the rail, panel, app bar and dock.
   - *Library:* `LibraryPanel`: folders, a sortable table and the open paper's details.
   - *Network:* `NetworkView`, which loads Cytoscape only when it's first opened.
-- the **dock** (status bar) and the dialogs: `CommandPalette` (Ctrl K), `WordImportDialog`, `DuplicateFilesDialog`, `CitedPapersDialog`, `MissingPapersDialog`, `SettingsDialog`, `ReaderDialog`.
+- the **dock** (status bar) and the dialogs: `CommandPalette` (Ctrl K: a combobox over a listbox, in sections), `WordImportDialog`, `DuplicateFilesDialog`, `CitedPapersDialog`, `MissingPapersDialog`, `SettingsDialog`, `ReaderDialog`. Settings, the palette and the reader dialog keep Tab inside them with `useFocusTrap`, which gives focus back when they close.
+- `ChipCard`: pointing at a citation in the draft shows its verdict, quote and reason (chips carry an `aria-label` with the verdict in words, and no `title`). Verdict words and the order flagged-first live in `editor/citeStatus.ts`, shared by the chips, the Citations list and the card.
 
 **PDFs** ([pdf.ts](../desktop/src/pdf.ts)) are fetched once per document with the app's token and shared:
 

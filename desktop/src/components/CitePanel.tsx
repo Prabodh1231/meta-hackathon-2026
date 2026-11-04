@@ -26,11 +26,13 @@ interface Props {
   onOpenChip: (chip: ChipAttrs) => void
   /** Select a chip in the draft and scroll to it, leaving this tab open. */
   onShowChip: (cid: string) => void
+  /** Check one citation again, for its sentence as it reads now. */
+  onCheckChip: (chip: ChipAttrs) => void
 }
 
 /** Every citation in the draft, what needs attention first; ‹ › step through the flagged ones in
  * the draft. A row opens the quote, as the chip does. */
-function CitationList({ chips, onOpen, onShow }: { chips: ChipAttrs[]; onOpen: (c: ChipAttrs) => void; onShow: (cid: string) => void }) {
+function CitationList({ chips, onOpen, onShow, onCheck }: { chips: ChipAttrs[]; onOpen: (c: ChipAttrs) => void; onShow: (cid: string) => void; onCheck: (c: ChipAttrs) => void }) {
   const flagged = chips.filter((c) => isFlagged(c.status)) // in document order, for ‹ ›
   const [current, setCurrent] = useState<string | null>(null)
   const at = flagged.findIndex((c) => c.cid === current)
@@ -76,6 +78,17 @@ function CitationList({ chips, onOpen, onShow }: { chips: ChipAttrs[]; onOpen: (
               <span className="cite-list-claim" aria-hidden="true">{c.claim || 'No sentence recorded'}</span>
               {isFlagged(c.status) && c.reason && <span className="cite-list-reason" id={`cite-why-${c.cid}`}>{c.reason}</span>}
             </button>
+            <div className="cite-list-actions">
+              <button className="link" onClick={() => onOpen(c)}>
+                See quote ›
+              </button>
+              <button className="link" onClick={() => onShow(c.cid)}>
+                Show in draft
+              </button>
+              <button className="link" disabled={c.status === 'pending'} onClick={() => onCheck(c)} title="Check it again against its sentence as it reads now">
+                {c.status === 'pending' ? 'Checking…' : 'Check again'}
+              </button>
+            </div>
           </li>
         ))}
       </ul>
@@ -93,7 +106,7 @@ const HEADLINE: Record<CiteMarkState, string> = {
 }
 
 /** Cite markers waiting for the writer: what each search found, and confirming a source. */
-export function CitePanel({ marks, chips, citations, rechecking, onRecheckAll, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource, onOpenChip, onShowChip }: Props) {
+export function CitePanel({ marks, chips, citations, rechecking, onRecheckAll, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource, onOpenChip, onShowChip, onCheckChip }: Props) {
   const mark = focus ? marks.find((m) => m.cid === focus) : undefined
   const checking = useCheckingMarkers()
   // While any marker is still searching: since when (the wait line counts from the first).
@@ -112,9 +125,9 @@ export function CitePanel({ marks, chips, citations, rechecking, onRecheckAll, f
         <span className="cite-mark cite-mark-weak">cite</span> for partial support, and{' '}
         <span className="cite-mark cite-mark-unsupported">cite</span> when nothing does. Click it to confirm a source.
         <br />
-        Confirmed citations show the same symbols: <span className="cite cite-verified">supported</span>{' '}
-        <span className="cite cite-weak">partial</span> <span className="cite cite-unsupported">not supported</span>. Blue ones,{' '}
-        <span className="cite cite-verified cite-matrix">from a matrix</span>, were written from a review matrix and are checked against it.
+        Confirmed citations show the same: <span className="cite cite-verified">Smith 2020</span> supported,{' '}
+        <span className="cite cite-weak">Smith 2020</span> and <span className="cite cite-unsupported">Smith 2020</span>. Blue ones,{' '}
+        <span className="cite cite-verified cite-matrix">Smith 2020</span>, were written from a review matrix and are checked against it.
       </p>
     )
     return (
@@ -164,7 +177,7 @@ export function CitePanel({ marks, chips, citations, rechecking, onRecheckAll, f
             </ul>
           </>
         )}
-        {chips.length > 0 && <CitationList chips={chips} onOpen={onOpenChip} onShow={onShowChip} />}
+        {chips.length > 0 && <CitationList chips={chips} onOpen={onOpenChip} onShow={onShowChip} onCheck={onCheckChip} />}
       </div>
     )
   }

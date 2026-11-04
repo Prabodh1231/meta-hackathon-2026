@@ -773,7 +773,25 @@ ${g.detail}`
             }}
           />
         ) : !matrix ? (
-          <p className="empty">Open a matrix on the left, or make a new one.</p>
+          <div className="mx-empty">
+            <h3>Compare papers side by side</h3>
+            <p>
+              A review matrix has one row per paper and one column per question (sample, setting, method, findings…). Muse reads
+              each paper and answers every question with a quote and its page, so each cell can be checked. From a matrix you can
+              find gaps across the studies and write a comparison with citations.
+            </p>
+            <div className="row">
+              {(() => {
+                const recent = [...(list ?? [])].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))[0]
+                return recent ? (
+                  <button className="primary" onClick={() => open(recent.id)}>
+                    Open “{recent.name}” · {recent.papers} papers
+                  </button>
+                ) : null
+              })()}
+              <button onClick={() => (setCreating(true), setCellAt(null))}>New matrix</button>
+            </div>
+          </div>
         ) : (
           <>
             <header className="mx-head">
@@ -802,6 +820,7 @@ ${g.detail}`
                   {matrix.rows.length} papers · {matrix.columns.filter((c) => !isDetail(c)).length} questions
                   {matrix.columns.some(isDetail) && ` · ${matrix.columns.filter(isDetail).length} details`}
                   {narrowed && ` · ${rows.length} shown`}
+                  <span className="mx-how"> · each answer shows the page its quote is on: click it to read the quote</span>
                 </span>
               </div>
               <div className="mx-tools">
@@ -817,24 +836,28 @@ ${g.detail}`
                     </button>
                   </>
                 )}
-                <button onClick={findGaps} disabled={!!matrix.pending || !!busy}>
+                {/* Three groups: look at the matrix, analyse it, write from it (the one main action) */}
+                <span className="mx-tool-sep" aria-hidden="true" />
+                <button onClick={findGaps} disabled={!!matrix.pending || !!busy} title="Muse names what these studies leave out and where they disagree">
                   Find gaps
-                </button>
-                <button onClick={() => setDialog('synthesis')} disabled={!!matrix.pending}>
-                  Write from this matrix
                 </button>
                 <button onClick={() => onWriteProposal(matrix.id)} disabled={!!matrix.pending} title="A research proposal for a study that addresses this review's gaps">
                   Write a proposal
                 </button>
-                <button onClick={() => setDialog('insert')} disabled={!!matrix.pending}>
-                  Insert into draft
+                <span className="mx-tool-sep" aria-hidden="true" />
+                <button className="primary" onClick={() => setDialog('synthesis')} disabled={!!matrix.pending} title="Muse writes a comparison of the studies, each sentence citing its quotes">
+                  Write from this matrix
                 </button>
                 <div className="mx-menu-wrap" onMouseDown={(e) => e.stopPropagation()}>
                   <button onClick={() => setMenu(menu === 'export' ? null : 'export')} aria-haspopup="menu" aria-expanded={menu === 'export'}>
-                    Export ▾
+                    Insert or export ▾
                   </button>
                   {menu === 'export' && (
                     <div className="lib-menu" role="menu">
+                      <button role="menuitem" onClick={() => (setMenu(null), setDialog('insert'))}>
+                        <b>Insert into draft</b>
+                        <span>The matrix as a table at the cursor; each cell cites its quote</span>
+                      </button>
                       {(
                         [
                           ['xlsx', 'Excel workbook', 'An answer column and an evidence column (page and quote) per question'],
@@ -1102,7 +1125,15 @@ ${g.detail}`
                               key={c.key}
                               className={`mx-cell mx-${cell?.status ?? 'pending'}${on ? ' on' : ''}`}
                               onClick={() => setCellAt(on ? null : { doc: r.doc_id, col: c.key })}
-                              title={cell ? STATUS_TEXT[cell.status] : undefined}
+                              // Reachable with Tab; Enter or Space opens the quote, as a click does.
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key !== 'Enter' && e.key !== ' ') return
+                                e.preventDefault()
+                                setCellAt(on ? null : { doc: r.doc_id, col: c.key })
+                              }}
+                              aria-expanded={on}
+                              title={cell ? `${STATUS_TEXT[cell.status]} · click for the quote` : undefined}
                             >
                               {!cell || cell.status === 'pending' ? (
                                 <span className="mx-reading" />
@@ -1114,8 +1145,10 @@ ${g.detail}`
                                 <>
                                   <span className="mx-answer-text">{cell.answer}</span>
                                   <span className="mx-where">
-                                    <span className="mx-dot" />
+                                    {/* ✓ the quote was found on that page; ? it wasn't, so check it */}
+                                    <span className="mx-dot" aria-hidden="true">{cell.status === 'unverified' ? '?' : '✓'}</span>
                                     {cell.label.split(', ').slice(-1)[0]}
+                                    {cell.status === 'unverified' ? ' · quote not found' : ''}
                                     {cell.edited ? ' · edited' : ''}
                                   </span>
                                 </>
