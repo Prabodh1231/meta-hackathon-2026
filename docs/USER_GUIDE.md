@@ -278,6 +278,8 @@ The **History** tab keeps versions of the draft. Snapshots are taken automatical
 - The ten most-linked papers are named on the graph; point at any other paper to see its name and a card with its title. **+**, **−** and **Fit** (top right) zoom, as does scrolling.
 - Click a paper to highlight its neighbours and list what it cites, what cites it, and what it shares. **Open in library** jumps to it.
 - Click a line to see why its two papers are linked: which cites which, the works both cite (as far as this map shows them), or the keywords they share.
+- **Graph | List** at the top switches to a table of the same papers: year, how many of the mapped papers cite each one, how many works it cites, and how many papers it shares two or more references with. Click a heading to sort, and a title to open the paper beside the table, as clicking its node does. The table works with the keyboard and screen readers.
+- While the reference lists are read, the map says so and counts the seconds; **Cancel** goes back to choosing. A big map then shows *Laying out N papers…* while it's drawn.
 - Turning a layer on or off keeps the papers where they were, so you don't lose your place. The count at the top says how many pairs share two or more references, which is when a grey line is drawn.
 - In the list of works you don't have, a work cited under several years or authors is listed once, naming the other versions.
 - **Rank and download…** lists the works the papers shown cite but you don't have, with free copies to fetch. Clearing the search box goes back to choosing what to show.
@@ -302,7 +304,7 @@ Esc returns to the draft.
 
 | Cell | Meaning |
 |---|---|
-| answer with a green dot and a page | the quote was found on that page |
+| answer with a ✓ and a page | the quote was found on that page; click the page to open the PDF there |
 | answer with an amber dot | the quote wasn't found in the paper: check it |
 | *Not reported* | the passages read don't say; nothing is guessed |
 
