@@ -38,6 +38,7 @@ import {
   type SaveState,
   type WritingEditorHandle,
 } from './components/WritingEditor'
+import { withCids } from './components/DraftPreview'
 import type {
   Citation,
   Doc,
@@ -170,6 +171,19 @@ export default function App() {
   const [matrixSeen, setMatrixSeen] = useState(false) // mounted once opened, so a matrix keeps its place
   const [errors, setErrors] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+
+  /** A passage chosen in the reader, into the draft at the cursor as a quote with its citation. It's the
+   * paper's own words, so the citation is verified, as Insert quote in the Highlights tab is. */
+  function insertQuote(c: Citation) {
+    const [s] = withCids([{ text: `“${c.quote.replace(/\s+/g, ' ').trim()}”`, citations: [c] }])
+    editor.current?.insertDraft([s])
+    setMode('write')
+    setNotice(`Quoted ${c.label} in your draft.`)
+  }
+  const insertQuoteRef = useRef(insertQuote)
+  insertQuoteRef.current = insertQuote
+  // Quotes from the reader in its own window (the desktop app).
+  useEffect(() => window.rc?.onInsertQuote?.((c) => insertQuoteRef.current(c)), [])
   // An info message closes by itself after a while (errors stay until clicked): left open, the
   // demo draft's "Opened…" message covered the page and status bar for whole sessions.
   useEffect(() => {
@@ -1747,7 +1761,7 @@ export default function App() {
         />
       )}
 
-      {pdfView && <ReaderDialog doc={pdfView.doc} page={pdfView.page} onClose={() => setPdfView(null)} />}
+      {pdfView && <ReaderDialog doc={pdfView.doc} page={pdfView.page} onClose={() => setPdfView(null)} onInsertQuote={insertQuote} />}
 
       {showSettings && (
         <SettingsDialog

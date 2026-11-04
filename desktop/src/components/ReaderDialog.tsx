@@ -3,7 +3,7 @@ import { useFocusTrap } from '../useFocusTrap'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { api } from '../api'
 import { type Box, loadPdfjs, pdfDocument, placeQuote } from '../pdf'
-import type { Doc, Highlight } from '../types'
+import type { Citation, Doc, Highlight } from '../types'
 
 const MAX_WIDTH = 900 // the page's width on a wide screen; narrower windows fit the page to the window
 const NEAR = '1200px' // pages this far outside the view are drawn in advance
@@ -18,6 +18,7 @@ type Popup =
   | { kind: 'select'; page: number; text: string; x: number; y: number }
   | { kind: 'tooLong'; x: number; y: number }
   | { kind: 'note'; hid: number; x: number; y: number }
+  | { kind: 'said'; text: string; x: number; y: number } // what Insert in draft did
 
 /** The reader as a window of its own (the desktop app): the paper's record is loaded first. */
 export function ReaderWindow({ docId, page }: { docId: number; page: number }) {
@@ -39,7 +40,15 @@ export function ReaderWindow({ docId, page }: { docId: number; page: number }) {
 /** A library PDF read in the app: every page drawn with its text selectable, so passages can be
  * highlighted and given a note. Highlights are kept with the paper and fetched while writing.
  * `standalone`: filling a window of its own rather than a dialog over the app. */
-export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: Doc; page: number; standalone?: boolean; onClose: () => void }) {
+export function ReaderDialog({ doc, page, standalone = false, onClose, onInsertQuote }: {
+  doc: Doc
+  page: number
+  standalone?: boolean
+  onClose: () => void
+  /** Over the app: put a quote and its citation into the draft. (As a window of its own, the
+   * reader sends it to the main window through the bridge instead.) */
+  onInsertQuote?: (c: Citation) => void
+}) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
   const [aspect, setAspect] = useState(1.294) // page height / width, from page 1 (A4 until it's read)
   const [error, setError] = useState<string | null>(null)
@@ -340,6 +349,45 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
     }
   }
 
+  // Where a quote can go: the app's draft, directly or from this window through the bridge.
+  const sendQuote = standalone ? window.rc?.insertQuote : onInsertQuote && (async (c: Citation) => onInsertQuote(c))
+
+  /** The selection, into the draft as a quote citing this page. Its place in the paper's stored text is
+   * found first, so the citation can be opened and checked like any other. */
+  async function insertQuote() {
+    if (popup?.kind !== 'select' || !sendQuote) return
+    const { page: at, text, x, y } = popup
+    setBusy(true)
+    try {
+      const [found] = await api.resolveCitations([{ doc_id: doc.id, page: at, quote: text }])
+      if (!found) {
+        setPopup({ kind: 'said', text: "This text couldn't be found in the paper's stored text, so it can't be cited. Try a shorter passage.", x, y })
+        return
+      }
+      await sendQuote({
+        chunk_id: found.chunk_id,
+        doc_id: doc.id,
+        page: found.page,
+        page_label: found.page_label,
+        quote: text,
+        start: found.start,
+        end: found.end,
+        match: found.match,
+        label: found.label,
+        status: 'verified',
+        reason: 'Quoted from the paper while reading it.',
+      })
+      window.getSelection()?.removeAllRanges()
+      setPopup({ kind: 'said', text: `Quoted in your draft as ${found.label}.`, x, y })
+      window.setTimeout(() => setPopup((p) => (p?.kind === 'said' ? null : p)), 2500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      closePopup()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function saveNote() {
     if (popup?.kind !== 'note') return
     setBusy(true)
@@ -549,6 +597,16 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
             <button disabled={busy} onClick={() => highlight(true)}>
               Add note
             </button>
+            {sendQuote && (
+              <button disabled={busy} onClick={insertQuote} title="Put this passage into your draft as a quote, citing this page">
+                Insert in draft
+              </button>
+            )}
+          </div>
+        )}
+        {popup?.kind === 'said' && (
+          <div className="reader-popup" style={place(popup)} role="status">
+            <span>{popup.text}</span>
           </div>
         )}
         {popup?.kind === 'tooLong' && (
