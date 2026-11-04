@@ -94,7 +94,7 @@ Your files stay where they are. The library keeps its own index in `~/.research-
 - **See a paper's details:** click its row. Its details open on the right: summary, folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
 - **Open a paper:** double-click its row (or press Enter with it selected). A PDF opens in the app's reader described below, a Word file, slides or an image in the app your computer opens it with, and a web page in your browser.
 - **Correct its details:** **Edit details** fixes the title, authors, year, journal, DOI or link. Reference lists are built from these, and your corrections are kept if the file is added again.
-- **Read the whole PDF:** **Open PDF** in its details opens it in the app's reader, where you can highlight passages and add notes (see [Highlights and notes](#highlights-and-notes)). **Open in PDF viewer** at the top of the reader opens it in a window of its own instead, with search, zoom, thumbnails and print, which you can keep beside your draft; it reuses one window and remembers its size and place. **Show in folder** finds the file on disk.
+- **Read the whole PDF:** **Open PDF** in its details opens it in the app's reader, in a window of its own, where you can highlight passages and add notes (see [Highlights and notes](#highlights-and-notes)). It opens maximized; resize it, snap it to half the screen or move it to another monitor to keep it beside your draft, and it remembers that. The next paper you open replaces it in the same window. **Open in PDF viewer** at the top opens the file in Chromium's viewer instead, for search, thumbnails and print. **Show in folder** finds the file on disk.
 - **Remove it:** **Remove from library** at the bottom of its details. The file on disk isn't touched.
 
 ### Subject folders
@@ -177,7 +177,7 @@ Click a citation to see its passage. Tick the sentences you want to keep (or cli
 
 Click a highlight to read or change its note, or **Remove highlight**. A highlight has to be on one page. Scanned pages without a text layer can't be selected.
 
-**While writing.** The **Highlights** tab beside the draft lists everything you highlighted, with your notes. It's ranked for the paragraph your cursor is in each time you open it; click into another paragraph and **Fetch** to rank it again. The ranking runs on your computer, with nothing sent anywhere.
+**While writing.** The **Highlights** tab beside the draft lists everything you highlighted, with your notes. It's ranked for the paragraph your cursor is in each time you open it or come back from the reader's window; click into another paragraph and **Fetch** to rank it again. The ranking runs on your computer, with nothing sent anywhere.
 
 - **Insert quote** puts the highlight into the draft as a quote with its citation, already verified, because it's the paper's own words.
 - Tick a few and **Write from N**: Muse writes sentences from them, following on from your draft and guided by your notes. They're cited and checked like the Assistant's, and you tick the ones to insert.

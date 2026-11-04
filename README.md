@@ -164,5 +164,4 @@ Restart the app. Or open **Settings → AI model**, paste the key and click **Sa
 - **Documents imported on the mock** keep its rough metadata, summaries and tags until they're re-imported with Muse on.
 - **Installer:** Windows only, unsigned (Windows warns about an unknown publisher), with the default Electron icon.
 - **Import jobs live in memory:** if the backend restarts mid-import, the files already added stay, but the rest of that import has to be started again.
-- **Reading beside the draft:** the reader, where you highlight, opens over the app; **Open in PDF viewer** gives a separate window to keep beside the draft, but highlights can't be made there.
 - **Highlights on scanned pages:** a page without a text layer can't be selected, so it can't be highlighted.

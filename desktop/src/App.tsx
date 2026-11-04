@@ -194,8 +194,15 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [askAttach, setAskAttach] = useState<{ text: string; n: number } | null>(null) // text sent to the Ask tab
   const [pdfView, setPdfView] = useState<{ doc: Doc; page: number } | null>(null) // a PDF in the app's reader
-  // The app's own reader, where text can be highlighted; it links to Chromium's viewer for search and print.
-  const openPdf = useCallback((doc: Doc, page = 1) => setPdfView({ doc, page }), [])
+  // The app's own reader, where text can be highlighted; it links to Chromium's viewer for search and
+  // print. In the desktop app it gets a resizable window of its own; in a plain browser, a dialog.
+  const openPdf = useCallback((doc: Doc, page = 1) => {
+    if (!window.rc?.openReader) return setPdfView({ doc, page })
+    window.rc.openReader(doc.id, page, doc.title).catch((e) => {
+      const why = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e)
+      setErrors((es) => [...es.slice(-2), `Could not open the PDF: ${why}`])
+    })
+  }, [])
   const [toolsOpen, setToolsOpen] = useState(storedToolsOpen) // the writing tools beside the draft
   const [focusMode, setFocusMode] = useState(false) // only the page and its toolbar
   const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0 })

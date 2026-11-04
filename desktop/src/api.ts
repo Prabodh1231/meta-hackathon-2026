@@ -134,6 +134,7 @@ export const api = {
     request<{ filled: number; still_missing: number }>('POST', '/library/fill-missing', { doc_ids: docIds ?? null }),
 
   documents: () => request<Doc[]>('GET', '/documents'),
+  document: (id: number) => request<Doc>('GET', `/documents/${id}`),
   updateDocument: (id: number, patch: Partial<Doc>) => request<Doc>('PATCH', `/documents/${id}`, patch),
   /** Remove from the library; what it was is kept in the removal log (Removed). */
   deleteDocument: (id: number, why?: { reason: 'removed' | 'duplicate'; duplicateOf?: number; trashed?: boolean }) => {

@@ -345,6 +345,92 @@ ipcMain.handle('rc:open-pdf', async (_event, filePath, page, title) => {
   win.focus()
 })
 
+// The app's own reader (highlights and notes) in a window of its own, like the PDF window above:
+// resizable, movable to a second screen, open beside the draft. It runs the same page as the main
+// window with ?reader=<id>, so it has the bridge and talks to the backend itself. One window,
+// reused for the next paper; it opens maximized until the user sizes it, then remembers that.
+let readerWindow = null
+const READER_BOUNDS = () => path.join(app.getPath('userData'), 'reader-window.json')
+
+function savedReaderBounds() {
+  try {
+    const b = JSON.parse(fs.readFileSync(READER_BOUNDS(), 'utf8'))
+    const { screen } = require('electron')
+    const area = screen.getDisplayMatching(b).workArea
+    const visible = b.x < area.x + area.width && b.x + b.width > area.x && b.y < area.y + area.height && b.y + b.height > area.y
+    return visible ? b : { width: b.width, height: b.height, maximized: b.maximized }
+  } catch {
+    return { width: 1100, height: 1000, maximized: true }
+  }
+}
+
+function readerWindowFor() {
+  if (readerWindow && !readerWindow.isDestroyed()) return readerWindow
+  const { maximized, ...saved } = savedReaderBounds()
+  readerWindow = new BrowserWindow({
+    ...saved,
+    minWidth: 520,
+    minHeight: 420,
+    useContentSize: true,
+    show: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  readerWindow.setContentSize(saved.width, saved.height) // see pdfWindowFor: fractional display scaling
+  if (maximized !== false) readerWindow.maximize()
+  const remember = (patch) => {
+    let b = {}
+    try {
+      b = JSON.parse(fs.readFileSync(READER_BOUNDS(), 'utf8'))
+    } catch {
+      /* first time */
+    }
+    fs.promises.writeFile(READER_BOUNDS(), JSON.stringify({ ...b, ...patch })).catch(() => {})
+  }
+  const keep = (part) => () => {
+    if (readerWindow.isMinimized() || readerWindow.isMaximized()) return
+    const [width, height] = readerWindow.getContentSize()
+    const { x, y } = readerWindow.getBounds()
+    remember(part === 'size' ? { width, height, maximized: false } : { x, y, width, height, maximized: false })
+  }
+  readerWindow.on('resized', keep('size'))
+  readerWindow.on('moved', keep('place'))
+  readerWindow.on('maximize', () => remember({ maximized: true }))
+  readerWindow.on('unmaximize', () => remember({ maximized: false }))
+  readerWindow.on('page-title-updated', (e) => e.preventDefault()) // the paper's title, set below
+  // As in the main window: links open in the system browser, and the page is never replaced.
+  readerWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  readerWindow.webContents.on('will-navigate', (e, url) => {
+    if (url !== readerWindow.webContents.getURL()) e.preventDefault()
+  })
+  readerWindow.on('closed', () => {
+    readerWindow = null
+  })
+  return readerWindow
+}
+
+ipcMain.handle('rc:open-reader', async (_event, docId, page, title) => {
+  const id = Number.parseInt(docId, 10)
+  if (!(id > 0)) throw new Error('No such paper')
+  const query = { reader: String(id), page: String(Math.max(1, Number.parseInt(page, 10) || 1)) }
+  const name = typeof title === 'string' && title.trim() ? title.trim().slice(0, 200) : 'PDF'
+  const win = readerWindowFor()
+  win.setTitle(`${name} · Reader`)
+  if (process.env.VITE_DEV_SERVER_URL) await win.loadURL(`${process.env.VITE_DEV_SERVER_URL}?${new URLSearchParams(query)}`)
+  else await win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), { query })
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+})
+
 // Windows shows a page's notifications (a matrix or proposal finished) only for an app with an id:
 // the installer's appId when installed, the Electron executable in development.
 if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.researchcompanion.app' : process.execPath)

@@ -47,6 +47,15 @@ export function HighlightsPanel({ visible, getContext, getDraft, onInsert, onVer
     if (visible) fetchFor()
   }, [visible]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Back from the reader's window with new highlights: show them. (Only once nothing's ticked, so a
+  // pick in progress isn't reordered under the pointer.)
+  useEffect(() => {
+    if (!visible) return
+    const onFocus = () => !picked.size && fetchFor()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [visible, picked]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggle = (id: number) =>
     setPicked((p) => {
       const n = new Set(p)
