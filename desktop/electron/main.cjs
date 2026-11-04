@@ -117,6 +117,8 @@ async function startBackend() {
   return { baseUrl: `http://127.0.0.1:${spawnArgs.port}`, token: spawnArgs.token, logPath: LOG_PATH }
 }
 
+let appWindow = null // the main window, which the reader window sends quotes to
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -130,6 +132,10 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
     },
+  })
+  appWindow = win
+  win.on('closed', () => {
+    if (appWindow === win) appWindow = null
   })
   // A file dropped where the page doesn't handle it would replace the app with that file,
   // losing unsaved typing.
@@ -416,6 +422,14 @@ function readerWindowFor() {
   })
   return readerWindow
 }
+
+// A passage selected in the reader window, inserted into the draft in the main window as a quote with its
+// citation. The citation comes from the app's own reader page; only an object with a quote is passed on.
+ipcMain.handle('rc:insert-quote', async (_event, citation) => {
+  if (!citation || typeof citation !== 'object' || typeof citation.quote !== 'string') throw new Error('Nothing to insert')
+  if (!appWindow || appWindow.isDestroyed()) throw new Error('The main window is closed')
+  appWindow.webContents.send('rc:insert-quote', citation)
+})
 
 ipcMain.handle('rc:open-reader', async (_event, docId, page, title) => {
   const id = Number.parseInt(docId, 10)

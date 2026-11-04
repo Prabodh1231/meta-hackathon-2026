@@ -174,6 +174,7 @@ Click a citation to see its passage. Tick the sentences you want to keep (or cli
 
 - **Highlight** marks it in yellow. It stays on the page every time you open the paper.
 - **Add note** highlights it and opens a note for an idea you have while reading. A ✎ mark in the margin shows a highlight has a note.
+- **Insert in draft** puts it into your draft at the cursor as a quote, citing this page. It's the paper's own words, so the citation is marked supported; click it like any other to see it on the page. From the reader's own window it goes into the draft in the main window.
 
 Click a highlight to read or change its note, or **Remove highlight**. A highlight has to be on one page. Scanned pages without a text layer can't be selected.
 

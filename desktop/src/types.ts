@@ -585,6 +585,10 @@ declare global {
       openPdf?: (path: string, page: number, title: string) => Promise<void>
       /** A library PDF in the app's reader, in its own window, at a page (the desktop app only). */
       openReader?: (docId: number, page: number, title: string) => Promise<void>
+      /** From the reader window: insert a quote with its citation into the draft in the main window. */
+      insertQuote?: (citation: Citation) => Promise<void>
+      /** In the main window: quotes sent from the reader window. Returns an unsubscribe. */
+      onInsertQuote?: (callback: (citation: Citation) => void) => () => void
       /** Where a dropped or picked file is on disk ('' for one that isn't a file on disk). */
       pathForFile?: (file: File) => string
       /** Copies the demo corpus into the data folder and resolves to that folder. */
