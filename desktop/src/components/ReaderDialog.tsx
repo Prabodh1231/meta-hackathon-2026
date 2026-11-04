@@ -6,6 +6,9 @@ import type { Doc, Highlight } from '../types'
 
 const MAX_WIDTH = 900 // the page's width on a wide screen; narrower windows fit the page to the window
 const NEAR = '1200px' // pages this far outside the view are drawn in advance
+const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3] // of the fitted width
+const FIND = 'reader-find' // the CSS highlight that marks the current search match
+const FIND_ALL = 'reader-find-all' // and the other matches on its page
 
 type TextItem = { str: string; transform: number[]; width: number }
 
@@ -43,9 +46,25 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
   const [popup, setPopup] = useState<Popup | null>(null)
   const [draft, setDraft] = useState('') // the note being written
   const [busy, setBusy] = useState(false)
-  const [width, setWidth] = useState(0)
+  const [room, setRoom] = useState(0) // the width a page can have in the window
+  const [zoom, setZoom] = useState(1)
+  const base = Math.min(MAX_WIDTH, room) // 100%: a comfortable reading width, or the window if narrower
+  const width = Math.round(base * zoom)
+  const fitZoom = base ? room / base : 1 // the zoom that fills the window's width
+  const [current, setCurrent] = useState(page) // the page in view
+  const [pageInput, setPageInput] = useState<string | null>(null) // while a page number is being typed
+  const [railOpen, setRailOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [matches, setMatches] = useState<{ page: number; k: number }[]>([])
+  const [at, setAt] = useState(-1) // the match shown
   const scroller = useRef<HTMLDivElement>(null)
   const scrolled = useRef(false)
+  const keepPage = useRef<number | null>(null) // the page to stay on across a zoom
+  const texts = useRef<Promise<string[]> | null>(null) // every page's text, lowercased, for Find
+  const findBox = useRef<HTMLInputElement>(null)
+  const pageBox = useRef<HTMLInputElement>(null)
+  const frame = useRef(0)
+  const numPages = pdf?.numPages ?? 0
 
   useEffect(() => {
     let stale = false
@@ -59,7 +78,11 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
       .catch((e) => !stale && setError(e instanceof Error ? e.message : String(e)))
     api
       .documentHighlights(doc.id)
-      .then((hs) => !stale && setHighlights(hs))
+      .then((hs) => {
+        if (stale) return
+        setHighlights(hs)
+        if (hs.length) setRailOpen(true) // a paper with highlights opens with their list
+      })
       .catch((e) => !stale && setError(e instanceof Error ? e.message : String(e)))
     return () => {
       stale = true
@@ -71,7 +94,7 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
     const el = scroller.current
     if (!el) return
     let t: number | undefined
-    const measure = () => setWidth(Math.min(MAX_WIDTH, Math.round(el.clientWidth - 48)))
+    const measure = () => setRoom(Math.max(0, Math.round(el.clientWidth - 48)))
     measure()
     const ro = new ResizeObserver(() => {
       window.clearTimeout(t)
@@ -91,21 +114,183 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
     scroller.current?.querySelector(`[data-page="${page}"]`)?.scrollIntoView({ block: 'start' })
   }, [pdf, width, page])
 
+  // A zoom keeps the page that was in view.
+  useLayoutEffect(() => {
+    if (keepPage.current == null) return
+    scrollToPage(keepPage.current)
+    keepPage.current = null
+  }, [width])
+
   const closePopup = useCallback(() => {
     setPopup(null)
     setDraft('')
   }, [])
 
+  function scrollToPage(n: number, block: ScrollLogicalPosition = 'start') {
+    scroller.current?.querySelector(`[data-page="${n}"]`)?.scrollIntoView({ block })
+  }
+
+  function goToPage(n: number) {
+    const p = Math.max(1, Math.min(numPages, n))
+    setCurrent(p)
+    scrollToPage(p)
+  }
+
+  function changeZoom(z: number) {
+    keepPage.current = current
+    setZoom(Math.max(ZOOMS[0], Math.min(Math.max(ZOOMS[ZOOMS.length - 1], fitZoom), z)))
+  }
+  const zoomIn = () => changeZoom(ZOOMS.find((z) => z > zoom + 0.001) ?? zoom)
+  const zoomOut = () => changeZoom([...ZOOMS].reverse().find((z) => z < zoom - 0.001) ?? zoom)
+
+  // The page in view: the first whose bottom is below a third of the way down.
+  function onScroll() {
+    if (popup && popup.kind !== 'note') closePopup()
+    if (frame.current) return
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0
+      const el = scroller.current
+      if (!el) return
+      const y = el.getBoundingClientRect().top + el.clientHeight / 3
+      for (const p of el.querySelectorAll<HTMLElement>('[data-page]')) {
+        if (p.getBoundingClientRect().bottom >= y) {
+          setCurrent(Number(p.dataset.page))
+          break
+        }
+      }
+    })
+  }
+
+  // Keys: Ctrl+F finds, Ctrl +/−/0 zoom the pages (not the window), Esc closes the innermost thing.
+  // Re-attached every render, so it always sees the current state.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey
+      if (ctrl && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        e.stopPropagation()
+        findBox.current?.focus()
+        findBox.current?.select()
+        return
+      }
+      if (ctrl && (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '0')) {
+        e.preventDefault()
+        e.stopPropagation()
+        if (e.key === '0') changeZoom(1)
+        else if (e.key === '-') zoomOut()
+        else zoomIn()
+        return
+      }
       if (e.key !== 'Escape') return
       e.stopPropagation()
+      const active = document.activeElement
       if (popup) closePopup()
+      else if (active === findBox.current) {
+        if (query) setQuery('')
+        else findBox.current?.blur()
+      } else if (active === pageBox.current) pageBox.current?.blur()
       else if (!standalone) onClose() // a window of its own closes like any window, not on Esc
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose, popup, closePopup, standalone])
+  })
+
+  // Find: every page's text is read once, the first time something is searched for.
+  useEffect(() => {
+    const q = query.trim().toLowerCase()
+    if (!pdf || q.length < 2) {
+      setMatches([])
+      setAt(-1)
+      return
+    }
+    let stale = false
+    const t = window.setTimeout(async () => {
+      texts.current ??= Promise.all(
+        Array.from({ length: pdf.numPages }, async (_, i) => {
+          const content = await (await pdf.getPage(i + 1)).getTextContent()
+          return content.items.map((it) => ('str' in it ? it.str : '')).join('').toLowerCase()
+        }),
+      )
+      const all = await texts.current
+      if (stale) return
+      const found: { page: number; k: number }[] = []
+      all.forEach((text, i) => {
+        let from = 0
+        let k = 0
+        for (let idx = text.indexOf(q); idx >= 0 && found.length < 2000; idx = text.indexOf(q, from)) {
+          found.push({ page: i + 1, k: k++ })
+          from = idx + q.length
+        }
+      })
+      setMatches(found)
+      const next = found.findIndex((m) => m.page >= current)
+      setAt(found.length ? Math.max(0, next) : -1)
+    }, 200)
+    return () => {
+      stale = true
+      window.clearTimeout(t)
+    }
+    // `current` only picks where the first match is; it mustn't search again on every scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, pdf])
+
+  // Show the current match: bring its page in, wait for its text layer, and mark the words.
+  useEffect(() => {
+    const m = matches[at]
+    const q = query.trim().toLowerCase()
+    markFind(null)
+    if (!m) return
+    const pageEl = scroller.current?.querySelector(`[data-page="${m.page}"]`)
+    pageEl?.scrollIntoView({ block: 'center' })
+    setCurrent(m.page)
+    let cancelled = false
+    const started = performance.now()
+    const tryMark = () => {
+      if (cancelled) return
+      const layer = pageEl?.querySelector('.textLayer')
+      if (layer?.querySelector('.endOfContent')) {
+        const ranges = rangesOf(layer, q)
+        const range = ranges[m.k]
+        markFind(range ?? null, ranges)
+        range?.startContainer.parentElement?.scrollIntoView({ block: 'center' })
+        return
+      }
+      if (performance.now() - started < 6000) requestAnimationFrame(tryMark)
+    }
+    requestAnimationFrame(tryMark)
+    return () => {
+      cancelled = true
+    }
+    // A new search sets new matches; a zoom redraws the text layer, so the mark is placed again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [at, matches, width])
+
+  useEffect(() => () => markFind(null), [])
+
+  const stepMatch = (by: 1 | -1) => {
+    if (matches.length) setAt((a) => (a + by + matches.length) % matches.length)
+  }
+
+  /** Scroll to a highlight on its page and make it flash. */
+  function showHighlight(h: Highlight) {
+    const pageEl = scroller.current?.querySelector(`[data-page="${h.page}"]`)
+    pageEl?.scrollIntoView({ block: 'start' })
+    const started = performance.now()
+    const find = () => {
+      const boxes = pageEl?.querySelectorAll<HTMLElement>(`.reader-hl[data-hid="${h.id}"]`)
+      if (boxes?.length) {
+        boxes[0].scrollIntoView({ block: 'center' })
+        boxes.forEach((b) => {
+          b.classList.remove('flash')
+          void b.offsetWidth // restart the animation
+          b.classList.add('flash')
+        })
+        return
+      }
+      if (performance.now() - started < 6000) requestAnimationFrame(find)
+    }
+    requestAnimationFrame(find)
+  }
 
   // A click anywhere else dismisses the popup, as a menu would: the Highlight bar always, a note
   // only when nothing typed in it would be lost.
@@ -187,6 +372,8 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
 
   const editing = popup?.kind === 'note' ? highlights.find((h) => h.id === popup.hid) : undefined
   const noted = highlights.filter((h) => h.note).length
+  const inOrder = [...highlights].sort((a, b) => a.page - b.page || (a.start ?? 0) - (b.start ?? 0))
+  const searching = query.trim().length >= 2
 
   return (
     <div className={standalone ? 'reader-window' : 'modal-backdrop'} onMouseDown={(e) => !standalone && e.target === e.currentTarget && onClose()}>
@@ -220,22 +407,136 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
             </button>
           </p>
         )}
-        <div className="reader" ref={scroller} onMouseUp={onMouseUp} onScroll={() => popup?.kind !== 'note' && popup && closePopup()}>
-          {!pdf && !error && <p className="muted pdf-view-note">Opening…</p>}
-          {pdf &&
-            width > 0 &&
-            Array.from({ length: pdf.numPages }, (_, i) => (
-              <ReaderPage
-                key={i + 1}
-                pdf={pdf}
-                n={i + 1}
-                width={width}
-                aspect={aspect}
-                root={scroller.current}
-                highlights={highlights.filter((h) => h.page === i + 1)}
-                onOpenNote={openNote}
+        <div className="reader-tools" role="toolbar" aria-label="Reader tools">
+          <div className="reader-group">
+            <button className="icon" onClick={() => goToPage(current - 1)} disabled={!pdf || current <= 1} aria-label="Previous page" title="Previous page">
+              ‹
+            </button>
+            <label className="reader-pager">
+              Page
+              <input
+                ref={pageBox}
+                inputMode="numeric"
+                aria-label="Page number"
+                value={pageInput ?? String(current)}
+                disabled={!pdf}
+                onFocus={(e) => {
+                  setPageInput(String(current))
+                  e.currentTarget.select()
+                }}
+                onBlur={() => setPageInput(null)}
+                onChange={(e) => setPageInput(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  if (pageInput) goToPage(Number(pageInput))
+                  e.currentTarget.blur()
+                }}
               />
-            ))}
+              of {numPages || '…'}
+            </label>
+            <button className="icon" onClick={() => goToPage(current + 1)} disabled={!pdf || current >= numPages} aria-label="Next page" title="Next page">
+              ›
+            </button>
+          </div>
+          <div className="reader-group">
+            <button className="icon" onClick={zoomOut} disabled={zoom <= ZOOMS[0]} aria-label="Zoom out" title="Zoom out (Ctrl −)">
+              −
+            </button>
+            <span className="reader-zoom" aria-live="polite" title="100% is a comfortable reading width (Ctrl 0)">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button className="icon" onClick={zoomIn} disabled={zoom >= ZOOMS[ZOOMS.length - 1]} aria-label="Zoom in" title="Zoom in (Ctrl +)">
+              +
+            </button>
+            <button className="link" onClick={() => changeZoom(fitZoom)} disabled={Math.abs(zoom - fitZoom) < 0.01} title="Fill the window's width with the page">
+              Fit width
+            </button>
+          </div>
+          <div className="reader-group reader-find">
+            <input
+              ref={findBox}
+              type="search"
+              value={query}
+              placeholder="Find in this paper (Ctrl F)"
+              aria-label="Find in this paper"
+              disabled={!pdf}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  stepMatch(e.shiftKey ? -1 : 1)
+                }
+              }}
+            />
+            {searching && (
+              <span className="reader-find-count" aria-live="polite">
+                {matches.length ? `${at + 1} of ${matches.length}${matches.length >= 2000 ? '+' : ''}` : 'No matches'}
+              </span>
+            )}
+            {searching && matches.length > 1 && (
+              <>
+                <button className="icon" onClick={() => stepMatch(-1)} aria-label="Previous match" title="Previous match (Shift Enter)">
+                  ↑
+                </button>
+                <button className="icon" onClick={() => stepMatch(1)} aria-label="Next match" title="Next match (Enter)">
+                  ↓
+                </button>
+              </>
+            )}
+          </div>
+          <span className="spacer" />
+          <button className={`reader-rail-toggle${railOpen ? ' on' : ''}`} aria-pressed={railOpen} onClick={() => setRailOpen((o) => !o)}>
+            Highlights · {highlights.length}
+          </button>
+        </div>
+        <div className="reader-body">
+          <div className="reader" ref={scroller} onMouseUp={onMouseUp} onScroll={onScroll}>
+            {!pdf && !error && <p className="muted pdf-view-note">Opening…</p>}
+            {pdf &&
+              width > 0 &&
+              Array.from({ length: pdf.numPages }, (_, i) => (
+                <ReaderPage
+                  key={i + 1}
+                  pdf={pdf}
+                  n={i + 1}
+                  width={width}
+                  aspect={aspect}
+                  root={scroller.current}
+                  highlights={highlights.filter((h) => h.page === i + 1)}
+                  onOpenNote={openNote}
+                />
+              ))}
+          </div>
+          {railOpen && (
+            <aside className="reader-rail" aria-label="Highlights in this paper">
+              <div className="reader-rail-head">
+                <b>Highlights</b>
+                <span className="muted">{highlights.length}</span>
+                <span className="spacer" />
+                <button className="icon" onClick={() => setRailOpen(false)} aria-label="Close the highlights list" title="Close the list">
+                  ×
+                </button>
+              </div>
+              {inOrder.length === 0 ? (
+                <p className="muted reader-rail-empty">
+                  Select text on a page, then <b>Highlight</b> or <b>Add note</b>. Your highlights are listed here, and in the{' '}
+                  <b>Highlights</b> tab while you write.
+                </p>
+              ) : (
+                <ul>
+                  {inOrder.map((h) => (
+                    <li key={h.id}>
+                      <button onClick={() => showHighlight(h)} title="Show it on the page">
+                        <span className="reader-rail-page">p. {h.page}</span>
+                        <span className="reader-rail-text">{h.text}</span>
+                        {h.note && <span className="reader-rail-note">✎ {h.note}</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </aside>
+          )}
         </div>
         {popup?.kind === 'select' && (
           <div className="reader-popup" style={place(popup)} role="toolbar" aria-label="Highlight the selection">
@@ -280,6 +581,51 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
       </div>
     </div>
   )
+}
+
+/** Every occurrence of `q` (lowercase) in a page's text layer, as DOM ranges, in order. The layer's
+ * text is the page's text items joined, as Find reads them, so the k-th here is Find's k-th. */
+function rangesOf(layer: Element, q: string): Range[] {
+  const nodes: Text[] = []
+  const starts: number[] = []
+  let text = ''
+  const walk = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    starts.push(text.length)
+    nodes.push(n as Text)
+    text += (n as Text).data
+  }
+  text = text.toLowerCase()
+  if (!nodes.length) return []
+  const locate = (pos: number, end: boolean) => {
+    let i = starts.length - 1
+    while (i > 0 && (end ? starts[i] >= pos : starts[i] > pos)) i--
+    return [nodes[i], pos - starts[i]] as const
+  }
+  const out: Range[] = []
+  for (let idx = text.indexOf(q); idx >= 0; idx = text.indexOf(q, idx + q.length)) {
+    const [startNode, startAt] = locate(idx, false)
+    const [endNode, endAt] = locate(idx + q.length, true)
+    const r = document.createRange()
+    r.setStart(startNode, startAt)
+    r.setEnd(endNode, endAt)
+    out.push(r)
+  }
+  return out
+}
+
+/** Mark the current match, and the page's other matches more lightly, with CSS custom highlights
+ * (no DOM changes); with no range, clear both. `Highlight` here is the DOM's, not the paper's. */
+function markFind(current: Range | null, all: Range[] = []) {
+  if (!('highlights' in CSS)) return
+  CSS.highlights.delete(FIND)
+  CSS.highlights.delete(FIND_ALL)
+  if (!current) return
+  const others = all.filter((r) => r !== current)
+  if (others.length) CSS.highlights.set(FIND_ALL, new globalThis.Highlight(...others))
+  const strong = new globalThis.Highlight(current)
+  strong.priority = 1 // drawn over the lighter marks
+  CSS.highlights.set(FIND, strong)
 }
 
 /** A popup's place: under the selection, kept inside the window. */
@@ -368,8 +714,9 @@ function ReaderPage({ pdf, n, width, aspect, root, highlights, onOpenNote }: {
     if (hit) onOpenNote(hit[0], e.clientX, e.clientY + 12)
   }
 
-  const w = size?.w ?? width
-  const h = size?.h ?? width * aspect
+  // Until a zoomed page is drawn again, it takes its new size from its own shape.
+  const w = width
+  const h = size ? (Math.abs(size.w - width) < 1 ? size.h : (width * size.h) / size.w) : width * aspect
   return (
     <div
       ref={wrap}
@@ -380,7 +727,7 @@ function ReaderPage({ pdf, n, width, aspect, root, highlights, onOpenNote }: {
     >
       <canvas ref={canvas} style={{ width: w, height: h }} aria-label={`Page ${n}`} />
       {boxes.map(([hl, bs]) =>
-        bs.map((b, i) => <div key={`${hl.id}-${i}`} className={`reader-hl${hl.note ? ' noted' : ''}`} style={b} />),
+        bs.map((b, i) => <div key={`${hl.id}-${i}`} data-hid={hl.id} className={`reader-hl${hl.note ? ' noted' : ''}`} style={b} />),
       )}
       <div ref={textLayer} className="textLayer" />
       {boxes.map(([hl, bs]) =>
