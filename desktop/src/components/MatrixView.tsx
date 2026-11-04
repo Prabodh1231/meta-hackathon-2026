@@ -588,6 +588,8 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   const [sort, setSort] = useState<DetailSort | null>(null)
   const [filters, setFilters] = useState<DetailFilter[]>([])
   const [draft, setDraft] = useState<{ field: string; min: string; max: string; text: string }>({ field: 'year', min: '', max: '', text: '' })
+  const [detailColsShown, setDetailColsShown] = useState(false) // paper-detail columns stay behind Paper details until asked for
+  const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set()) // long answers opened in place
 
   useEffect(() => {
     api.matrixDetails().then(setFields).catch(() => {})
@@ -658,6 +660,8 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
     setCellAt(null)
     setSort(null)
     setFilters([])
+    setDetailColsShown(false)
+    setExpandedCells(new Set())
     try {
       setMatrix(await api.matrix(id))
     } catch (e) {
@@ -715,6 +719,7 @@ ${g.detail}`
     if (!matrix) return
     const cols = on ? [...matrix.columns, detailColumn(f.field, f.label)] : matrix.columns.filter((c) => !(isDetail(c) && c.field === f.field))
     if (!on && sort?.field === f.field) setSort(null)
+    if (on) setDetailColsShown(true)
     run(on ? 'Adding…' : 'Removing…', () => api.updateMatrix(matrix.id, { columns: cols }))
   }
   const addFilter = () => {
@@ -733,6 +738,8 @@ ${g.detail}`
     setSort((s) => (!s || s.field !== field ? { field, dir: first } : s.dir === first ? { field, dir: -first as 1 | -1 } : null))
   }
 
+  const visibleColumns = matrix ? matrix.columns.filter((c) => !isDetail(c) || detailColsShown) : []
+  const hiddenDetailCount = matrix && !detailColsShown ? matrix.columns.filter(isDetail).length : 0
   const showNew = creating || (list !== null && list.length === 0 && !matrix)
   const done = matrix ? matrix.cells - matrix.pending : 0
   if (!matrix?.pending) readingFrom.current = null
@@ -820,6 +827,7 @@ ${g.detail}`
                 <span className="muted">
                   {matrix.rows.length} papers · {matrix.columns.filter((c) => !isDetail(c)).length} questions
                   {matrix.columns.some(isDetail) && ` · ${matrix.columns.filter(isDetail).length} details`}
+                  {` · ${visibleColumns.length} of ${matrix.columns.length} columns shown`}
                   {narrowed && ` · ${rows.length} shown`}
                   <span className="mx-how"> · each answer shows the page its quote is on: click it to read the quote</span>
                 </span>
@@ -827,7 +835,11 @@ ${g.detail}`
               <div className="mx-tools">
                 {fields.length > 0 && (
                   <>
-                    <button className={panel === 'details' ? 'on' : ''} aria-expanded={panel === 'details'} onClick={() => setPanel(panel === 'details' ? null : 'details')}
+                    <button className={panel === 'details' ? 'on' : ''} aria-expanded={panel === 'details'} onClick={() => {
+                        const next = panel === 'details' ? null : 'details'
+                        setPanel(next)
+                        if (next === 'details') setDetailColsShown(true)
+                      }}
                       title="Show the papers' year, journal, citations, abstract… as columns">
                       Paper details
                     </button>
@@ -975,6 +987,10 @@ ${g.detail}`
               <section className="mx-panel" aria-label="Paper details">
                 <span className="muted">Show as columns, straight from each paper's record. Click a detail's header to sort by it.</span>
                 <DetailChips fields={fields} columns={matrix.columns} onToggle={toggleDetail} disabled={!!busy} />
+                <button className={detailColsShown ? 'on' : ''} aria-pressed={detailColsShown} disabled={!matrix.columns.some(isDetail)} onClick={() => setDetailColsShown((s) => !s)}>
+                  {detailColsShown ? 'Detail columns shown' : 'Show detail columns'}
+                </button>
+                {hiddenDetailCount > 0 && <span className="muted">{hiddenDetailCount} hidden from the table until shown here.</span>}
               </section>
             )}
             {(panel === 'filter' || filters.length > 0) && (
@@ -1071,11 +1087,22 @@ ${g.detail}`
 
             <div className="mx-body">
               <div className="mx-table-wrap">
+                <div className="mx-col-count" role="status">
+                  <span>
+                    {visibleColumns.length} of {matrix.columns.length} columns shown
+                    {hiddenDetailCount > 0 && ` · ${hiddenDetailCount} paper-detail column${hiddenDetailCount === 1 ? '' : 's'} hidden: open Paper details to show ${hiddenDetailCount === 1 ? 'it' : 'them'}`}
+                  </span>
+                  <span className="mx-legend">
+                    <span className="mx-dot" aria-hidden="true">✓</span> quote found on the page shown ·{' '}
+                    <span className="mx-needs-check">Needs check</span> the quote wasn’t found — check it before you rely on it
+                  </span>
+                  {visibleColumns.length > 1 && <span className="mx-scroll-cue">Scroll sideways → more columns · the Study column stays in view</span>}
+                </div>
                 <table className="mx-table">
                   <thead>
                     <tr>
                       <th className="mx-study">Study</th>
-                      {matrix.columns.map((c, i) =>
+                      {visibleColumns.map((c) =>
                         isDetail(c) ? (
                           <th key={c.key} className="mx-detail-h" aria-sort={sortedBy(c) === 1 ? 'ascending' : sortedBy(c) === -1 ? 'descending' : 'none'}>
                             <button onClick={() => sortBy(c.field!)} title={`From each paper's record. Click to sort by ${c.label.toLowerCase()}.`}>
@@ -1085,7 +1112,7 @@ ${g.detail}`
                           </th>
                         ) : (
                           <th key={c.key}>
-                            <button onClick={() => setEditingCol({ index: i, label: c.label, instruction: c.instruction })} title={c.instruction || 'Edit this column'}>
+                            <button onClick={() => setEditingCol({ index: matrix.columns.indexOf(c), label: c.label, instruction: c.instruction })} title={c.instruction || 'Edit this column'}>
                               {c.label}
                             </button>
                           </th>
@@ -1110,7 +1137,7 @@ ${g.detail}`
                             </button>
                           </span>
                         </th>
-                        {matrix.columns.map((c) => {
+                        {visibleColumns.map((c) => {
                           if (isDetail(c)) {
                             const text = detailText(r.details[c.field!], c.field)
                             return (
@@ -1121,6 +1148,17 @@ ${g.detail}`
                           }
                           const cell = r.cells[c.key]
                           const on = cellAt?.doc === r.doc_id && cellAt.col === c.key
+                          const cellKey = `${r.doc_id}:${c.key}`
+                          const expanded = expandedCells.has(cellKey)
+                          const pagePart = cell?.label.split(', ').slice(-1)[0] ?? ''
+                          const printedPage = pagePart.match(/^p\. ([\w-]+)$/)?.[1]
+                          const pageText = printedPage ? `Printed p. ${printedPage}` : cell?.page ? `PDF page ${cell.page}` : pagePart
+                          const pageTitle =
+                            printedPage && cell?.page
+                              ? `Printed page ${printedPage} · PDF page ${cell.page}: open the PDF at this page`
+                              : cell?.page
+                                ? `PDF page ${cell.page}: open the PDF at this page`
+                                : pagePart
                           return (
                             <td
                               key={c.key}
@@ -1144,22 +1182,45 @@ ${g.detail}`
                                 <span className="mx-nr">Couldn't read: click to retry</span>
                               ) : (
                                 <>
-                                  <span className="mx-answer-text">{cell.answer}</span>
+                                  <span className={`mx-answer-text${expanded ? ' expanded' : ''}`}>{cell.answer}</span>
+                                  {cell.answer.length > 160 && (
+                                    <button
+                                      className="link mx-expand"
+                                      aria-expanded={expanded}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setExpandedCells((s) => {
+                                          const n = new Set(s)
+                                          if (n.has(cellKey)) n.delete(cellKey)
+                                          else n.add(cellKey)
+                                          return n
+                                        })
+                                      }}
+                                    >
+                                      {expanded ? 'Show less' : 'Show more'}
+                                    </button>
+                                  )}
                                   <span className="mx-where">
                                     {/* ✓ the quote was found on that page; ? it wasn't, so check it */}
                                     <span className="mx-dot" aria-hidden="true">{cell.status === 'unverified' ? '?' : '✓'}</span>
                                     {doc(r.doc_id)?.kind === 'pdf' && cell.page ? (
                                       <button
-                                        className="link mx-page-link"
+                                        className="mx-page-chip"
                                         onClick={(e) => (e.stopPropagation(), onOpenPdf(doc(r.doc_id)!, cell.page!))}
-                                        title="Open the PDF at this page"
+                                        title={pageTitle}
                                       >
-                                        {cell.label.split(', ').slice(-1)[0]}
+                                        {pageText}
                                       </button>
                                     ) : (
-                                      cell.label.split(', ').slice(-1)[0]
+                                      <span className="mx-page-chip" title={pageTitle}>
+                                        {pageText}
+                                      </span>
                                     )}
-                                    {cell.status === 'unverified' ? ' · quote not found' : ''}
+                                    {cell.status === 'unverified' && (
+                                      <span className="mx-needs-check" title="The quote wasn’t found in the paper: check it">
+                                        Needs check
+                                      </span>
+                                    )}
                                     {cell.edited ? ' · edited' : ''}
                                   </span>
                                 </>

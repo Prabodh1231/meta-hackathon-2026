@@ -8,6 +8,7 @@ import {
 import { Abstract } from './CitingPapersDialog'
 import { ImportProgress, owedText } from './ImportProgress'
 import { Timeline } from './Timeline'
+import { TrustBadges } from './TrustBadges'
 
 interface Props {
   docs: Doc[]
@@ -407,6 +408,7 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
             <td className="c-title">
               <span className="lib-cell-title">{d.title}</span>
               {cited.has(d.id) && <span className="cited-mark" title="Your draft cites this">Cited</span>}
+              <TrustBadges doc={d} />
               {d.missing.length > 0 && <OwedMark doc={d} />}
             </td>
             <td className="c-authors">{authorsShort(d)}</td>
@@ -657,9 +659,11 @@ function EditDetails({ doc: d, run, onDone }: { doc: Doc; run: Run; onDone: () =
 }
 
 /** Everything about one source, and what can be done with it. */
-function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onCiting, onRetry, onOpenPdf, run }: {
+function DocDetails({ doc: d, on, scopeCount, cited, onToggle, onUseWholeLibrary, onClose, onCited, onCiting, onRetry, onOpenPdf, run }: {
   doc: Doc
   on: boolean
+  scopeCount: number // sources ticked for drafting in all, this one included when `on`
+  onUseWholeLibrary: () => void
   cited: boolean
   onOpenPdf: () => void
   onToggle: () => void
@@ -679,6 +683,7 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onCiting, o
     <section className="lib-detail" aria-label="Source details">
       <div className="lib-detail-top">
         <span className={`kind kind-${d.kind}`}>{KIND_LABEL[d.kind]}</span>
+        <TrustBadges doc={d} showNote />
         <span className="spacer" />
         <button className="icon" onClick={onClose} aria-label="Close details" title="Close (Esc)">×</button>
       </div>
@@ -719,9 +724,18 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onCiting, o
                 Open PDF
               </button>
             )}
-            <label className={`lib-use${on ? ' on' : ''}`} title="Tick sources to have Muse draft only from them (Compose, Cite my sources)">
-              <input type="checkbox" checked={on} onChange={onToggle} /> Use for drafting
+            <label className={`lib-use${on ? ' on' : ''}`} title="Tick to include this source when drafting from selected sources; untick to leave it out.">
+              <input type="checkbox" checked={on} onChange={onToggle} /> {on ? 'Included for drafting' : 'Include for drafting'}
             </label>
+            <span className="lib-use-state" role="status">
+              <b>Drafting from:</b> {scopeCount === 0 ? 'whole library' : `${scopeCount} selected`}
+              {on ? ' · this source is included' : scopeCount > 0 ? ' · this source is not included' : ' · this source is included'}
+              {scopeCount > 0 && (
+                <button className="link" onClick={onUseWholeLibrary}>
+                  Use whole library
+                </button>
+              )}
+            </span>
             <button onClick={onCited} title="List the works this paper cites and download free copies of them">Cited papers…</button>
             <button onClick={onCiting} title="Newer works that cite this paper, from OpenAlex">
               Citing papers{d.cited_by_count ? ` (${d.cited_by_count.toLocaleString()})` : ''}…
@@ -1322,16 +1336,15 @@ export const LibraryPanel = memo(function LibraryPanel({
                   </span>
                 )}
                 <span className="spacer" />
-                <span className={`lib-scope${selected.size ? ' some' : ''}`} title="Tick sources to have Muse drafts and cite searches use only them">
-                  {selected.size === 0 ? (
-                    'Tick sources to draft from only those'
-                  ) : (
-                    <>
-                      <b>{selected.size}</b> ticked for drafting
-                      <button className="link" onClick={() => toggleMany(docs.filter((d) => selected.has(d.id)))}>
-                        Clear
-                      </button>
-                    </>
+                <span className={`lib-scope${selected.size ? ' some' : ''}`} role="status" aria-live="polite" title="The sources Muse drafts from and searches for citations in (Compose, Cite my sources)">
+                  <b>Drafting from:</b> {selected.size === 0 ? 'whole library' : `${selected.size} selected`}
+                  <span className="lib-scope-hint">
+                    {selected.size === 0 ? 'Tick sources to draft from only those.' : `of ${docs.length} in your library.`}
+                  </span>
+                  {selected.size > 0 && (
+                    <button className="link" onClick={() => toggleMany(docs.filter((d) => selected.has(d.id)))}>
+                      Use whole library
+                    </button>
                   )}
                 </span>
               </div>
@@ -1436,8 +1449,10 @@ export const LibraryPanel = memo(function LibraryPanel({
               key={current.id}
               doc={current}
               on={selected.has(current.id)}
+              scopeCount={selected.size}
               cited={citedSet.has(current.id)}
               onToggle={() => onToggle(current.id)}
+              onUseWholeLibrary={() => toggleMany(docs.filter((d) => selected.has(d.id)))}
               onClose={() => setOpen(null)}
               onCited={() => onCitedPapers(current.id)}
               onCiting={() => onCitingPapers(current.id)}
