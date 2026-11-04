@@ -11,6 +11,18 @@ export function CiteLegend() {
       <span className="cite-legend-mark">
         <span className="cite-mark cite-mark-searching" aria-hidden="true">cite</span> {MARK_WORD.searching.replace('…', '')}, or waiting for you to confirm one
       </span>
+      <span className="cite-legend-mark">
+        <span className="cite-mark cite-mark-verified" aria-hidden="true">cite</span> {CITATION_WORD.verified}
+      </span>
+      <span className="cite-legend-mark">
+        <span className="cite-mark cite-mark-weak" aria-hidden="true">cite</span> {CITATION_WORD.weak}
+      </span>
+      <span className="cite-legend-mark">
+        <span className="cite-mark cite-mark-unsupported" aria-hidden="true">cite</span> {CITATION_WORD.unsupported}
+      </span>
+      <span className="cite-legend-mark">
+        <span className="cite-mark cite-mark-none" aria-hidden="true">cite</span> No source found
+      </span>
     </div>
   )
 }

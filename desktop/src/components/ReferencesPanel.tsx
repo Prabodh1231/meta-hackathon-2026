@@ -47,6 +47,30 @@ export function ReferencesPanel({ style, citedDocIds, onError }: Props) {
     }
   }
 
+  /** Save the list as a file, so it can go into another app without selecting the text first. */
+  async function exportList(asBibtex = false) {
+    try {
+      const list = asBibtex ? await fetchEntries('bibtex') : entries
+      if (!list?.length) return
+      const text = list.join(asBibtex ? '\n\n' : '\n')
+      const name = asBibtex ? 'references.bib' : 'reference-list.txt'
+      const data = new TextEncoder().encode(text)
+      if (window.rc?.saveFile) await window.rc.saveFile(name, data.buffer as ArrayBuffer)
+      else {
+        const url = URL.createObjectURL(new Blob([data], { type: 'text/plain;charset=utf-8' }))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = name
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(url), 5000)
+      }
+      setCopied(asBibtex ? 'exported-bibtex' : 'exported-list')
+      setTimeout(() => setCopied(null), 2000)
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const label = CITATION_STYLES.find((s) => s.value === style)?.label ?? style
   return (
     <div className="references">
@@ -55,8 +79,8 @@ export function ReferencesPanel({ style, citedDocIds, onError }: Props) {
           {label}
           {entries && entries.length > 0 && ` · ${entries.length} source${entries.length === 1 ? '' : 's'} cited (a source cited twice is listed once)`} · style in Settings
         </span>
-        <button onClick={build} title="Build the list again from the sources the draft cites now">
-          Rebuild
+        <button onClick={build} title="Refresh: rebuild this list from the sources the draft cites now, in the style above. Then copy or export it below.">
+          Refresh list
         </button>
       </div>
       {!entries && <p className="muted">Building the list from the sources your draft cites…</p>}
@@ -73,9 +97,13 @@ export function ReferencesPanel({ style, citedDocIds, onError }: Props) {
               <li key={i}>{e}</li>
             ))}
           </ul>
-          <div className="row">
+          <div className="row ref-actions" aria-label="Copy or export the reference list">
+            <button className="primary" onClick={() => copy(entries.join('\n'), 'list')}>
+              {copied === 'list' ? 'Copied list' : 'Copy list'}
+            </button>
             <button onClick={copyBibtex}>{copied === 'bibtex' ? 'Copied BibTeX' : 'Copy as BibTeX'}</button>
-            <button onClick={() => copy(entries.join('\n'), 'list')}>{copied === 'list' ? 'Copied' : 'Copy'}</button>
+            <button onClick={() => exportList(false)}>{copied === 'exported-list' ? 'Exported' : 'Export list (.txt)'}</button>
+            <button onClick={() => exportList(true)}>{copied === 'exported-bibtex' ? 'Exported' : 'Export BibTeX (.bib)'}</button>
           </div>
         </>
       )}
