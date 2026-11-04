@@ -719,7 +719,7 @@ function DocDetails({ doc: d, on, cited, onToggle, onClose, onCited, onCiting, o
                 Open PDF
               </button>
             )}
-            <label className={`lib-use${on ? ' on' : ''}`} title="Tick sources to have the Assistant draft only from them">
+            <label className={`lib-use${on ? ' on' : ''}`} title="Tick sources to have Muse draft only from them (Compose, Cite my sources)">
               <input type="checkbox" checked={on} onChange={onToggle} /> Use for drafting
             </label>
             <button onClick={onCited} title="List the works this paper cites and download free copies of them">Cited papers…</button>
@@ -1322,7 +1322,7 @@ export const LibraryPanel = memo(function LibraryPanel({
                   </span>
                 )}
                 <span className="spacer" />
-                <span className={`lib-scope${selected.size ? ' some' : ''}`} title="Tick sources to have the Assistant and cite searches use only them">
+                <span className={`lib-scope${selected.size ? ' some' : ''}`} title="Tick sources to have Muse drafts and cite searches use only them">
                   {selected.size === 0 ? (
                     'Tick sources to draft from only those'
                   ) : (

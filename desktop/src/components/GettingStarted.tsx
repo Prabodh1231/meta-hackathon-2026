@@ -39,10 +39,10 @@ export function GettingStarted({ mock, sources, words, citations, onConnectModel
     {
       done: words > 0,
       title: 'Start your draft',
-      text: 'Type on the page, let the Assistant draft from your sources with cited quotes, or bring in a Word file you already have (or drop it on the window).',
+      text: 'Type on the page, let Muse draft from your sources with cited quotes (Compose), or bring in a Word file you already have (or drop it on the window).',
       actions: (
         <>
-          <button className={sources && !words ? 'primary' : ''} onClick={onAsk}>Ask the Assistant</button>
+          <button className={sources && !words ? 'primary' : ''} onClick={onAsk}>Draft with Muse</button>
           <button onClick={onOpenWord}>Import a Word file</button>
         </>
       ),

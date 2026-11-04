@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C · Write, then Review</title>
+<link rel="stylesheet" href="write-shared.css">
+<style>
+.side.ctx { width: 380px; }
+.side .foot { border-top: 1px solid var(--border); padding: 12px 16px 14px; background: var(--panel); }
+.para-tag { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.mini { display: flex; gap: 8px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.mini:last-child { border-bottom: 0; }
+.mini .q { font: 13px/1.45 var(--doc-font); color: #33473a; }
+.hl { border-left: 3px solid var(--mark); padding: 2px 0 2px 10px; font: 13.5px/1.5 var(--doc-font); }
+.paper p.cursor { box-shadow: -14px 0 0 -11px var(--accent); }
+.sec { border: 1px solid var(--border); border-radius: 12px; background: #fff; margin-bottom: 10px; overflow: hidden; }
+.sec > button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; text-align: left; }
+.sec > button .st { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font: 700 12px "Segoe UI"; flex: none; }
+.st.bad { background: var(--bad-bg); color: var(--bad); } .st.warn { background: var(--warn-bg); color: var(--warn); } .st.ok { background: var(--ok-bg); color: var(--ok); } .st.info { background: var(--pending-bg); color: var(--muted); }
+.sec > button b { font-size: 14px; }
+.sec > button .s { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+.sec .in { padding: 0 14px 12px; display: none; }
+.sec.open .in { display: block; }
+.sec.open > button .chev { transform: rotate(90deg); }
+.chev { color: var(--muted); transition: transform .15s; }
+.stepper { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--rail); margin-bottom: 12px; font-size: 13px; }
+.ins { background: var(--ins); text-decoration: none; } .del { background: var(--del); text-decoration: line-through; color: #7a3a30; }
+.ref { font: 13px/1.5 var(--doc-font); padding-left: 20px; text-indent: -20px; margin: 0 0 8px; }
+.vrow { display: grid; grid-template-columns: 30px 1fr auto; gap: 2px 8px; padding: 7px 0; border-top: 1px solid var(--border); align-items: center; font-size: 13px; }
+.review-banner { position: sticky; top: 64px; z-index: 4; width: min(760px, calc(100% - 48px)); margin: 10px auto -8px; display: flex; gap: 14px; align-items: center; padding: 6px 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+.review-banner .k { white-space: nowrap; display: inline-flex; gap: 5px; align-items: center; }
+.sw { width: 18px; height: 10px; border-radius: 3px; display: inline-block; }
+</style></head>
+<body>
+<div class="concept"><b>Concept C · Write, then Review</b><span>Two states of the same page. Write keeps only what helps this paragraph; Review is one checklist pass before you export.</span><a href="index.html">all concepts</a><div class="steps"></div></div>
+<div class="app" id="app"></div>
+<script src="write-shared.js"></script>
+<script>
+const n = RC.counts()
+const app = document.getElementById('app')
+app.innerHTML = RC.header({ center: `<div class="seg" style="margin-left:auto" role="tablist" aria-label="Write or review">
+      <button role="tab" id="m-write" aria-pressed="true">✎ Write</button>
+      <button role="tab" id="m-review" aria-pressed="false">✓ Review <span class="n">${n.needs + 2}</span></button></div>
+    <div class="search" style="margin:0 auto 0 14px;flex-basis:340px">⌕ <span style="flex:1">Search sources, drafts and actions</span><kbd>Ctrl K</kbd></div>` }) + RC.rail() + `
+  <main class="stage" id="stage">
+    <div id="tb"></div>
+    <div id="rb"></div>
+    <article class="paper" id="paper"></article>
+  </main>
+  <aside class="side ctx" id="side"></aside>
+  <footer class="dock" id="dock"></footer>`
+
+const paper = document.getElementById('paper'), side = document.getElementById('side')
+
+// ---------- Write state: tools for the paragraph at the cursor, composer docked at the bottom ----------
+function writeSide(kind = 'draft', para = 1) {
+  const ks = para === 1 ? ['c1', 'c2', 'c3'] : ['c4', 'c5', 'c9']
+  const chat = kind === 'chat'
+  return `
+  <div class="head" style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">Beside this paragraph</b><span class="para-tag" style="margin-left:auto">¶ ${para} · follows your cursor</span></div>
+  <div class="body">
+    <div class="eyebrow">Its citations · ${ks.length}</div>
+    ${ks.map((k) => { const c = RC.C[k]; return `<div class="mini"><span class="cite" data-k="${k}" data-s="${c.s}" style="margin:0;flex:none">${c.s === 'ok' ? 'p. ' + c.p : RC.WORD[c.s]}</span><div class="q">${c.quote ? '“' + c.quote.slice(0, 80) + '…”' : '<span class="muted" style="font-family:Segoe UI;font-size:12.5px">' + c.why + '</span>'}</div></div>` }).join('')}
+    <div class="eyebrow">From your reading · 2</div>
+    <div class="card"><div class="hl">“Spindle bursts preceded 78% of hippocampal reactivation events…”</div><div class="small muted" style="margin-top:5px">Chen & Martinez 2021, p. 342 · note: <i>key for the age argument?</i></div><div class="acts"><button class="btn">Insert as cited quote</button></div></div>
+    <div class="card"><div class="hl">“Older participants showed fewer spindles coupled to slow oscillations…”</div><div class="small muted" style="margin-top:5px">Ruiz et al. 2017, p. 6</div><div class="acts"><button class="btn">Insert as cited quote</button><button class="btn">Write from these 2</button></div></div>
+    ${kind === 'result' ? `<div class="eyebrow">Muse draft</div><div class="card" style="border-color:var(--accent)"><div style="font:14.5px/1.6 var(--doc-font)">Spindle–slow-oscillation coupling weakens with age,${RC.chip('c6')} which would leave fewer windows for cued replay.${RC.chip('c1')}</div>
+      <div class="small muted" style="margin:6px 0">2 citations, both supported</div><div class="acts"><button class="btn go">Insert after ¶ 1</button><button class="btn">Try again</button><button class="btn">Discard</button></div></div>` : ''}
+    ${chat ? `<div class="eyebrow">Chat · own knowledge, not your library</div>
+      <div class="card" style="background:var(--rail);border-color:transparent;margin-left:40px">What's the difference between a spindle and a ripple?</div>
+      <div class="card">A <b>spindle</b> is an 11–16 Hz burst from the thalamus; a <b>ripple</b> is a ~150 Hz burst in the hippocampus. Coupling is when the two line up… <div class="acts"><button class="btn">Insert into draft</button><button class="btn">Copy</button></div></div>` : ''}
+  </div>
+  <div class="foot">
+    <div class="seg" style="width:100%;margin-bottom:8px"><button style="flex:1;justify-content:center" aria-pressed="${!chat}" onclick="setWrite('draft')">✦ Draft with citations</button><button style="flex:1;justify-content:center" aria-pressed="${chat}" onclick="setWrite('chat')">Ask Muse</button></div>
+    <textarea class="ask" style="min-height:64px" placeholder="${chat ? 'Ask anything: ideas, explanations, wording…' : 'What should Muse write next to ¶ ' + para + '?'}"></textarea>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px"><span class="small muted" style="flex:1">${chat ? 'Answers are not cited.' : 'From all 157 sources · <a href="#" style="color:var(--accent)">choose</a>'}</span><button class="primary" onclick="setWrite('${chat ? 'chat' : 'result'}')">${chat ? 'Send' : 'Draft'}</button></div>
+  </div>`
+}
+
+// ---------- Review state: one checklist, worst first, a stepper through every issue ----------
+function reviewSide(open = 'cit', diff = false) {
+  const issue = (k) => { const c = RC.C[k]; return `<div class="card ${c.s === 'part' ? 'part' : 'bad'}"><div style="display:flex;gap:6px;align-items:center"><span class="cite" data-k="${k}" data-s="${c.s}" style="margin:0">${RC.WORD[c.s]}</span><span class="small muted">${c.src ? c.src + ', p. ' + c.p : ''}</span></div><div class="why" style="margin-top:5px">${c.why}</div><div class="acts"><button class="btn go">${c.s === 'nosrc' ? 'Find a source' : 'Find another source'}</button><button class="btn">Reword with Muse</button><button class="btn warn">Remove</button></div></div>` }
+  const sec = (id, st, glyph, title, sum, inner) => `<div class="sec ${open === id ? 'open' : ''}" data-sec="${id}"><button onclick="openSec('${id}')"><span class="st ${st}">${glyph}</span><b>${title}</b><span class="s">${sum}</span><span class="chev">›</span></button><div class="in">${inner}</div></div>`
+  return `
+  <div class="head"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">Review</b><span class="small muted">rechecks as you edit</span><button class="btn" style="margin-left:auto">Recheck all</button></div></div>
+  <div class="body">
+    <div class="stepper"><b style="white-space:nowrap">1 of 5</b><span class="muted" style="white-space:nowrap">${RC.WORD.no} · ¶ 2</span><span style="flex:1"></span><button class="btn" style="height:24px">‹</button><button class="btn" style="height:24px">›</button><kbd>F8</kbd></div>
+    ${sec('cit', 'bad', n.needs, 'Citations', `${n.needs} need attention · ${n.ok} supported`, `<div style="margin-bottom:10px">${RC.legend()}</div>${['c4', 'c9', 'c3'].map(issue).join('')}<div class="card"><span class="cite" data-s="finding" style="margin:0">Finding a source…</span><div class="why" style="margin-top:5px">${RC.C.c5.claim}</div></div>`)}
+    ${sec('dup', 'warn', 2, 'Duplication', '7% · 2 passages', `
+      <div class="card"><b>Repeats your own sentence</b> <span class="small muted">· ¶ 1 and ¶ 4</span><div class="acts"><button class="btn">Delete the repeat</button></div></div>
+      <div class="card"><b>94% the same as a source</b> <span class="small muted">· Lindqvist 2019, p. 2</span><div class="acts"><button class="btn">Make it a quote</button><button class="btn">Reword with Muse</button></div></div>`)}
+    ${sec('refs', 'warn', '1', 'References', '4 sources · 1 missing a DOI', `
+      <div style="display:flex;gap:6px;margin-bottom:10px"><span class="small muted" style="flex:1;align-self:center">APA 7</span><button class="btn">Copy all</button><button class="btn go">Insert at end</button></div>
+      <p class="ref">Chen, A., & Martinez, B. (2021). Targeted memory reactivation during slow-wave sleep. <i>Journal of Sleep Research</i>, 341–343.</p>
+      <p class="ref">Lindqvist, E. (2019). Spindles as a gate for systems consolidation. <i>Sleep Science Notes</i>, 2(1), 1–9.</p>
+      <p class="ref">Park, J., & Osei, K. (2023). Sleep and procedural learning. <i>Example Reviews</i>, 14, 20–34.</p>
+      <p class="ref">Ruiz, M., Tan, H., & Fogel, S. (2017). Coupled rhythms and overnight memory. <i>Example Journal</i>, 8. <span style="font:12px Segoe UI;color:var(--warn)">◐ no DOI · fix in Library</span></p>`)}
+    ${sec('ver', 'info', '⟲', 'Changes since v8', '57% changed', `
+      <label class="small" style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" ${diff ? 'checked' : ''} onchange="setReview('ver', this.checked)"> Show changes on the page</label>
+      <div style="display:flex;gap:6px;margin-bottom:6px"><button class="primary" style="height:28px">Save a version</button><button class="btn">Restore v8…</button></div>
+      ${[['v8', 'Before a large edit', '1 Nov'], ['v7', 'Before a large edit', '1 Nov'], ['v6', 'Milestone: first full section', '1 Nov'], ['v5', 'Autosave', '1 Nov']].map(([v, t, d]) => `<div class="vrow"><b>${v}</b><span>${t} <span class="muted">· ${d}</span></span><button class="btn" style="height:24px">Compare</button></div>`).join('')}`)}
+  </div>
+  <div class="foot" style="display:flex;align-items:center;gap:10px"><span class="small muted" style="flex:1">5 issues left. You can export anyway.</span><button class="primary">⤓ Export</button></div>`
+}
+
+const TB = RC.toolbar('<span class="sep"></span><button class="ai">❝ Cite</button><button class="ai" onclick="setWrite(\'chat\')" title="Ask Muse about the selection (Ctrl+J)">✦ Ask Muse</button>')
+function dock(review) {
+  return `<span class="stat"><b>153</b> words</span>
+    <button class="stat" onclick="setReview('cit')">Citations: <b style="color:var(--ok)">${n.ok} supported</b> · <span class="bad">${n.needs} need attention</span> · ${n.finding} finding a source</button>
+    <button class="stat" onclick="setReview('dup')">Duplication <b>7%</b></button>
+    <button class="stat" onclick="setReview('ver')">57% changed since v8</button>
+    <span class="right">${review ? '' : '<span class="small">Ready to hand in? <a href="#" onclick="setReview(\'cit\');return false" style="color:var(--accent);font-weight:600">Review</a> ·</span>'}<span class="dot"></span> 157 sources · Muse</span>`
+}
+function mode(review) {
+  document.getElementById('m-write').setAttribute('aria-pressed', !review)
+  document.getElementById('m-review').setAttribute('aria-pressed', review)
+  document.getElementById('tb').innerHTML = review ? '' : TB
+  document.getElementById('dock').innerHTML = dock(review)
+}
+function setWrite(kind = 'draft', para = 1) {
+  mode(false)
+  document.getElementById('rb').innerHTML = ''
+  paper.className = 'paper clean'
+  paper.innerHTML = RC.draft({ cursorPara: para })
+  paper.querySelector(`p[data-para="${para}"]`).classList.add('cursor')
+  side.innerHTML = writeSide(kind, para)
+}
+function setReview(open = 'cit', diff = false) {
+  mode(true)
+  paper.className = 'paper'
+  let html = RC.draft({ dupMarks: true, cursorPara: 0 })
+  if (diff) html = html.replace('Playing a sound linked to a memory during this stage, known as targeted memory reactivation, strengthens it.', 'Playing a sound linked to a memory during this stage, <span class="ins">known as targeted memory reactivation,</span> strengthens it.')
+    .replace('Spindle density falls steadily', '<span class="del">Spindles decline</span> <span class="ins">Spindle density falls steadily</span>')
+  paper.innerHTML = html
+  document.getElementById('rb').innerHTML = `<div class="review-banner"><b style="color:var(--text)">Reviewing</b>
+    <span class="k"><span class="sw" style="background:#f3d9a6"></span>repeats your text</span><span class="k"><span class="sw" style="background:#d9e4f6"></span>close to a source</span>
+    ${diff ? '<span class="k"><span class="sw" style="background:var(--ins)"></span>added since v8</span><span class="k"><span class="sw" style="background:var(--del)"></span>removed</span>' : ''}
+    <span style="margin-left:auto">${diff ? '' : 'You can still type here.'}</span></div>`
+  side.innerHTML = reviewSide(open, diff)
+  if (open === 'cit') { const c = paper.querySelector('.cite[data-k="c4"]'); c.classList.add('cur'); c.scrollIntoView({ block: 'center' }) }
+}
+function openSec(id) { document.querySelectorAll('.sec').forEach((s) => s.classList.toggle('open', s.dataset.sec === id && !s.classList.contains('open'))) }
+document.getElementById('m-write').onclick = () => setWrite()
+document.getElementById('m-review').onclick = () => setReview()
+RC.bindChips(document)
+
+RC.flows({
+  'Write + draft with citations': () => setWrite('result'),
+  'Ask Muse': () => setWrite('chat'),
+  'Cursor in ¶ 2': () => setWrite('draft', 2),
+  'Review: citations': () => setReview('cit'),
+  'Review: duplication': () => setReview('dup'),
+  'Review: references': () => setReview('refs'),
+  'Review: changes / versions': () => setReview('ver', true),
+})
+</script>
+</body></html>

@@ -129,7 +129,7 @@ export function HistoryPanel({ draftId, list, onRefresh, getJSON, getTitle, onRe
   return (
     <div className="history">
       <section className="hist-now">
-        <Ring pct={list?.current_change ?? 0} caption="since last" size={68} />
+        <Ring pct={list?.current_change ?? 0} caption="changed" size={68} />
         <div className="hist-now-text">
           <div className="hist-now-title">Current draft</div>
           <div className="muted">

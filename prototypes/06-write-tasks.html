@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A · Three tasks</title>
+<link rel="stylesheet" href="write-shared.css">
+<style>
+.side .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: var(--rail); border-radius: 12px; }
+.side .modes button { padding: 7px 4px 6px; border-radius: 9px; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--muted); font-size: 13px; position: relative; }
+.side .modes button b { font-size: 16px; line-height: 1.1; }
+.side .modes button[aria-pressed="true"] { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.side .modes .n { position: absolute; top: 4px; right: 10px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font: 600 11px/18px "Segoe UI"; }
+.side .modes .n.q { background: var(--pending-bg); color: var(--muted); }
+.side .desc { margin: 10px 2px 0; font-size: 12.5px; color: var(--muted); }
+.hl { border-left: 3px solid var(--mark); padding: 2px 0 2px 10px; font: 13.5px/1.5 var(--doc-font); }
+.thread .me { margin: 0 0 8px 40px; padding: 8px 11px; background: var(--rail); border-radius: 10px 10px 2px 10px; }
+.thread .ai { margin: 0 30px 10px 0; padding: 9px 12px; background: #fff; border: 1px solid var(--border); border-radius: 10px 10px 10px 2px; }
+.thread .who { font: 600 11px "Segoe UI"; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+.preview p { font: 14.5px/1.6 var(--doc-font); margin: 6px 0 4px; }
+.preview .cite { font-size: 11.5px; }
+.sumgrid { display: grid; grid-template-columns: 1fr auto; gap: 10px 14px; align-items: center; }
+.big { font: 600 22px/1 var(--doc-font); }
+.srcrow { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--border); }
+.srcrow .t { flex: 1; min-width: 0; }
+.srcrow .t b { display: block; font-weight: 600; }
+.srcrow .glyphs { display: flex; gap: 3px; }
+.srcrow .glyphs .cite { padding: 0 5px; margin: 0; font-size: 11px; }
+.srcrow .glyphs .cite .lbl { display: none; }
+.ref { font: 13.5px/1.55 var(--doc-font); padding-left: 22px; text-indent: -22px; margin: 0 0 10px; }
+.vers { position: fixed; z-index: 50; top: 52px; left: 64px; width: 430px; background: var(--panel); border-radius: 12px; box-shadow: var(--pop); padding: 14px 16px; }
+.vrow { display: grid; grid-template-columns: 34px 1fr auto; gap: 4px 8px; padding: 9px 0; border-top: 1px solid var(--border); align-items: center; }
+.vrow .acts { grid-column: 2 / 4; display: flex; gap: 6px; }
+.callout { position: fixed; z-index: 70; max-width: 260px; padding: 9px 12px; border-radius: 10px; background: #18241c; color: #e4ebe5; font-size: 12.5px; box-shadow: var(--pop); }
+.callout::before { content: ""; position: absolute; width: 10px; height: 10px; background: #18241c; transform: rotate(45deg); }
+.callout.l::before { left: -5px; top: 14px; } .callout.u::before { top: -5px; left: 22px; } .callout.d::before { bottom: -5px; left: 22px; }
+</style></head>
+<body>
+<div class="concept"><b>Concept A · Three tasks</b><span>Seven tabs become three jobs: <i>Compose</i>, <i>Check</i>, <i>Sources</i>. Versions move to the draft's name.</span><a href="index.html">all concepts</a><div class="steps" aria-label="Flows"></div></div>
+<div class="app" id="app"></div>
+<script src="write-shared.js"></script>
+<script>
+const n = RC.counts()
+const app = document.getElementById('app')
+app.innerHTML = RC.header({ extra: '<button id="vbtn" title="Versions of this draft">v8 ▾</button> · <span>57% changed since v8</span>' }) + RC.rail() + `
+  <main class="stage">
+    ${RC.toolbar('<span class="sep"></span><button class="ai" title="Mark this sentence for a citation (Ctrl+Shift+C)">❝ Cite</button><button class="ai" id="tb-ask" title="Ask Muse about the selection (Ctrl+J)">✦ Ask Muse</button>')}
+    <article class="paper" id="paper">${RC.draft()}</article>
+  </main>
+  <aside class="side">
+    <div class="head">
+      <div class="modes" role="tablist" aria-label="Writing tools">
+        <button role="tab" data-m="compose"><b>✎</b>Compose</button>
+        <button role="tab" data-m="check"><b>✓</b>Check<span class="n" title="${n.needs} need attention">${n.needs}</span></button>
+        <button role="tab" data-m="sources"><b>❝</b>Sources</button>
+      </div>
+      <p class="desc" id="desc"></p>
+    </div>
+    <div class="body" id="body"></div>
+  </aside>
+  <footer class="dock">
+    <span class="stat"><b>153</b> words</span>
+    <button class="stat" data-go="check" title="Open Check">Citations: <b style="color:var(--ok)">${n.ok} supported</b> · <span class="bad">${n.needs} need attention</span> · ${n.finding} finding a source</button>
+    <button class="stat" data-go="check" title="Open Check">Duplication <b>7%</b></button>
+    <span class="right"><span class="dot"></span> 157 sources · Muse</span>
+  </footer>`
+
+const DESC = {
+  compose: 'Write with Muse: draft from your sources with checked quotes, or just chat. Your highlights for this paragraph sit on top.',
+  check: 'Everything that needs you, worst first: citations, then duplication. Same words as the chips in the draft.',
+  sources: 'What this draft cites, and the reference list to copy or insert.',
+}
+const hl = `
+  <div class="eyebrow">From your reading · this paragraph <span class="r small">updates as you move</span></div>
+  <div class="card"><div class="hl">“Spindle bursts preceded 78% of hippocampal reactivation events…”</div>
+    <div class="small muted" style="margin-top:6px">Chen & Martinez 2021, p. 342 · your note: <i>key for the age argument?</i></div>
+    <div class="acts"><button class="btn">Insert as cited quote</button><button class="btn">Open page</button></div></div>
+  <div class="card"><div class="hl">“Older participants showed fewer spindles coupled to slow oscillations…”</div>
+    <div class="small muted" style="margin-top:6px">Ruiz et al. 2017, p. 6</div>
+    <div class="acts"><button class="btn">Insert as cited quote</button><button class="btn">Write from these 2</button></div></div>`
+
+function compose(kind) {
+  const cited = kind !== 'chat'
+  return hl + `
+  <div class="eyebrow" style="margin-top:20px">Ask Muse</div>
+  <div class="seg" style="width:100%;margin-bottom:8px" role="radiogroup">
+    <button style="flex:1;justify-content:center" aria-pressed="${cited}" onclick="show('compose','draft')">Cite my sources</button>
+    <button style="flex:1;justify-content:center" aria-pressed="${!cited}" onclick="show('compose','chat')">Just chat</button>
+  </div>
+  ${kind === 'chat' ? `<div class="thread">
+      <div class="me"><div class="who">You · about the selection</div>What's the difference between a spindle and a ripple?</div>
+      <div class="ai"><div class="who">Muse · own knowledge, not your library</div>A <b>spindle</b> is a 11–16 Hz burst from the thalamus lasting about a second; a <b>ripple</b> is a much faster (~150 Hz) burst in the hippocampus. Spindle–ripple coupling is when the two line up…
+        <div class="acts" style="margin-top:8px"><button class="btn">Insert into draft</button><button class="btn">Copy</button></div></div>
+    </div>` : ''}
+  ${kind === 'result' ? `<div class="card preview" style="border-color:var(--accent)">
+      <div class="small" style="display:flex;gap:6px;align-items:center"><b>Muse draft</b><span class="muted">· 2 citations, both</span><span class="cite" data-s="ok" style="font-size:11px;cursor:default">Supported</span></div>
+      <p>Spindle–slow-oscillation coupling weakens with age,${RC.chip('c6')} which would leave fewer windows for cued replay.${RC.chip('c1')}</p>
+      <div class="acts"><button class="btn go">Insert at cursor</button><button class="btn">Try again</button><button class="btn">Discard</button></div>
+      <div class="small muted" style="margin-top:6px">Inserted text keeps a “Written by Muse” mark until you edit it.</div></div>` : ''}
+  <textarea class="ask" placeholder="${cited ? 'What should Muse write? e.g. “Summarize the evidence that spindles predict consolidation.”' : 'Ask Muse anything: ideas, explanations, wording…'}"></textarea>
+  <div class="sugg">${cited
+    ? '<button>Summarize the main findings</button><button>Write an intro paragraph</button><button>Compare the methods</button>'
+    : '<button>Explain this simply</button><button>Make this paragraph clearer</button><button>Suggest a title</button>'}</div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <span class="small muted" style="flex:1">${cited ? 'From <b>all 157 sources</b> · <a href="#" style="color:var(--accent)">Choose sources</a>' : 'Muse answers from its own knowledge; nothing it says is cited.'}</span>
+    <button class="primary" onclick="show('compose','${cited ? 'result' : 'chat'}')">${cited ? 'Draft with citations' : 'Send'}</button>
+  </div>`
+}
+
+function issue(k) {
+  const c = RC.C[k]
+  const cls = c.s === 'part' ? 'part' : 'bad'
+  return `<div class="card ${cls}" data-issue="${k}">
+    <div style="display:flex;gap:8px;align-items:center"><span class="cite" data-k="${k}" data-s="${c.s}">${RC.WORD[c.s]}</span><span class="small muted">${c.src ? c.src + ', p. ' + c.p : 'no source yet'} · citation ${c.n}</span></div>
+    <div class="claim">${c.claim}</div><div class="why">${c.why}</div>
+    <div class="acts"><button class="btn go">${c.s === 'nosrc' ? 'Find a source' : 'Find another source'}</button><button class="btn" onclick="focusCite('${k}')">Show in draft</button><button class="btn">Reword with Muse</button><button class="btn warn">Remove</button></div></div>`
+}
+function check() {
+  const seg = (s, v) => `<i style="width:${(v / n.total) * 100}%;background:var(--${s === 'ok' ? 'ok' : s === 'part' ? 'warn' : s === 'finding' ? 'pending' : 'bad'})"></i>`
+  return `
+  <div class="card">
+    <div class="sumgrid">
+      <div><div class="big">${n.needs} of ${n.total}</div><div class="small muted">citations need your attention</div></div>
+      <button class="btn">Recheck all</button>
+    </div>
+    <div class="meter" style="margin:12px 0 10px">${seg('ok', n.ok)}${seg('part', n.part)}${seg('no', n.no)}${seg('nosrc', n.nosrc)}${seg('finding', n.finding)}</div>
+    ${RC.legend()}
+    <div style="border-top:1px solid var(--border);margin:12px 0 0;padding-top:10px" class="sumgrid">
+      <div><b>Duplication 7%</b> <span class="small muted">· 2 passages · checked 1 min ago, rechecks as you write</span></div><span></span>
+    </div>
+  </div>
+  <div class="eyebrow">Needs your attention · ${n.needs} <span class="r"><button class="btn" style="height:24px">‹</button> 1 of 3 <button class="btn" style="height:24px">›</button></span></div>
+  ${['c4', 'c9', 'c3'].map(issue).join('')}
+  <div class="eyebrow">Duplication · 2 passages</div>
+  <div class="card"><div class="small"><b>Repeats your own sentence</b> <span class="muted">· paragraph 1</span></div><div class="claim"><span class="dup">Playing a sound linked to a memory during this stage strengthens it.</span></div>
+    <div class="acts"><button class="btn" onclick="dupMarks()">Show both</button><button class="btn">Delete this one</button></div></div>
+  <div class="card"><div class="small"><b>94% the same as a source</b> <span class="muted">· Lindqvist 2019, p. 2</span></div><div class="claim"><span class="near">Spindles are thought to provide a temporal window for dialogue…</span></div>
+    <div class="acts"><button class="btn" onclick="dupMarks()">Show in draft</button><button class="btn">Make it a quote</button><button class="btn">Reword with Muse</button></div></div>
+  <div class="eyebrow">Still checking · 1</div>
+  <div class="card"><div style="display:flex;gap:8px;align-items:center"><span class="cite" data-s="finding">Finding a source…</span><span class="small muted">12 s</span></div><div class="claim">${RC.C.c5.claim}</div></div>
+  <details><summary class="eyebrow" style="cursor:pointer">Supported · ${n.ok}</summary>${['c1', 'c2', 'c6', 'c7', 'c8'].map((k) => `<div class="card"><span class="cite" data-k="${k}" data-s="ok">${RC.C[k].src}, p. ${RC.C[k].p}</span><div class="claim" style="font-size:13.5px">${RC.C[k].claim}</div></div>`).join('')}</details>`
+}
+function sources(view) {
+  const refs = view === 'refs'
+  const row = (name, title, ks) => `<div class="srcrow"><div class="t"><b>${name}</b><span class="small muted">${title}</span></div><div class="glyphs">${ks.map(RC.chip).join('')}</div></div>`
+  return `
+  <div class="seg" style="width:100%;margin-bottom:12px">
+    <button style="flex:1;justify-content:center" aria-pressed="${!refs}" onclick="show('sources','list')">Cited sources · 4</button>
+    <button style="flex:1;justify-content:center" aria-pressed="${refs}" onclick="show('sources','refs')">Reference list</button>
+  </div>
+  ${refs ? `<div style="display:flex;gap:6px;align-items:center;margin-bottom:12px"><span class="small muted" style="flex:1">APA 7 · <a href="#" style="color:var(--accent)">change style</a></span><button class="btn">Copy all</button><button class="btn go">Insert at end of draft</button></div>
+    <p class="ref">Chen, A., & Martinez, B. (2021). Targeted memory reactivation during slow-wave sleep. <i>Journal of Sleep Research</i>, 341–343. https://doi.org/10.5555/jsr.2021.0147</p>
+    <p class="ref">Lindqvist, E. (2019). Spindles as a gate for systems consolidation. <i>Sleep Science Notes</i>, 2(1), 1–9.</p>
+    <p class="ref">Park, J., & Osei, K. (2023). Sleep and procedural learning: A meta-analysis. <i>Example Reviews</i>, 14, 20–34.</p>
+    <p class="ref">Ruiz, M., Tan, H., & Fogel, S. (2017). Coupled rhythms and overnight memory. <i>Example Journal</i>, 8, 1–12. <span class="small" style="color:var(--warn);font-family:'Segoe UI'">◐ no DOI · fix in Library</span></p>
+    <p class="small muted">Two sentences have no source yet, so nothing is listed for them.</p>`
+  : `${row('Chen & Martinez 2021', 'Targeted memory reactivation during slow-wave sleep', ['c1', 'c2', 'c3', 'c4'])}
+    ${row('Ruiz et al. 2017', 'Coupled rhythms and overnight memory', ['c6'])}
+    ${row('Park & Osei 2023', 'Sleep and procedural learning', ['c7'])}
+    ${row('Lindqvist 2019', 'Spindles as a gate for systems consolidation', ['c8'])}
+    <div class="srcrow"><div class="t"><b class="muted">No source yet</b><span class="small muted">2 sentences</span></div><div class="glyphs">${RC.chip('c5')}${RC.chip('c9')}</div></div>
+    <p class="small muted" style="margin-top:10px">Click a source to open its details in the Library; click a mark to see its quote.</p>`}`
+}
+
+let cur = 'compose'
+function show(mode, sub) {
+  cur = mode
+  document.querySelectorAll('.modes button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.m === mode))
+  document.getElementById('desc').textContent = DESC[mode]
+  document.getElementById('body').innerHTML = mode === 'compose' ? compose(sub) : mode === 'check' ? check() : sources(sub)
+}
+document.querySelectorAll('.modes button').forEach((b) => (b.onclick = () => show(b.dataset.m)))
+document.querySelectorAll('[data-go]').forEach((b) => (b.onclick = () => show(b.dataset.go)))
+document.getElementById('tb-ask').onclick = () => show('compose', 'chat')
+RC.bindChips(document)
+
+function focusCite(k) { document.querySelectorAll('.cite.cur').forEach((x) => x.classList.remove('cur')); const el = document.querySelector(`#paper .cite[data-k="${k}"]`); el.classList.add('cur'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }) }
+function dupMarks() { document.getElementById('paper').innerHTML = RC.draft({ dupMarks: true }) }
+
+// Versions popover, from the draft's name
+const vers = document.createElement('div'); vers.className = 'vers'; vers.hidden = true
+vers.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">Versions</b><span class="small muted">57% changed since v8</span><button class="primary" style="margin-left:auto;height:28px">Save a version</button></div>
+  <div class="seg" style="margin:10px 0"><button aria-pressed="true">All</button><button>Milestones</button></div>
+  ${[['v8', 'Before a large edit', '1 Nov · 561 words', '31%'], ['v7', 'Before a large edit', '1 Nov · 298 words', '32%'], ['v6', 'Milestone: first full section', '1 Nov · 153 words', '6%'], ['v5', 'Autosave', '1 Nov · 137 words', '1%']]
+    .map(([v, t, d, p]) => `<div class="vrow"><b>${v}</b><div>${t}<div class="small muted">${d} · ${p} changed from the one before</div></div><span></span><div class="acts"><button class="btn">Compare with now</button><button class="btn">Restore</button><button class="btn">Mark as milestone</button></div></div>`).join('')}`
+document.body.appendChild(vers)
+document.getElementById('vbtn').onclick = (e) => { vers.hidden = !vers.hidden; e.stopPropagation() }
+document.addEventListener('click', (e) => { if (!e.target.closest('.vers')) vers.hidden = true })
+
+RC.flows({
+  'Draft with citations': () => { vers.hidden = true; document.getElementById('paper').innerHTML = RC.draft(); show('compose', 'result') },
+  'Just ask': () => { vers.hidden = true; show('compose', 'chat') },
+  'Check & fix': () => { vers.hidden = true; show('check'); focusCite('c4') },
+  'Duplication': () => { vers.hidden = true; show('check'); dupMarks(); setTimeout(() => document.querySelector('[data-issue="c3"]').nextElementSibling.scrollIntoView({ block: 'start' }), 50) },
+  'References': () => { vers.hidden = true; show('sources', 'refs') },
+  'Versions': () => { document.getElementById('paper').innerHTML = RC.draft(); show('compose'); setTimeout(() => (vers.hidden = false), 0) },
+})
+</script>
+</body></html>

@@ -62,7 +62,7 @@ export function ReferencesPanel({ style, citedDocIds, onError }: Props) {
       {!entries && <p className="muted">Building the list from the sources your draft cites…</p>}
       {entries && entries.length === 0 && (
         <p className="empty">
-          Nothing cited yet. Cite a sentence with <b>Cite</b> (Ctrl+Shift+C), or draft with the <b>Assistant</b>, and every source
+          Nothing cited yet. Cite a sentence with <b>Cite</b> (Ctrl+Shift+C), or draft from your sources in <b>Compose</b>, and every source
           you cite is listed here in your citation style, ready to copy or export with the draft.
         </p>
       )}

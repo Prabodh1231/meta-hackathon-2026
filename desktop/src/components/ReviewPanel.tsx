@@ -108,7 +108,7 @@ export function ReviewPanel({ report, checkedAt, busy, stale, error, onRun, onRe
       {level === 'document' && (
         <>
           <section className="review-doc">
-            <Ring pct={report.overall} tone="risk" caption="flagged" size={92} />
+            <Ring pct={report.overall} tone="risk" caption="of the draft" size={92} />
             <div className="review-bars">
               <Meter label="Matches sources" pct={report.sources} tone="risk" title="Words in sentences that closely match a library passage" />
               <Meter label="…not cited" pct={report.uncited} tone="risk" title="Of those, sentences that don't cite the matching source" />
@@ -117,10 +117,10 @@ export function ReviewPanel({ report, checkedAt, busy, stale, error, onRun, onRe
           </section>
           <ul className="review-summary">
             <li className={uncited.length ? 'bad' : 'good'}>
-              <b>{uncited.length}</b> sentence{uncited.length === 1 ? '' : 's'} match a source without citing it
+              <b>{uncited.length}</b> sentence{uncited.length === 1 ? ' matches' : 's match'} a source without citing it
             </li>
             <li className={cited.length ? 'note' : 'good'}>
-              <b>{cited.length}</b> cited sentence{cited.length === 1 ? '' : 's'} follow the source closely
+              <b>{cited.length}</b> cited sentence{cited.length === 1 ? ' follows' : 's follow'} the source closely
             </li>
             <li className={repeats ? 'warn' : 'good'}>
               <b>{repeats}</b> repeated passage{repeats === 1 ? '' : 's'} inside the draft
@@ -138,7 +138,7 @@ export function ReviewPanel({ report, checkedAt, busy, stale, error, onRun, onRe
           {!report.paragraphs.length && !report.repeated_paragraphs.length && (
             <p className="empty">No paragraph has duplicated text.</p>
           )}
-          {!!report.paragraphs.length && <h4 className="review-h">Flagged share of each paragraph</h4>}
+          {!!report.paragraphs.length && <h4 className="review-h">Share of each paragraph that is duplicated</h4>}
           <ul className="dup-list">
             {[...report.paragraphs].sort((a, b) => b.flagged - a.flagged).map((p) => (
               <li key={p.block} className="dup-item">

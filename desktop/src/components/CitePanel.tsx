@@ -4,7 +4,7 @@ import type { Citation } from '../types'
 import { StatusBadge } from './StatusBadge'
 import { WaitStatus } from './WaitStatus'
 import { useCheckingMarkers, type ChipAttrs } from './WritingEditor'
-import { CITATION_RANK, CITATION_WORD, isFlagged } from '../editor/citeStatus'
+import { CITATION_WORD, MARK_WORD, isFlagged } from '../editor/citeStatus'
 
 interface Props {
   /** The draft's cite markers, in document order. */
@@ -14,101 +14,84 @@ interface Props {
   onFocus: (cid: string | null) => void
   onConfirm: (cid: string, c: Citation) => void
   onRecheck: (cid: string) => void
-  /** Citation chips in the draft, for the Recheck all button. */
-  citations: number
-  rechecking: boolean
-  onRecheckAll: () => void
   onRemove: (cid: string) => void
   onOpenSource: (c: Citation) => void
   /** The draft's citation chips, in document order. */
   chips: ChipAttrs[]
   /** Open a chip's quote on its page, as clicking it in the draft does. */
   onOpenChip: (chip: ChipAttrs) => void
-  /** Select a chip in the draft and scroll to it, leaving this tab open. */
+  /** Select a chip or marker in the draft and scroll to it, leaving this panel open. */
   onShowChip: (cid: string) => void
   /** Check one citation again, for its sentence as it reads now. */
   onCheckChip: (chip: ChipAttrs) => void
 }
 
-/** Every citation in the draft, what needs attention first; ‹ › step through the flagged ones in
- * the draft. A row opens the quote, as the chip does. */
-function CitationList({ chips, onOpen, onShow, onCheck }: { chips: ChipAttrs[]; onOpen: (c: ChipAttrs) => void; onShow: (cid: string) => void; onCheck: (c: ChipAttrs) => void }) {
-  const flagged = chips.filter((c) => isFlagged(c.status)) // in document order, for ‹ ›
-  const [current, setCurrent] = useState<string | null>(null)
-  const at = flagged.findIndex((c) => c.cid === current)
-  const sorted = [...chips].sort((a, b) => CITATION_RANK[a.status] - CITATION_RANK[b.status]) // stable: draft order within a state
-
-  function step(by: 1 | -1) {
-    if (!flagged.length) return
-    const next = flagged[at < 0 ? (by > 0 ? 0 : flagged.length - 1) : (at + by + flagged.length) % flagged.length]
-    setCurrent(next.cid)
-    onShow(next.cid)
-  }
-
+function ChipRow({ c, current, onOpen, onShow, onCheck, onPick }: { c: ChipAttrs; current: boolean; onOpen: (c: ChipAttrs) => void; onShow: (cid: string) => void; onCheck: (c: ChipAttrs) => void; onPick: (cid: string) => void }) {
+  const flagged = isFlagged(c.status)
   return (
-    <section className="cite-list" aria-label="Citations in this draft">
-      <div className="cite-list-head">
-        <h4 className="eyebrow">
-          In this draft · {chips.length}
-          {flagged.length > 0 && <span className="cite-list-flagged"> · {flagged.length} flagged</span>}
-        </h4>
-        {flagged.length > 0 && (
-          <div className="cite-step">
-            <button className="icon" onClick={() => step(-1)} aria-label="Previous flagged citation" title="Previous flagged citation">‹</button>
-            <span aria-live="polite">{at < 0 ? `${flagged.length} flagged` : `${at + 1} of ${flagged.length}`}</span>
-            <button className="icon" onClick={() => step(1)} aria-label="Next flagged citation" title="Next flagged citation">›</button>
-          </div>
-        )}
+    <li>
+      <button
+        className={`cite-list-row${flagged ? ' flagged' : ''}${current ? ' current' : ''}`}
+        onClick={() => {
+          onPick(c.cid)
+          onOpen(c)
+        }}
+        title="Show this citation's quote on its page"
+        // A short name; the reason, when flagged, is read as the description.
+        aria-label={`${c.label}, ${CITATION_WORD[c.status]}${c.claim ? `: ${c.claim.length > 90 ? c.claim.slice(0, 90) + '…' : c.claim}` : ''}`}
+        aria-describedby={flagged && c.reason ? `cite-why-${c.cid}` : undefined}
+      >
+        <span className={`cite cite-${c.status}${c.finding != null ? ' cite-matrix' : ''}`} aria-hidden="true">{c.label}</span>
+        <span className="cite-list-claim" aria-hidden="true">{c.claim || 'No sentence recorded'}</span>
+        {flagged && c.reason && <span className="cite-list-reason" id={`cite-why-${c.cid}`}>{c.reason}</span>}
+      </button>
+      <div className="cite-list-actions">
+        <button className="link" onClick={() => onOpen(c)}>
+          See quote ›
+        </button>
+        <button className="link" onClick={() => onShow(c.cid)}>
+          Show in draft
+        </button>
+        <button className="link" disabled={c.status === 'pending'} onClick={() => onCheck(c)} title="Check it again against its sentence as it reads now">
+          {c.status === 'pending' ? 'Checking…' : 'Check again'}
+        </button>
       </div>
-      <ul className="cite-list-rows">
-        {sorted.map((c) => (
-          <li key={c.cid}>
-            <button
-              className={`cite-list-row${isFlagged(c.status) ? ' flagged' : ''}${c.cid === current ? ' current' : ''}`}
-              onClick={() => {
-                setCurrent(c.cid)
-                onOpen(c)
-              }}
-              title="Show this citation's quote on its page"
-              // A short name; the reason, when flagged, is read as the description.
-              aria-label={`${c.label}, ${CITATION_WORD[c.status]}${c.claim ? `: ${c.claim.length > 90 ? c.claim.slice(0, 90) + '…' : c.claim}` : ''}`}
-              aria-describedby={isFlagged(c.status) && c.reason ? `cite-why-${c.cid}` : undefined}
-            >
-              <span className={`cite cite-${c.status}${c.finding != null ? ' cite-matrix' : ''}`} aria-hidden="true">{c.label}</span>
-              <span className="cite-list-claim" aria-hidden="true">{c.claim || 'No sentence recorded'}</span>
-              {isFlagged(c.status) && c.reason && <span className="cite-list-reason" id={`cite-why-${c.cid}`}>{c.reason}</span>}
-            </button>
-            <div className="cite-list-actions">
-              <button className="link" onClick={() => onOpen(c)}>
-                See quote ›
-              </button>
-              <button className="link" onClick={() => onShow(c.cid)}>
-                Show in draft
-              </button>
-              <button className="link" disabled={c.status === 'pending'} onClick={() => onCheck(c)} title="Check it again against its sentence as it reads now">
-                {c.status === 'pending' ? 'Checking…' : 'Check again'}
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+    </li>
+  )
+}
+
+function MarkRow({ m, checking, onFocus }: { m: CiteMarkAttrs; checking: boolean; onFocus: (cid: string) => void }) {
+  return (
+    <li>
+      <button onClick={() => onFocus(m.cid)} title={m.state === 'searching' ? MARK_WORD.searching : 'See what was found and confirm a source'}>
+        <span className={`cite-mark cite-mark-${m.state}`}>cite</span>
+        <span className="cite-queue-text">
+          <span className="cite-queue-claim">{m.claim}</span>
+          <em className={`cite-queue-state cite-queue-${m.state}`}>
+            {m.state === 'searching' ? (checking ? 'Finding a source…' : 'Waiting its turn') : MARK_WORD[m.state]}
+          </em>
+        </span>
+      </button>
+    </li>
   )
 }
 
 const HEADLINE: Record<CiteMarkState, string> = {
-  searching: 'Looking for a source…',
-  verified: 'A source supports this sentence',
-  weak: 'Only partial support found',
-  unsupported: 'No source supports this sentence',
-  none: 'Nothing in your library matches this sentence',
+  searching: 'Finding a source…',
+  verified: 'Source found: confirm it',
+  weak: 'Partly supported by what was found',
+  unsupported: 'Not supported by what was found',
+  none: 'No source found in your library',
   error: "The search didn't finish",
 }
 
-/** Cite markers waiting for the writer: what each search found, and confirming a source. */
-export function CitePanel({ marks, chips, citations, rechecking, onRecheckAll, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource, onOpenChip, onShowChip, onCheckChip }: Props) {
+/** Check's citations: what needs the writer first (flagged citations, and markers waiting to be
+ * confirmed), then what's still being checked; supported ones fold away. ‹ › step through the
+ * ones that need attention in the draft. A marker opens what its search found, to confirm a source. */
+export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource, onOpenChip, onShowChip, onCheckChip }: Props) {
   const mark = focus ? marks.find((m) => m.cid === focus) : undefined
   const checking = useCheckingMarkers()
+  const [current, setCurrent] = useState<string | null>(null)
   // While any marker is still searching: since when (the wait line counts from the first).
   const searchingCount = marks.filter((m) => m.state === 'searching').length
   const [searchingSince, setSearchingSince] = useState<number | null>(null)
@@ -117,67 +100,79 @@ export function CitePanel({ marks, chips, citations, rechecking, onRecheckAll, f
   }, [searchingCount])
 
   if (!mark) {
-    const intro = (
-      <p className="cite-intro">
-        Put the cursor in a sentence (or select text) and press <strong>Cite</strong> (Ctrl+Shift+C). A grey{' '}
-        <span className="cite-mark cite-mark-searching">cite</span> marker appears and you keep writing; it turns{' '}
-        <span className="cite-mark cite-mark-verified">cite</span> when a source supports the sentence,{' '}
-        <span className="cite-mark cite-mark-weak">cite</span> for partial support, and{' '}
-        <span className="cite-mark cite-mark-unsupported">cite</span> when nothing does. Click it to confirm a source.
-        <br />
-        Confirmed citations show the same: <span className="cite cite-verified">Smith 2020</span> supported,{' '}
-        <span className="cite cite-weak">Smith 2020</span> and <span className="cite cite-unsupported">Smith 2020</span>. Blue ones,{' '}
-        <span className="cite cite-verified cite-matrix">Smith 2020</span>, were written from a review matrix and are checked against it.
-      </p>
+    const waiting = marks.filter((m) => m.state !== 'searching')
+    const looking = marks.filter((m) => m.state === 'searching')
+    const flagged = chips.filter((c) => isFlagged(c.status))
+    const pending = chips.filter((c) => c.status === 'pending')
+    const supported = chips.filter((c) => c.status === 'verified')
+    const attention = [...waiting.map((m) => m.cid), ...flagged.map((c) => c.cid)]
+    const at = attention.indexOf(current ?? '')
+    const step = (by: 1 | -1) => {
+      if (!attention.length) return
+      const next = attention[at < 0 ? (by > 0 ? 0 : attention.length - 1) : (at + by + attention.length) % attention.length]
+      setCurrent(next)
+      onShowChip(next)
+    }
+    const row = (c: ChipAttrs) => (
+      <ChipRow key={c.cid} c={c} current={c.cid === current} onOpen={onOpenChip} onShow={onShowChip} onCheck={onCheckChip} onPick={setCurrent} />
     )
+
+    if (!chips.length && !marks.length) {
+      return (
+        <div className="cite-panel">
+          <p className="cite-intro">
+            Nothing to check yet. Put the cursor in a sentence (or select text) and press <strong>Cite</strong> (Ctrl+Shift+C): a{' '}
+            <span className="cite-mark cite-mark-searching">cite</span> marker appears while a source is found, and you keep writing.
+            Click it to confirm the source. Drafts from <strong>Compose</strong> arrive cited and checked.
+          </p>
+        </div>
+      )
+    }
+
     return (
       <div className="cite-panel">
         {searchingCount > 0 && searchingSince && (
           <WaitStatus
-            label={`Checking ${searchingCount} sentence${searchingCount === 1 ? '' : 's'} against your library…`}
+            label={`Finding sources for ${searchingCount} sentence${searchingCount === 1 ? '' : 's'}…`}
             startedAt={searchingSince}
             usual="Three are checked at a time; each takes a few seconds. Keep writing."
           />
         )}
-        {chips.length + marks.length > 0 ? (
-          <details className="cite-howto">
-            <summary>How citing works</summary>
-            {intro}
-          </details>
+        {attention.length > 0 ? (
+          <section className="cite-list" aria-label="Citations that need your attention">
+            <div className="cite-list-head">
+              <h4 className="eyebrow">Needs your attention · {attention.length}</h4>
+              <div className="cite-step">
+                <button className="icon" onClick={() => step(-1)} aria-label="Previous one that needs attention" title="Previous">‹</button>
+                <span aria-live="polite">{at < 0 ? `${attention.length}` : `${at + 1} of ${attention.length}`}</span>
+                <button className="icon" onClick={() => step(1)} aria-label="Next one that needs attention" title="Next">›</button>
+              </div>
+            </div>
+            {waiting.length > 0 && (
+              <ul className="cite-queue">
+                {waiting.map((m) => <MarkRow key={m.cid} m={m} checking={false} onFocus={onFocus} />)}
+              </ul>
+            )}
+            <ul className="cite-list-rows">{flagged.map(row)}</ul>
+          </section>
         ) : (
-          intro
+          <p className="cite-all-good">Nothing needs your attention{looking.length + pending.length ? ' yet' : ''}.</p>
         )}
-        {citations + marks.length > 0 && (
-          <div className="cite-recheck">
-            <button onClick={onRecheckAll} disabled={rechecking}>
-              {rechecking ? 'Rechecking…' : 'Recheck all citations'}
-            </button>
-            <span className="hint">
-              {rechecking
-                ? 'Each citation shows as grey until its check finishes. Keep writing.'
-                : 'Checks every citation against its sentence as it reads now (blue ones, written from a review matrix, against the matrix), and searches again for every marker.'}
-            </span>
-          </div>
-        )}
-        {marks.length > 0 && (
-          <>
-            <h4 className="eyebrow">Waiting for you · {marks.length}</h4>
+        {looking.length + pending.length > 0 && (
+          <section className="cite-list" aria-label="Citations still being checked">
+            <h4 className="eyebrow">Still checking · {looking.length + pending.length}</h4>
             <ul className="cite-queue">
-              {marks.map((m) => (
-                <li key={m.cid}>
-                  <button onClick={() => onFocus(m.cid)} title={HEADLINE[m.state]}>
-                    <span className={`cite-mark cite-mark-${m.state}`}>cite</span>
-                    <span className="cite-queue-claim">
-                      {m.claim}
-                      {m.state === 'searching' && <em className="cite-queue-state">{checking.has(m.cid) ? 'Checking…' : 'Waiting its turn'}</em>}
-                    </span>
-                  </button>
-                </li>
-              ))}
+              {looking.map((m) => <MarkRow key={m.cid} m={m} checking={checking.has(m.cid)} onFocus={onFocus} />)}
             </ul>
-          </>
+            <ul className="cite-list-rows">{pending.map(row)}</ul>
+          </section>
         )}
-        {chips.length > 0 && <CitationList chips={chips} onOpen={onOpenChip} onShow={onShowChip} onCheck={onCheckChip} />}
+        {supported.length > 0 && (
+          <details className="cite-list cite-supported">
+            <summary className="eyebrow">Supported · {supported.length}</summary>
+            <ul className="cite-list-rows">{supported.map(row)}</ul>
+          </details>
+        )}
       </div>
     )
   }
@@ -185,11 +180,9 @@ export function CitePanel({ marks, chips, citations, rechecking, onRecheckAll, f
   const results = mark.results ?? []
   return (
     <div className="cite-panel">
-      {marks.length > 1 && (
-        <button className="link cite-back" onClick={() => onFocus(null)}>
-          ‹ All {marks.length} waiting
-        </button>
-      )}
+      <button className="link cite-back" onClick={() => onFocus(null)}>
+        ‹ All citations
+      </button>
       <div className={`cite-head cite-head-${mark.state}`}>
         <span className={`cite-mark cite-mark-${mark.state}`}>cite</span>
         <b>{HEADLINE[mark.state]}</b>

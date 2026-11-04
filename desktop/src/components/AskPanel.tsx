@@ -23,7 +23,7 @@ interface Props {
   onError: (msg: string) => void
 }
 
-/** A plain chatbot beside the draft. It doesn't search the library: the Assistant writes from sources. */
+/** Compose's plain chat with Muse. It doesn't search the library: Cite my sources writes from sources. */
 export function AskPanel({ draftId, attach, getParagraph, onInsert, onError }: Props) {
   const [turns, setTurns] = useState<AskTurn[]>([])
   // The question being answered, since when (the wait line counts from it), and how to stop waiting.
@@ -117,8 +117,8 @@ export function AskPanel({ draftId, attach, getParagraph, onInsert, onError }: P
     <div className="ask">
       {turns.length > 0 && (
         <div className="row ask-top">
-          <span className="muted" title="The Assistant tab writes from your sources, with every citation checked">
-            Chat about this draft · general knowledge, <b>not checked against your library</b>
+          <span className="muted" title="Cite my sources writes from your library, with every citation checked">
+            Chat · Muse's own knowledge, <b>not checked against your library</b>
           </span>
           <button className="link" onClick={clear} disabled={!!asking}>
             Clear conversation
@@ -129,8 +129,7 @@ export function AskPanel({ draftId, attach, getParagraph, onInsert, onError }: P
       {!turns.length && !asking && (
         <div className="ask-intro">
           <p className="muted">
-            Chat with the AI about anything: ideas, explanations, wording. It answers from its own knowledge, not your library (the
-            Assistant writes from your sources). Select text in the draft and press <kbd>Ctrl+J</kbd> to ask about it.
+            Ideas, explanations, wording: anything. Select text in the draft and press <kbd>Ctrl+J</kbd> to ask about it.
           </p>
           <div className="examples" aria-label="Examples">
             {EXAMPLES.map((ex) => (
@@ -185,7 +184,7 @@ export function AskPanel({ draftId, attach, getParagraph, onInsert, onError }: P
           ref={box}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder={attached ? 'What do you want to know about it?' : turns.length ? 'Reply…' : 'Message the AI…'}
+          placeholder={attached ? 'What do you want to know about it?' : turns.length ? 'Reply…' : 'Message Muse…'}
           rows={2}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {

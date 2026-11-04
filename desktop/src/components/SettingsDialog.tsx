@@ -445,7 +445,7 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
 
           {section === 'writing' && (
             <>
-              <Setting title="Citation style" hint="Used for Word export and the References tab.">
+              <Setting title="Citation style" hint="Used for Word export and the reference list in Sources.">
                 <div className="choices" role="radiogroup" aria-label="Citation style">
                   {CITATION_STYLES.map((c) => (
                     <label key={c.value} className={s.citation_style === c.value ? 'choice active' : 'choice'}>
@@ -457,10 +457,10 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
                 </div>
               </Setting>
               <Setting
-                title="Passages the Assistant reads"
-                hint="How many of the best-matching passages the Assistant drafts from. Fewer is faster and sticks to the closest matches; more covers more ground."
+                title="Passages Muse drafts from"
+                hint="How many of the best-matching passages Muse drafts from (Compose, Cite my sources). Fewer is faster and sticks to the closest matches; more covers more ground."
               >
-                <Slider label="Passages the Assistant reads" value={s.assistant_passages} min={3} max={20} onChange={(v) => onChange({ assistant_passages: v })} />
+                <Slider label="Passages Muse drafts from" value={s.assistant_passages} min={3} max={20} onChange={(v) => onChange({ assistant_passages: v })} />
               </Setting>
               <Setting title="Cite markers search" hint="Where a cite marker looks for a source for its sentence.">
                 <Choice
@@ -474,7 +474,7 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
                 />
                 <p className="muted">
                   {s.cite_scope === 'ticked'
-                    ? 'The sources ticked in the Library, or all of them when none are ticked, as the Assistant does.'
+                    ? 'The sources ticked in the Library, or all of them when none are ticked, as drafting from sources does.'
                     : 'Always every source, whatever is ticked in the Library.'}
                 </p>
               </Setting>
@@ -490,7 +490,7 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
                 <Slider label="Duplication sensitivity" value={s.duplicate_sensitivity} min={30} max={90} step={5} unit="%" onChange={(v) => onChange({ duplicate_sensitivity: v })} />
               </Setting>
               <Setting title="Re-check automatically">
-                <Toggle label="Check the draft again a few seconds after you edit, while Review is open" checked={s.auto_recheck} onChange={(v) => onChange({ auto_recheck: v })} />
+                <Toggle label="Check the draft for duplication again after your edits settle (sooner while Check is open)" checked={s.auto_recheck} onChange={(v) => onChange({ auto_recheck: v })} />
               </Setting>
               <Setting title="Automatic snapshots" hint="While you write, a snapshot of the draft is kept at most this often (and before a large edit).">
                 <Slider label="Minutes between snapshots" value={s.snapshot_minutes} min={2} max={60} unit=" min" onChange={(v) => onChange({ snapshot_minutes: v })} />

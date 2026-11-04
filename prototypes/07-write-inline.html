@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>B · On the page</title>
+<link rel="stylesheet" href="write-shared.css">
+<style>
+.canvas { position: relative; display: flex; justify-content: center; gap: 22px; padding: 0 20px; }
+.canvas .paper { margin: 18px 0 120px; flex: 0 1 720px; width: auto; }
+.margin { position: relative; flex: 0 0 300px; margin-top: 18px; }
+.margin.off { display: none; }
+.mc { position: absolute; left: 0; right: 0; background: var(--panel); border: 1px solid var(--border); border-left-width: 4px; border-radius: 10px; padding: 10px 12px; font-size: 12.5px; box-shadow: var(--shadow); transition: top .2s; }
+.mc.bad { border-left-color: var(--bad); } .mc.part { border-left-color: var(--warn); } .mc.dupc { border-left-color: #d9a441; } .mc.nearc { border-left-color: #6f93c9; }
+.mc .claim { font: 13.5px/1.45 var(--doc-font); margin: 5px 0; }
+.mc .acts { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+.mc .acts .btn { height: 25px; padding: 0 8px; font-size: 12px; }
+.mc.cur { box-shadow: 0 0 0 2px var(--accent), var(--shadow); }
+.gut { position: absolute; left: -58px; top: 4px; display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; background: #fff6c8; border: 1px solid #ecd77c; font: 600 11.5px/1.6 "Segoe UI"; color: #6d5a00; cursor: pointer; }
+.cmdbar { position: relative; margin: -4px -16px 14px; padding: 10px 12px; border-radius: 12px; background: var(--panel); box-shadow: var(--pop); font: 14px "Segoe UI"; }
+.cmdbar .row { display: flex; align-items: center; gap: 8px; }
+.cmdbar .in { flex: 1; padding: 6px 2px; border: 0; font: 14.5px "Segoe UI"; color: var(--text); background: none; outline: none; }
+.cmdbar .kind { display: flex; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.cmdbar .kind button { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.cmdbar .kind button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ghostp { position: relative; padding: 10px 14px; margin: 0 -14px 18px; border: 1.5px dashed var(--accent); border-radius: 10px; background: #f6faf6; color: #33473a; }
+.ghostp .bar2 { display: flex; gap: 6px; align-items: center; margin-top: 8px; font: 12.5px "Segoe UI"; }
+.answer { margin: -6px -14px 20px; padding: 10px 14px; border-radius: 10px; background: var(--panel); box-shadow: var(--pop); font: 13.5px/1.55 "Segoe UI"; }
+.answer .who { font: 600 11px "Segoe UI"; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.bubble { position: absolute; z-index: 20; display: flex; gap: 2px; padding: 4px; border-radius: 10px; background: #18241c; color: #e4ebe5; font: 13px "Segoe UI"; box-shadow: var(--pop); white-space: nowrap; }
+.bubble button { padding: 4px 10px; border-radius: 7px; } .bubble button:hover { background: #2f4234; }
+.sel { background: #b9dcc5; }
+.hlpop { position: absolute; z-index: 20; left: -58px; width: 340px; background: var(--panel); border-radius: 12px; box-shadow: var(--pop); padding: 12px 14px; font: 13px "Segoe UI"; }
+.hl { border-left: 3px solid var(--mark); padding: 2px 0 2px 10px; font: 13.5px/1.5 var(--doc-font); }
+.ref { font: 13.5px/1.55 var(--doc-font); padding-left: 22px; text-indent: -22px; margin: 0 0 10px; }
+.vrow { display: grid; grid-template-columns: 34px 1fr; gap: 4px 8px; padding: 9px 0; border-top: 1px solid var(--border); }
+.vrow .acts { grid-column: 2; display: flex; gap: 6px; }
+.mhead { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+</style></head>
+<body>
+<div class="concept"><b>Concept B · On the page</b><span>No tool panel: Muse at the cursor, checks in the margin.</span><a href="index.html">all concepts</a><div class="steps"></div></div>
+<div class="app" id="app"></div>
+<script src="write-shared.js"></script>
+<script>
+const n = RC.counts()
+const app = document.getElementById('app')
+app.innerHTML = RC.header({ center: `<div class="search">⌕ <span style="flex:1">Search sources, drafts and actions</span><kbd>Ctrl K</kbd></div>
+    <button class="ghost" data-d="sources">❝ Sources · 4</button><button class="ghost" data-d="versions">⟲ Versions</button>` }) + RC.rail() + `
+  <main class="stage" id="stage">
+    ${RC.toolbar('<span class="sep"></span><button class="ai" title="Mark this sentence for a citation (Ctrl+Shift+C)">❝ Cite</button><button class="ai" id="tb-muse" title="Muse at the cursor: draft, ask, reword (Ctrl+J, or / on an empty line)">✦ Muse <kbd>/</kbd></button><span class="sep"></span><button id="tb-margin" title="Show checks in the margin">☰ Checks: on</button>')}
+    <div class="canvas"><article class="paper" id="paper"></article><div class="margin" id="margin"></div></div>
+  </main>
+  <aside class="side hidden" id="drawer"><div class="head" style="display:flex;align-items:center"><b id="dtitle" style="font-size:15px"></b><button class="ghost sq" style="margin-left:auto" onclick="drawer()">×</button></div><div class="body" id="dbody"></div></aside>
+  <footer class="dock">
+    <span class="stat"><b>153</b> words</span>
+    <button class="stat" onclick="nextIssue()" title="Go to the next one (F8)">Citations: <b style="color:var(--ok)">${n.ok} supported</b> · <span class="bad">${n.needs} need attention</span> · ${n.finding} finding a source <kbd>F8</kbd></button>
+    <button class="stat" onclick="flowPick('Duplication')">Duplication <b>7%</b></button>
+    <button class="stat" onclick="drawer('versions')">57% changed since v8</button>
+    <span class="right"><span class="dot"></span> 157 sources · Muse</span>
+  </footer>`
+
+const paper = document.getElementById('paper'), margin = document.getElementById('margin')
+function render({ dup = false, cmd = null, ask = false, sel = false, hlp = false } = {}) {
+  let html = RC.draft({ dupMarks: dup })
+  if (sel) html = html.replace('Chen and Martinez report that cueing works only in slow-wave sleep and fails in REM sleep.', '<span class="sel">Chen and Martinez report that cueing works only in slow-wave sleep and fails in REM sleep.</span>')
+  paper.innerHTML = html
+  paper.querySelector('p[data-para="1"]').insertAdjacentHTML('afterbegin', `<span class="gut" onclick="flowPick('Highlights')" title="2 of your highlights fit this paragraph">🖍 2</span>`)
+  if (hlp) paper.querySelector('p[data-para="1"]').insertAdjacentHTML('beforeend', `<div class="hlpop" style="top:34px">
+      <b>From your reading</b> <span class="small muted">· fits this paragraph</span>
+      <div class="card" style="margin-top:8px"><div class="hl">“Spindle bursts preceded 78% of hippocampal reactivation events…”</div><div class="small muted" style="margin-top:5px">Chen & Martinez 2021, p. 342 · note: <i>key for the age argument?</i></div><div class="acts"><button class="btn">Insert as cited quote</button></div></div>
+      <div class="card"><div class="hl">“Older participants showed fewer spindles coupled to slow oscillations…”</div><div class="small muted" style="margin-top:5px">Ruiz et al. 2017, p. 6</div><div class="acts"><button class="btn">Insert as cited quote</button><button class="btn">Write from these 2</button></div></div></div>`)
+  if (ask) paper.querySelector('p[data-para="2"]').insertAdjacentHTML('afterend', `<div class="answer"><div class="who">Muse · from its own knowledge, not your library</div>
+      Not quite: the study only cued during slow-wave sleep and never tested REM, so it can't say cueing <i>fails</i> in REM. A safer wording: “Chen and Martinez cued only during slow-wave sleep.”
+      <div class="acts" style="display:flex;gap:6px;margin-top:8px"><button class="btn go">Replace the selection</button><button class="btn">Insert below</button><button class="btn">Ask a follow-up</button></div></div>`)
+  if (sel) paper.insertAdjacentHTML('beforeend', '')
+  if (cmd) {
+    const res = cmd === 'result'
+    paper.insertAdjacentHTML('beforeend', `
+      ${res ? `<div class="ghostp">Spindle–slow-oscillation coupling weakens with age,${RC.chip('c6')} which would leave fewer windows for cued replay.${RC.chip('c1')}
+        <div class="bar2"><b>Muse draft</b><span class="muted">· 2 citations, both supported</span><span style="flex:1"></span><button class="btn go">Insert <kbd>Tab</kbd></button><button class="btn">Try again</button><button class="btn">Discard <kbd>Esc</kbd></button></div></div>` : ''}
+      <div class="cmdbar">
+        <div class="row"><b style="color:var(--accent)">✦</b><input class="in" value="${res ? 'Write a paragraph on how ageing changes spindle coupling' : ''}" placeholder="Tell Muse what to write here…"><kbd>Enter</kbd></div>
+        <div class="kind"><button aria-pressed="true">Draft with citations</button><button>Ask (no citations)</button><button>Continue this paragraph</button><span style="flex:1"></span><span class="small muted">from all 157 sources · <a href="#" style="color:var(--accent)">choose</a></span></div>
+      </div>`)
+  }
+  RC.bindChipsOnce || (RC.bindChips(document), (RC.bindChipsOnce = true))
+  if (sel) {
+    const s = paper.querySelector('.sel').getBoundingClientRect(), p = paper.getBoundingClientRect()
+    paper.insertAdjacentHTML('beforeend', `<div class="bubble" style="top:${s.top - p.top - 44}px;left:${s.left - p.left}px"><button>❝ Cite</button><button onclick="flowPick('Ask about a selection')">✦ Ask Muse</button><button>↻ Reword</button><button>🔍 Find support</button></div>`)
+  }
+  placeMargin(dup)
+}
+
+// Margin cards: one per thing that needs you, beside its sentence. Supported citations stay quiet.
+const items = [
+  { k: 'c3', cls: 'part' }, { k: 'c4', cls: 'bad' }, { k: 'c9', cls: 'bad' },
+  { dup: 'd2', cls: 'nearc', h: '94% the same as a source', sub: 'Lindqvist 2019, p. 2', acts: ['Make it a quote', 'Reword with Muse'] },
+  { dup: 'd1', cls: 'dupc', h: 'Repeats your own sentence', sub: 'paragraph 1', acts: ['Show both', 'Delete this one'] },
+]
+function placeMargin(dup) {
+  margin.innerHTML = `<div class="mhead">${RC.legend()}</div>`
+  let floor = 70
+  items.forEach((it) => {
+    if (it.dup && !dup) return
+    const anchor = it.k ? paper.querySelector(`.cite[data-k="${it.k}"]`) : paper.querySelector(`[data-dup="${it.dup}"]`)
+    const top = Math.max(floor, anchor.offsetTop + anchor.offsetParent.offsetTop - 40)
+    const el = document.createElement('div')
+    el.className = 'mc ' + it.cls; el.style.top = top + 'px'
+    if (it.k) {
+      const c = RC.C[it.k]
+      el.dataset.k = it.k
+      el.innerHTML = `<div style="display:flex;gap:6px;align-items:center"><span class="cite" data-k="${it.k}" data-s="${c.s}" style="margin:0">${RC.WORD[c.s]}</span><span class="muted">${c.src ? c.src + ', p. ' + c.p : ''}</span></div>
+        <div class="why" style="margin-top:5px">${c.why}</div>
+        <div class="acts"><button class="btn go">${c.s === 'nosrc' ? 'Find a source' : 'Find another source'}</button><button class="btn">Reword</button><button class="btn warn">Remove</button></div>`
+    } else {
+      el.innerHTML = `<b>${it.h}</b> <span class="muted">· ${it.sub}</span><div class="acts">${it.acts.map((a) => `<button class="btn">${a}</button>`).join('')}</div>`
+    }
+    margin.appendChild(el)
+    floor = top + el.offsetHeight + 8
+  })
+  margin.insertAdjacentHTML('beforeend', `<div class="small muted" style="position:absolute;top:${floor + 4}px">${n.ok} supported citations stay out of the margin. ${dup ? '' : '<a href="#" onclick="flowPick(\'Duplication\');return false" style="color:var(--accent)">Show duplication (2)</a>'}</div>`)
+}
+let issueAt = -1
+function nextIssue() {
+  const cards = [...margin.querySelectorAll('.mc[data-k]')]
+  issueAt = (issueAt + 1) % cards.length
+  cards.forEach((c, i) => c.classList.toggle('cur', i === issueAt))
+  document.querySelectorAll('#paper .cite.cur').forEach((x) => x.classList.remove('cur'))
+  const chip = paper.querySelector(`.cite[data-k="${cards[issueAt].dataset.k}"]`); chip.classList.add('cur')
+  chip.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
+const drawerEl = document.getElementById('drawer')
+function drawer(kind) {
+  drawerEl.classList.toggle('hidden', !kind)
+  if (!kind) return
+  document.getElementById('dtitle').textContent = kind === 'sources' ? 'Sources in this draft' : 'Versions'
+  document.getElementById('dbody').innerHTML = kind === 'sources' ? `
+    <div class="seg" style="width:100%;margin-bottom:12px"><button style="flex:1;justify-content:center" aria-pressed="false">Cited sources · 4</button><button style="flex:1;justify-content:center" aria-pressed="true">Reference list</button></div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px"><span class="small muted" style="flex:1">APA 7</span><button class="btn">Copy all</button><button class="btn go">Insert at end</button></div>
+    <p class="ref">Chen, A., & Martinez, B. (2021). Targeted memory reactivation during slow-wave sleep. <i>Journal of Sleep Research</i>, 341–343.</p>
+    <p class="ref">Lindqvist, E. (2019). Spindles as a gate for systems consolidation. <i>Sleep Science Notes</i>, 2(1), 1–9.</p>
+    <p class="ref">Park, J., & Osei, K. (2023). Sleep and procedural learning: A meta-analysis. <i>Example Reviews</i>, 14, 20–34.</p>
+    <p class="ref">Ruiz, M., Tan, H., & Fogel, S. (2017). Coupled rhythms and overnight memory. <i>Example Journal</i>, 8, 1–12.</p>` : `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="small muted" style="flex:1">57% changed since v8</span><button class="primary" style="height:28px">Save a version</button></div>
+    ${[['v8', 'Before a large edit', '1 Nov · 561 words'], ['v7', 'Before a large edit', '1 Nov · 298 words'], ['v6', 'Milestone: first full section', '1 Nov · 153 words'], ['v5', 'Autosave', '1 Nov · 137 words']]
+      .map(([v, t, d]) => `<div class="vrow"><b>${v}</b><div>${t}<div class="small muted">${d}</div></div><div class="acts"><button class="btn">Compare with now</button><button class="btn">Restore</button></div></div>`).join('')}`
+}
+document.querySelectorAll('[data-d]').forEach((b) => (b.onclick = () => drawer(b.dataset.d)))
+document.getElementById('tb-muse').onclick = () => flowPick('Draft here ( / )')
+let marginOn = true
+document.getElementById('tb-margin').onclick = (e) => { marginOn = !marginOn; margin.classList.toggle('off', !marginOn); e.currentTarget.textContent = '☰ Checks: ' + (marginOn ? 'on' : 'off') }
+
+const F = {
+  'Draft here ( / )': () => { drawer(); render({ cmd: 'result' }); document.querySelector('.cmdbar').scrollIntoView({ block: 'center' }) },
+  'Ask about a selection': () => { drawer(); stage.scrollTop = 0; render({ sel: true, ask: true }); stage.scrollTop = 120 },
+  'Check & fix': () => { drawer(); render(); issueAt = -1; nextIssue() },
+  'Highlights': () => { drawer(); stage.scrollTop = 0; render({ hlp: true }) },
+  'Duplication': () => { drawer(); render({ dup: true }); margin.querySelector('.mc.dupc').scrollIntoView({ block: 'center' }) },
+  'References': () => { render(); drawer('sources') },
+  'Versions': () => { render(); drawer('versions') },
+}
+function flowPick(name) { [...document.querySelectorAll('.concept .steps button')].find((b) => b.textContent === name)?.click() }
+RC.flows(F)
+</script>
+</body></html>

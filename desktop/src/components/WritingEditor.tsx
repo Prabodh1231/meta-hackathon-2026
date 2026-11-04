@@ -8,6 +8,7 @@ import { EditorState } from '@tiptap/pm/state'
 import { CitationNode } from '../editor/citation'
 import { CiteMarkNode, stateOf, type CiteMarkAttrs } from '../editor/citeMark'
 import { ReviewMarks, findInBlock, setReviewMarks, textBlocks, type ReviewRange } from '../editor/reviewMarks'
+import { MUSE_META, MuseMark, insertMuse } from '../editor/museMark'
 import { FormatToolbar } from './FormatToolbar'
 import { ChipCard } from './ChipCard'
 import { api } from '../api'
@@ -55,7 +56,7 @@ let activeSearches = 0
 const waitingSearches: (() => void)[] = []
 const searching = new Map<string, Promise<void>>()
 
-// The markers whose search is running now (not waiting for a turn), for the Citations tab.
+// The markers whose search is running now (not waiting for a turn), for Check.
 let checking: ReadonlySet<string> = new Set()
 const checkingListeners = new Set<() => void>()
 function setChecking(cid: string, on: boolean) {
@@ -149,7 +150,7 @@ export interface DraftStats {
   verified: number
   flagged: number // weak, unsupported or quote not found
   unconfirmed: number // cite markers waiting for the writer to pick a source
-  chips: ChipAttrs[] // the citation chips, in document order, for the Citations tab
+  chips: ChipAttrs[] // the citation chips, in document order, for Check
 }
 
 export type SaveState = { state: 'idle' | 'saving' | 'saved' | 'error'; at?: number }
@@ -169,7 +170,8 @@ function statsOf(editor: Editor): DraftStats {
 }
 
 export interface WritingEditorHandle {
-  insertDraft: (sentences: DraftSentence[]) => void
+  /** Insert sentences with their citations; `muse` marks them as Muse's writing (not a quote's own words). */
+  insertDraft: (sentences: DraftSentence[], opts?: { muse?: boolean }) => void
   updateCitation: (cid: string, patch: Partial<ChipAttrs>) => void
   /** Bring one chip up to date with the library and return its current attributes. */
   resolveChip: (chip: ChipAttrs) => Promise<ChipAttrs>
@@ -197,7 +199,7 @@ export interface WritingEditorHandle {
   flush: () => Promise<void>
   /** Insert a whole document (an imported Word file) at the cursor; it fills an empty draft. */
   insertDocument: (json: JSONContent) => void
-  /** Insert HTML (a chat reply) at the cursor, or at the end if the page wasn't clicked into. */
+  /** Insert HTML (a chat reply, Muse's) at the cursor, or at the end if the page wasn't clicked into. */
   insertHTML: (html: string) => void
   isEmpty: () => boolean
   focus: () => void
@@ -293,7 +295,7 @@ interface Props {
   onCiteMarks?: (marks: CiteMarkAttrs[]) => void
   /** The sources cite searches look in (the ticked ones), or null for the whole library. */
   getScope: () => number[] | null
-  /** The toolbar's Ask button: ask about the selection in the Ask tab. */
+  /** The toolbar's Ask Muse button: ask about the selection in Compose's chat. */
   onAsk: () => void
   onError: (msg: string) => void
 }
@@ -360,6 +362,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       CitationNode,
       CiteMarkNode,
       ReviewMarks,
+      MuseMark,
       // Tables come in from a review matrix (cells that cite their quotes); edited as text.
       TableKit.configure({ table: { resizable: false } }),
       Extension.create({
@@ -434,7 +437,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   /** Show other content as if freshly opened: no update event, and an empty undo history, so
    * Ctrl+Z can't bring back the text of the draft that was showing before. */
   function replaceContent(e: Editor, json: JSONContent | string) {
-    e.commands.setContent(json, { emitUpdate: false })
+    e.chain().command(({ tr }) => (tr.setMeta(MUSE_META, true), true)).setContent(json, { emitUpdate: false }).run()
     const { state } = e
     e.view.updateState(EditorState.create({ schema: state.schema, doc: state.doc, plugins: state.plugins }))
   }
@@ -502,7 +505,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   useImperativeHandle(
     ref,
     () => ({
-      insertDraft(sentences) {
+      insertDraft(sentences, opts) {
         if (!editor) return
         const content: JSONContent[] = []
         for (const s of sentences) {
@@ -512,7 +515,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
           }
         }
         // As with an imported file: not clicked into since the draft opened means the end.
-        editor.chain().focus(placed.current ? undefined : 'end').insertContent({ type: 'paragraph', content }).scrollIntoView().run()
+        if (opts?.muse) insertMuse(editor, { type: 'paragraph', content }, placed.current ? undefined : 'end')
+        else editor.chain().focus(placed.current ? undefined : 'end').insertContent({ type: 'paragraph', content }).scrollIntoView().run()
       },
 
       updateCitation(cid, patch) {
@@ -686,7 +690,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       },
 
       insertHTML(html) {
-        if (editor && html) editor.chain().focus(placed.current ? undefined : 'end').insertContent(html).scrollIntoView().run()
+        if (editor && html) insertMuse(editor, html, placed.current ? undefined : 'end')
       },
 
       isEmpty: () => editor?.isEmpty ?? true,
@@ -695,7 +699,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       setContent(json) {
         if (!editor) return
         window.clearTimeout(saveTimer.current) // a pending autosave of the old text must not win
-        editor.commands.setContent(json ? JSON.parse(json) : '', { emitUpdate: false })
+        editor.chain().command(({ tr }) => (tr.setMeta(MUSE_META, true), true)).setContent(json ? JSON.parse(json) : '', { emitUpdate: false }).run()
         placed.current = false // the cursor was in the old text
         report.current.onStats?.(statsOf(editor))
         report.current.onCiteMarks?.(citeMarks(editor))
