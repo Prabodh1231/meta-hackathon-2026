@@ -34,9 +34,8 @@ export const CitationNode = Node.create({
   },
 
   renderHTML({ node, HTMLAttributes }) {
-    const { status, label, reason, quote, cid, finding } = node.attrs
-    const from = finding ? 'From your review matrix. ' : ''
-    const quoted = quote ? `“${quote}”` : ''
+    const { status, label, cid, finding } = node.attrs
+    // No title: pointing at a chip shows ChipCard, with the verdict, quote and reason laid out.
     return [
       'span',
       mergeAttributes(HTMLAttributes, {
@@ -45,7 +44,6 @@ export const CitationNode = Node.create({
         class: `cite cite-${status}${finding ? ' cite-matrix' : ''}`,
         role: 'button',
         'aria-label': `${label}, ${CITATION_WORD[status as CitationStatus] ?? status}${finding ? ', from your review matrix' : ''}`,
-        title: [from + reason, quoted].filter((t) => t.trim()).join('\n\n'),
       }),
       label,
     ]

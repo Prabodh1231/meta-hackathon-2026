@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useFocusTrap } from '../useFocusTrap'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { api } from '../api'
 import { type Box, loadPdfjs, pdfDocument, placeQuote } from '../pdf'
@@ -65,6 +66,8 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
   const pageBox = useRef<HTMLInputElement>(null)
   const frame = useRef(0)
   const numPages = pdf?.numPages ?? 0
+  const dialog = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialog, !standalone) // over the app, Tab stays in the reader; as a window it needn't
 
   useEffect(() => {
     let stale = false
@@ -377,7 +380,7 @@ export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: 
 
   return (
     <div className={standalone ? 'reader-window' : 'modal-backdrop'} onMouseDown={(e) => !standalone && e.target === e.currentTarget && onClose()}>
-      <div className="modal pdf-view" role={standalone ? 'main' : 'dialog'} aria-modal={!standalone} aria-label={`PDF: ${doc.title}`}>
+      <div ref={dialog} className="modal pdf-view" role={standalone ? 'main' : 'dialog'} aria-modal={!standalone} aria-label={`PDF: ${doc.title}`}>
         <header className="pdf-view-head">
           <span className="kind kind-pdf">PDF</span>
           <h2 title={doc.title}>{doc.title}</h2>

@@ -367,7 +367,10 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
   }
   return (
     <div className="lib-table-wrap">
-    <table className="lib-table" tabIndex={0} onKeyDown={onKeyDown} aria-label="Sources">
+    <p id="lib-table-keys" className="sr-only">
+      Up and down arrows move between papers and show each one's details; Enter opens the paper; Escape closes the details.
+    </p>
+    <table className="lib-table" tabIndex={0} onKeyDown={onKeyDown} aria-label="Sources" aria-describedby="lib-table-keys">
       <thead>
         <tr>
           <th className="c-pick">
@@ -399,7 +402,7 @@ function DocTable({ rows, selected, cited, open, folder, sort, onSort, onToggle,
             {...dragProps(d)}
           >
             <td className="c-pick" onClick={(e) => e.stopPropagation()}>
-              <input type="checkbox" checked={selected.has(d.id)} onChange={() => onToggle(d.id)} aria-label={`Use “${d.title}” for drafting`} />
+              <input type="checkbox" checked={selected.has(d.id)} onChange={() => onToggle(d.id)} aria-label={`Use for drafting: ${d.title.length > 50 ? d.title.slice(0, 50) + '…' : d.title}`} />
             </td>
             <td className="c-title">
               <span className="lib-cell-title">{d.title}</span>
@@ -1256,7 +1259,9 @@ export const LibraryPanel = memo(function LibraryPanel({
           {unfiled > 0 && navItem('none', 'Unfiled', unfiled)}
           {removed.length > 0 && navItem('removed', 'Removed', removed.length)}
           {folders.length > 0 && <div className="lib-nav-label">Subject folders</div>}
-          {folders.map((f) => navItem(f.id, f.name, f.doc_count, `${f.similarity}%`))}
+          {/* The filing threshold (a folder setting, shown in the folder itself) isn't repeated here: as a bare
+              "50%" beside every folder it read as a score. */}
+          {folders.map((f) => navItem(f.id, f.name, f.doc_count))}
           <button className="lib-nav-item lib-nav-new" onClick={() => setCreating((c) => !c)} title="Make a folder for a subject you choose">
             <span className="lib-nav-ico" aria-hidden="true">+</span>
             <span className="lib-nav-name">New folder</span>

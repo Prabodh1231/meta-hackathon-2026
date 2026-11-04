@@ -29,9 +29,9 @@ The window has four parts:
 | **Top bar** | The draft's title (click it for your drafts), whether it's saved and its version; one search box; Export; Focus mode; Settings. |
 | **Rail** (left) | The places in the app: **Write**, **Library**, **Network** and **Matrix**. One fills the window at a time. |
 | **Main area** | The place you picked. In Write, the draft with the writing tools beside it. |
-| **Status bar** (bottom) | Live counts for the draft: words, citations verified, duplication, and how much it changed since the last version. Click any of them to open the matching tool. |
+| **Status bar** (bottom) | Live counts for the draft: words, citations verified, duplication, and how much it changed since the last version. Click any of them to open the matching tool. Outside Write they're marked **Draft**, since they're the open draft's numbers. |
 
-**One search box.** In Write, the box searches everything (sources, drafts, folders) and runs any action; Ctrl K opens it from anywhere. In the Library it filters your sources, and in the Network it finds papers about a topic. The green chip in the box says which one it's doing. Esc clears it, and Ctrl K still searches everything.
+**One search box.** In Write, the box searches everything (sources, drafts, folders) and runs any action; Ctrl K opens it from anywhere. In the Library it filters your sources, and in the Network it finds papers about a topic. The green chip in the box says which one it's doing. Esc clears it, and Ctrl K still searches everything. Ctrl K lists **Actions** first, then **Go to**, **Drafts**, **Folders** and **Sources**, each with how many match; ↑ ↓ move, Enter runs or opens.
 
 ### Open and close the writing tools
 
@@ -217,7 +217,7 @@ Click a marker to open the **Citations** tab with what was found. **Use this sou
 
 Citations carry the same symbols: ✓ supported, ◐ partial, ✕ not supported or quote not found, and … while one is being checked. Blue ones, with the ✓ in a square, were written from a review matrix.
 
-With no marker open, the tab lists every marker still waiting, then every citation in the draft under **In this draft**, flagged ones first, with the reason Muse gave. Click a row to see its quote on its page, as clicking the citation does. **‹ ›** step through the flagged citations in the draft. Clicking *citations verified* in the status bar opens this list. Once the draft has citations, the how-to at the top folds into **How citing works**.
+With no marker open, the tab lists every marker still waiting, then every citation in the draft under **In this draft**, flagged ones first, with the reason Muse gave. Click a row, or **See quote ›**, to see its quote on its page, as clicking the citation does; **Show in draft** selects it in the draft and **Check again** checks it against its sentence as it reads now. **‹ ›** step through the flagged citations in the draft. Clicking *citations verified* in the status bar opens this list. Once the draft has citations, the how-to at the top folds into **How citing works**.
 
 While markers are still searching, the top of the tab says how many sentences are being checked and for how long. Three are checked at a time, so each waiting row says **Checking…** or **Waiting its turn**.
 
@@ -227,7 +227,7 @@ After rewording sentences, or adding and removing sources, press **Recheck all c
 
 ### See the quote on its page
 
-Click any citation in the draft. The **Citations** tab shows its passage highlighted on the page, and a dashed line joins the citation to the quote:
+Point at a citation to see what backs it: its verdict, the quote and Muse's reason. Click it and the **Citations** tab shows its passage highlighted on the page, and a dashed line joins the citation to the quote:
 
 ![A citation and its quote highlighted on the PDF page, joined by a dashed line](images/citation-source.png)
 
@@ -241,7 +241,7 @@ Close that window as you would any other. **‹ Back** returns to the tab you ca
 
 ### Reference list
 
-The **References** tab builds the reference list for every source the draft cites, in the style chosen in Settings: APA 7, MLA 9 or IEEE. **Copy** copies the list, and **Copy as BibTeX** copies the same sources as BibTeX entries for a reference manager or LaTeX.
+The **References** tab lists every source the draft cites as soon as it opens (**Rebuild** builds it again), in the style chosen in Settings: APA 7, MLA 9 or IEEE. **Copy** copies the list, and **Copy as BibTeX** copies the same sources as BibTeX entries for a reference manager or LaTeX.
 
 ## 5. Check the draft
 
@@ -251,7 +251,7 @@ The **Review** tab checks the draft for sentences that repeat each other, and fo
 
 ![The Review tab](images/review.png)
 
-It checks when you open it, and again a few seconds after you edit while it stays open. Matching passages are underlined in the draft: red for an uncited match, dotted for a cited one, wavy for a repeat. Click a finding to jump to it, or its source to see the matching passage. The status bar says *Checking duplication…* while a check runs, then shows the overall percentage.
+It checks when you open it, and again a few seconds after you edit while it stays open. While the first check runs, the tab says what it's doing and counts the seconds. Matching passages are underlined in the draft: red for an uncited match, dotted for a cited one, wavy for a repeat. Click a finding to jump to it, or its source to see the matching passage. The status bar says *Checking duplication…* while a check runs, then shows the overall percentage.
 
 ### Versions
 
@@ -274,8 +274,12 @@ The **History** tab keeps versions of the draft. Snapshots are taken automatical
 ![The citation network](images/network.png)
 
 - An arrow from A to B means A cites B. Grey lines join papers that share references, and dashed amber lines (Shared keywords) join papers with keywords in common. The checkboxes at the top turn each kind on or off.
-- Dashed circles are works that several of your papers cite but that aren't in your library.
+- Dashed circles are works that several of your papers cite but that aren't in your library. They're off at first, since a topic can bring dozens of them; the list beside the graph names them either way, and **Missing works** draws them.
+- The ten most-linked papers are named on the graph; point at any other paper to see its name and a card with its title. **+**, **−** and **Fit** (top right) zoom, as does scrolling.
 - Click a paper to highlight its neighbours and list what it cites, what cites it, and what it shares. **Open in library** jumps to it.
+- Click a line to see why its two papers are linked: which cites which, the works both cite (as far as this map shows them), or the keywords they share.
+- Turning a layer on or off keeps the papers where they were, so you don't lose your place. The count at the top says how many pairs share two or more references, which is when a grey line is drawn.
+- In the list of works you don't have, a work cited under several years or authors is listed once, naming the other versions.
 - **Rank and download…** lists the works the papers shown cite but you don't have, with free copies to fetch. Clearing the search box goes back to choosing what to show.
 
 Esc returns to the draft.
@@ -316,8 +320,9 @@ Edit the answer and **Save answer** (it keeps its quote as evidence), **Read aga
 - **Write from this matrix:** Muse writes a comparison of the studies from the matrix's quotes, each sentence citing them. Tick the sentences to keep and insert them into the draft.
 - **Kept with the matrix:** every gap and every written passage keeps a copy of the rows it came from. Passages you insert are listed in the same box under **Written from this matrix**. The box shows when the matrix has changed since one was written, and you can insert one again or delete it.
 - **Write a proposal:** plans a study that addresses the gaps (see [Write a research proposal](#write-a-research-proposal)).
-- **Insert into draft:** the matrix as a table at the cursor, with the columns you choose. Each cell cites its quote, so the paper joins the reference list and the Word export; the citations are checked in the background, like the Assistant's. In the draft, **−Row**, **−Col** and **×Table** appear in the toolbar while the cursor is in a table.
-- **Export:** an *Excel workbook* or *CSV* (each column's answer, then its evidence: page and quote), or a *Word table* whose cells cite their sources in your citation style, with a reference list.
+- The toolbar above a matrix groups its actions: **Paper details** and **Filter** change what you see; **Find gaps** and **Write a proposal** analyse it; **Write from this matrix** is the main action, and **Insert or export ▾** holds the rest.
+- **Insert into draft** (under **Insert or export**): the matrix as a table at the cursor, with the columns you choose. Each cell cites its quote, so the paper joins the reference list and the Word export; the citations are checked in the background, like the Assistant's. In the draft, **−Row**, **−Col** and **×Table** appear in the toolbar while the cursor is in a table.
+- **Export** (also under **Insert or export**): an *Excel workbook* or *CSV* (each column's answer, then its evidence: page and quote), or a *Word table* whose cells cite their sources in your citation style, with a reference list.
 
 **Paper details.** Detail columns show each paper's record as it is in your library: what OpenAlex and Crossref found (see [More library tools](#more-library-tools-)) and what you corrected under Edit details. They aren't read by Muse, so they fill in at once, cost nothing, carry no quote, and change when the record does. **Paper details** above the table adds or removes them (questions are limited to 12, details aren't).
 

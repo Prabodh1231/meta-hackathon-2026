@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { DuplicateReport, RepeatPair, SourceMatch } from '../types'
 import { Meter, Ring, Segmented, ago } from './Meters'
+import { WaitStatus } from './WaitStatus'
 
 type Level = 'document' | 'paragraphs' | 'sentences'
 const LEVELS: { value: Level; label: string }[] = [
@@ -41,6 +42,9 @@ function Pair({ p, onReveal }: { p: RepeatPair; onReveal: Props['onReveal'] }) {
  * document, paragraph and sentence level, each with its percentage. */
 export function ReviewPanel({ report, checkedAt, busy, stale, error, onRun, onReveal, onOpenSource }: Props) {
   const [level, setLevel] = useState<Level>('document')
+  // Since when the check has been running, for the wait line.
+  const [since, setSince] = useState<number | null>(null)
+  useEffect(() => setSince(busy ? Date.now() : null), [busy])
 
   const run = (
     <button className="primary" onClick={onRun} disabled={busy}>
@@ -63,7 +67,24 @@ export function ReviewPanel({ report, checkedAt, busy, stale, error, onRun, onRe
             Looks for passages your draft repeats, and for sentences that match text in your library closely
             (copied or lightly reworded), and shows what share of the draft each covers.
           </p>
-          {run}
+          {busy && since ? (
+            <>
+              <WaitStatus
+                label="Comparing each sentence with the rest of the draft and with your library…"
+                startedAt={since}
+                usual="A few seconds for a short draft, up to a minute for a long one. Keep writing."
+              />
+              {/* Where the results will appear: the share, then repeats and matches */}
+              <div className="review-skeleton" aria-hidden="true">
+                <span className="sk sk-ring" />
+                <span className="sk sk-line" />
+                <span className="sk sk-line short" />
+                <span className="sk sk-line" />
+              </div>
+            </>
+          ) : (
+            run
+          )}
         </div>
       </div>
     )

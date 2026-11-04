@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useFocusTrap } from '../useFocusTrap'
 import { api } from '../api'
 import type { DocxStyle, ModelSettings, SearchSettings, Settings, SourceSettings, ThemePref } from '../types'
 
@@ -354,6 +355,8 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
 
 export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose, section: initialSection = 'appearance' }: Props) {
   const [section, setSection] = useState<Section>(initialSection)
+  const dialog = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialog)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -363,7 +366,7 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div ref={dialog} className="modal settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <nav className="settings-nav" aria-label="Settings sections">
           <h2 id="settings-title">Settings</h2>
           {SECTIONS.map((x) => (

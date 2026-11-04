@@ -26,10 +26,10 @@ export function ReferencesPanel({ style, citedDocIds, onError }: Props) {
     }
   }
 
-  // Rebuild when the style changes in Settings, if a list is already showing.
+  // The list is built when the tab opens, and again when the style changes in Settings.
   useEffect(() => {
-    if (entries) build()
-  }, [style])
+    build()
+  }, [style]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function copy(text: string, what: string) {
     await navigator.clipboard.writeText(text)
@@ -51,13 +51,28 @@ export function ReferencesPanel({ style, citedDocIds, onError }: Props) {
   return (
     <div className="references">
       <div className="row">
-        <span className="muted">{label} · change in Settings</span>
-        <button className="primary" onClick={build}>Build from cited sources</button>
+        <span className="muted">
+          {label}
+          {entries && entries.length > 0 && ` · ${entries.length} source${entries.length === 1 ? '' : 's'} cited (a source cited twice is listed once)`} · style in Settings
+        </span>
+        <button onClick={build} title="Build the list again from the sources the draft cites now">
+          Rebuild
+        </button>
       </div>
-      {entries && entries.length === 0 && <p className="empty">Your document has no citations yet.</p>}
+      {!entries && <p className="muted">Building the list from the sources your draft cites…</p>}
+      {entries && entries.length === 0 && (
+        <p className="empty">
+          Nothing cited yet. Cite a sentence with <b>Cite</b> (Ctrl+Shift+C), or draft with the <b>Assistant</b>, and every source
+          you cite is listed here in your citation style, ready to copy or export with the draft.
+        </p>
+      )}
       {entries && entries.length > 0 && (
         <>
-          <pre className="ref-list">{entries.join('\n')}</pre>
+          <ul className="ref-list" aria-label="Reference list">
+            {entries.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
           <div className="row">
             <button onClick={copyBibtex}>{copied === 'bibtex' ? 'Copied BibTeX' : 'Copy as BibTeX'}</button>
             <button onClick={() => copy(entries.join('\n'), 'list')}>{copied === 'list' ? 'Copied' : 'Copy'}</button>

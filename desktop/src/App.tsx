@@ -1155,10 +1155,10 @@ export default function App() {
   const dupPct = dup.report?.overall ?? null
   const showingSource = tab === 'citations' && sourceFrom !== null
 
+  // Tabs carry a badge only for things waiting on the writer. The duplication and change percentages
+  // live in the status bar, where they're captioned; as bare "57%" badges on tabs they read as noise.
   function badgeFor(t: Tab): string | null {
     if (t === 'citations' && citeMarks.length) return String(citeMarks.length)
-    if (t === 'review' && dupPct != null) return `${dupPct}%`
-    if (t === 'history' && change) return `${change}%`
     return null
   }
 
@@ -1172,7 +1172,7 @@ export default function App() {
     const badge = badgeFor(t)
     if (!badge) return null
     return (
-      <em className="tab-badge" style={t === 'review' && dupPct != null ? { background: toneOf(dupPct, 'risk') } : undefined}>
+      <em className="tab-badge" title={`${badge} cite marker${badge === '1' ? '' : 's'} waiting for you to confirm a source`}>
         {badge}
       </em>
     )
@@ -1214,9 +1214,9 @@ export default function App() {
                 aria-haspopup="dialog"
                 title="Your drafts: switch, start a new one, import a Word file, or delete one. Double-click to rename this draft."
               >
-                <span className="doc-name">{docTitle}</span>
+                <span className="doc-name" title={docTitle}>{shortTitle(docTitle)}</span>
                 <span className="doc-caret" aria-hidden="true">▾</span>
-                {drafts.length > 1 && <span className="doc-count">{drafts.length}</span>}
+                {drafts.length > 1 && <span className="doc-count">{drafts.length} drafts</span>}
               </button>
             )}
             <div className={`save-state save-${saveState.state}`}>
@@ -1521,6 +1521,11 @@ export default function App() {
                   chips={stats.chips}
                   onOpenChip={openChip}
                   onShowChip={(cid) => editor.current?.showCite(cid)}
+                  onCheckChip={(chip) =>
+                    editor.current
+                      ?.checkCitation(chip.cid, chip.finding != null ? 'matrix' : 'quote')
+                      .catch((e) => onError(`Could not check the citation: ${e instanceof Error ? e.message : e}`))
+                  }
                 />
               </div>
               {tab === 'references' && (
@@ -1626,7 +1631,13 @@ export default function App() {
       </div>
 
       <footer className="dock">
-        <div className="dock-stats">
+        <div className="dock-stats" aria-label="Your draft">
+          {/* Outside Write, say whose numbers these are: the open draft's, not the library's or the graph's. */}
+          {mode !== 'write' && (
+            <span className="dock-label" title="These numbers are for the draft open in Write">
+              Draft
+            </span>
+          )}
           <span className="stat" title="Words in the draft">
             <b>{stats.words.toLocaleString()}</b> <span className="lbl">words</span>
           </span>
@@ -1787,4 +1798,13 @@ export default function App() {
       )}
     </div>
   )
+}
+
+/** A draft's title for the header: cut at a word, not mid-word, so an unnamed draft's first line reads
+ * as a title ("These findings suggest that spindles gate…"). The whole of it is in the tooltip. */
+function shortTitle(title: string, max = 44): string {
+  if (title.length <= max) return title
+  const cut = title.slice(0, max + 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > max * 0.6 ? cut.slice(0, space) : title.slice(0, max)).replace(/[\s,;:.–-]+$/, '')}…`
 }

@@ -9,6 +9,7 @@ import { CitationNode } from '../editor/citation'
 import { CiteMarkNode, stateOf, type CiteMarkAttrs } from '../editor/citeMark'
 import { ReviewMarks, findInBlock, setReviewMarks, textBlocks, type ReviewRange } from '../editor/reviewMarks'
 import { FormatToolbar } from './FormatToolbar'
+import { ChipCard } from './ChipCard'
 import { api } from '../api'
 import type { Citation, DraftSentence } from '../types'
 
@@ -756,6 +757,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       <div className="editor-wrap">
         {banner}
         <EditorContent editor={editor} />
+        <ChipCard editor={editor} />
       </div>
     </>
   )

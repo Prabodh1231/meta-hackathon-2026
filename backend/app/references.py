@@ -1,5 +1,6 @@
 """Reference list formatting (APA 7, MLA 9, IEEE, BibTeX) from stored document metadata."""
 
+import html
 import re
 
 STYLES = ("apa", "mla", "ieee", "bibtex")
@@ -133,10 +134,32 @@ def bibtex(doc: dict) -> str:
     return f"@{entry}{{{bibtex_key(doc)},\n{body}\n}}"
 
 
+DOI = re.compile(r"^10\.\d+/\S+$")
+
+
+def _clean(doc: dict) -> dict:
+    """Metadata as it should print: HTML entities decoded ("&amp;" -> "&", as some indexes send them),
+    and a DOI or link kept only if it is one. A note like "Not Provided in Text" in the DOI field
+    would otherwise print as https://doi.org/Not Provided in Text."""
+    d = dict(doc)
+    for k, v in d.items():
+        if isinstance(v, str):
+            d[k] = html.unescape(v)
+        elif isinstance(v, list):
+            d[k] = [html.unescape(x) if isinstance(x, str) else x for x in v]
+    doi = (d.get("doi") or "").strip()
+    doi = re.sub(r"^(https?://(dx\.)?doi\.org/|doi:\s*)", "", doi, flags=re.I)
+    d["doi"] = doi if DOI.match(doi) else ""
+    if d.get("url") and not re.match(r"^https?://\S+$", d["url"].strip()):
+        d["url"] = ""
+    return d
+
+
 def format_references(docs: list[dict], style: str) -> list[str]:
     style = style.lower()
     if style not in STYLES:
         raise ValueError(f"Unknown style {style!r}; expected one of {', '.join(STYLES)}")
+    docs = [_clean(d) for d in docs]
     if style == "ieee":  # numbered in citation order
         return [ieee(d, i + 1) for i, d in enumerate(docs)]
     if style == "bibtex":
