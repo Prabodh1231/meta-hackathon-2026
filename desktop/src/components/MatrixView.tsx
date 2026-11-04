@@ -1088,9 +1088,15 @@ ${g.detail}`
             <div className="mx-body">
               <div className="mx-table-wrap">
                 <div className="mx-col-count" role="status">
-                  {visibleColumns.length} of {matrix.columns.length} columns shown
-                  {hiddenDetailCount > 0 && ` · ${hiddenDetailCount} paper-detail column${hiddenDetailCount === 1 ? '' : 's'} hidden: open Paper details to show ${hiddenDetailCount === 1 ? 'it' : 'them'}`}
-                  {visibleColumns.length > 1 && ' · scroll sideways to see columns off-screen'}
+                  <span>
+                    {visibleColumns.length} of {matrix.columns.length} columns shown
+                    {hiddenDetailCount > 0 && ` · ${hiddenDetailCount} paper-detail column${hiddenDetailCount === 1 ? '' : 's'} hidden: open Paper details to show ${hiddenDetailCount === 1 ? 'it' : 'them'}`}
+                  </span>
+                  <span className="mx-legend">
+                    <span className="mx-dot" aria-hidden="true">✓</span> quote found on the page shown ·{' '}
+                    <span className="mx-needs-check">Needs check</span> the quote wasn’t found — check it before you rely on it
+                  </span>
+                  {visibleColumns.length > 1 && <span className="mx-scroll-cue">Scroll sideways → more columns · the Study column stays in view</span>}
                 </div>
                 <table className="mx-table">
                   <thead>
@@ -1144,6 +1150,15 @@ ${g.detail}`
                           const on = cellAt?.doc === r.doc_id && cellAt.col === c.key
                           const cellKey = `${r.doc_id}:${c.key}`
                           const expanded = expandedCells.has(cellKey)
+                          const pagePart = cell?.label.split(', ').slice(-1)[0] ?? ''
+                          const printedPage = pagePart.match(/^p\. ([\w-]+)$/)?.[1]
+                          const pageText = printedPage ? `Printed p. ${printedPage}` : cell?.page ? `PDF page ${cell.page}` : pagePart
+                          const pageTitle =
+                            printedPage && cell?.page
+                              ? `Printed page ${printedPage} · PDF page ${cell.page}: open the PDF at this page`
+                              : cell?.page
+                                ? `PDF page ${cell.page}: open the PDF at this page`
+                                : pagePart
                           return (
                             <td
                               key={c.key}
@@ -1190,16 +1205,22 @@ ${g.detail}`
                                     <span className="mx-dot" aria-hidden="true">{cell.status === 'unverified' ? '?' : '✓'}</span>
                                     {doc(r.doc_id)?.kind === 'pdf' && cell.page ? (
                                       <button
-                                        className="link mx-page-link"
+                                        className="mx-page-chip"
                                         onClick={(e) => (e.stopPropagation(), onOpenPdf(doc(r.doc_id)!, cell.page!))}
-                                        title="Open the PDF at this page"
+                                        title={pageTitle}
                                       >
-                                        {cell.label.split(', ').slice(-1)[0]}
+                                        {pageText}
                                       </button>
                                     ) : (
-                                      cell.label.split(', ').slice(-1)[0]
+                                      <span className="mx-page-chip" title={pageTitle}>
+                                        {pageText}
+                                      </span>
                                     )}
-                                    {cell.status === 'unverified' ? ' · quote not found' : ''}
+                                    {cell.status === 'unverified' && (
+                                      <span className="mx-needs-check" title="The quote wasn’t found in the paper: check it">
+                                        Needs check
+                                      </span>
+                                    )}
                                     {cell.edited ? ' · edited' : ''}
                                   </span>
                                 </>

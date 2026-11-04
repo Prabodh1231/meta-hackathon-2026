@@ -28,11 +28,17 @@ function Pair({ p, onReveal }: { p: RepeatPair; onReveal: Props['onReveal'] }) {
         <span className="chg chg-repeat">repeated</span>
         <span className="dup-pct">{p.similarity}% alike</span>
       </div>
-      <button className="dup-quote" onClick={() => onReveal(p.first_block, p.first)} title="Show the first one">
+      <button className="dup-quote" onClick={() => onReveal(p.first_block, p.first)} title="Show the first one in the draft">
         <span className="dup-n">1</span> {p.first}
       </button>
-      <button className="dup-quote" onClick={() => onReveal(p.second_block, p.second)} title="Show the repeat">
+      <button className="link dup-show" onClick={() => onReveal(p.first_block, p.first)}>
+        Show in draft
+      </button>
+      <button className="dup-quote" onClick={() => onReveal(p.second_block, p.second)} title="Show the repeat in the draft">
         <span className="dup-n">2</span> {p.second}
+      </button>
+      <button className="link dup-show" onClick={() => onReveal(p.second_block, p.second)}>
+        Show in draft
       </button>
     </li>
   )
@@ -143,6 +149,9 @@ export function ReviewPanel({ report, checkedAt, busy, stale, error, onRun, onRe
             {[...report.paragraphs].sort((a, b) => b.flagged - a.flagged).map((p) => (
               <li key={p.block} className="dup-item">
                 <button className="dup-quote" onClick={() => onReveal(p.block)}>{p.text}{p.text.length >= 200 ? '…' : ''}</button>
+                <button className="link dup-show" onClick={() => onReveal(p.block)}>
+                  Show in draft
+                </button>
                 <Meter pct={p.flagged} tone="risk" title={`${p.flagged}% of this paragraph's ${p.words} words`} />
               </li>
             ))}
@@ -165,7 +174,7 @@ export function ReviewPanel({ report, checkedAt, busy, stale, error, onRun, onRe
               <li key={i} className="dup-item">
                 <div className="dup-top">
                   <span className={`chg ${m.cited ? 'chg-cited' : 'chg-source'}`}>
-                    {m.level === 'copied' ? 'copied' : 'close'} · {m.cited ? 'cited' : 'not cited'}
+                    {m.level === 'copied' ? 'Copied' : 'Close match'} · {m.cited ? 'cited' : 'not cited — needs attention'}
                   </span>
                   <span className="dup-pct">{m.similarity}% match</span>
                 </div>
@@ -176,6 +185,16 @@ export function ReviewPanel({ report, checkedAt, busy, stale, error, onRun, onRe
                   <span className="dup-src-label">{m.label}</span>
                   <span className="dup-src-quote">“{m.quote}”</span>
                 </button>
+                <div className="dup-actions">
+                  <button className="link" onClick={() => onReveal(m.block, m.sentence)}>
+                    Show in draft
+                  </button>
+                  {!m.cited && (
+                    <button className="link" onClick={() => onOpenSource(m)} title="Open the matching source to cite it for this sentence">
+                      Cite this source
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

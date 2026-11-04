@@ -18,6 +18,7 @@ export function CheckSummary({ tally, rechecking, onRecheckAll, dup, onCheckDup 
   const { supported, attention, toConfirm, checking, total } = tally
   const pct = (n: number) => `${total ? (100 * n) / total : 0}%`
   const passages = dup.report ? dup.report.source_matches.length + dup.report.repeated_sentences.length + dup.report.repeated_paragraphs.length : 0
+  const uncitedMatches = dup.report?.source_matches.filter((m) => !m.cited).length ?? 0
 
   return (
     <section className="check-summary" aria-label="Draft check summary">
@@ -41,12 +42,20 @@ export function CheckSummary({ tally, rechecking, onRecheckAll, dup, onCheckDup 
         )}
       </div>
       {total > 0 && (
-        <div className="cs-meter" role="img" aria-label={`${supported} supported, ${attention} ${needWord(attention)}, ${checking} checking`}>
-          <i className="ok" style={{ width: pct(supported) }} />
-          <i className="bad" style={{ width: pct(attention - toConfirm) }} />
-          <i className="warn" style={{ width: pct(toConfirm) }} />
-          <i className="pend" style={{ width: pct(checking) }} />
-        </div>
+        <>
+          <div className="cs-meter" role="img" aria-label={`${supported} supported, ${attention} ${needWord(attention)}, ${checking} checking`}>
+            <i className="ok" style={{ width: pct(supported) }} />
+            <i className="bad" style={{ width: pct(attention - toConfirm) }} />
+            <i className="warn" style={{ width: pct(toConfirm) }} />
+            <i className="pend" style={{ width: pct(checking) }} />
+          </div>
+          <div className="cs-meter-labels" aria-hidden="true">
+            <span><i className="ok" />Supported {supported}</span>
+            <span><i className="bad" />Needs attention {Math.max(0, attention - toConfirm)}</span>
+            <span><i className="warn" />Source found, to confirm {toConfirm}</span>
+            <span><i className="pend" />Checking {checking}</span>
+          </div>
+        </>
       )}
       <CiteLegend />
       <div className="cs-dup">
@@ -59,7 +68,8 @@ export function CheckSummary({ tally, rechecking, onRecheckAll, dup, onCheckDup 
               <b>{dup.report.overall}%</b>
               <span className="muted">
                 {' '}
-                · {passages} passage{passages === 1 ? '' : 's'} · {dup.busy ? 'checking again…' : dup.stale ? 'out of date' : `checked ${dup.at ? ago(dup.at) : ''}`}
+                · {passages} passage{passages === 1 ? '' : 's'}
+                {uncitedMatches > 0 && <span className="cs-uncited"> · {uncitedMatches} uncited match{uncitedMatches === 1 ? '' : 'es'}, needs attention</span>} · {dup.busy ? 'checking again…' : dup.stale ? 'out of date' : `checked ${dup.at ? ago(dup.at) : ''}`}
               </span>
             </>
           ) : dup.error ? (
