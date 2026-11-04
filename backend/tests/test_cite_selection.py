@@ -1,7 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -21,7 +20,7 @@ Coral bleaching mortality was lower on reefs exposed to moderate heat stress the
 @pytest.fixture
 def client(tmp_path):
     settings = Settings(data_dir=tmp_path / "data")
-    c = TestClient(create_app(settings, Library(settings, provider=MockProvider(), embedder=HashEmbedder())))
+    c = TestClient(create_app(settings, Library(settings, provider=MockProvider())))
     for name, text in [("sleep.md", SLEEP), ("reef.md", REEF)]:
         (tmp_path / name).write_text(text, encoding="utf-8")
         c.post("/ingest/path", json={"path": str(tmp_path / name)})

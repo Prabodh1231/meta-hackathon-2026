@@ -7,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -17,7 +16,7 @@ from test_matrix import PAPERS, wait
 
 @pytest.fixture
 def setup(tmp_path):
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder())
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
     ids = {}
     for name, text in PAPERS.items():
         f = tmp_path / name

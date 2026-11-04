@@ -4,7 +4,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -41,7 +40,7 @@ class RankingProvider(MockProvider):
 
 @pytest.fixture
 def lib(tmp_path):
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder())
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
     for name, text in [("notebook.md", NOTEBOOK), ("study.md", STUDY)]:
         (tmp_path / name).write_text(text, encoding="utf-8")
         lib.ingest_path(str(tmp_path / name))
@@ -150,18 +149,7 @@ def test_mock_search_helpers_are_deterministic():
     assert len(scores) == 2 and scores[0] > scores[1]
 
 
-def test_cite_sentence_choice_uses_word_overlap_not_the_old_models(lib):
-    class Exploding:
-        id = "exploding"
-
-        def embed(self, texts):
-            raise AssertionError("the embedder must not run")
-
-        def score(self, query, texts):
-            raise AssertionError("the reranker must not run")
-
-    lib.embedder = Exploding()
-    lib.reranker = Exploding()
+def test_cite_sentence_choice_uses_word_overlap(lib):
     out = lib.suggest_citations("Spindle bursts after each cue predicted which pairs were remembered.")
     assert out and "Spindle bursts" in out[0]["quote"] and out[0]["status"] == "verified"
 
@@ -179,6 +167,6 @@ def test_unknown_mode_is_rejected(lib):
 
 def test_health_reports_keyword_plus_muse_search(tmp_path):
     settings = Settings(data_dir=tmp_path / "d")
-    client = TestClient(create_app(settings, Library(settings, provider=MockProvider(), embedder=HashEmbedder())))
+    client = TestClient(create_app(settings, Library(settings, provider=MockProvider())))
     h = client.get("/health").json()
     assert h["search"] == "keyword+muse" and "embedder" not in h and "reranker" not in h

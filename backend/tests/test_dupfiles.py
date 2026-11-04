@@ -5,7 +5,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import dupfiles
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -26,7 +25,7 @@ def prose(seed: int, words: int = 260) -> str:
 
 @pytest.fixture
 def lib(tmp_path):
-    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder())
+    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
 
 
 @pytest.fixture

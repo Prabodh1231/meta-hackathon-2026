@@ -3,7 +3,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.citations import locate_quote
-from app.embeddings import HashEmbedder
 from app.ingest import chunk_page
 from app.library import Library
 from app.main import create_app
@@ -57,7 +56,7 @@ def corpus(tmp_path):
 @pytest.fixture
 def lib(tmp_path):
     settings = Settings(data_dir=tmp_path / "data")
-    return Library(settings, provider=MockProvider(), embedder=HashEmbedder())
+    return Library(settings, provider=MockProvider())
 
 
 @pytest.fixture
@@ -181,13 +180,13 @@ def test_settings_defaults_persist_and_validate(client, lib):
     assert client.patch("/settings", json={"theme": "sepia"}).status_code == 400
     assert client.patch("/settings", json={"font": "x"}).status_code == 400
     # Survives a restart: a new Library on the same data dir reads it back.
-    again = Library(lib.settings, provider=MockProvider(), embedder=HashEmbedder())
+    again = Library(lib.settings, provider=MockProvider())
     assert {k: again.get_settings()[k] for k in ("theme", "citation_style")} == {"theme": "dark", "citation_style": "ieee"}
 
 
 def test_token_is_required_when_configured(tmp_path):
     settings = Settings(data_dir=tmp_path / "d", api_token="secret")
-    app = create_app(settings, Library(settings, provider=MockProvider(), embedder=HashEmbedder()))
+    app = create_app(settings, Library(settings, provider=MockProvider()))
     c = TestClient(app)
     assert c.get("/health").status_code == 200
     assert c.get("/documents").status_code == 401

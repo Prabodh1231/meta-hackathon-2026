@@ -2,7 +2,6 @@ import fitz
 import httpx
 import pytest
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.openaccess import OpenAccess, file_name, same_work, searchable
 from app.refparse import Reference
@@ -138,7 +137,7 @@ def lib(tmp_path):
         "api.openalex.org/works": httpx.Response(200, json={"results": [openalex_work()]}),
         "repo.example/hong.pdf": httpx.Response(200, content=make_pdf(HONG_TITLE)),
     })
-    return Library(Settings(data_dir=tmp_path / "data"), provider=NoTags(), embedder=HashEmbedder(), open_access=oa)
+    return Library(Settings(data_dir=tmp_path / "data"), provider=NoTags(), open_access=oa)
 
 
 def test_cited_papers_are_listed_downloaded_into_the_library_and_then_found_there(lib, tmp_path):

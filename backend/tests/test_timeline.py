@@ -5,7 +5,6 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.openaccess import Record
@@ -17,7 +16,7 @@ from tests.test_enrich import FakeIndex
 
 @pytest.fixture
 def lib(tmp_path):
-    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder())
+    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
 
 
 @pytest.fixture
@@ -155,7 +154,7 @@ def test_publication_dates_must_match_the_year(tmp_path):
         "10.1/noyear": Record(published="2018-06", year=2018),
         "10.1/yearonly": Record(published="", year=2022),
     })
-    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder(), open_access=index)
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), open_access=index)
     client = TestClient(create_app(lib.settings, lib))
     ids = {}
     for i, (doi, year) in enumerate([("10.1/known", 2024), ("10.1/preprint", 2020), ("10.1/noyear", None), ("10.1/yearonly", 2022)]):

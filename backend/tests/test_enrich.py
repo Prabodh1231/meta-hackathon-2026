@@ -6,7 +6,6 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.openaccess import Fetched, OpenAccess, Record, Work
@@ -75,7 +74,7 @@ def index():
 
 @pytest.fixture
 def lib(tmp_path, index):
-    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), embedder=HashEmbedder(), open_access=index)
+    return Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider(), open_access=index)
 
 
 @pytest.fixture

@@ -249,7 +249,7 @@ function SearchSection() {
         Ranking: <b>{ranking}</b>
       </p>
       <p className="muted">
-        No embedding or reranker model is downloaded or run. With Muse, your query and the best-matching passages
+        No search model is downloaded or run. With Muse, your query and the best-matching passages
         (trimmed) are sent to Meta's Model API to be ranked; the keyword search itself never leaves this computer.
       </p>
     </Setting>

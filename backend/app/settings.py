@@ -7,9 +7,6 @@ from pathlib import Path
 class Settings:
     data_dir: Path
     provider: str = "mock"  # mock | muse
-    embedder: str = "auto"  # legacy setting, kept until phase 3: search no longer loads an embedder
-    # Legacy reranker setting, likewise kept until phase 3: no reranker runs any more.
-    reranker: str = "none"
     api_token: str = ""  # set by Electron per launch; empty disables the check
     parent_pid: int = 0  # set by Electron; the backend exits when that process does
     muse_api_base: str = "https://api.meta.ai/v1"
@@ -18,9 +15,6 @@ class Settings:
     muse_reasoning_effort: str = "low"  # minimal | low | medium | high | xhigh
     contact_email: str = ""  # sent to OpenAlex, Semantic Scholar and Crossref when finding cited papers (polite pool)
     core_api_key: str = ""  # CORE (core.ac.uk) is searched for free copies only with the user's own key
-    # The search models shipped with the installer (scripts/fetch_models.py), read-only. A model
-    # found there loads from it; otherwise it downloads into <data dir>/models on first use.
-    models_dir: Path | None = None
 
     @property
     def db_path(self) -> Path:
@@ -39,8 +33,6 @@ class Settings:
         return cls(
             data_dir=data_dir,
             provider=env("RC_PROVIDER", "mock").lower(),
-            embedder=env("RC_EMBEDDER", "auto").lower(),
-            reranker=env("RC_RERANKER", "auto"),
             api_token=env("RC_API_TOKEN"),
             parent_pid=int(env("RC_PARENT_PID") or 0),
             muse_api_base=env("MUSE_API_BASE", cls.muse_api_base),
@@ -50,7 +42,6 @@ class Settings:
             muse_reasoning_effort=env("MUSE_REASONING_EFFORT", cls.muse_reasoning_effort),
             contact_email=env("RC_CONTACT_EMAIL"),
             core_api_key=env("CORE_API_KEY"),
-            models_dir=Path(os.environ["RC_MODELS_DIR"]) if os.environ.get("RC_MODELS_DIR") else None,
         )
 
 

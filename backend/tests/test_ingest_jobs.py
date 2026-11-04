@@ -4,7 +4,6 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import INGEST_WORKERS, Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -42,7 +41,7 @@ class FlakyProvider(MockProvider):
 def setup(tmp_path):
     provider = FlakyProvider()
     settings = Settings(data_dir=tmp_path / "data")
-    client = TestClient(create_app(settings, Library(settings, provider=provider, embedder=HashEmbedder())))
+    client = TestClient(create_app(settings, Library(settings, provider=provider)))
     return client, provider
 
 

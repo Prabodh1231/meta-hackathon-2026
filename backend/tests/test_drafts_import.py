@@ -6,7 +6,6 @@ import docx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.main import create_app
 from app.providers import MockProvider
@@ -21,7 +20,7 @@ PNG = base64.b64decode(
 @pytest.fixture
 def client(tmp_path):
     settings = Settings(data_dir=tmp_path / "data")
-    return TestClient(create_app(settings, Library(settings, provider=MockProvider(), embedder=HashEmbedder())))
+    return TestClient(create_app(settings, Library(settings, provider=MockProvider())))
 
 
 def word_file() -> bytes:

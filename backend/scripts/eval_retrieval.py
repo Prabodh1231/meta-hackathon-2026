@@ -1,18 +1,15 @@
 """Measure retrieval quality on eval/retrieval_set.json.
 
 Builds a throwaway library from the test set (each passage is its own document, so hits
-are judged per passage) with the real local embedding model, then runs every query
-through each retrieval configuration and reports Recall@1, Recall@3 and MRR@10, overall
-and per query type, plus time per query.
+are judged per passage) with the offline mock provider, then runs every query through
+keyword search and through keyword search with provider expansion and ranking, and
+reports Recall@1, Recall@3 and MRR@10, overall and per query type, plus time per query.
 
-Usage: python scripts/eval_retrieval.py [--rerankers MODEL ...] [--json OUT]
-Models load from ~/.research-companion/models (override with RC_MODEL_CACHE) and are
-downloaded there on first use.
+Usage: python scripts/eval_retrieval.py [--json OUT]
 """
 
 import argparse
 import json
-import os
 import statistics
 import sys
 import tempfile
@@ -21,19 +18,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.embeddings import FastEmbedder  # noqa: E402
 from app.library import Library  # noqa: E402
 from app.providers import MockProvider  # noqa: E402
-from app.retrieval import CrossEncoderReranker  # noqa: E402
 from app.settings import Settings  # noqa: E402
 
 SET_PATH = Path(__file__).resolve().parents[1] / "eval" / "retrieval_set.json"
-DEFAULT_RERANKERS = [
-    "Xenova/ms-marco-MiniLM-L-6-v2",
-    "Xenova/ms-marco-MiniLM-L-12-v2",
-    "jinaai/jina-reranker-v1-tiny-en",
-    "jinaai/jina-reranker-v1-turbo-en",
-]
 K = 10
 
 
@@ -46,8 +35,10 @@ def load_set() -> dict:
     return data
 
 
-def build_library(data: dict, cache: Path, workdir: Path) -> Library:
-    lib = Library(Settings(data_dir=workdir / "data"), provider=MockProvider(), embedder=FastEmbedder(cache), reranker=None)
+def build_library(data: dict, cache: Path | None = None, workdir: Path | None = None) -> Library:
+    # `cache` is accepted for older callers and ignored: no model is downloaded or loaded.
+    workdir = workdir or Path(tempfile.mkdtemp())
+    lib = Library(Settings(data_dir=workdir / "data"), provider=MockProvider())
     corpus = workdir / "corpus"
     corpus.mkdir()
     for name, passages in data["documents"].items():
@@ -62,7 +53,7 @@ def evaluate(lib: Library, data: dict, mode: str) -> dict:
     ranks, times, by_type = [], [], {}
     for q in data["queries"]:
         start = time.perf_counter()
-        hits = lib.search(q["q"], k=K, mode=mode)  # reranks when lib.reranker is set
+        hits = lib.search(q["q"], k=K, mode=mode)  # hybrid adds provider expansion and ranking
         times.append(time.perf_counter() - start)
         rank = next((i + 1 for i, h in enumerate(hits) if q["answer"] in h["text"]), None)
         ranks.append(rank)
@@ -86,21 +77,16 @@ def evaluate(lib: Library, data: dict, mode: str) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--rerankers", nargs="*", default=DEFAULT_RERANKERS)
     ap.add_argument("--json", type=Path, help="write full results here")
     args = ap.parse_args()
-    cache = Path(os.environ.get("RC_MODEL_CACHE") or Path.home() / ".research-companion" / "models")
 
     data = load_set()
     with tempfile.TemporaryDirectory() as tmp:
-        lib = build_library(data, cache, Path(tmp))
-        configs = [("dense (before)", "dense", None), ("keyword (BM25)", "keyword", None), ("hybrid (RRF)", "hybrid", None)]
-        for m in args.rerankers:  # dense + reranker shows how much the keyword index adds
-            configs += [(f"dense + {m.split('/')[-1]}", "dense", m), (f"hybrid + {m.split('/')[-1]}", "hybrid", m)]
+        lib = build_library(data, workdir=Path(tmp))
+        configs = [("keyword (BM25)", "keyword"), ("keyword + expansion + ranking", "hybrid")]
         results = {}
-        for label, mode, model in configs:
-            lib.reranker = CrossEncoderReranker(cache, model) if model else None
-            evaluate(lib, data, mode)  # warm-up: first call pays model load / JIT costs
+        for label, mode in configs:
+            evaluate(lib, data, mode)  # warm-up
             results[label] = evaluate(lib, data, mode)
         lib.conn.close()
 

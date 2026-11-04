@@ -1,6 +1,5 @@
 import pytest
 
-from app.embeddings import HashEmbedder
 from app.library import Library
 from app.providers import MockProvider
 from app.settings import Settings
@@ -27,7 +26,7 @@ class NoTags(MockProvider):
 
 @pytest.fixture
 def lib(tmp_path):
-    return Library(Settings(data_dir=tmp_path / "data"), provider=NoTags(), embedder=HashEmbedder())
+    return Library(Settings(data_dir=tmp_path / "data"), provider=NoTags())
 
 
 def add(lib, tmp_path, name, text):

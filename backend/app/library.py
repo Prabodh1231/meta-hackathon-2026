@@ -19,19 +19,16 @@ from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
 from .citegraph import build_graph, focus, keyword_links, missing_works
 from .refparse import Reference, match_reference, norm, parse_references
-from .embeddings import Embedder
 from .ingest import ParsedDocument, chunk_page, clean_page_label, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
-from .retrieval import Reranker, fts_query, make_reranker, reciprocal_rank_fusion
+from .retrieval import fts_query, reciprocal_rank_fusion
 from .settings import Settings, write_env_file
 from .text_utils import sentence_spans, tokenize
 from .topics import choose_k, jaccard, kmeans, tfidf_cosines, tfidf_matrix
 
 log = logging.getLogger(__name__)
 
-
-_FROM_SETTINGS = object()
 
 # Filing a paper into a folder: below this many papers the library has no average to compare
 # against, so every paper is read by the model. Papers the word statistics rank under the
@@ -125,19 +122,16 @@ USER_SETTINGS_DEFAULTS = {k: _setting_default(v) for k, v in USER_SETTINGS.items
 
 
 class Library:
-    def __init__(self, settings: Settings, provider: LLMProvider | None = None, embedder: Embedder | None = None,
-                 reranker: "Reranker | None | object" = _FROM_SETTINGS, open_access: openaccess.OpenAccess | None = None):
+    def __init__(self, settings: Settings, provider: LLMProvider | None = None,
+                 open_access: openaccess.OpenAccess | None = None):
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         self.settings = settings
         self.conn = db.connect(settings.db_path)
         self.lock = threading.RLock()
         self.provider = provider or make_provider(settings)
-        # The embedder and reranker parameters are kept until phase 3 so scripts and tests
-        # that still pass them keep working, but nothing calls them any more: search is
-        # keyword search plus the provider, and folders, highlights and duplication use
-        # word statistics. No model is loaded here, so the library lists at once.
-        self.embedder = embedder
-        self.reranker = None if reranker is _FROM_SETTINGS else reranker
+        # Search is keyword search plus the provider, and folders, highlights and
+        # duplication use word statistics. No search model is loaded here, so the
+        # library lists at once.
         self.open_access = open_access or openaccess.OpenAccess(settings.contact_email, core_key=settings.core_api_key)
         if self.pref("contact_email"):
             self.open_access.set_contact(self.pref("contact_email"))
@@ -1237,8 +1231,7 @@ class Library:
         identifiers. When `rerank` is set, the provider scores the top 30 fused passages
         in one call; any failure keeps the fused order. mode="keyword" is the instant
         filter: BM25 for the query alone, with no provider call at all. The old "dense"
-        and "hybrid" names are accepted for this same search, which no longer uses
-        embeddings or a reranker."""
+        and "hybrid" names are accepted for this same keyword search."""
         if mode == "auto":
             mode = "hybrid"
         if mode == "dense":
@@ -1322,7 +1315,7 @@ class Library:
         if not row:
             return None
         hit = dict(row)
-        hit.pop("embedding")
+        hit.pop("embedding", None)  # a legacy column in older databases; search never reads it
         hit["authors"] = json.loads(hit["authors"])
         hit["score"] = score
         # The model sees this label, so it cites printed page numbers too.
@@ -1789,7 +1782,7 @@ class Library:
         ]
         if not sentences:
             return []
-        # Word overlap picks the quoted sentence: no embedder and no reranker runs here.
+        # Word overlap picks the quoted sentence, on this computer.
         # The support check in verify_citation below, a provider call, is what judges
         # whether the chosen sentence actually backs the claim.
         claim_words = set(tokenize(claim))

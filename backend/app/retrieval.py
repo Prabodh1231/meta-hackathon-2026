@@ -1,22 +1,14 @@
-"""Hybrid retrieval pieces: keyword (FTS5/BM25) queries, rank fusion and a local reranker.
+"""Keyword retrieval pieces: FTS5/BM25 queries and rank fusion.
 
-Dense embeddings find paraphrases but miss exact identifiers ("P-17", "S-208", gene
-names); BM25 is the reverse. Reciprocal rank fusion combines both lists without having
-to calibrate their scores, and a cross-encoder then reads query and passage together to
-put the best few on top. See eval/ for the test set these choices were measured on.
+BM25 finds exact terms and identifiers ("P-17", "S-208", gene names) and ranks by
+how many rare terms a chunk contains. The provider suggests short expansions in the
+words a paper would use; reciprocal rank fusion merges the BM25 lists for the query
+and its expansions without having to calibrate their scores, and the provider then
+ranks the best few passages in one call (see Library.search).
 """
 
-import logging
 import re
 from collections import defaultdict
-from pathlib import Path
-from typing import Protocol
-
-from .embeddings import bundled_model
-
-log = logging.getLogger(__name__)
-
-DEFAULT_RERANKER = "Xenova/ms-marco-MiniLM-L-6-v2"
 
 
 # Only true function words: everything else may be the term that matters, and BM25's IDF
@@ -53,41 +45,4 @@ def reciprocal_rank_fusion(*rankings: list[int], k: int = 60) -> list[tuple[int,
     return sorted(scores.items(), key=lambda kv: -kv[1])
 
 
-class Reranker(Protocol):
-    id: str
-
-    def score(self, query: str, texts: list[str]) -> list[float]:
-        """Relevance of each text to the query; higher is better."""
-
-
-class CrossEncoderReranker:
-    def __init__(self, cache_dir: Path, model: str = DEFAULT_RERANKER, path: str | None = None):
-        from fastembed.rerank.cross_encoder import TextCrossEncoder
-
-        # `path`: the installer's copy (see embeddings.bundled_model), loaded without downloading.
-        self.model = TextCrossEncoder(model_name=model, cache_dir=str(cache_dir), specific_model_path=path)
-        self.id = f"fastembed:{model}"
-
-    def score(self, query: str, texts: list[str]) -> list[float]:
-        if not texts:
-            return []
-        return [float(s) for s in self.model.rerank(query, texts)]
-
-
-# Values from older versions that reranked elsewhere ("baseten") mean the local default too.
-_DEFAULT_KINDS = ("auto", "local", "baseten")
-
-
-def make_reranker(kind: str, cache_dir: Path, models_dir: Path | None = None) -> Reranker | None:
-    """kind: "none"; "auto" or "local" (the local default, skipped if it can't load); or a local
-    model name. Reranking always runs on this computer."""
-    if kind == "none":
-        return None
-    model = DEFAULT_RERANKER if kind in _DEFAULT_KINDS else kind
-    try:
-        return CrossEncoderReranker(cache_dir, model, bundled_model(models_dir, model))
-    except Exception as exc:  # not installed, or download failed offline
-        if kind not in _DEFAULT_KINDS:
-            raise
-        log.warning("Reranker unavailable (%s); search will use fused keyword+vector ranking", exc)
-        return None
+# Ranking is done by the provider layer (Library.search calls rank_passages), not by a local model.
