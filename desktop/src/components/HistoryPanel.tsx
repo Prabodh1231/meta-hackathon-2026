@@ -129,7 +129,7 @@ export function HistoryPanel({ draftId, list, onRefresh, getJSON, getTitle, onRe
   return (
     <div className="history">
       <section className="hist-now">
-        <Ring pct={list?.current_change ?? 0} caption="changed" size={68} />
+        <Ring pct={list?.current_change ?? 0} caption="since last" size={68} />
         <div className="hist-now-text">
           <div className="hist-now-title">Current draft</div>
           <div className="muted">
@@ -279,7 +279,7 @@ export function HistoryPanel({ draftId, list, onRefresh, getJSON, getTitle, onRe
               )}
               {v.number > 1 ? (
                 <div className="tl-meter" title={`${v.change}% changed since the version before`}>
-                  <Meter pct={v.change} />
+                  <Meter pct={v.change} label="vs. previous" />
                 </div>
               ) : (
                 <div className="muted">First version</div>

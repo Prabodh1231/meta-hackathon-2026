@@ -1,6 +1,7 @@
 import cytoscape, { type Core } from 'cytoscape'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
+import { WaitStatus } from './WaitStatus'
 import type { CitationGraph, GraphNode } from '../types'
 
 interface Props {
@@ -34,6 +35,9 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
   const [showShared, setShowShared] = useState(true)
   const [showMissing, setShowMissing] = useState(false) // listed beside the graph; drawn on request
   const [showKeywords, setShowKeywords] = useState(false)
+  const [view, setView] = useState<'graph' | 'list'>('graph') // the list: the same papers as a table, for keyboard and screen readers
+  const [since, setSince] = useState(0) // when the map was asked for, for the wait line
+  const [drawing, setDrawing] = useState(false) // laying the graph out (it holds the window while it runs)
   const [scope, setScope] = useState<Scope | null>(query.trim() ? { kind: 'topic', topic: query.trim() } : null)
   const [typed, setTyped] = useState('') // the topic typed on the start screen
   const [picked, setPicked] = useState<string | null>(null)
@@ -51,6 +55,7 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
     setLink(null)
     placed.current = new Map() // a new map is laid out afresh
     if (!scope) return
+    setSince(Date.now())
     let current = true
     api.graph(topic, scope.kind === 'ticked' ? scope.ids : undefined)
       .then((g) => current && setGraph(g))
@@ -98,9 +103,15 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
     if (cy.current) cy.current.nodes().forEach((n) => void placed.current.set(n.id(), { ...n.position() }))
     const keep = shown.length > 0 && shown.every((n) => placed.current.has(n.id))
     const some = shown.some((n) => placed.current.has(n.id))
-    const view = cy.current ? { zoom: cy.current.zoom(), pan: { ...cy.current.pan() } } : null // kept with the positions
+    const viewport = cy.current ? { zoom: cy.current.zoom(), pan: { ...cy.current.pan() } } : null // kept with the positions
     cy.current?.destroy()
-    const c = cytoscape({
+    cy.current = null
+    const iterations = shown.length > 150 ? 500 : shown.length > 80 ? 900 : 1500
+    if (!keep) setDrawing(true)
+    let c: Core | null = null
+    // Laying out runs in one go and holds the window; give the "Laying out…" note a frame to show first.
+    const timer = window.setTimeout(() => {
+    c = cytoscape({
       container: box.current,
       elements,
       minZoom: 0.2,
@@ -123,9 +134,10 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
       // More room between nodes than before, so the named ones' labels rarely run into each other.
       layout: (keep
         ? { name: 'preset', fit: false } // every node has its place: just redraw the lines
-        : { name: 'cose', animate: false, randomize: !some, nodeRepulsion: () => 16000, idealEdgeLength: () => 95, nodeOverlap: 24, componentSpacing: 80, gravity: 0.3, numIter: some ? 400 : 1500, padding: 40 }) as cytoscape.LayoutOptions,
+        : { name: 'cose', animate: false, randomize: !some, nodeRepulsion: () => 16000, idealEdgeLength: () => 95, nodeOverlap: 24, componentSpacing: 80, gravity: 0.3, numIter: some ? 400 : iterations, padding: 40 }) as cytoscape.LayoutOptions,
     })
-    if (keep && view) c.viewport(view)
+    if (keep && viewport) c.viewport(viewport)
+    if (!c) return
     c.on('tap', 'node', (ev) => (setLink(null), setPicked(ev.target.id())))
     c.on('tap', (ev) => { if (ev.target === c) (setPicked(null), setLink(null)) })
     // A line says why its two papers are linked, in the side panel.
@@ -147,8 +159,15 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
     })
     c.on('pan zoom', () => setHover(null))
     cy.current = c
-    return () => { c.destroy(); cy.current = null }
+    setDrawing(false)
+    }, keep ? 0 : 40)
+    return () => { window.clearTimeout(timer); c?.destroy(); cy.current = null }
   }, [graph, showShared, showMissing, showKeywords])
+
+  // The graph's box was hidden while the list showed: let cytoscape measure it again.
+  useEffect(() => {
+    if (view === 'graph') cy.current?.resize()
+  }, [view])
 
   useEffect(() => {
     const c = cy.current
@@ -258,14 +277,38 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
           Change
         </button>
         <div className="spacer" />
-        <label><input type="checkbox" checked={showKeywords} onChange={(e) => setShowKeywords(e.target.checked)} /> Shared keywords</label>
-        <label><input type="checkbox" checked={showShared} onChange={(e) => setShowShared(e.target.checked)} /> Shared references</label>
-        <label><input type="checkbox" checked={showMissing} onChange={(e) => setShowMissing(e.target.checked)} /> Missing works</label>
+        <div className="network-view-switch" role="group" aria-label="Show the papers as">
+          <button aria-pressed={view === 'graph'} className={view === 'graph' ? 'on' : ''} onClick={() => setView('graph')}>
+            Graph
+          </button>
+          <button aria-pressed={view === 'list'} className={view === 'list' ? 'on' : ''} onClick={() => setView('list')} title="The same papers as a table you can sort and use with the keyboard">
+            List
+          </button>
+        </div>
+        {view === 'graph' && (
+          <>
+            <label><input type="checkbox" checked={showKeywords} onChange={(e) => setShowKeywords(e.target.checked)} /> Shared keywords</label>
+            <label><input type="checkbox" checked={showShared} onChange={(e) => setShowShared(e.target.checked)} /> Shared references</label>
+            <label><input type="checkbox" checked={showMissing} onChange={(e) => setShowMissing(e.target.checked)} /> Missing works</label>
+          </>
+        )}
       </header>
       <div className="network-body">
-        <div className="network-canvas">
+        {view === 'list' && graph && <NetworkTable graph={graph} picked={picked} onPick={(id) => (setLink(null), setPicked(id))} />}
+        <div className="network-canvas" hidden={view === 'list' && !!graph}>
           <div className="network-cy" ref={box} />
-          {!graph && <p className="network-note">Reading reference lists…</p>}
+          {!graph && (
+            <div className="network-wait">
+              <WaitStatus
+                label={`Reading the reference lists of the papers ${what}…`}
+                startedAt={since}
+                usual="A few seconds for a topic; longer for the whole library."
+                onCancel={() => setScope(null)}
+                cancelTitle="Stop and choose something else to map"
+              />
+            </div>
+          )}
+          {graph && drawing && <p className="network-note network-drawing">Laying out {papers} papers…</p>}
           {graph && (
             <div className="network-zoom" role="group" aria-label="Zoom the graph">
               <button className="icon" onClick={() => cy.current?.zoom({ level: cy.current.zoom() * 1.25, renderedPosition: center(cy.current) })} aria-label="Zoom in" title="Zoom in (or scroll)">
@@ -426,6 +469,77 @@ function LinkWhy({ link, graph, nodes, onPick, onClose }: {
         </>
       )}
       {link.kind === 'keyword' && <p>They share the keywords {words.join(', ')}: they write about the same things, cited or not.</p>}
+    </div>
+  )
+}
+
+type SortKey = 'title' | 'year' | 'cites' | 'cited_by' | 'shares'
+
+/** The mapped papers as a table: what the graph shows, readable with a keyboard or screen reader and
+ * sortable. Picking a row opens the paper in the side panel, as clicking its node does. */
+function NetworkTable({ graph, picked, onPick }: { graph: CitationGraph; picked: string | null; onPick: (id: string) => void }) {
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'cited_by', desc: true })
+  const shares = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const e of graph.coupling) {
+      if (e.weight < 2) continue
+      m.set(e.source, (m.get(e.source) ?? 0) + 1)
+      m.set(e.target, (m.get(e.target) ?? 0) + 1)
+    }
+    return m
+  }, [graph])
+  const inMap = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const e of graph.citations) if (e.target.startsWith('doc:')) m.set(e.target, (m.get(e.target) ?? 0) + 1)
+    return m
+  }, [graph])
+  const rows = graph.nodes
+    .filter((n) => n.kind === 'paper')
+    .map((n) => ({ n, shares: shares.get(n.id) ?? 0, citedHere: inMap.get(n.id) ?? 0 }))
+  const value = (r: (typeof rows)[number]) =>
+    sort.key === 'title' ? r.n.title.toLowerCase() : sort.key === 'year' ? r.n.year ?? 0 : sort.key === 'cites' ? r.n.cites : sort.key === 'cited_by' ? r.citedHere : r.shares
+  rows.sort((a, b) => {
+    const x = value(a), y = value(b)
+    const c = x < y ? -1 : x > y ? 1 : 0
+    return sort.desc ? -c : c
+  })
+  const head = (key: SortKey, label: string, title: string) => (
+    <th aria-sort={sort.key === key ? (sort.desc ? 'descending' : 'ascending') : 'none'}>
+      <button onClick={() => setSort((s) => ({ key, desc: s.key === key ? !s.desc : key !== 'title' }))} title={title}>
+        {label}
+        {sort.key === key ? (sort.desc ? ' ↓' : ' ↑') : ''}
+      </button>
+    </th>
+  )
+  return (
+    <div className="network-table-wrap">
+      <table className="network-table" aria-label={`${rows.length} mapped papers`}>
+        <thead>
+          <tr>
+            {head('title', 'Paper', 'Sort by title')}
+            {head('year', 'Year', 'Sort by year')}
+            {head('cited_by', 'Cited here', 'How many of the mapped papers cite it')}
+            {head('cites', 'Cites', 'How many works in the map it cites')}
+            {head('shares', 'Shares refs with', 'How many mapped papers share two or more references with it')}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ n, shares: s, citedHere }) => (
+            <tr key={n.id} className={picked === n.id ? 'on' : ''} aria-selected={picked === n.id}>
+              <td>
+                <button className="network-table-title" onClick={() => onPick(n.id)}>
+                  {n.title}
+                </button>
+                <span className="muted">{byline(n)}</span>
+              </td>
+              <td>{n.year ?? ''}</td>
+              <td>{citedHere}</td>
+              <td>{n.cites}</td>
+              <td>{s}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

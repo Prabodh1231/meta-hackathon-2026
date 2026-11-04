@@ -700,6 +700,7 @@ ${g.detail}`
   const passages = (kept ?? []).filter((f) => f.kind === 'synthesis')
 
   const needle = query.trim().toLowerCase()
+  const doc = (id: number) => docs.find((d) => d.id === id) // a row's paper, for its page links
   const rows = useMemo(() => {
     if (!matrix) return []
     const shown = matrix.rows.filter(
@@ -1147,7 +1148,17 @@ ${g.detail}`
                                   <span className="mx-where">
                                     {/* ✓ the quote was found on that page; ? it wasn't, so check it */}
                                     <span className="mx-dot" aria-hidden="true">{cell.status === 'unverified' ? '?' : '✓'}</span>
-                                    {cell.label.split(', ').slice(-1)[0]}
+                                    {doc(r.doc_id)?.kind === 'pdf' && cell.page ? (
+                                      <button
+                                        className="link mx-page-link"
+                                        onClick={(e) => (e.stopPropagation(), onOpenPdf(doc(r.doc_id)!, cell.page!))}
+                                        title="Open the PDF at this page"
+                                      >
+                                        {cell.label.split(', ').slice(-1)[0]}
+                                      </button>
+                                    ) : (
+                                      cell.label.split(', ').slice(-1)[0]
+                                    )}
                                     {cell.status === 'unverified' ? ' · quote not found' : ''}
                                     {cell.edited ? ' · edited' : ''}
                                   </span>
