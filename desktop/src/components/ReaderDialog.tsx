@@ -15,9 +15,27 @@ type Popup =
   | { kind: 'tooLong'; x: number; y: number }
   | { kind: 'note'; hid: number; x: number; y: number }
 
+/** The reader as a window of its own (the desktop app): the paper's record is loaded first. */
+export function ReaderWindow({ docId, page }: { docId: number; page: number }) {
+  const [doc, setDoc] = useState<Doc | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    api
+      .document(docId)
+      .then((d) => {
+        setDoc(d)
+        document.title = `${d.title} · Reader`
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }, [docId])
+  if (!doc) return <p className={error ? 'error-text pdf-view-note' : 'muted pdf-view-note'}>{error ?? 'Opening…'}</p>
+  return <ReaderDialog doc={doc} page={page} standalone onClose={() => window.close()} />
+}
+
 /** A library PDF read in the app: every page drawn with its text selectable, so passages can be
- * highlighted and given a note. Highlights are kept with the paper and fetched while writing. */
-export function ReaderDialog({ doc, page, onClose }: { doc: Doc; page: number; onClose: () => void }) {
+ * highlighted and given a note. Highlights are kept with the paper and fetched while writing.
+ * `standalone`: filling a window of its own rather than a dialog over the app. */
+export function ReaderDialog({ doc, page, standalone = false, onClose }: { doc: Doc; page: number; standalone?: boolean; onClose: () => void }) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
   const [aspect, setAspect] = useState(1.294) // page height / width, from page 1 (A4 until it's read)
   const [error, setError] = useState<string | null>(null)
@@ -83,11 +101,24 @@ export function ReaderDialog({ doc, page, onClose }: { doc: Doc; page: number; o
       if (e.key !== 'Escape') return
       e.stopPropagation()
       if (popup) closePopup()
-      else onClose()
+      else if (!standalone) onClose() // a window of its own closes like any window, not on Esc
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose, popup, closePopup])
+  }, [onClose, popup, closePopup, standalone])
+
+  // A click anywhere else dismisses the popup, as a menu would: the Highlight bar always, a note
+  // only when nothing typed in it would be lost.
+  useEffect(() => {
+    if (!popup) return
+    const onDown = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest?.('.reader-popup')) return
+      if (popup.kind === 'note' && draft.trim() !== (highlights.find((h) => h.id === popup.hid)?.note ?? '')) return
+      closePopup()
+    }
+    window.addEventListener('mousedown', onDown, true)
+    return () => window.removeEventListener('mousedown', onDown, true)
+  }, [popup, draft, highlights, closePopup])
 
   /** A selection made with the mouse: offer to highlight it, if it's on one page. */
   function onMouseUp(e: React.MouseEvent) {
@@ -158,8 +189,8 @@ export function ReaderDialog({ doc, page, onClose }: { doc: Doc; page: number; o
   const noted = highlights.filter((h) => h.note).length
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal pdf-view" role="dialog" aria-modal="true" aria-label={`PDF: ${doc.title}`}>
+    <div className={standalone ? 'reader-window' : 'modal-backdrop'} onMouseDown={(e) => !standalone && e.target === e.currentTarget && onClose()}>
+      <div className="modal pdf-view" role={standalone ? 'main' : 'dialog'} aria-modal={!standalone} aria-label={`PDF: ${doc.title}`}>
         <header className="pdf-view-head">
           <span className="kind kind-pdf">PDF</span>
           <h2 title={doc.title}>{doc.title}</h2>
@@ -177,7 +208,7 @@ export function ReaderDialog({ doc, page, onClose }: { doc: Doc; page: number; o
               Show in folder
             </button>
           )}
-          <button className="icon" onClick={onClose} aria-label="Close the PDF" title="Close (Esc)">
+          <button className="icon" onClick={onClose} aria-label="Close the PDF" title={standalone ? 'Close' : 'Close (Esc)'}>
             ×
           </button>
         </header>

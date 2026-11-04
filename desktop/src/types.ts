@@ -583,6 +583,8 @@ declare global {
       openFile?: (path: string) => Promise<void>
       /** A library PDF in its own resizable window, at a page (the desktop app only). */
       openPdf?: (path: string, page: number, title: string) => Promise<void>
+      /** A library PDF in the app's reader, in its own window, at a page (the desktop app only). */
+      openReader?: (docId: number, page: number, title: string) => Promise<void>
       /** Where a dropped or picked file is on disk ('' for one that isn't a file on disk). */
       pathForFile?: (file: File) => string
       /** Copies the demo corpus into the data folder and resolves to that folder. */
