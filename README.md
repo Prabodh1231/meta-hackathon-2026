@@ -26,9 +26,17 @@ Muse Spark drafts from your library, and each citation is checked against a quot
 
 ## Why
 
-AI writing tools can produce a sentence and a reference that look right, while leaving you to check whether the paper says it. A reference manager stores what you read, but does not check the draft against it.
+Large firms give their people knowledge-management platforms: one place to find what the organisation knows. An individual researcher, a student or a scientist at a university without big subscriptions usually has a folder of PDFs.
 
-Groundwork puts the library and the draft in one app. It drafts only from your sources, attaches a quote to each sentence, and shows you that quote highlighted on its page. Your source files stay where they are; only the text passages Muse needs, and images that need OCR, are sent to the API.
+Many researchers also work without access to Scopus or Web of Science. Every paper they need to read means a hunt across repositories and preprint servers for a free copy, and that hunt stops the real work. And AI writing tools can produce a sentence and a reference that look right, while leaving you to check whether the paper says it.
+
+Groundwork is a personal knowledge platform for one researcher:
+
+- **A virtual library.** The papers you already have, organised by what they say. Your files stay where they are, and folders only point at them.
+- **Free papers without the hunt.** For the works your papers cite, Groundwork finds legal open-access copies through OpenAlex, Semantic Scholar and CORE, and downloads them in one click. No subscription needed.
+- **Writing you can trust.** It drafts only from your sources, attaches a quote to each sentence, and shows you that quote highlighted on its page.
+
+Only the text passages Muse needs, and images that need OCR, are sent to the API.
 
 ## How Muse is used
 
@@ -42,10 +50,13 @@ Muse Spark (`muse-spark-1.3`) through Meta's [Model API](https://dev.meta.ai/pro
 
 ## What it does
 
-### One library for everything you read
+### A virtual library for everything you read
 
 - Add files, a whole folder, or a pasted link or path, or drop files on the window. Groundwork reads PDF, Word (.docx), PowerPoint (.pptx), Markdown, plain text, HTML and images (PNG, JPEG, WebP).
-- Papers are filed into subject folders by what they say, not by file name, and one paper can sit in several folders. Lookups in OpenAlex and Crossref add journal details, the authors' abstract and citation counts. Tick papers to limit drafting and cite searches to just those.
+- **Your files stay where they are.** Groundwork never copies or moves them; it keeps its own index in `~/.groundwork/`. Subject folders are virtual: a folder points at your files, so one paper can sit in several folders at once, and deleting a folder deletes no paper.
+- **Folders by meaning.** Type a subject such as "Digital finance" and choose how closely a paper must match; papers are filed by what they say, not by where they are saved.
+- **Real titles, not file names.** Each paper is listed by the title, authors and year Muse reads from inside it, so `scan_0042.pdf` still shows up as the paper it is. Papers Groundwork downloads for you are saved as `Author Year - Title.pdf`.
+- Lookups in OpenAlex and Crossref add journal details, the authors' abstract and citation counts. Tick papers to limit drafting and cite searches to just those.
 - Open a PDF in the app's reader to highlight passages and add notes. Highlights can be inserted into the draft as quotes, or ticked so Muse writes a paragraph from them; their ranking for the paragraph you are in runs on your computer.
 
 ![The Add sources menu: paste a link or path, or drop files](docs/images/add-sources.png)
@@ -75,7 +86,7 @@ Muse Spark (`muse-spark-1.3`) through Meta's [Model API](https://dev.meta.ai/pro
 ### Review matrices and the citation network
 
 - A matrix has one row per paper and one column per question: sample, setting, method, findings, limitations, or your own. Each cell rests on a quote found in the paper, marked with its page, marked **Needs check** when the quote was not found, or *Not reported* when the passages read do not say. From a finished matrix you can find gaps across studies, write a comparison citing the matrix, plan a research proposal from the gaps, and export to Excel, CSV or Word.
-- **Network** maps who cites whom for a topic, your ticked papers, or the whole library, and lists the most-cited works your papers cite that you do not have, with free copies to download where one exists.
+- **Network** maps who cites whom for a topic, your ticked papers, or the whole library, and lists the most-cited works your papers cite that you do not have. Where a legal open-access copy exists (open-access journals, arXiv, university repositories), it downloads in one click, with no subscription needed, and is saved as `Author Year - Title.pdf`.
 
 ![A review matrix: one row per paper, columns for Sample, Setting, Method and Findings, each cell with its page](docs/images/matrix.png)
 *A review matrix: one row per paper, each cell a short answer with the page its quote is on.*
