@@ -7,8 +7,13 @@ its abstract, its reference list, how often it is cited and by which works."""
 
 import dataclasses
 import logging
+import json
 import re
+import sqlite3
+import threading
 import time
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote
@@ -31,6 +36,68 @@ RECORD_FIELDS = ("id,doi,title,publication_year,publication_date,authorships,pri
                  "abstract_inverted_index,cited_by_count,referenced_works")
 LIST_FIELDS = "id,doi,title,publication_year,authorships,primary_location,cited_by_count"
 IDS_PER_REQUEST = 50  # OpenAlex takes up to this many ids in one filter
+CITED_BY_MAX_AGE_DAYS = 30  # a cached work's cited_by_count is fetched again when older than this
+CACHE_FILE = "openalex_cache.db"  # in the app data folder
+
+
+class WorkCache:
+    """Cited works OpenAlex already sent, by short id ("W2741809807"), in their own SQLite file
+    so the library database stays the user's. Each row keeps the work as OpenAlex sent it (the
+    LIST_FIELDS, plus the abstract when a reply carried one) and when it was fetched. Titles,
+    authors, year and venue don't change; cited_by_count goes stale after CITED_BY_MAX_AGE_DAYS."""
+
+    def __init__(self, path: Path | str):
+        self.path = str(path)
+        self.lock = threading.Lock()
+        with self.lock, self._connect() as conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS works (id TEXT PRIMARY KEY, work TEXT NOT NULL, "
+                              "abstract TEXT NOT NULL DEFAULT '', fetched_at TEXT NOT NULL)")
+
+    @contextmanager
+    def _connect(self):
+        """A connection per use, so the file isn't held open (Windows can't delete an open file)."""
+        conn = sqlite3.connect(self.path)
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
+    def get(self, ids: list[str], now: datetime | None = None) -> dict[str, dict]:
+        """The fresh cached works among these ids (stale ones count as missing)."""
+        if not ids:
+            return {}
+        cutoff = ((now or datetime.now(timezone.utc)) - timedelta(days=CITED_BY_MAX_AGE_DAYS)).isoformat()
+        out: dict[str, dict] = {}
+        with self.lock, self._connect() as conn:
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                rows = conn.execute(
+                    f"SELECT id, work FROM works WHERE fetched_at >= ? AND id IN ({','.join('?' * len(chunk))})",
+                    [cutoff, *chunk])
+                out.update((r[0], json.loads(r[1])) for r in rows)
+        return out
+
+    def put(self, works: list[dict], now: datetime | None = None) -> None:
+        stamp = (now or datetime.now(timezone.utc)).isoformat()
+        rows = []
+        for w in works:
+            wid = _short_id(w.get("id"))
+            if not wid:
+                continue
+            kept = {k: w.get(k) for k in LIST_FIELDS.split(",")}
+            rows.append((wid, json.dumps(kept), _abstract(w.get("abstract_inverted_index")), stamp))
+        with self.lock, self._connect() as conn:
+            # A reply without an abstract keeps the one cached before.
+            conn.executemany(
+                "INSERT INTO works (id, work, abstract, fetched_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE "
+                "SET work = excluded.work, fetched_at = excluded.fetched_at, "
+                "abstract = CASE WHEN excluded.abstract != '' THEN excluded.abstract ELSE works.abstract END", rows)
+
+    def abstract(self, wid: str) -> str:
+        with self.lock, self._connect() as conn:
+            r = conn.execute("SELECT abstract FROM works WHERE id = ?", (wid,)).fetchone()
+        return r[0] if r else ""
 
 
 @dataclass
@@ -178,8 +245,10 @@ def _doi(value: str | None) -> str:
 
 class OpenAccess:
     def __init__(self, contact_email: str = "", transport: httpx.BaseTransport | None = None,
-                 timeout: float = 30.0, retry_wait: float = 2.0, core_key: str = ""):
+                 timeout: float = 30.0, retry_wait: float = 2.0, core_key: str = "",
+                 cache_path: Path | str | None = None):
         self.retry_wait = retry_wait
+        self.cache = WorkCache(cache_path) if cache_path else None
         self.client = httpx.Client(timeout=timeout, follow_redirects=True, transport=transport)
         self.set_contact(contact_email)
         self.core_key = core_key
@@ -349,13 +418,19 @@ class OpenAccess:
             return ""
 
     def works_by_id(self, ids: list[str], select: str = LIST_FIELDS) -> dict[str, dict]:
-        """OpenAlex works by id ("W123"), a batch per request."""
-        out: dict[str, dict] = {}
-        for i in range(0, len(ids), IDS_PER_REQUEST):
-            batch = ids[i:i + IDS_PER_REQUEST]
+        """OpenAlex works by id ("W123"), a batch per request. With a cache, only the ids it
+        doesn't hold (or holds with a stale citation count) are asked for."""
+        use_cache = self.cache is not None and select == LIST_FIELDS
+        out: dict[str, dict] = self.cache.get(list(dict.fromkeys(ids))) if use_cache else {}
+        missing = [i for i in dict.fromkeys(ids) if i not in out]
+        for i in range(0, len(missing), IDS_PER_REQUEST):
+            batch = missing[i:i + IDS_PER_REQUEST]
             res = self._get(f"{OPENALEX}/works", self._params(
                 select=select, filter="openalex:" + "|".join(batch), **{"per-page": str(len(batch))}))
-            for w in (res.json().get("results") or []) if res else []:
+            got = (res.json().get("results") or []) if res else []
+            if use_cache:
+                self.cache.put(got)
+            for w in got:
                 out[_short_id(w.get("id"))] = w
         return out
 
@@ -368,7 +443,10 @@ class OpenAccess:
             res = self._get(f"{OPENALEX}/works", self._params(
                 select=LIST_FIELDS + ",abstract_inverted_index", filter="doi:" + "|".join(batch),
                 **{"per-page": str(len(batch))}))
-            for w in (res.json().get("results") or []) if res else []:
+            got = (res.json().get("results") or []) if res else []
+            if self.cache is not None:
+                self.cache.put(got)
+            for w in got:
                 out[_doi(w.get("doi"))] = listed_work(w)
         return out
 
