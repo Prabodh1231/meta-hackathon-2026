@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
+from .backup import backup_in_background
 from .export_docx import export_docx
 from .jobs import IngestJobs
 from .library import INGEST_WORKERS, Library
@@ -292,6 +293,8 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     settings = settings or Settings.from_env()
     if settings.parent_pid:
         exit_with_parent(settings.parent_pid)
+    if library is None:
+        backup_in_background(settings.db_path)  # before the library opens: a copy from before any migration
     lib = library or Library(settings)
     app = FastAPI(title="Groundwork")
     app.state.library = lib

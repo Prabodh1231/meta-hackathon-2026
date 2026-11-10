@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { ReaderWindow } from './components/ReaderDialog'
 import { applyTheme, cachedTheme } from './theme'
 import './styles.css'
@@ -12,7 +13,9 @@ const reader = params.get('reader')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {/* The desktop app opens a paper's reader in a window of its own: the same page, with ?reader=<id>. */}
-    {reader ? <ReaderWindow docId={Number(reader)} page={Number(params.get('page')) || 1} /> : <App />}
+    <ErrorBoundary>
+      {/* The desktop app opens a paper's reader in a window of its own: the same page, with ?reader=<id>. */}
+      {reader ? <ReaderWindow docId={Number(reader)} page={Number(params.get('page')) || 1} /> : <App />}
+    </ErrorBoundary>
   </StrictMode>,
 )

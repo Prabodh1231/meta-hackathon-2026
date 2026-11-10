@@ -138,7 +138,9 @@ class Library:
         # Search is keyword search plus the provider, and folders, highlights and
         # duplication use word statistics. No search model is loaded here, so the
         # library lists at once.
-        self.open_access = open_access or openaccess.OpenAccess(settings.contact_email, core_key=settings.core_api_key)
+        self.open_access = open_access or openaccess.OpenAccess(
+            settings.contact_email, core_key=settings.core_api_key,
+            cache_path=settings.data_dir / openaccess.CACHE_FILE)
         if self.pref("contact_email"):
             self.open_access.set_contact(self.pref("contact_email"))
         self._backfill_keywords()

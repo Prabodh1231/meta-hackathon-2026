@@ -463,13 +463,26 @@ ipcMain.handle('rc:open-reader', async (_event, docId, page, title) => {
 // the installer's appId when installed, the Electron executable in development.
 if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.groundwork.app' : process.execPath)
 
-app.whenReady().then(async () => {
-  backendConfig = await startBackend()
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+// One copy of the app at a time: a second one would start a second backend on the same library,
+// and two windows saving the same draft overwrite each other. Starting it again shows the window
+// that's already open. (The smoke test runs beside an open app, against the same library.)
+if (!process.env.RC_SMOKE_TEST && !app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!appWindow || appWindow.isDestroyed()) return
+    if (appWindow.isMinimized()) appWindow.restore()
+    appWindow.show()
+    appWindow.focus()
   })
-})
+  app.whenReady().then(async () => {
+    backendConfig = await startBackend()
+    createWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

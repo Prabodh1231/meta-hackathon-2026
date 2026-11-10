@@ -450,6 +450,9 @@ If one of these is also set as a system environment variable, Settings says so: 
 |---|---|
 | *Backend offline, reconnecting…* | The backend stopped; the app restarts it by itself (up to 3 times a minute). Hover the message for the log file's location. |
 | *Restart the app to finish updating* | The backend is older than the window. Close and reopen the app. |
+| *Something went wrong* fills the window | The app hit an error drawing the window. Click **Reload**: drafts are saved as you type, so your work comes back. |
+| The library is damaged, or you need it as it was | The app copies the library once a day when it starts, into `~/.groundwork/backups/`, keeping the newest three. Close the app, replace `~/.groundwork/library.db` with a copy, and delete `library.db-wal` and `library.db-shm` beside it. |
+| Starting the app again shows the window that's already open | Only one copy runs at a time, so two windows can't overwrite each other's drafts. |
 | *no summary yet* on papers | Muse was unavailable when they were added. Click **Try again** in the Library. |
 | A citation turns red with "no longer in your library" | Its file was removed, or re-added with different text. Cite the sentence again. |
 | Summaries look rough | You're on the offline mock model. Switch to Muse in **Settings → AI model**. |
