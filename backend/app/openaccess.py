@@ -12,6 +12,7 @@ import re
 import sqlite3
 import threading
 import time
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
@@ -35,6 +36,12 @@ TITLE_MATCH = 0.88  # how close an index's title must be to the reference's own
 RECORD_FIELDS = ("id,doi,title,publication_year,publication_date,authorships,primary_location,biblio,"
                  "abstract_inverted_index,cited_by_count,referenced_works")
 LIST_FIELDS = "id,doi,title,publication_year,authorships,primary_location,cited_by_count"
+# Where a free copy can be read, for fetch().
+OA_FIELDS = "doi,title,publication_year,publication_date,open_access,best_oa_location,locations"
+# One lookup of a single work serves both fetch() and record(): the union of their fields.
+LOOKUP_FIELDS = ",".join(dict.fromkeys(RECORD_FIELDS.split(",") + OA_FIELDS.split(",")))
+LOOKUP_MAX_AGE_SECONDS = 600  # a looked-up work is reused this long (a fetched paper's record follows soon)
+LOOKUP_MEMO_SIZE = 256
 IDS_PER_REQUEST = 50  # OpenAlex takes up to this many ids in one filter
 CITED_BY_MAX_AGE_DAYS = 30  # a cached work's cited_by_count is fetched again when older than this
 CACHE_FILE = "openalex_cache.db"  # in the app data folder
@@ -249,6 +256,8 @@ class OpenAccess:
                  cache_path: Path | str | None = None):
         self.retry_wait = retry_wait
         self.cache = WorkCache(cache_path) if cache_path else None
+        self._memo: OrderedDict[tuple, tuple[float, dict | None]] = OrderedDict()  # see _openalex_work
+        self._memo_lock = threading.Lock()
         self.client = httpx.Client(timeout=timeout, follow_redirects=True, transport=transport)
         self.set_contact(contact_email)
         self.core_key = core_key
@@ -290,32 +299,18 @@ class OpenAccess:
     # ---------- finding the work ----------
 
     def _openalex(self, ref: Reference) -> Work | None:
-        params = {"select": "doi,title,publication_year,publication_date,open_access,best_oa_location,locations"}
-        if self.mailto:
-            params["mailto"] = self.mailto
-        if ref.doi:
-            res = self._get(f"{OPENALEX}/works/doi:{ref.doi}", params)
-            hits = [res.json()] if res else []
-        else:
-            params.update({"search": norm(ref.title), "per-page": "5"})
-            if ref.year:
-                params["filter"] = f"publication_year:{ref.year - 1}-{ref.year + 1}"
-            res = self._get(f"{OPENALEX}/works", params)
-            hits = (res.json().get("results") or []) if res else []
-        for w in hits:
-            title, year = w.get("title") or "", w.get("publication_year")
-            if not ref.doi and not same_work(ref, title, year):
-                continue
-            best = w.get("best_oa_location") or {}
-            oa = w.get("open_access") or {}
-            pdfs = [best.get("pdf_url")]
-            pdfs += [loc.get("pdf_url") for loc in w.get("locations") or [] if loc.get("is_oa")]
-            pdfs.append(oa.get("oa_url"))  # often the PDF itself; checked when downloaded
-            return Work(title, year, _doi(w.get("doi")) or ref.doi, "OpenAlex",
-                        pdf_urls=list(dict.fromkeys(u for u in pdfs if u)),
-                        landing_url=best.get("landing_page_url") or oa.get("oa_url") or "",
-                        is_oa=bool(oa.get("is_oa")), published=_date(w.get("publication_date")))
-        return None
+        w = self._openalex_work(ref)
+        if not w:
+            return None
+        best = w.get("best_oa_location") or {}
+        oa = w.get("open_access") or {}
+        pdfs = [best.get("pdf_url")]
+        pdfs += [loc.get("pdf_url") for loc in w.get("locations") or [] if loc.get("is_oa")]
+        pdfs.append(oa.get("oa_url"))  # often the PDF itself; checked when downloaded
+        return Work(w.get("title") or "", w.get("publication_year"), _doi(w.get("doi")) or ref.doi, "OpenAlex",
+                    pdf_urls=list(dict.fromkeys(u for u in pdfs if u)),
+                    landing_url=best.get("landing_page_url") or oa.get("oa_url") or "",
+                    is_oa=bool(oa.get("is_oa")), published=_date(w.get("publication_date")))
 
     def _crossref_find(self, ref: Reference) -> tuple[str, str] | None:
         """The DOI and publication date of a reference that has no DOI, from Crossref's search over
@@ -387,17 +382,37 @@ class OpenAccess:
     def _params(self, **more) -> dict:
         return {**({"mailto": self.mailto} if self.mailto else {}), **more}
 
-    def _openalex_work(self, ref: Reference, select: str) -> dict | None:
-        """OpenAlex's record of the work: by DOI, or the search hit with the same title and year."""
+    def _openalex_work(self, ref: Reference) -> dict | None:
+        """OpenAlex's record of the work (LOOKUP_FIELDS): by DOI, or the search hit with the same
+        title and year. Remembered for a few minutes, so fetching a paper and then reading its
+        record asks OpenAlex once."""
+        keys = [("doi", ref.doi)] if ref.doi else [("title", norm(ref.title), ref.year)]
+        now = time.monotonic()
+        with self._memo_lock:
+            for k in keys:
+                hit = self._memo.get(k)
+                if hit and now - hit[0] < LOOKUP_MAX_AGE_SECONDS:
+                    self._memo.move_to_end(k)
+                    return hit[1]
         if ref.doi:
-            res = self._get(f"{OPENALEX}/works/doi:{ref.doi}", self._params(select=select))
-            return res.json() if res else None
-        params = self._params(select=select, search=norm(ref.title), **{"per-page": "5"})
-        if ref.year:
-            params["filter"] = f"publication_year:{ref.year - 1}-{ref.year + 1}"
-        res = self._get(f"{OPENALEX}/works", params)
-        hits = (res.json().get("results") or []) if res else []
-        return next((w for w in hits if same_work(ref, w.get("title") or "", w.get("publication_year"))), None)
+            res = self._get(f"{OPENALEX}/works/doi:{ref.doi}", self._params(select=LOOKUP_FIELDS))
+            w = res.json() if res else None
+        else:
+            params = self._params(select=LOOKUP_FIELDS, search=norm(ref.title), **{"per-page": "5"})
+            if ref.year:
+                params["filter"] = f"publication_year:{ref.year - 1}-{ref.year + 1}"
+            res = self._get(f"{OPENALEX}/works", params)
+            hits = (res.json().get("results") or []) if res else []
+            w = next((h for h in hits if same_work(ref, h.get("title") or "", h.get("publication_year"))), None)
+        if w and _doi(w.get("doi")):
+            keys.append(("doi", _doi(w.get("doi"))))  # found by title: a later lookup by its DOI reuses it
+        with self._memo_lock:
+            for k in keys:
+                self._memo[k] = (now, w)
+                self._memo.move_to_end(k)
+            while len(self._memo) > LOOKUP_MEMO_SIZE:
+                self._memo.popitem(last=False)
+        return w
 
     def _crossref_work(self, doi: str) -> dict:
         """The publisher's record of a DOI in Crossref; {} when it isn't there or Crossref is down."""
@@ -417,38 +432,35 @@ class OpenAccess:
             log.info("Semantic Scholar abstract lookup failed for %s", doi, exc_info=True)
             return ""
 
-    def works_by_id(self, ids: list[str], select: str = LIST_FIELDS) -> dict[str, dict]:
-        """OpenAlex works by id ("W123"), a batch per request. With a cache, only the ids it
-        doesn't hold (or holds with a stale citation count) are asked for."""
-        use_cache = self.cache is not None and select == LIST_FIELDS
-        out: dict[str, dict] = self.cache.get(list(dict.fromkeys(ids))) if use_cache else {}
-        missing = [i for i in dict.fromkeys(ids) if i not in out]
-        for i in range(0, len(missing), IDS_PER_REQUEST):
-            batch = missing[i:i + IDS_PER_REQUEST]
+    def _works_by_filter(self, key: str, values: list[str], select: str, cached: dict[str, dict] | None = None,
+                         store: bool = True) -> list[dict]:
+        """OpenAlex works whose `key` (openalex or doi) is one of values, IDS_PER_REQUEST to a
+        request: the cached works given, then the rest as OpenAlex sends them, put in the cache."""
+        got_all = list((cached or {}).values())
+        for i in range(0, len(values), IDS_PER_REQUEST):
+            batch = values[i:i + IDS_PER_REQUEST]
             res = self._get(f"{OPENALEX}/works", self._params(
-                select=select, filter="openalex:" + "|".join(batch), **{"per-page": str(len(batch))}))
+                select=select, filter=f"{key}:" + "|".join(batch), **{"per-page": str(len(batch))}))
             got = (res.json().get("results") or []) if res else []
-            if use_cache:
+            if store and self.cache is not None:
                 self.cache.put(got)
-            for w in got:
-                out[_short_id(w.get("id"))] = w
-        return out
+            got_all += got
+        return got_all
+
+    def works_by_id(self, ids: list[str], select: str = LIST_FIELDS) -> dict[str, dict]:
+        """OpenAlex works by id ("W123") as OpenAlex sends them, a batch per request. With a cache,
+        only the ids it doesn't hold (or holds with a stale citation count) are asked for."""
+        use_cache = self.cache is not None and select == LIST_FIELDS
+        ids = list(dict.fromkeys(ids))
+        cached = self.cache.get(ids) if use_cache else {}
+        works = self._works_by_filter("openalex", [i for i in ids if i not in cached], select, cached, use_cache)
+        return {_short_id(w.get("id")): w for w in works}
 
     def works_by_doi(self, dois: list[str]) -> dict[str, dict]:
         """How often each DOI is cited worldwide, and its abstract: {doi: listed work}."""
-        out: dict[str, dict] = {}
         dois = list(dict.fromkeys(_doi(d) for d in dois if d))
-        for i in range(0, len(dois), IDS_PER_REQUEST):
-            batch = dois[i:i + IDS_PER_REQUEST]
-            res = self._get(f"{OPENALEX}/works", self._params(
-                select=LIST_FIELDS + ",abstract_inverted_index", filter="doi:" + "|".join(batch),
-                **{"per-page": str(len(batch))}))
-            got = (res.json().get("results") or []) if res else []
-            if self.cache is not None:
-                self.cache.put(got)
-            for w in got:
-                out[_doi(w.get("doi"))] = listed_work(w)
-        return out
+        works = self._works_by_filter("doi", dois, LIST_FIELDS + ",abstract_inverted_index")
+        return {_doi(w.get("doi")): listed_work(w) for w in works}
 
     def citing(self, openalex_id: str, sort: str = "cited", limit: int = 25) -> tuple[int, list[dict]]:
         """Works that cite this one, the most cited (or the newest) first, and how many there are."""
@@ -475,7 +487,7 @@ class OpenAccess:
         ref, _ = self._with_doi(Reference(raw=title, doi=_doi(doi), title=title, year=year))
         if not searchable(ref):
             return None
-        w = self._openalex_work(ref, RECORD_FIELDS) or {}
+        w = self._openalex_work(ref) or {}
         found = ref.doi or _doi(w.get("doi"))
         cr = self._crossref_work(found) if found else {}
         if not w and not cr:
