@@ -8,7 +8,8 @@ ranks the best few passages in one call (see Library.search).
 """
 
 import re
-from collections import defaultdict
+import threading
+from collections import OrderedDict, defaultdict
 
 
 # Only true function words: everything else may be the term that matters, and BM25's IDF
@@ -46,3 +47,31 @@ def reciprocal_rank_fusion(*rankings: list[int], k: int = 60) -> list[tuple[int,
 
 
 # Ranking is done by the provider layer (Library.search calls rank_passages), not by a local model.
+
+
+class RecentCache:
+    """The last `size` answers by key, for calls worth not repeating (a Muse call behind a
+    search). Safe to use from several threads; the least recently used entry goes first."""
+
+    def __init__(self, size: int):
+        self.size = size
+        self._items: OrderedDict = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        with self._lock:
+            if key not in self._items:
+                return None
+            self._items.move_to_end(key)
+            return self._items[key]
+
+    def put(self, key, value) -> None:
+        with self._lock:
+            self._items[key] = value
+            self._items.move_to_end(key)
+            while len(self._items) > self.size:
+                self._items.popitem(last=False)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()

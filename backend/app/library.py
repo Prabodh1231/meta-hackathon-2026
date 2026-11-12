@@ -22,7 +22,7 @@ from .refparse import Reference, match_reference, norm, parse_references
 from .ingest import ParsedDocument, chunk_page, clean_page_label, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
-from .retrieval import fts_query, reciprocal_rank_fusion
+from .retrieval import RecentCache, fts_query, reciprocal_rank_fusion
 from .settings import Settings, write_env_file
 from .text_utils import sentence_spans, tokenize
 from .topics import choose_k, jaccard, kmeans, tfidf_cosines, tfidf_matrix
@@ -42,6 +42,10 @@ INGEST_WORKERS = 8
 # shorter passages keep that call well inside its short search timeout.
 RANK_POOL = 20
 RANK_CHARS = 450
+# Muse's answers behind a search are kept for the session: the same query gets the same
+# expansions, and the same passages for it the same scores. A review matrix asks each column's
+# question of every paper, and Cite and Recheck all search a sentence again, so these repeat.
+SEARCH_CACHE = 500
 # Cite's support checks are separate Muse calls; they run side by side.
 CHECK_WORKERS = 4
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
@@ -135,6 +139,9 @@ class Library:
         self.conn = db.connect(settings.db_path)
         self.lock = threading.RLock()
         self.provider = provider or make_provider(settings)
+        self._expansions = RecentCache(SEARCH_CACHE)  # query -> the provider's expansions
+        self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
+        self._answers_from = self.provider  # whose answers those are
         # Search is keyword search plus the provider, and folders, highlights and
         # duplication use word statistics. No search model is loaded here, so the
         # library lists at once.
@@ -1250,13 +1257,7 @@ class Library:
             ranked = self._keyword(query, k, doc_ids)
             return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
 
-        expansions: list[str] = []
-        try:
-            expansions = self.provider.expand_query(query) or []
-        except Exception:
-            log.exception("Query expansion failed; searching with the query alone")
-        if isinstance(expansions, str):
-            expansions = [expansions]
+        expansions = self._expand(query)
         queries: list[str] = []
         for text in [query, *expansions]:
             text = " ".join(str(text).split())
@@ -1271,6 +1272,34 @@ class Library:
         if rerank and ranked:
             ranked = self._rank_with_provider(query, ranked[:RANK_POOL]) + ranked[RANK_POOL:]
         return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
+
+    def _same_provider(self) -> None:
+        """Forget the kept search answers when the provider has changed (Settings → AI model):
+        another model, or another effort, may answer differently."""
+        if self._answers_from is not self.provider:
+            self._expansions.clear()
+            self._rankings.clear()
+            self._answers_from = self.provider
+
+    def _expand(self, query: str) -> list[str]:
+        """The provider's expansions of a query, asked for once a session. An empty answer
+        isn't kept: it is also what a failed call gives, and the next search should ask again."""
+        self._same_provider()
+        key = " ".join(query.lower().split())
+        kept = self._expansions.get(key)
+        if kept is not None:
+            return kept
+        expansions: list[str] = []
+        try:
+            expansions = self.provider.expand_query(query) or []
+        except Exception:
+            log.exception("Query expansion failed; searching with the query alone")
+        if isinstance(expansions, str):
+            expansions = [expansions]
+        expansions = [str(e) for e in expansions]
+        if expansions:
+            self._expansions.put(key, expansions)
+        return expansions
 
     def _rank_with_provider(self, query: str, ranked: list[tuple[int, float]]) -> list[tuple[int, float]]:
         """The provider's scores for the fused candidates, from one call that sees them all
@@ -1287,8 +1316,16 @@ class Library:
         ids = [cid for cid, _ in ranked if cid in texts]
         if not ids:
             return ranked
+        passages = [(cid, texts[cid][:RANK_CHARS]) for cid in ids]
+        # The same passages for the same query, in any order: the scores Muse gave them before.
+        # The text is part of the key, so a passage that changed is scored again.
+        self._same_provider()
+        key = (" ".join(query.split()), tuple(sorted(passages)))
+        kept = self._rankings.get(key)
+        if kept is not None:
+            return sorted(((cid, kept[cid]) for cid in ids), key=lambda kv: -kv[1])
         try:
-            scores = self.provider.rank_passages(query, [(cid, texts[cid][:RANK_CHARS]) for cid in ids])
+            scores = self.provider.rank_passages(query, passages)
             if scores is None or len(scores) != len(ids):
                 return ranked
             scores = [float(s) for s in scores]
@@ -1297,6 +1334,7 @@ class Library:
             return ranked
         if not all(np.isfinite(scores)):
             return ranked
+        self._rankings.put(key, dict(zip(ids, scores)))
         return sorted(zip(ids, scores), key=lambda kv: -kv[1])
 
     def _keyword(self, query: str, n: int, doc_ids: list[int] | None) -> list[tuple[int, float]]:
