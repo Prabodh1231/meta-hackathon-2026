@@ -6,13 +6,13 @@ import { TableKit } from '@tiptap/extension-table'
 import { Extension, type Editor, type JSONContent } from '@tiptap/core'
 import { EditorState } from '@tiptap/pm/state'
 import { CitationNode } from '../editor/citation'
-import { CiteMarkNode, stateOf, type CiteMarkAttrs } from '../editor/citeMark'
+import { CiteMarkNode, stateOf, stateSoFar, unfinished, type CiteMarkAttrs } from '../editor/citeMark'
 import { ReviewMarks, findInBlock, setReviewMarks, textBlocks, type ReviewRange } from '../editor/reviewMarks'
 import { MUSE_META, MuseMark, insertMuse } from '../editor/museMark'
 import { FormatToolbar } from './FormatToolbar'
 import { ChipCard } from './ChipCard'
 import { api } from '../api'
-import type { Citation, DraftSentence } from '../types'
+import type { Citation, DraftSentence, Suggestion } from '../types'
 
 const MISSING_REASON = 'This passage is no longer in your library.'
 
@@ -323,9 +323,15 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   function searchFor(cid: string, claim: string): Promise<void> {
     const already = searching.get(cid)
     if (already) return already
+    let sofar: Suggestion[] = [] // what has come back, should the rest never arrive
     const run = limited(() => {
       setChecking(cid, true)
-      return api.suggestCitations(claim, scopeRef.current())
+      // Each check's verdict as it arrives: the marker turns green on the first supported
+      // candidate instead of waiting for the slowest check.
+      return api.suggestCitationsStream(claim, scopeRef.current(), (results) => {
+        sofar = results
+        if (editorRef.current) patchChips(editorRef.current, new Map([[cid, { state: stateSoFar(results), results, claim }]]))
+      })
     })
       .then((results) => {
         // The writer may have moved to another draft meanwhile: then this marker isn't in the
@@ -333,7 +339,12 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         if (editorRef.current) patchChips(editorRef.current, new Map([[cid, { state: stateOf(results), results, claim }]]))
       })
       .catch(() => {
-        if (editorRef.current) patchChips(editorRef.current, new Map([[cid, { state: 'error' as const }]]))
+        // Cut off part-way: keep a supported source that was already found, and drop the
+        // candidates whose checks never came back.
+        const checked = sofar.filter((r) => r.status !== 'pending')
+        const found = checked.some((r) => r.status === 'verified')
+        const patch = found ? { state: 'verified' as const, results: checked } : { state: 'error' as const, results: [] }
+        if (editorRef.current) patchChips(editorRef.current, new Map([[cid, patch]]))
       })
       .finally(() => {
         searching.delete(cid)
@@ -470,8 +481,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       report.current.onStats?.(statsOf(editor))
       report.current.onCiteMarks?.(citeMarks(editor))
       report.current.onSaveState?.({ state: 'saved' })
-      // Markers still searching when the draft was last open (closed mid-search) search again.
-      for (const m of citeMarks(editor)) if (m.state === 'searching') searchFor(m.cid, m.claim)
+      // Markers still searching or checking when the draft was last open (closed mid-search) search again.
+      for (const m of citeMarks(editor)) if (unfinished(m)) searchFor(m.cid, m.claim)
       await repairChips(editor)
     })().catch((e) => onError(`Could not refresh citations: ${e instanceof Error ? e.message : e}`))
     return () => {
@@ -704,7 +715,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         report.current.onStats?.(statsOf(editor))
         report.current.onCiteMarks?.(citeMarks(editor))
         report.current.onSaveState?.({ state: 'saved', at: Date.now() })
-        for (const m of citeMarks(editor)) if (m.state === 'searching') searchFor(m.cid, m.claim)
+        for (const m of citeMarks(editor)) if (unfinished(m)) searchFor(m.cid, m.claim)
         repairChips(editor).catch((e) => onError(`Could not refresh citations: ${e instanceof Error ? e.message : e}`))
       },
 

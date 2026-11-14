@@ -1,10 +1,12 @@
 import base64
+import itertools
+import json
 import logging
 import time
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .backup import backup_in_background
@@ -222,7 +224,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 19
+API_VERSION = 20
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -537,6 +539,24 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def suggest(body: SuggestIn):
         """Candidate sources for a sentence the user wrote, already checked, best first."""
         return lib.suggest_citations(body.claim, body.doc_ids, body.limit)
+
+    @app.post("/citations/suggest/stream")
+    def suggest_stream(body: SuggestIn):
+        """The same candidates as they are checked: one JSON line per update,
+        {"results": [...], "done": bool}, the unchecked ones "pending". The search runs before
+        the reply starts, so a bad request still answers 400; a failure after that is a last
+        line {"error": "..."}."""
+        updates = lib.suggest_citations_stream(body.claim, body.doc_ids, body.limit)
+        first = next(updates)
+
+        def lines():
+            try:
+                for results, done in itertools.chain([first], updates):
+                    yield json.dumps({"results": results, "done": done}) + "\n"
+            except Exception as exc:
+                yield json.dumps({"error": str(exc) or type(exc).__name__}) + "\n"
+
+        return StreamingResponse(lines(), media_type="application/x-ndjson")
 
     @app.post("/citations/resolve")
     def resolve(body: ResolveIn):

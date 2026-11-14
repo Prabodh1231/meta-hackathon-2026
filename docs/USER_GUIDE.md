@@ -236,7 +236,7 @@ While Muse answers, the chat counts the seconds and says why when it's slower (M
 
 Put the cursor in a sentence you wrote (or select some text) and press **Cite** in the toolbar, or Ctrl+Shift+C. A small grey `cite` marker appears at the end of the sentence and you keep writing; the search runs in the background and the cursor doesn't move.
 
-The marker turns green with a ✓ when a source is found that supports the sentence (*Source found, confirm it*), amber with a ◐ when it's only partly supported, red with a ✕ when what was found doesn't support it, and red with a ? and a dashed border when nothing in your library matches (*No source found*). The symbol says the same as the colour, so it reads without colour too, and a screen reader hears it in words. The marker never changes size, so the line you're typing doesn't shift.
+The marker turns green with a ✓ as soon as one source is found that supports the sentence (*Source found, confirm it*), without waiting for the other candidates: click it and you can confirm that source at once, while the rest are listed as *Checking…* until their checks finish. It turns amber with a ◐ when it's only partly supported, red with a ✕ when what was found doesn't support it, and red with a ? and a dashed border when nothing in your library matches (*No source found*). The symbol says the same as the colour, so it reads without colour too, and a screen reader hears it in words. The marker never changes size, so the line you're typing doesn't shift.
 
 Click a marker to open **Check** with what was found. **Use this source** turns the marker into a citation (Ctrl+Z undoes it). You can also search again for a reworded sentence, or **Remove marker**.
 
@@ -440,7 +440,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 - **Model:** Muse (through Meta's Model API), or the offline mock (no key; rough results). **Save and switch** changes it at once, with no restart.
 - **Meta Model API key:** paste a key to save or replace it. It's written to the `.env` file in your data folder and never shown again; only its last four characters are, so you can tell which one it is.
-- **Reasoning effort:** how much Muse thinks before answering, from *minimal* (fastest) to *xhigh* (most thorough). *low* is the default.
+- **Reasoning effort:** how much Muse thinks before answering, from *minimal* (fastest) to *xhigh* (most thorough). *low* is the default. Citation support checks always run at *low* whatever you choose here, so Cite and Recheck all stay quick.
 
 If one of these is also set as a system environment variable, Settings says so: that value wins the next time the app starts.
 

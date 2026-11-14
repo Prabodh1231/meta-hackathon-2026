@@ -28,6 +28,12 @@ RETRY_STATUS = {429, 500, 502, 503, 504}
 SEARCH_TIMEOUT = 20.0
 # Ranking 20 short passages at "minimal" effort took 9 s against 17 s at "low" (5 Nov).
 SEARCH_EFFORT = "minimal"
+# A support check is one short verdict, and its time is its reasoning: on 24 claim and
+# passage pairs from a real library (14 Nov) a check took 7.8 s at "medium", 4.6 s at "low"
+# and 2.2 s at "minimal". "low" gave medium's verdict on 22 of 24, which is as often as
+# medium agrees with itself (7 of 8 on a second run); "minimal" on 20 of 24. So checks run
+# at "low" whatever effort is chosen for writing.
+CHECK_EFFORT = "low"
 
 
 class MuseError(RuntimeError):
@@ -108,6 +114,17 @@ class MuseProvider(LLMProvider):
             }
         ]
         return self.chat(messages, max_tokens=4096, temperature=0.0)
+
+    def _check_json(self, system: str, user: str, schema: dict, max_tokens: int) -> dict:
+        # The usual timeout and retries: a verdict is worth waiting for, unlike search help.
+        raw = self.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            schema=schema,
+            max_tokens=max_tokens,
+            reasoning_effort=CHECK_EFFORT,
+        )
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+        return json.loads(raw)
 
     def _search_json(self, system: str, user: str, schema: dict, max_tokens: int) -> dict:
         # Minimal effort, a short timeout and no retries: search should fall back to keyword

@@ -8,7 +8,7 @@ import os
 import re
 import threading
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -1819,9 +1819,55 @@ class Library:
         picks the best-matching sentence in each as the quote, then runs the same support
         check as drafted citations. Supported sources come first; an empty or all-red
         result means the library doesn't back this claim yet."""
+        results: list[dict] = []
+        for results, _ in self.suggest_citations_stream(claim, doc_ids, limit):
+            pass
+        return results
+
+    def suggest_citations_stream(self, claim: str, doc_ids: list[int] | None = None, limit: int = 4):
+        """suggest_citations as it goes: yields (results, done) once the candidates are picked
+        (each still "pending") and again as each support check comes back, best first, so a
+        source that backs the sentence can be shown without waiting for the slowest check.
+        A candidate whose check fails is left out; if every check fails, the error is raised."""
         claim = " ".join(claim.split())
         if not claim:
             raise ValueError("Select a sentence to cite")
+        top = self._cite_candidates(claim, doc_ids, limit)
+        rank = {"verified": 0, "weak": 1, "pending": 2, "unsupported": 3, "quote_not_found": 4}
+
+        def ordered(results):
+            return sorted((r for r in results if r), key=lambda r: (rank.get(r["status"], 5), -r["score"]))
+
+        # Before any check: the quote located on its page, so it can already be opened.
+        results: list[dict | None] = [
+            {**self.verify_citation(claim, hit["id"], quote, judge=False), "score": round(score, 4)}
+            for score, hit, quote in top
+        ]
+        waiting = [i for i, r in enumerate(results) if r["status"] == "pending"]
+        if not waiting:
+            yield ordered(results), True
+            return
+        yield ordered(results), False
+        # Each check is a model call, so only the top few candidates are judged, side by side.
+        pool = ThreadPoolExecutor(max_workers=CHECK_WORKERS)
+        failure: Exception | None = None
+        try:
+            checks = {pool.submit(self.verify_citation, claim, top[i][1]["id"], top[i][2]): i for i in waiting}
+            for n, check in enumerate(as_completed(checks), 1):
+                i = checks[check]
+                try:
+                    results[i] = {**check.result(), "score": results[i]["score"]}
+                except Exception as exc:
+                    log.exception("A support check for a cite suggestion failed")
+                    failure, results[i] = exc, None
+                if failure and n == len(checks) and all(results[j] is None for j in waiting):
+                    raise failure
+                yield ordered(results), n == len(checks)
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)  # the caller may have stopped listening
+
+    def _cite_candidates(self, claim: str, doc_ids: list[int] | None, limit: int) -> list[tuple[float, dict, str]]:
+        """The passages to check for a claim: (word overlap, search hit, quoted sentence), best first."""
         hits = self.search(claim, k=limit * 2, doc_ids=doc_ids)
         sentences = [
             (h, h["text"][s:e]) for h in hits for s, e in sentence_spans(h["text"]) if e - s >= 25
@@ -1829,7 +1875,7 @@ class Library:
         if not sentences:
             return []
         # Word overlap picks the quoted sentence, on this computer.
-        # The support check in verify_citation below, a provider call, is what judges
+        # The support check in verify_citation, a provider call, is what judges
         # whether the chosen sentence actually backs the claim.
         claim_words = set(tokenize(claim))
         scores = [
@@ -1845,13 +1891,7 @@ class Library:
         for score, hit, quote in best.values():
             if hit["id"] not in per_chunk or score > per_chunk[hit["id"]][0]:
                 per_chunk[hit["id"]] = (score, hit, quote)
-        top = sorted(per_chunk.values(), key=lambda c: -c[0])[:limit]
-        # Each check is a model call, so only the top few candidates are judged, side by side.
-        with ThreadPoolExecutor(max_workers=CHECK_WORKERS) as pool:
-            checked = list(pool.map(lambda c: self.verify_citation(claim, c[1]["id"], c[2]), top))
-        results = [{**v, "score": round(score, 4)} for v, (score, _, _) in zip(checked, top)]
-        rank = {"verified": 0, "weak": 1, "unsupported": 2, "quote_not_found": 3}
-        return sorted(results, key=lambda r: (rank.get(r["status"], 4), -r["score"]))
+        return sorted(per_chunk.values(), key=lambda c: -c[0])[:limit]
 
     def resolve_citations(self, items: list[tuple[int, int, str]]) -> list[dict | None]:
         """resolve_citation for each (doc_id, page, quote), in order. A draft's chips mostly

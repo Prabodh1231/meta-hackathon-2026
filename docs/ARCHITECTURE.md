@@ -63,7 +63,7 @@ All JSON. Main groups (see `main.py` for the full list):
 | Documents | `GET/PATCH/DELETE /documents/{id}`, `GET /documents`, `GET /documents/{id}/pages/{page}`, `POST /library/duplicates` |
 | Folders | `GET/POST /folders`, `PATCH/DELETE /folders/{id}`, `POST /folders/classify`, `POST /documents/{id}/folders`, `PUT /documents/{id}/folders/{folder}` |
 | Citation network | `GET /graph?q=`, `GET /missing?q=`, `GET /documents/{id}/cited`, `POST /documents/{id}/cited/{idx}/fetch` |
-| Writing | `POST /write/draft`, `POST /citations/verify`, `POST /citations/suggest`, `POST /citations/resolve`, `POST /references` |
+| Writing | `POST /write/draft`, `POST /citations/verify`, `POST /citations/suggest` and `/citations/suggest/stream` (the same candidates as JSON lines, first unchecked and then after each support check, so a cite marker turns green on the first supported one), `POST /citations/resolve`, `POST /references` |
 | Drafts | `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `PATCH /drafts/{id}` (name; empty: its first line), `POST /drafts/import`, `POST /drafts/convert-docx`, `POST /drafts/check-duplicates` |
 | Versions | `GET/POST /drafts/{id}/versions`, `GET/PATCH/DELETE /drafts/{id}/versions/{v}`, `POST …/compare`, `POST …/restore` |
 | Matrices | `GET/POST /matrices`, `GET /matrices/columns`, `POST /matrices/papers` (a folder's or a topic's papers), `GET/PATCH/DELETE /matrices/{id}`, `PUT /matrices/{id}/cells/{doc}/{column}`, `POST /matrices/{id}/rerun`, `POST /matrices/{id}/gaps`, `POST /matrices/{id}/synthesis`, `GET /matrices/{id}/table`, `GET /matrices/{id}/export?format=xlsx\|csv\|docx` |
@@ -173,7 +173,7 @@ A field you corrected under Edit details is never changed. When the DOI printed 
 
 ### Muse calls
 
-`backend/app/providers/muse.py` uses Meta's OpenAI-compatible Chat Completions with strict JSON schemas. Muse's hidden reasoning counts against the output limit (a one-line verdict used ~500 tokens), so every call gets 4,096 tokens of headroom. A reply that's still cut off raises an error rather than returning half a JSON object. Rate limits and gateway timeouts are retried with backoff. Only text chunks, and images that need OCR, are sent to the API.
+`backend/app/providers/muse.py` uses Meta's OpenAI-compatible Chat Completions with strict JSON schemas. Muse's hidden reasoning counts against the output limit (a one-line verdict used ~500 tokens), so every call gets 4,096 tokens of headroom. A reply that's still cut off raises an error rather than returning half a JSON object. Rate limits and gateway timeouts are retried with backoff. Support checks (`judge_support`) run at `CHECK_EFFORT` ("low") whatever effort is set for writing: a check's time is its reasoning, and on 24 claim and passage pairs "low" gave the same verdict as "medium" on 22, as often as medium agrees with itself. Only text chunks, and images that need OCR, are sent to the API.
 
 Settings → AI model writes the key to `~/.groundwork/.env` (`RC_PROVIDER=muse`, `MUSE_API_KEY=...`); real environment variables override that file. Defaults: `MUSE_API_BASE=https://api.meta.ai/v1`, `MUSE_MODEL=muse-spark-1.3`, `MUSE_REASONING_EFFORT=low`. With `RC_PROVIDER=mock` everything runs offline on the mock.
 
