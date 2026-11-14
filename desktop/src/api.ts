@@ -61,7 +61,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 19
+export const API_VERSION = 20
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -213,6 +213,34 @@ export const api = {
     request<Citation>('POST', '/citations/verify', { claim, chunk_id: chunkId, quote }),
   suggestCitations: (claim: string, docIds: number[] | null) =>
     request<Suggestion[]>('POST', '/citations/suggest', { claim, doc_ids: docIds }),
+  /** The same candidates as they are checked: `onUpdate` gets the list (best first, the
+   * unchecked ones "pending") after the search and after each check; resolves with the final list. */
+  suggestCitationsStream: async (claim: string, docIds: number[] | null, onUpdate: (results: Suggestion[]) => void) => {
+    const res = await send('POST', '/citations/suggest/stream', { claim, doc_ids: docIds })
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let final: Suggestion[] | null = null
+    const take = (line: string) => {
+      if (!line.trim()) return
+      const update = JSON.parse(line) as { results?: Suggestion[]; done?: boolean; error?: string }
+      if (update.error || !update.results) throw new Error(update.error || 'The search stopped early.')
+      if (update.done) final = update.results
+      else onUpdate(update.results)
+    }
+    for (;;) {
+      const { done, value } = await reader.read().catch(() => {
+        throw new BackendUnreachable() // the backend went away mid-answer
+      })
+      buffer += decoder.decode(value, { stream: !done })
+      const lines = buffer.split('\n')
+      buffer = done ? '' : lines.pop()!
+      lines.forEach(take)
+      if (done) break
+    }
+    if (!final) throw new Error('The search stopped early.')
+    return final as Suggestion[]
+  },
   resolveCitations: (items: { doc_id: number; page: number; quote: string }[]) =>
     request<(ResolvedCitation | null)[]>('POST', '/citations/resolve', { items }),
   references: (docIds: number[], style: RefStyle) =>

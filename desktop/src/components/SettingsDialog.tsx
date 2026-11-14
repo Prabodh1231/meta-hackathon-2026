@@ -43,9 +43,9 @@ const FONTS: { value: Settings['doc_font']; label: string; family: string }[] = 
 
 const EFFORT_NOTES: Record<string, string> = {
   minimal: 'Fastest and cheapest; fine for summaries and tags.',
-  low: 'The default: quick, and good enough for most checks.',
-  medium: 'Slower; more careful drafting and verification.',
-  high: 'Slower still; for hard claims.',
+  low: 'The default: quick, and good enough for most writing.',
+  medium: 'Slower; more careful drafting.',
+  high: 'Slower still; for hard questions.',
   xhigh: 'Slowest; the most thorough reasoning.',
 }
 
@@ -332,7 +332,7 @@ function ModelSection({ onModelChanged }: { onModelChanged: () => void }) {
             </option>
           ))}
         </select>
-        <p className="muted">{EFFORT_NOTES[effort] ?? ''}</p>
+        <p className="muted">{EFFORT_NOTES[effort] ?? ''} Citation support checks always run at low, so they stay quick.</p>
       </Setting>
       {model.env_locked.length > 0 && (
         <p className="setting-warn">
