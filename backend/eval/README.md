@@ -49,6 +49,25 @@ support checks 15.4 s. With support checks at "low" and results streamed as each
 finishes, the marker turns green after about 13 s (when a supporting source exists) and all
 four checks are in after about 20 s.
 
+### Muse Ember for search help (15 Nov 2026)
+
+Query expansion and ranking moved to `muse-ember-1.0`, Meta's efficient model, both still at
+"minimal" effort. On this set, run the same day:
+
+| Search model | R@1 | R@3 | MRR | keyword | paraphrase | precision | identifier |
+|---|---|---|---|---|---|---|---|
+| muse-spark-1.3 | 0.98 | 1.00 | 0.99 | 1.00 | 0.92 | 1.00 | 1.00 |
+| muse-ember-1.0 | 0.98 | 1.00 | 0.99 | 1.00 | 0.92 | 1.00 | 1.00 |
+
+On the real library (twelve claims), expansion took 0.9 s against 2.0 s and ranking 20
+passages 1.8 s against 5.6 s. Ember's ranking put 6 of Spark's top 8 passages in its own top
+8 (Spark against itself: 7.5), and a supported source was found for the same 10 of 12 claims.
+
+A Cite also starts a quick keyword-only search beside the full one and checks its
+candidates at once; that alone found a supported source for 7 of the 12 claims, the first
+verdict after about 3 s. With both changes the marker turns green after about 4 s (median,
+10 of 12 claims) and every check is in after about 8 s.
+
 ## What the three configurations are
 
 - **keyword (BM25)** is the instant filter: SQLite FTS5/BM25 for the query alone, with

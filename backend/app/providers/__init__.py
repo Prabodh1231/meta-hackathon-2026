@@ -13,5 +13,6 @@ def make_provider(settings: Settings) -> LLMProvider:
 
         # Muse Spark through Meta's Model API; a missing key raises the message the app shows.
         return MuseProvider(settings.muse_api_base, settings.muse_api_key, settings.muse_model,
-                            reasoning_effort=settings.muse_reasoning_effort)
+                            reasoning_effort=settings.muse_reasoning_effort,
+                            search_model=settings.muse_search_model)
     raise ValueError(f"Unknown RC_PROVIDER {settings.provider!r} (expected 'mock' or 'muse')")

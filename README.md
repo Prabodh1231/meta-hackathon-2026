@@ -40,10 +40,10 @@ Only the text passages Muse needs, and images that need OCR, are sent to the API
 
 ## How Muse is used
 
-Muse Spark (`muse-spark-1.3`) through Meta's [Model API](https://dev.meta.ai/products/meta-model-api) does the reading, writing and checking in Groundwork. Search is local keyword search that Muse ranks. Muse calls use strict JSON schemas.
+Muse Spark (`muse-spark-1.3`) through Meta's [Model API](https://dev.meta.ai/products/meta-model-api) does the reading, writing and checking in Groundwork. Search is local keyword search, expanded and ranked by Muse Ember (`muse-ember-1.0`), Meta's efficient model, through the same API. Muse calls use strict JSON schemas.
 
 1. **Reading:** Muse extracts each source's title, authors, year and summary, tags papers that have no keyword list of their own, and reads scanned pages and images with OCR. Word statistics first rank papers against your subject folders; Muse then scores the strongest candidates.
-2. **Search:** keyword (BM25) search on your computer finds matching passages; Muse expands the search and ranks the best passages first.
+2. **Search:** keyword (BM25) search on your computer finds matching passages; Muse Ember expands the search and ranks the best passages first.
 3. **Writing:** Muse drafts from the top-ranked passages. Every sentence must cite a passage and include a verbatim quote from it.
 4. **Checking:** the app locates that quote in the source, then Muse judges whether it supports the sentence: Supported, Partly supported, or Not supported.
 5. **Matrices and proposals:** Muse answers each matrix column for a paper from its passages, with a quote per cell, reads the finished matrix to name gaps across studies, writes comparisons from it, and plans a research proposal from the gaps.

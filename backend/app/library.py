@@ -5,6 +5,7 @@ import json
 import logging
 import mimetypes
 import os
+import queue
 import re
 import threading
 from collections import defaultdict
@@ -1825,50 +1826,83 @@ class Library:
         return results
 
     def suggest_citations_stream(self, claim: str, doc_ids: list[int] | None = None, limit: int = 4):
-        """suggest_citations as it goes: yields (results, done) once the candidates are picked
-        (each still "pending") and again as each support check comes back, best first, so a
-        source that backs the sentence can be shown without waiting for the slowest check.
-        A candidate whose check fails is left out; if every check fails, the error is raised."""
+        """suggest_citations as it goes: yields (results, done) whenever what there is to show
+        changes, best first, so a source that backs the sentence can be shown without waiting
+        for the rest.
+
+        Two searches start together. The quick one is keyword search for the sentence alone,
+        with no provider call, so its candidates are being checked within a moment; it finds
+        a supporting source for about half of sentences, seconds before the full search could.
+        The full one (expanded and ranked by the provider) picks the `limit` candidates that
+        are listed, each "pending" until its check is in. A quick candidate the full search
+        didn't pick is listed only if it turned out supported, so the list is the full
+        search's candidates plus any extra supported source. A candidate both searches
+        picked is checked once. A candidate whose check fails is left out; if nothing is
+        left to show because of a failure, the error is raised."""
         claim = " ".join(claim.split())
         if not claim:
             raise ValueError("Select a sentence to cite")
-        top = self._cite_candidates(claim, doc_ids, limit)
         rank = {"verified": 0, "weak": 1, "pending": 2, "unsupported": 3, "quote_not_found": 4}
+        events: queue.Queue = queue.Queue()
+        pool = ThreadPoolExecutor(max_workers=2 * CHECK_WORKERS + 1)
+        checks: dict[tuple[int, str], object] = {}  # (chunk, quote) -> its check, shared by both searches
+        scores: dict[tuple[int, str], float] = {}
 
-        def ordered(results):
-            return sorted((r for r in results if r), key=lambda r: (rank.get(r["status"], 5), -r["score"]))
+        def start(candidates) -> list[tuple[int, str]]:
+            keys = []
+            for score, hit, quote in candidates:
+                key = (hit["id"], quote)
+                keys.append(key)
+                if key not in checks:
+                    scores[key] = round(score, 4)
+                    checks[key] = pool.submit(self.verify_citation, claim, hit["id"], quote)
+                    checks[key].add_done_callback(lambda _: events.put("checked"))
+            return keys
 
-        # Before any check: the quote located on its page, so it can already be opened.
-        results: list[dict | None] = [
-            {**self.verify_citation(claim, hit["id"], quote, judge=False), "score": round(score, 4)}
-            for score, hit, quote in top
-        ]
-        waiting = [i for i, r in enumerate(results) if r["status"] == "pending"]
-        if not waiting:
-            yield ordered(results), True
-            return
-        yield ordered(results), False
-        # Each check is a model call, so only the top few candidates are judged, side by side.
-        pool = ThreadPoolExecutor(max_workers=CHECK_WORKERS)
-        failure: Exception | None = None
         try:
-            checks = {pool.submit(self.verify_citation, claim, top[i][1]["id"], top[i][2]): i for i in waiting}
-            for n, check in enumerate(as_completed(checks), 1):
-                i = checks[check]
-                try:
-                    results[i] = {**check.result(), "score": results[i]["score"]}
-                except Exception as exc:
-                    log.exception("A support check for a cite suggestion failed")
-                    failure, results[i] = exc, None
-                if failure and n == len(checks) and all(results[j] is None for j in waiting):
+            quick = start(self._cite_candidates(claim, doc_ids, limit, mode="keyword"))
+            search = pool.submit(self._cite_candidates, claim, doc_ids, limit)
+            search.add_done_callback(lambda _: events.put("searched"))
+            listed: list[tuple[int, str]] | None = None  # the full search's candidates, once it's back
+            unchecked: dict[tuple[int, str], dict] = {}  # each of those before its check: the quote located
+            failure: Exception | None = None
+            shown = None
+            while True:
+                events.get()
+                if listed is None and search.done():
+                    listed = start(search.result())
+                    for key in listed:
+                        if not checks[key].done():
+                            unchecked[key] = self.verify_citation(claim, key[0], key[1], judge=False)
+                results = []
+                for key, check in checks.items():
+                    full = listed is not None and key in listed
+                    if not check.done():
+                        if full:
+                            results.append({**unchecked[key], "score": scores[key]})
+                    elif check.exception() is not None:
+                        if failure is None:
+                            log.error("A support check for a cite suggestion failed", exc_info=check.exception())
+                        failure = check.exception()
+                    elif full or check.result()["status"] == "verified":
+                        results.append({**check.result(), "score": scores[key]})
+                results.sort(key=lambda r: (rank.get(r["status"], 5), -r["score"]))
+                done = listed is not None and all(c.done() for c in checks.values())
+                if done and failure is not None and not results:
                     raise failure
-                yield ordered(results), n == len(checks)
+                if done or (results and results != shown):
+                    shown = results
+                    yield results, done
+                if done:
+                    return
         finally:
             pool.shutdown(wait=False, cancel_futures=True)  # the caller may have stopped listening
 
-    def _cite_candidates(self, claim: str, doc_ids: list[int] | None, limit: int) -> list[tuple[float, dict, str]]:
-        """The passages to check for a claim: (word overlap, search hit, quoted sentence), best first."""
-        hits = self.search(claim, k=limit * 2, doc_ids=doc_ids)
+    def _cite_candidates(self, claim: str, doc_ids: list[int] | None, limit: int,
+                         mode: str = "auto") -> list[tuple[float, dict, str]]:
+        """The passages to check for a claim: (word overlap, search hit, quoted sentence), best
+        first. mode="keyword" is the quick search: no provider call."""
+        hits = self.search(claim, k=limit * 2, doc_ids=doc_ids, mode=mode)
         sentences = [
             (h, h["text"][s:e]) for h in hits for s, e in sentence_spans(h["text"]) if e - s >= 25
         ]
@@ -2057,7 +2091,8 @@ class Library:
         return {
             "search": "keyword",
             "ranking": self.provider.name,
-            "model": self.settings.muse_model if self.provider.name == "muse" else None,
+            # The model that expands and ranks searches (the main one if the key can't use it).
+            "model": getattr(self.provider, "search_model", self.settings.muse_model) if self.provider.name == "muse" else None,
         }
 
     def document_file(self, doc_id: int) -> tuple[Path, str]:

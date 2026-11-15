@@ -19,6 +19,7 @@ class Settings:
     muse_api_base: str = "https://api.meta.ai/v1"
     muse_api_key: str = ""
     muse_model: str = "muse-spark-1.3"
+    muse_search_model: str = "muse-ember-1.0"  # expands and ranks searches; empty uses muse_model
     muse_reasoning_effort: str = "low"  # minimal | low | medium | high | xhigh
     contact_email: str = ""  # sent to OpenAlex, Semantic Scholar and Crossref when finding cited papers (polite pool)
     core_api_key: str = ""  # CORE (core.ac.uk) is searched for free copies only with the user's own key
@@ -46,6 +47,7 @@ class Settings:
             # MODEL_API_KEY is the name Meta's docs use.
             muse_api_key=env("MUSE_API_KEY") or env("MODEL_API_KEY"),
             muse_model=env("MUSE_MODEL", cls.muse_model),
+            muse_search_model=env("MUSE_SEARCH_MODEL", cls.muse_search_model),
             muse_reasoning_effort=env("MUSE_REASONING_EFFORT", cls.muse_reasoning_effort),
             contact_email=env("RC_CONTACT_EMAIL"),
             core_api_key=env("CORE_API_KEY"),

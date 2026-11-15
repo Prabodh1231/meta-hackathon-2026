@@ -236,7 +236,7 @@ While Muse answers, the chat counts the seconds and says why when it's slower (M
 
 Put the cursor in a sentence you wrote (or select some text) and press **Cite** in the toolbar, or Ctrl+Shift+C. A small grey `cite` marker appears at the end of the sentence and you keep writing; the search runs in the background and the cursor doesn't move.
 
-The marker turns green with a ✓ as soon as one source is found that supports the sentence (*Source found, confirm it*), without waiting for the other candidates: click it and you can confirm that source at once, while the rest are listed as *Checking…* until their checks finish. It turns amber with a ◐ when it's only partly supported, red with a ✕ when what was found doesn't support it, and red with a ? and a dashed border when nothing in your library matches (*No source found*). The symbol says the same as the colour, so it reads without colour too, and a screen reader hears it in words. The marker never changes size, so the line you're typing doesn't shift.
+Two searches start at once: a quick keyword search for the sentence as written, whose passages are checked straight away, and the full search that Muse expands and ranks. The marker turns green with a ✓ as soon as one source is found that supports the sentence (*Source found, confirm it*), often from the quick search within a few seconds, without waiting for the other candidates: click it and you can confirm that source at once, while the rest are listed as *Checking…* until their checks finish. The list is the full search's four candidates, plus any other supported source the quick search found. It turns amber with a ◐ when it's only partly supported, red with a ✕ when what was found doesn't support it, and red with a ? and a dashed border when nothing in your library matches (*No source found*). The symbol says the same as the colour, so it reads without colour too, and a screen reader hears it in words. The marker never changes size, so the line you're typing doesn't shift.
 
 Click a marker to open **Check** with what was found. **Use this source** turns the marker into a citation (Ctrl+Z undoes it). You can also search again for a reworded sentence, or **Remove marker**.
 
@@ -434,7 +434,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 **Search**
 
-- **Now:** keyword (BM25) search on this computer finds the matching passages, and the AI model — Muse through Meta's Model API, or the offline mock — expands the search and puts the best first. No search model is downloaded or run.
+- **Now:** keyword (BM25) search on this computer finds the matching passages, and the AI model — Muse Ember, Meta's efficient model, through Meta's Model API, or the offline mock — expands the search and puts the best first. (Writing and checking use Muse Spark.) No search model is downloaded or run.
 
 **AI model**
 

@@ -12,6 +12,7 @@ returning half a JSON object.
 
 import base64
 import json
+import logging
 import random
 import re
 import time
@@ -21,6 +22,8 @@ import httpx
 from . import activity, prompts
 from .base import LLMProvider
 
+log = logging.getLogger(__name__)
+
 REASONING_HEADROOM = 4096
 RETRY_STATUS = {429, 500, 502, 503, 504}
 # Search help is one small call behind an interactive search, so it gets a much shorter
@@ -28,6 +31,12 @@ RETRY_STATUS = {429, 500, 502, 503, 504}
 SEARCH_TIMEOUT = 20.0
 # Ranking 20 short passages at "minimal" effort took 9 s against 17 s at "low" (5 Nov).
 SEARCH_EFFORT = "minimal"
+# Search help (expanding a query, ranking passages) is small, repeated work, which is what
+# Meta's efficient Muse Ember is for. On the real library (15 Nov) it expanded a query in
+# 0.9 s against Muse Spark's 2.0 s and ranked 20 passages in 1.8 s against 5.6 s, and on the
+# labelled set (eval/README.md) it scored the same: R@1 0.98. Writing and checking stay on
+# the main model. A key that can't use it falls back to the main model for search too.
+SEARCH_MODEL = "muse-ember-1.0"
 # A support check is one short verdict, and its time is its reasoning: on 24 claim and
 # passage pairs from a real library (14 Nov) a check took 7.8 s at "medium", 4.6 s at "low"
 # and 2.2 s at "minimal". "low" gave medium's verdict on 22 of 24, which is as often as
@@ -37,17 +46,23 @@ CHECK_EFFORT = "low"
 
 
 class MuseError(RuntimeError):
-    pass
+    """An error answer from the Model API; `code` is the API's own error code, when it gave one."""
+
+    def __init__(self, message: str, code: str | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 class MuseProvider(LLMProvider):
     name = "muse"
 
     def __init__(self, api_base: str, api_key: str, model: str, reasoning_effort: str = "low",
-                 timeout: float = 180.0, retries: int = 3, transport: httpx.BaseTransport | None = None):
+                 timeout: float = 180.0, retries: int = 3, transport: httpx.BaseTransport | None = None,
+                 search_model: str | None = None):
         if not api_base or not api_key:
             raise ValueError("MUSE_API_BASE and MUSE_API_KEY must be set to use the Muse provider")
         self.model = model
+        self.search_model = search_model or model  # the model for search help; see SEARCH_MODEL
         self.reasoning_effort = reasoning_effort
         self.retries = retries
         self.client = httpx.Client(
@@ -58,10 +73,11 @@ class MuseProvider(LLMProvider):
         )
 
     def chat(self, messages, *, schema=None, max_tokens=1024, temperature=0.2,
-             reasoning_effort: str | None = None, timeout: float | None = None, retries: int | None = None) -> str:
+             reasoning_effort: str | None = None, timeout: float | None = None, retries: int | None = None,
+             model: str | None = None) -> str:
         # temperature is not sent: Meta's docs say Muse Spark does best at its default.
         payload: dict = {
-            "model": self.model,
+            "model": model or self.model,
             "messages": messages,
             "max_completion_tokens": max_tokens + REASONING_HEADROOM,
         }
@@ -94,7 +110,11 @@ class MuseProvider(LLMProvider):
             else:
                 if resp.status_code not in RETRY_STATUS or attempt == retries:
                     if resp.is_error:
-                        raise MuseError(f"Muse API error {resp.status_code}: {resp.text[:300]}")
+                        try:
+                            code = resp.json()["error"]["code"]
+                        except Exception:
+                            code = None
+                        raise MuseError(f"Muse API error {resp.status_code}: {resp.text[:300]}", code=code)
                     return resp.json()
                 why = "is busy (rate limit)" if resp.status_code == 429 else f"had a server error ({resp.status_code})"
             wait = min(2 ** attempt, 8) + random.random()  # backoff with jitter
@@ -130,13 +150,25 @@ class MuseProvider(LLMProvider):
         # Minimal effort, a short timeout and no retries: search should fall back to keyword
         # order rather than stall (a retry after a timeout turned one slow call into a
         # minute). The base task methods turn any error here into that fallback.
-        raw = self.chat(
-            [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            schema=schema,
-            max_tokens=max_tokens,
-            reasoning_effort=SEARCH_EFFORT,
-            timeout=SEARCH_TIMEOUT,
-            retries=0,
-        )
+        def ask(model: str) -> str:
+            return self.chat(
+                [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                schema=schema,
+                max_tokens=max_tokens,
+                reasoning_effort=SEARCH_EFFORT,
+                timeout=SEARCH_TIMEOUT,
+                retries=0,
+                model=model,
+            )
+
+        try:
+            raw = ask(self.search_model)
+        except MuseError as exc:
+            if exc.code != "model_not_found" or self.search_model == self.model:
+                raise
+            # This key can't use the search model: the main model does search help from now on.
+            log.warning("Search model %s isn't available to this key; using %s for search", self.search_model, self.model)
+            self.search_model = self.model
+            raw = ask(self.model)
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
         return json.loads(raw)

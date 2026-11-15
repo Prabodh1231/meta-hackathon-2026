@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.providers import make_provider
-from app.providers.muse import CHECK_EFFORT, REASONING_HEADROOM, SEARCH_EFFORT, MuseError, MuseProvider
+from app.providers.muse import CHECK_EFFORT, REASONING_HEADROOM, SEARCH_EFFORT, SEARCH_MODEL, MuseError, MuseProvider
 from app.settings import Settings
 
 
@@ -139,3 +139,39 @@ def test_support_checks_keep_their_own_effort_whatever_writing_uses():
     assert muse.judge_support("Water boils at 100 C.", "Water boils near 100 degrees.")["verdict"] == "partial"
     muse.chat([{"role": "user", "content": "Write a paragraph."}])
     assert [body["reasoning_effort"] for body in seen] == [CHECK_EFFORT, "high"]
+
+
+def test_search_help_runs_on_the_search_model_and_everything_else_on_the_main_one():
+    seen = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append(body["model"])
+        if "expand" in body["messages"][0]["content"]:
+            return reply('{"queries": ["sleep spindle memory"]}')
+        if "score passages" in body["messages"][0]["content"]:
+            return reply('{"scores": [{"id": 7, "score": 0.9}]}')
+        return reply('{"verdict": "supported", "reason": "matches"}')
+
+    muse = provider(handler, search_model=SEARCH_MODEL)
+    muse.expand_query("how does sleep help memory")
+    muse.rank_passages("sleep", [(7, "a passage")])
+    muse.judge_support("Water boils at 100 C.", "Water boils at 100 degrees Celsius.")
+    assert seen == [SEARCH_MODEL, SEARCH_MODEL, "muse-spark-1.3"]
+    assert make_provider(Settings(data_dir=None, provider="muse", muse_api_key="k")).search_model == SEARCH_MODEL
+
+
+def test_a_key_without_the_search_model_uses_the_main_model_for_search_from_then_on():
+    seen = []
+
+    def handler(request):
+        model = json.loads(request.content)["model"]
+        seen.append(model)
+        if model == SEARCH_MODEL:
+            return httpx.Response(404, json={"error": {"code": "model_not_found", "message": "The requested model was not found."}})
+        return reply('{"queries": ["sleep spindle memory"]}')
+
+    muse = provider(handler, search_model=SEARCH_MODEL)
+    assert muse.expand_query("how does sleep help memory") == ["sleep spindle memory"]
+    assert muse.expand_query("why do corals bleach") == ["sleep spindle memory"]
+    assert seen == [SEARCH_MODEL, "muse-spark-1.3", "muse-spark-1.3"]  # asked once, then not again

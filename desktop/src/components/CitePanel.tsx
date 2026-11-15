@@ -179,6 +179,8 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
 
   const results = mark.results ?? []
   const unchecked = stillChecking(results) // candidates whose check is still running
+  // A supported source can arrive from the quick keyword search while the full search is still out.
+  const running = checking.has(mark.cid)
   return (
     <div className="cite-panel">
       <button className="link cite-back" onClick={() => onFocus(null)}>
@@ -190,9 +192,10 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
       </div>
       <blockquote className="cite-claim">{mark.claim}</blockquote>
       {mark.state === 'searching' && <p className="busy">Searching your library and checking each passage against the sentence. Keep writing.</p>}
-      {mark.state !== 'searching' && unchecked > 0 && (
+      {mark.state !== 'searching' && (unchecked > 0 || running) && (
         <p className="busy" role="status">
-          Checking {unchecked} more passage{unchecked === 1 ? '' : 's'}… You can confirm this source now.
+          {unchecked > 0 ? `Checking ${unchecked} more passage${unchecked === 1 ? '' : 's'}…` : 'Still searching your library for more…'} You can
+          confirm this source now.
         </p>
       )}
       {mark.state === 'error' && <p className="warn">The backend didn't answer. Try again in a moment.</p>}
@@ -223,7 +226,7 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
       ))}
 
       <div className="cite-foot">
-        <button onClick={() => onRecheck(mark.cid)} disabled={mark.state === 'searching' || unchecked > 0} title="Search again for the sentence as it reads now">
+        <button onClick={() => onRecheck(mark.cid)} disabled={mark.state === 'searching' || unchecked > 0 || running} title="Search again for the sentence as it reads now">
           Check again
         </button>
         <button className="link danger-link" onClick={() => onRemove(mark.cid)}>
