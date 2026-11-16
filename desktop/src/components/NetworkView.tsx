@@ -222,7 +222,7 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
     setPicked(ids[at < 0 ? (dir === 1 ? 0 : ids.length - 1) : (at + dir + ids.length) % ids.length])
   }
 
-  const what = !scope ? '' : scope.kind === 'topic' ? `about “${topic}”` : scope.kind === 'ticked' ? 'ticked in the Library' : 'in your library'
+  const what = !scope ? '' : scope.kind === 'topic' ? `about “${topic}”` : scope.kind === 'ticked' ? 'you are drafting from' : 'in your library'
 
   if (!scope) {
     return (
@@ -261,9 +261,9 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
           )}
           <div className="network-start-row">
             <button disabled={ticked.size === 0} onClick={() => setScope({ kind: 'ticked', ids: [...ticked] })}>
-              Map the {ticked.size || ''} ticked paper{ticked.size === 1 ? '' : 's'}
+              Map the {ticked.size || ''} paper{ticked.size === 1 ? '' : 's'} you're drafting from
             </button>
-            {ticked.size === 0 && <span className="muted">Tick papers in the Library to map just those.</span>}
+            {ticked.size === 0 && <span className="muted">In the Library, select papers and choose Use for drafting to map just those.</span>}
           </div>
           <div className="network-start-row">
             <button className="network-all" onClick={() => setScope({ kind: 'all' })} disabled={librarySize === 0} aria-describedby="network-all-note">
@@ -287,7 +287,7 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
             {`${papers} paper${papers === 1 ? '' : 's'} ${what} · `}{graph.citations.filter((e) => e.target.startsWith('doc:')).length} citations among them · {graph.coupling.filter((e) => e.weight >= 2).length} pairs share 2+ references
           </span>
         )}
-        <button className="link" onClick={() => setScope(null)} title="Map a topic, the ticked papers or the whole library instead">
+        <button className="link" onClick={() => setScope(null)} title="Map a topic, the papers you're drafting from, or the whole library instead">
           Change
         </button>
         <div className="spacer" />

@@ -68,6 +68,15 @@ def tfidf_matrix(texts: list[str]) -> np.ndarray:
     return _tfidf_encode(counters, vocab, idf)
 
 
+def tfidf_vocab(texts: list[str]) -> tuple[np.ndarray, list[str]]:
+    """Like tfidf_matrix, with the word each column stands for, so a similarity between two
+    texts can name the words it comes from."""
+    if not texts:
+        return np.zeros((0, 0), dtype=np.float32), []
+    counters, vocab, idf = _tfidf_setup(texts)
+    return _tfidf_encode(counters, vocab, idf), list(vocab)
+
+
 def tfidf_cosines(documents: list[str], queries: list[str],
                   candidate: str | None = None) -> tuple[np.ndarray, np.ndarray | None]:
     """Cosine of each document to each query text, and of one extra candidate text when given.

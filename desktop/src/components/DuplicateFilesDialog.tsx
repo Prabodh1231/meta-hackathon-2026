@@ -123,7 +123,7 @@ export function DuplicateFilesDialog({ getCited, onChanged, onClose, onError }: 
               Checked {report.scanned} document{report.scanned === 1 ? '' : 's'}: {report.files} file{report.files === 1 ? '' : 's'} on disk
               {report.web > 0 && `, ${report.web} web page${report.web === 1 ? '' : 's'} (compared by text only)`}
               {report.missing > 0 && `, ${report.missing} whose file is missing`}
-              {report.no_text > 0 && `, ${report.no_text} with too little text to compare`}. A paper filed in several folders is one
+              {report.no_text > 0 && `, ${report.no_text} with too little text to compare`}. A paper filed in several topics is one
               file, so it's never listed as a duplicate of itself.
               {!canTrash && ' Moving files to the Recycle Bin works in the desktop app; here you can only remove them from the library.'}
             </p>
@@ -245,7 +245,7 @@ function Group({
                 <dd>{d.added_at.slice(0, 10)}</dd>
                 {d.folders.length > 0 && (
                   <>
-                    <dt>Folders</dt>
+                    <dt>Topics</dt>
                     <dd>{d.folders.join(', ')}</dd>
                   </>
                 )}

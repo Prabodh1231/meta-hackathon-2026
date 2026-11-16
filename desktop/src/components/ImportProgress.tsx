@@ -5,7 +5,7 @@ const STAGE: Record<IngestFile['stage'], string> = {
   '': 'Starting…',
   reading: 'Reading the file…',
   analysing: 'Muse is reading it…',
-  filing: 'Filing into folders…',
+  filing: 'Filing into topics…',
 }
 
 const OWED: Record<string, string> = { metadata: 'details', title: 'title', summary: 'summary', tags: 'tags' }

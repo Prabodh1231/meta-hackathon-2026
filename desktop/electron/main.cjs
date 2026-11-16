@@ -151,6 +151,9 @@ function createWindow() {
   win.on('closed', () => {
     if (appWindow === win) appWindow = null
   })
+  // Back in front (from the reader window, say): the page is told, so the library can show what
+  // was highlighted or opened meanwhile. The page's own focus event doesn't come reliably here.
+  win.on('focus', () => !win.isDestroyed() && win.webContents.send('rc:window-focus'))
   // A file dropped where the page doesn't handle it would replace the app with that file,
   // losing unsaved typing.
   win.webContents.on('will-navigate', (e, url) => {
@@ -232,6 +235,8 @@ const SAVE_TYPES = {
   docx: 'Word document',
   xlsx: 'Excel workbook',
   csv: 'CSV (comma-separated values)',
+  bib: 'BibTeX references',
+  txt: 'Text file',
 }
 
 ipcMain.handle('rc:save-file', async (event, defaultName, data) => {
@@ -445,10 +450,11 @@ ipcMain.handle('rc:insert-quote', async (_event, citation) => {
   appWindow.webContents.send('rc:insert-quote', citation)
 })
 
-ipcMain.handle('rc:open-reader', async (_event, docId, page, title) => {
+ipcMain.handle('rc:open-reader', async (_event, docId, page, title, find) => {
   const id = Number.parseInt(docId, 10)
   if (!(id > 0)) throw new Error('No such paper')
   const query = { reader: String(id), page: String(Math.max(1, Number.parseInt(page, 10) || 1)) }
+  if (typeof find === 'string' && find.trim()) query.find = find.trim().slice(0, 200) // words to mark on that page
   const name = typeof title === 'string' && title.trim() ? title.trim().slice(0, 200) : 'PDF'
   const win = readerWindowFor()
   win.setTitle(`${name} · Reader`)

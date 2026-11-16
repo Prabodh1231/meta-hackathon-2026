@@ -21,7 +21,7 @@ type Popup =
   | { kind: 'said'; text: string; x: number; y: number } // what Insert in draft did
 
 /** The reader as a window of its own (the desktop app): the paper's record is loaded first. */
-export function ReaderWindow({ docId, page }: { docId: number; page: number }) {
+export function ReaderWindow({ docId, page, find }: { docId: number; page: number; find?: string }) {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -34,15 +34,17 @@ export function ReaderWindow({ docId, page }: { docId: number; page: number }) {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [docId])
   if (!doc) return <p className={error ? 'error-text pdf-view-note' : 'muted pdf-view-note'}>{error ?? 'Opening…'}</p>
-  return <ReaderDialog doc={doc} page={page} standalone onClose={() => window.close()} />
+  return <ReaderDialog doc={doc} page={page} find={find} standalone onClose={() => window.close()} />
 }
 
 /** A library PDF read in the app: every page drawn with its text selectable, so passages can be
  * highlighted and given a note. Highlights are kept with the paper and fetched while writing.
  * `standalone`: filling a window of its own rather than a dialog over the app. */
-export function ReaderDialog({ doc, page, standalone = false, onClose, onInsertQuote }: {
+export function ReaderDialog({ doc, page, find, standalone = false, onClose, onInsertQuote }: {
   doc: Doc
   page: number
+  /** Words to find and mark on `page` as it opens (a passage the library's search found there). */
+  find?: string
   standalone?: boolean
   onClose: () => void
   /** Over the app: put a quote and its citation into the draft. (As a window of its own, the
@@ -64,7 +66,8 @@ export function ReaderDialog({ doc, page, standalone = false, onClose, onInsertQ
   const [current, setCurrent] = useState(page) // the page in view
   const [pageInput, setPageInput] = useState<string | null>(null) // while a page number is being typed
   const [railOpen, setRailOpen] = useState(false)
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(find ?? '')
+  const seedPage = useRef<number | null>(find ? page : null) // opened on a passage: mark it on its own page
   const [matches, setMatches] = useState<{ page: number; k: number }[]>([])
   const [at, setAt] = useState(-1) // the match shown
   const scroller = useRef<HTMLDivElement>(null)
@@ -234,6 +237,17 @@ export function ReaderDialog({ doc, page, standalone = false, onClose, onInsertQ
           from = idx + q.length
         }
       })
+      if (seedPage.current !== null) {
+        // Opened on a passage: show the match on its page, never one further on. Words that a line
+        // break splits on the page aren't found as a phrase, so its longest word is tried instead.
+        const here = found.findIndex((m) => m.page === seedPage.current)
+        const word = q.split(/\s+/).sort((a, b) => b.length - a.length)[0]
+        if (here < 0 && word !== q && word.length >= 2) return setQuery(word)
+        seedPage.current = null
+        setMatches(found)
+        setAt(here)
+        return
+      }
       setMatches(found)
       const next = found.findIndex((m) => m.page >= current)
       setAt(found.length ? Math.max(0, next) : -1)

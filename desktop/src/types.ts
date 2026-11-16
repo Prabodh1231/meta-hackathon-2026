@@ -39,6 +39,11 @@ export interface Doc {
   /** '' not looked up yet, 'not_found', 'mismatch' (the DOI on the paper is another work's: see index_title). */
   enriched: '' | 'found' | 'not_found' | 'mismatch'
   index_title: string
+  /** Not opened since it was added (or marked unread), as a mail app shows new mail. */
+  unread: boolean
+  starred: boolean
+  /** Passages the reader highlighted in it. */
+  highlights: number
   /** This same file was removed once before it was added again. */
   previously_removed: {
     id: number
@@ -48,6 +53,17 @@ export interface Doc {
     duplicate_of: number | null
     duplicate_of_title: string
   } | null
+}
+
+/** A library paper close to another, and why (see Library.related in the backend). */
+export interface RelatedDoc {
+  doc_id: number
+  cites_this: boolean // it cites the paper asked about
+  cited_by_this: boolean // the paper asked about cites it
+  shared_refs: number // works both cite
+  shared_terms: string[] // keywords and tags both carry
+  similarity: number // 0–100, of titles, keywords, tags and summaries
+  words: string[] // the words that likeness comes from
 }
 
 export type RemovalReason = 'removed' | 'duplicate'
@@ -85,6 +101,16 @@ export interface DocFolder {
   name: string
   state: 'auto' | 'user'
   score: number | null // percent match; null if never scored
+}
+
+/** A passage found by searching inside the papers: the best one in its paper. */
+export interface PassageHit {
+  doc_id: number
+  page: number
+  label: string | null // the printed page number, when known
+  /** The words around the matches; each match is wrapped in the characters STX (2) and ETX (3). */
+  snippet: string
+  passages: number // how many passages in the paper match
 }
 
 export interface Folder {
@@ -158,7 +184,9 @@ export interface DraftSentence {
 export interface Highlight {
   id: number
   doc_id: number
-  page: number
+  page: number // the PDF's own page count, which the reader opens at
+  /** The number printed on that page, when the paper prints one (a paper's highlights list only). */
+  page_label?: string | null
   text: string // as selected
   note: string // the reader's own idea; never treated as a source
   start: number | null // where it is in the page's stored text; null when it couldn't be found there
@@ -584,11 +612,13 @@ declare global {
       /** A library PDF in its own resizable window, at a page (the desktop app only). */
       openPdf?: (path: string, page: number, title: string) => Promise<void>
       /** A library PDF in the app's reader, in its own window, at a page (the desktop app only). */
-      openReader?: (docId: number, page: number, title: string) => Promise<void>
+      openReader?: (docId: number, page: number, title: string, find?: string) => Promise<void>
       /** From the reader window: insert a quote with its citation into the draft in the main window. */
       insertQuote?: (citation: Citation) => Promise<void>
       /** In the main window: quotes sent from the reader window. Returns an unsubscribe. */
       onInsertQuote?: (callback: (citation: Citation) => void) => () => void
+      /** In the main window: called when it comes back to the front. Returns an unsubscribe. */
+      onWindowFocus?: (callback: () => void) => () => void
       /** Where a dropped or picked file is on disk ('' for one that isn't a file on disk). */
       pathForFile?: (file: File) => string
       /** Copies the demo corpus into the data folder and resolves to that folder. */

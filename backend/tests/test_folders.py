@@ -255,3 +255,37 @@ def test_when_early_filing_fails_the_paper_is_filed_the_usual_way(lib, tmp_path)
     doc = add(lib, tmp_path, "a.txt", PAPER)
     assert names(doc) == ["Blockchain"]
     assert lib.provider.summaries == [doc["summary"]]  # the retry had the stored summary
+
+
+def test_merging_a_folder_moves_its_papers_and_deletes_it(lib, tmp_path):
+    doc = add(lib, tmp_path, "a.txt", "Stablecoins for the unbanked. fit_blockchain=80 fit_crypto=10")
+    other = add(lib, tmp_path, "b.txt", "Sleep and memory. fit_blockchain=0 fit_crypto=0")
+    blockchain, crypto = make(lib, "Blockchain"), make(lib, "Crypto")
+    lib.set_folder_membership(other["id"], crypto, True)
+    assert names(lib.get_document(doc["id"])) == ["Blockchain"]
+
+    folders = lib.merge_folders(crypto, blockchain)
+
+    assert [f["name"] for f in folders] == ["Blockchain"]
+    assert names(lib.get_document(other["id"])) == ["Blockchain"]
+    assert lib.get_document(other["id"])["folders"][0]["state"] == "user"  # re-filing keeps it there
+    with pytest.raises(ValueError):
+        lib.merge_folders(blockchain, blockchain)
+    with pytest.raises(LookupError):
+        lib.merge_folders(crypto, blockchain)
+
+
+def test_reading_marks_and_search_inside_papers(lib, tmp_path):
+    doc = add(lib, tmp_path, "a.txt", "Mobile money spread quickly in Kenya after 2007.\n\nIt reached most households.")
+    add(lib, tmp_path, "b.txt", "Coral reefs bleach in marine heatwaves.")
+    assert doc["unread"] is True and doc["starred"] is False  # new to the reader
+
+    lib.mark_documents([doc["id"]], unread=False, starred=True)
+    after = lib.get_document(doc["id"])
+    assert (after["unread"], after["starred"], after["edited_fields"]) == (False, True, [])
+
+    [hit] = lib.find_passages("kenya money")  # any order, every word
+    assert hit["doc_id"] == doc["id"] and hit["page"] == 1
+    assert "\x02Kenya\x03" in hit["snippet"] and "\x02money\x03" in hit["snippet"]
+    assert lib.find_passages("kenya coral") == []
+    assert lib.find_passages('"') == [] and lib.find_passages("") == []

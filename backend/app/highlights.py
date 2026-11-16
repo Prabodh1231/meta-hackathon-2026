@@ -67,7 +67,11 @@ class Highlights:
         self.lib.get_document(doc_id)
         with self.lib.lock:
             rows = self.lib.conn.execute("SELECT * FROM highlights WHERE doc_id = ? ORDER BY page, start, id", (doc_id,)).fetchall()
-        return [self._row(r) for r in rows]
+            # The number printed on each page (None where the paper prints none), to name the page as
+            # a citation does; `page` stays the PDF's own count, which is what the reader opens at.
+            printed = {r["page"]: r["label"] for r in self.lib.conn.execute(
+                "SELECT page, label FROM pages WHERE doc_id = ?", (doc_id,))}
+        return [{**self._row(r), "page_label": printed.get(r["page"])} for r in rows]
 
     def create(self, doc_id: int, page: int, text: str, note: str = "") -> dict:
         text, note = " ".join(text.split()), note.strip()

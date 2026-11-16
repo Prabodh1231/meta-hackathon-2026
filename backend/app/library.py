@@ -2,13 +2,14 @@
 
 import dataclasses
 import json
+import sqlite3
 import logging
 import mimetypes
 import os
 import queue
 import re
 import threading
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,7 @@ from .references import format_references
 from .retrieval import RecentCache, fts_query, reciprocal_rank_fusion
 from .settings import Settings, write_env_file
 from .text_utils import sentence_spans, tokenize
-from .topics import choose_k, jaccard, kmeans, tfidf_cosines, tfidf_matrix
+from .topics import choose_k, jaccard, kmeans, tfidf_cosines, tfidf_matrix, tfidf_vocab
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +53,12 @@ CHECK_WORKERS = 4
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
 MAX_KEYWORD_TAGS = 8
 MIN_TEXT_HITS = 3  # chunks of a paper that must mention a searched topic for it to count as about it
+# Related papers: what makes one paper related to another when neither cites the other.
+RELATED_MIN_SHARED_REFS = 2  # one shared reference is chance where a field has standard citations
+RELATED_MIN_SHARED_TERMS = 2  # keywords or tags the two carry and most of the library doesn't
+RELATED_MIN_COSINE = 0.2  # likeness of their titles, keywords, tags and summaries (TF-IDF)
+RELATED_TERMS_SHOWN = 4
+RELATED_WORDS_SHOWN = 3
 
 # Draft versions: an automatic snapshot when the newest version is this old, and one of the
 # draft as it was before an edit that changes at least LARGE_EDIT_PCT of a draft this long.
@@ -143,6 +150,7 @@ class Library:
         self._expansions = RecentCache(SEARCH_CACHE)  # query -> the provider's expansions
         self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
         self._answers_from = self.provider  # whose answers those are
+        self._graph_cache: tuple[int, dict] | None = None  # see _whole_graph
         # Search is keyword search plus the provider, and folders, highlights and
         # duplication use word statistics. No search model is loaded here, so the
         # library lists at once.
@@ -368,6 +376,7 @@ class Library:
                 self.conn.execute("UPDATE documents SET refs_parsed = 0 WHERE id = ?", (doc_id,))
             else:
                 fields["missing"] = json.dumps(missing)
+                fields["unread"] = 0 if restore else 1  # new to the reader; one coming back isn't
                 if restore:
                     fields["added_at"] = restore["added_at"]
                 cols = ", ".join(fields)
@@ -589,6 +598,76 @@ class Library:
         graph["query"] = query.strip()
         return graph
 
+    # ---------- related papers ----------
+
+    def _whole_graph(self) -> dict:
+        """The library's citation graph, kept until a paper's record or a reference list changes:
+        matching every reference against every paper is the slow part, and opening one paper's
+        details after another asks for it each time. Shared, so read it and don't change it."""
+        with self.lock:
+            docs, refs = self._graph_inputs()
+        key = hash((
+            tuple((d["id"], d["title"], d["year"], d["doi"], tuple(d["authors"])) for d in docs),
+            tuple((i, tuple((r.raw, r.title, r.year, r.doi) for r in rs)) for i, rs in sorted(refs.items())),
+        ))
+        if self._graph_cache is None or self._graph_cache[0] != key:
+            self._graph_cache = (key, build_graph(docs, refs))
+        return self._graph_cache[1]
+
+    def related(self, doc_id: int, limit: int = 5) -> list[dict]:
+        """The papers in the library closest to one paper, the closest first, each with why:
+        it cites this paper or this paper cites it, the two cite the same works, they carry the
+        same keywords, or their titles, keywords and summaries use the same distinctive words.
+        All of it comes from reference lists and word statistics; no model is asked."""
+        self.get_document(doc_id)
+        graph = self._whole_graph()
+        with self.lock:
+            ids, texts = self._folder_doc_texts()
+            tags = self._all_tags()
+            terms = {r["id"]: self._terms(r["keywords"], tags.get(r["id"], []))
+                     for r in self.conn.execute("SELECT id, keywords FROM documents")}
+        me = f"doc:{doc_id}"
+        found: dict[int, dict] = defaultdict(lambda: {
+            "cites_this": False, "cited_by_this": False, "shared_refs": 0, "shared_terms": [], "similarity": 0, "words": []})
+        for e in graph["citations"]:
+            if e["target"] == me:
+                found[int(e["source"][4:])]["cites_this"] = True
+            elif e["source"] == me and e["target"].startswith("doc:"):
+                found[int(e["target"][4:])]["cited_by_this"] = True
+        for e in graph["coupling"]:
+            if me in (e["source"], e["target"]) and e["weight"] >= RELATED_MIN_SHARED_REFS:
+                found[int((e["target"] if e["source"] == me else e["source"])[4:])]["shared_refs"] = e["weight"]
+
+        # A keyword most of the library carries ("economics" in an economics library) relates nothing.
+        held = Counter(t for ts in terms.values() for t in ts)
+        common = {t for t, n in held.items() if len(terms) >= 4 and n > len(terms) / 2}
+        mine = terms.get(doc_id, set()) - common
+        if doc_id in ids:
+            x, vocab = tfidf_vocab(texts)
+            row = x[ids.index(doc_id)]
+            cosine = x @ row
+            for i, other in enumerate(ids):
+                if other == doc_id:
+                    continue
+                shared = sorted(mine & terms.get(other, set()))
+                close = float(cosine[i]) >= RELATED_MIN_COSINE
+                if not (close or len(shared) >= RELATED_MIN_SHARED_TERMS or other in found):
+                    continue
+                f = found[other]
+                f["similarity"] = round(float(cosine[i]) * 100)
+                f["shared_terms"] = shared[:RELATED_TERMS_SHOWN]
+                if close:  # the words that carry most of the likeness, so the reader can judge it
+                    weight = x[i] * row
+                    f["words"] = [vocab[j] for j in np.argsort(weight)[::-1][:RELATED_WORDS_SHOWN] if weight[j] > 0]
+
+        def score(f: dict) -> float:
+            return (4.0 * f["cites_this"] + 4.0 * f["cited_by_this"] + 0.5 * min(f["shared_refs"], 8)
+                    + 0.5 * min(len(f["shared_terms"]), 3) + 4.0 * f["similarity"] / 100)
+
+        titles = {n["doc_id"]: n["title"] for n in graph["nodes"] if n["kind"] == "paper"}
+        ranked = sorted(found.items(), key=lambda kv: (-score(kv[1]), titles.get(kv[0], ""), kv[0]))
+        return [{"doc_id": other, **f} for other, f in ranked[:max(0, limit)]]
+
     # ---------- cited papers ----------
 
     def _refs_and_docs(self, doc_id: int) -> tuple[dict, list[Reference], list[dict]]:
@@ -689,6 +768,8 @@ class Library:
         ):
             folders[r["doc_id"]].append({k: r[k] for k in ("id", "name", "state", "score")})
         removals = self._removals_by_file()
+        marked = {r["doc_id"]: r["n"] for r in self.conn.execute(
+            f"SELECT doc_id, COUNT(*) AS n FROM highlights WHERE doc_id {scope} GROUP BY doc_id", ids)}
         numbered = [r["id"] for r in rows if r["page_numbering"] != "index"]
         labels: dict[int, list[str]] = defaultdict(list)
         if numbered:
@@ -712,6 +793,8 @@ class Library:
             d["page_range"] = d["page_span"] or page_range(labels[d["id"]])
             d["previously_removed"] = self._earlier_removal(d, removals)
             d["published_checked"] = bool(d["published_checked"])
+            d["unread"], d["starred"] = bool(d["unread"]), bool(d["starred"])
+            d["highlights"] = marked.get(d["id"], 0)  # passages the reader highlighted in it
             out.append(d)
         return out
 
@@ -775,6 +858,18 @@ class Library:
                     [(doc_id, t.strip().lower()) for t in fields["tags"] if t.strip()],
                 )
         return self.get_document(doc_id)
+
+    def mark_documents(self, doc_ids: list[int], unread: bool | None = None, starred: bool | None = None) -> dict:
+        """Mark documents read or unread, starred or not. Reading marks, not metadata: nothing here
+        counts as a correction to the paper's record."""
+        marks = {k: int(v) for k, v in (("unread", unread), ("starred", starred)) if v is not None}
+        ids = list(dict.fromkeys(doc_ids))
+        if marks and ids:
+            cols = ", ".join(f"{k} = ?" for k in marks)
+            with self.lock, self.conn:
+                self.conn.execute(
+                    f"UPDATE documents SET {cols} WHERE id IN ({','.join('?' * len(ids))})", (*marks.values(), *ids))
+        return {"ok": True}
 
     def delete_document(self, doc_id: int, reason: str = "removed", duplicate_of: int | None = None,
                         trashed: bool = False) -> None:
@@ -1338,6 +1433,34 @@ class Library:
         self._rankings.put(key, dict(zip(ids, scores)))
         return sorted(zip(ids, scores), key=lambda kv: -kv[1])
 
+    def find_passages(self, query: str, limit: int = 12) -> list[dict]:
+        """The library's search box looking inside the papers: for each paper whose text has every
+        word of `query` in one passage, its best passage, best papers first. `snippet` is the words
+        around the matches, each match wrapped in the control characters STX and ETX for the app to mark.
+        Keyword search only (stemmed, so "bleached" finds "bleaching"): instant, and no model call."""
+        tokens = [t for t in re.findall(r"[\w-]{2,}", query.lower()) if t.strip("-_")]
+        if not tokens:
+            return []
+        match = " ".join('"' + t + '"' for t in tokens)
+        try:
+            with self.lock:
+                rows = self.conn.execute(
+                    "SELECT c.doc_id, c.page, p.label, snippet(chunks_fts, 0, char(2), char(3), '…', 32) AS snippet "
+                    "FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                    "LEFT JOIN pages p ON p.doc_id = c.doc_id AND p.page = c.page "
+                    "WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT 400", (match,)).fetchall()
+        except sqlite3.Error:  # words FTS can't parse match nothing
+            return []
+        best: dict[int, dict] = {}
+        for r in rows:
+            hit = best.get(r["doc_id"])
+            if hit:
+                hit["passages"] += 1
+            elif len(best) < limit:
+                best[r["doc_id"]] = {"doc_id": r["doc_id"], "page": r["page"], "label": r["label"],
+                                     "snippet": " ".join(r["snippet"].split()), "passages": 1}
+        return list(best.values())
+
     def _keyword(self, query: str, n: int, doc_ids: list[int] | None) -> list[tuple[int, float]]:
         match = fts_query(query)
         if not match:
@@ -1463,7 +1586,7 @@ class Library:
     def _folder_name(name: str) -> str:
         name = " ".join(str(name).split())[:40]
         if not name:
-            raise ValueError("A folder needs a name")
+            raise ValueError("A topic needs a name")
         return name
 
     @staticmethod
@@ -1478,7 +1601,7 @@ class Library:
         name, similarity = self._folder_name(name), self._similarity(similarity)
         with self.lock, self.conn:
             if self.conn.execute("SELECT 1 FROM folders WHERE name = ?", (name,)).fetchone():
-                raise ValueError(f"A folder called {name!r} already exists")
+                raise ValueError(f"A topic called {name!r} already exists")
             folder_id = self.conn.execute(
                 "INSERT INTO folders (name, similarity) VALUES (?, ?)", (name, similarity)
             ).lastrowid
@@ -1501,7 +1624,7 @@ class Library:
             if name is not None:
                 clash = self.conn.execute("SELECT id FROM folders WHERE name = ?", (name,)).fetchone()
                 if clash and clash["id"] != folder_id:
-                    raise ValueError(f"A folder called {name!r} already exists")
+                    raise ValueError(f"A topic called {name!r} already exists")
                 self.conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))
             if similarity is not None:
                 self.conn.execute("UPDATE folders SET similarity = ? WHERE id = ?", (similarity, folder_id))
@@ -1707,8 +1830,25 @@ class Library:
         with self.lock:
             row = self.conn.execute("SELECT id FROM folders WHERE name = ?", (self._folder_name(name),)).fetchone()
         if not row:
-            raise LookupError(f"No folder called {name!r}. Create it first with New folder.")
+            raise LookupError(f"No topic called {name!r}. Create it first with New topic.")
         return self.set_folder_membership(doc_id, row["id"], True)
+
+    def merge_folders(self, folder_id: int, into_id: int) -> list[dict]:
+        """Fold one folder into another: every paper filed in `folder_id` is filed in `into_id` as
+        the user's own choice (so re-filing keeps it there), and `folder_id` is deleted."""
+        if folder_id == into_id:
+            raise ValueError("A topic can't be merged into itself")
+        with self.lock, self.conn:
+            found = {r["id"] for r in self.conn.execute("SELECT id FROM folders WHERE id IN (?, ?)", (folder_id, into_id))}
+            for fid in (folder_id, into_id):
+                if fid not in found:
+                    raise LookupError(f"Folder {fid} not found")
+            self.conn.execute(
+                "INSERT INTO doc_folders (doc_id, folder_id, state) "
+                "SELECT doc_id, ?, 'user' FROM doc_folders WHERE folder_id = ? AND state != 'rejected' "
+                "ON CONFLICT(doc_id, folder_id) DO UPDATE SET state = 'user'", (into_id, folder_id))
+            self.conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+        return self.list_folders()
 
     def delete_folder(self, folder_id: int) -> list[dict]:
         """Removes the folder only; its documents stay in the library."""
