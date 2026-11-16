@@ -8,7 +8,7 @@ import os
 import re
 import threading
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,7 +22,7 @@ from .refparse import Reference, match_reference, norm, parse_references
 from .ingest import ParsedDocument, chunk_page, clean_page_label, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
-from .retrieval import fts_query, reciprocal_rank_fusion
+from .retrieval import RecentCache, fts_query, reciprocal_rank_fusion
 from .settings import Settings, write_env_file
 from .text_utils import sentence_spans, tokenize
 from .topics import choose_k, jaccard, kmeans, tfidf_cosines, tfidf_matrix
@@ -42,6 +42,10 @@ INGEST_WORKERS = 8
 # shorter passages keep that call well inside its short search timeout.
 RANK_POOL = 20
 RANK_CHARS = 450
+# Muse's answers behind a search are kept for the session: the same query gets the same
+# expansions, and the same passages for it the same scores. A review matrix asks each column's
+# question of every paper, and Cite and Recheck all search a sentence again, so these repeat.
+SEARCH_CACHE = 500
 # Cite's support checks are separate Muse calls; they run side by side.
 CHECK_WORKERS = 4
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
@@ -135,6 +139,9 @@ class Library:
         self.conn = db.connect(settings.db_path)
         self.lock = threading.RLock()
         self.provider = provider or make_provider(settings)
+        self._expansions = RecentCache(SEARCH_CACHE)  # query -> the provider's expansions
+        self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
+        self._answers_from = self.provider  # whose answers those are
         # Search is keyword search plus the provider, and folders, highlights and
         # duplication use word statistics. No search model is loaded here, so the
         # library lists at once.
@@ -1250,13 +1257,7 @@ class Library:
             ranked = self._keyword(query, k, doc_ids)
             return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
 
-        expansions: list[str] = []
-        try:
-            expansions = self.provider.expand_query(query) or []
-        except Exception:
-            log.exception("Query expansion failed; searching with the query alone")
-        if isinstance(expansions, str):
-            expansions = [expansions]
+        expansions = self._expand(query)
         queries: list[str] = []
         for text in [query, *expansions]:
             text = " ".join(str(text).split())
@@ -1271,6 +1272,34 @@ class Library:
         if rerank and ranked:
             ranked = self._rank_with_provider(query, ranked[:RANK_POOL]) + ranked[RANK_POOL:]
         return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
+
+    def _same_provider(self) -> None:
+        """Forget the kept search answers when the provider has changed (Settings → AI model):
+        another model, or another effort, may answer differently."""
+        if self._answers_from is not self.provider:
+            self._expansions.clear()
+            self._rankings.clear()
+            self._answers_from = self.provider
+
+    def _expand(self, query: str) -> list[str]:
+        """The provider's expansions of a query, asked for once a session. An empty answer
+        isn't kept: it is also what a failed call gives, and the next search should ask again."""
+        self._same_provider()
+        key = " ".join(query.lower().split())
+        kept = self._expansions.get(key)
+        if kept is not None:
+            return kept
+        expansions: list[str] = []
+        try:
+            expansions = self.provider.expand_query(query) or []
+        except Exception:
+            log.exception("Query expansion failed; searching with the query alone")
+        if isinstance(expansions, str):
+            expansions = [expansions]
+        expansions = [str(e) for e in expansions]
+        if expansions:
+            self._expansions.put(key, expansions)
+        return expansions
 
     def _rank_with_provider(self, query: str, ranked: list[tuple[int, float]]) -> list[tuple[int, float]]:
         """The provider's scores for the fused candidates, from one call that sees them all
@@ -1287,8 +1316,16 @@ class Library:
         ids = [cid for cid, _ in ranked if cid in texts]
         if not ids:
             return ranked
+        passages = [(cid, texts[cid][:RANK_CHARS]) for cid in ids]
+        # The same passages for the same query, in any order: the scores Muse gave them before.
+        # The text is part of the key, so a passage that changed is scored again.
+        self._same_provider()
+        key = (" ".join(query.split()), tuple(sorted(passages)))
+        kept = self._rankings.get(key)
+        if kept is not None:
+            return sorted(((cid, kept[cid]) for cid in ids), key=lambda kv: -kv[1])
         try:
-            scores = self.provider.rank_passages(query, [(cid, texts[cid][:RANK_CHARS]) for cid in ids])
+            scores = self.provider.rank_passages(query, passages)
             if scores is None or len(scores) != len(ids):
                 return ranked
             scores = [float(s) for s in scores]
@@ -1297,6 +1334,7 @@ class Library:
             return ranked
         if not all(np.isfinite(scores)):
             return ranked
+        self._rankings.put(key, dict(zip(ids, scores)))
         return sorted(zip(ids, scores), key=lambda kv: -kv[1])
 
     def _keyword(self, query: str, n: int, doc_ids: list[int] | None) -> list[tuple[int, float]]:
@@ -1781,9 +1819,55 @@ class Library:
         picks the best-matching sentence in each as the quote, then runs the same support
         check as drafted citations. Supported sources come first; an empty or all-red
         result means the library doesn't back this claim yet."""
+        results: list[dict] = []
+        for results, _ in self.suggest_citations_stream(claim, doc_ids, limit):
+            pass
+        return results
+
+    def suggest_citations_stream(self, claim: str, doc_ids: list[int] | None = None, limit: int = 4):
+        """suggest_citations as it goes: yields (results, done) once the candidates are picked
+        (each still "pending") and again as each support check comes back, best first, so a
+        source that backs the sentence can be shown without waiting for the slowest check.
+        A candidate whose check fails is left out; if every check fails, the error is raised."""
         claim = " ".join(claim.split())
         if not claim:
             raise ValueError("Select a sentence to cite")
+        top = self._cite_candidates(claim, doc_ids, limit)
+        rank = {"verified": 0, "weak": 1, "pending": 2, "unsupported": 3, "quote_not_found": 4}
+
+        def ordered(results):
+            return sorted((r for r in results if r), key=lambda r: (rank.get(r["status"], 5), -r["score"]))
+
+        # Before any check: the quote located on its page, so it can already be opened.
+        results: list[dict | None] = [
+            {**self.verify_citation(claim, hit["id"], quote, judge=False), "score": round(score, 4)}
+            for score, hit, quote in top
+        ]
+        waiting = [i for i, r in enumerate(results) if r["status"] == "pending"]
+        if not waiting:
+            yield ordered(results), True
+            return
+        yield ordered(results), False
+        # Each check is a model call, so only the top few candidates are judged, side by side.
+        pool = ThreadPoolExecutor(max_workers=CHECK_WORKERS)
+        failure: Exception | None = None
+        try:
+            checks = {pool.submit(self.verify_citation, claim, top[i][1]["id"], top[i][2]): i for i in waiting}
+            for n, check in enumerate(as_completed(checks), 1):
+                i = checks[check]
+                try:
+                    results[i] = {**check.result(), "score": results[i]["score"]}
+                except Exception as exc:
+                    log.exception("A support check for a cite suggestion failed")
+                    failure, results[i] = exc, None
+                if failure and n == len(checks) and all(results[j] is None for j in waiting):
+                    raise failure
+                yield ordered(results), n == len(checks)
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)  # the caller may have stopped listening
+
+    def _cite_candidates(self, claim: str, doc_ids: list[int] | None, limit: int) -> list[tuple[float, dict, str]]:
+        """The passages to check for a claim: (word overlap, search hit, quoted sentence), best first."""
         hits = self.search(claim, k=limit * 2, doc_ids=doc_ids)
         sentences = [
             (h, h["text"][s:e]) for h in hits for s, e in sentence_spans(h["text"]) if e - s >= 25
@@ -1791,7 +1875,7 @@ class Library:
         if not sentences:
             return []
         # Word overlap picks the quoted sentence, on this computer.
-        # The support check in verify_citation below, a provider call, is what judges
+        # The support check in verify_citation, a provider call, is what judges
         # whether the chosen sentence actually backs the claim.
         claim_words = set(tokenize(claim))
         scores = [
@@ -1807,13 +1891,7 @@ class Library:
         for score, hit, quote in best.values():
             if hit["id"] not in per_chunk or score > per_chunk[hit["id"]][0]:
                 per_chunk[hit["id"]] = (score, hit, quote)
-        top = sorted(per_chunk.values(), key=lambda c: -c[0])[:limit]
-        # Each check is a model call, so only the top few candidates are judged, side by side.
-        with ThreadPoolExecutor(max_workers=CHECK_WORKERS) as pool:
-            checked = list(pool.map(lambda c: self.verify_citation(claim, c[1]["id"], c[2]), top))
-        results = [{**v, "score": round(score, 4)} for v, (score, _, _) in zip(checked, top)]
-        rank = {"verified": 0, "weak": 1, "unsupported": 2, "quote_not_found": 3}
-        return sorted(results, key=lambda r: (rank.get(r["status"], 4), -r["score"]))
+        return sorted(per_chunk.values(), key=lambda c: -c[0])[:limit]
 
     def resolve_citations(self, items: list[tuple[int, int, str]]) -> list[dict | None]:
         """resolve_citation for each (doc_id, page, quote), in order. A draft's chips mostly

@@ -176,3 +176,73 @@ def test_health_reports_keyword_plus_muse_search(tmp_path):
     client = TestClient(create_app(settings, Library(settings, provider=MockProvider())))
     h = client.get("/health").json()
     assert h["search"] == "keyword+muse" and "embedder" not in h and "reranker" not in h
+
+
+class CountingProvider(MockProvider):
+    """Expands every query the same way and scores by a marker word, counting both calls."""
+
+    def __init__(self, marker: str = "Spindle"):
+        self.marker = marker
+        self.expand_calls = 0
+        self.rank_calls = 0
+
+    def expand_query(self, query):
+        self.expand_calls += 1
+        return ["spindle bursts"]
+
+    def rank_passages(self, query, passages):
+        self.rank_calls += 1
+        return [1.0 if self.marker in text else 0.0 for _, text in passages]
+
+
+def test_a_repeated_search_asks_the_provider_once(lib):
+    lib.provider = CountingProvider()
+    first = lib.search("cue recall", k=3)
+    again = lib.search("cue  Recall", k=3)  # the same query, typed a little differently
+    assert [h["id"] for h in again] == [h["id"] for h in first] and "Spindle" in first[0]["text"]
+    assert lib.provider.expand_calls == 1
+    assert lib.provider.rank_calls == 2  # ranking sees the query as typed
+    lib.search("cue recall", k=3)
+    assert (lib.provider.expand_calls, lib.provider.rank_calls) == (1, 2)
+
+
+def test_one_question_asked_of_each_paper_is_expanded_once(lib):
+    # A review matrix asks a column's question of every paper in turn.
+    lib.provider = CountingProvider()
+    for doc in lib.list_documents():
+        lib.search("what was cued", k=2, doc_ids=[doc["id"]])
+    assert len(lib.list_documents()) == 2 and lib.provider.expand_calls == 1
+
+
+def test_changed_passages_are_ranked_again(lib, tmp_path):
+    lib.provider = CountingProvider()
+    lib.search("cue recall", k=3)
+    (tmp_path / "study.md").write_text(STUDY + "A later cue study found the same.\n", encoding="utf-8")
+    lib.ingest_path(str(tmp_path / "study.md"))
+    lib.search("cue recall", k=3)
+    assert (lib.provider.expand_calls, lib.provider.rank_calls) == (1, 2)
+
+
+def test_failed_answers_are_asked_for_again(lib):
+    class Flaky(CountingProvider):
+        def expand_query(self, query):
+            self.expand_calls += 1
+            return []  # what a failed call gives
+
+        def rank_passages(self, query, passages):
+            self.rank_calls += 1
+            return None
+
+    lib.provider = Flaky()
+    lib.search("cue recall", k=3)
+    lib.search("cue recall", k=3)
+    assert (lib.provider.expand_calls, lib.provider.rank_calls) == (2, 2)
+
+
+def test_another_provider_starts_with_nothing_kept(lib):
+    lib.provider = CountingProvider()
+    lib.search("cue recall", k=3)
+    lib.provider = CountingProvider(marker="Protocol")
+    hits = lib.search("cue recall", k=3)
+    assert (lib.provider.expand_calls, lib.provider.rank_calls) == (1, 1)
+    assert "Protocol" in hits[0]["text"] or "Spindle" not in hits[0]["text"]

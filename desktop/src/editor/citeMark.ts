@@ -9,8 +9,14 @@ export interface CiteMarkAttrs {
   cid: string
   claim: string // the sentence as it read when Cite was pressed (or re-checked)
   state: CiteMarkState
-  results: Suggestion[] // candidate sources, best first, each already checked against the claim
+  results: Suggestion[] // candidate sources, best first, each checked against the claim ("pending" while its check runs)
 }
+
+/** How many of a marker's candidates are still being checked. */
+export const stillChecking = (results: Suggestion[] | undefined) => (results ?? []).filter((r) => r.status === 'pending').length
+
+/** A marker whose search was cut short (the draft or the app was closed meanwhile): it searches again. */
+export const unfinished = (m: CiteMarkAttrs) => m.state === 'searching' || stillChecking(m.results) > 0
 
 const TITLES: Record<CiteMarkState, string> = {
   searching: 'Finding a source… keep writing',
@@ -67,4 +73,11 @@ export function stateOf(results: Suggestion[]): CiteMarkState {
   if (!results.length) return 'none'
   const best = results[0].status
   return best === 'verified' ? 'verified' : best === 'weak' ? 'weak' : 'unsupported'
+}
+
+/** The marker's colour while checks are still coming in: green as soon as one candidate is
+ * supported (nothing later can beat that), otherwise still searching until the last check. */
+export function stateSoFar(results: Suggestion[]): CiteMarkState {
+  if (results.some((r) => r.status === 'verified')) return 'verified'
+  return stillChecking(results) ? 'searching' : stateOf(results)
 }

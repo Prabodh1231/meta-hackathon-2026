@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { CiteMarkAttrs, CiteMarkState } from '../editor/citeMark'
+import { stillChecking, type CiteMarkAttrs, type CiteMarkState } from '../editor/citeMark'
 import type { Citation } from '../types'
 import { StatusBadge } from './StatusBadge'
 import { WaitStatus } from './WaitStatus'
@@ -178,6 +178,7 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
   }
 
   const results = mark.results ?? []
+  const unchecked = stillChecking(results) // candidates whose check is still running
   return (
     <div className="cite-panel">
       <button className="link cite-back" onClick={() => onFocus(null)}>
@@ -189,6 +190,11 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
       </div>
       <blockquote className="cite-claim">{mark.claim}</blockquote>
       {mark.state === 'searching' && <p className="busy">Searching your library and checking each passage against the sentence. Keep writing.</p>}
+      {mark.state !== 'searching' && unchecked > 0 && (
+        <p className="busy" role="status">
+          Checking {unchecked} more passage{unchecked === 1 ? '' : 's'}… You can confirm this source now.
+        </p>
+      )}
       {mark.state === 'error' && <p className="warn">The backend didn't answer. Try again in a moment.</p>}
       {(mark.state === 'unsupported' || mark.state === 'none') && (
         <p className="warn">You may need to add a source for this, reword the sentence, or remove the marker.</p>
@@ -206,7 +212,8 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
             <button onClick={() => onOpenSource(r)}>View source</button>
             <button
               className={i === 0 && r.status === 'verified' ? 'primary' : ''}
-              disabled={r.status === 'quote_not_found'}
+              disabled={r.status === 'quote_not_found' || r.status === 'pending'}
+              title={r.status === 'pending' ? 'Still being checked against your sentence' : undefined}
               onClick={() => onConfirm(mark.cid, r)}
             >
               Use this source
@@ -216,7 +223,7 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
       ))}
 
       <div className="cite-foot">
-        <button onClick={() => onRecheck(mark.cid)} disabled={mark.state === 'searching'} title="Search again for the sentence as it reads now">
+        <button onClick={() => onRecheck(mark.cid)} disabled={mark.state === 'searching' || unchecked > 0} title="Search again for the sentence as it reads now">
           Check again
         </button>
         <button className="link danger-link" onClick={() => onRemove(mark.cid)}>

@@ -167,10 +167,15 @@ class LLMProvider(ABC):
 
     def judge_support(self, claim: str, passage: str) -> dict:
         user = f"Claim: {claim}\n\nSource passage:\n{passage}"
-        out = self._json(prompts.JUDGE_SYSTEM, user, prompts.JUDGE_SCHEMA, max_tokens=200)
+        out = self._check_json(prompts.JUDGE_SYSTEM, user, prompts.JUDGE_SCHEMA, max_tokens=200)
         if out.get("verdict") not in ("supported", "partial", "unsupported"):
             out["verdict"] = "unsupported"
         return out
+
+    def _check_json(self, system: str, user: str, schema: dict, max_tokens: int) -> dict:
+        """One JSON call made for a support check. Muse overrides this to give the check its
+        own reasoning effort; other providers use the ordinary JSON helper."""
+        return self._json(system, user, schema, max_tokens=max_tokens)
 
     def _search_json(self, system: str, user: str, schema: dict, max_tokens: int) -> dict:
         """One JSON call made for search. Muse overrides this to keep search calls quick

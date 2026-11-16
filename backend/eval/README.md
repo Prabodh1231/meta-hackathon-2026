@@ -43,6 +43,12 @@ accuracy as "minimal" (R@1 0.98) at 14.2 s per query. On the real 157-paper libr
 search with expansion and ranking takes about 13 s, a Cite suggestion (search plus four
 support checks run side by side) about 28 s, and drafting with citations about 31 s.
 
+Measured again on 14 Nov 2026 on the same library (six claims, writing effort "medium"): a
+Cite took 26 s, of which query expansion 2.7 s, ranking 6.9 s and the slowest of the four
+support checks 15.4 s. With support checks at "low" and results streamed as each check
+finishes, the marker turns green after about 13 s (when a supporting source exists) and all
+four checks are in after about 20 s.
+
 ## What the three configurations are
 
 - **keyword (BM25)** is the instant filter: SQLite FTS5/BM25 for the query alone, with

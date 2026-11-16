@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.providers import make_provider
-from app.providers.muse import REASONING_HEADROOM, SEARCH_EFFORT, MuseError, MuseProvider
+from app.providers.muse import CHECK_EFFORT, REASONING_HEADROOM, SEARCH_EFFORT, MuseError, MuseProvider
 from app.settings import Settings
 
 
@@ -126,3 +126,16 @@ def test_key_file_in_data_dir(tmp_path, monkeypatch):
     assert isinstance(make_provider(s), MuseProvider)
     monkeypatch.setenv("RC_PROVIDER", "mock")  # real environment variables win
     assert Settings.from_env().provider == "mock"
+
+
+def test_support_checks_keep_their_own_effort_whatever_writing_uses():
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return reply('{"verdict": "partial", "reason": "close"}')
+
+    muse = provider(handler, reasoning_effort="high")
+    assert muse.judge_support("Water boils at 100 C.", "Water boils near 100 degrees.")["verdict"] == "partial"
+    muse.chat([{"role": "user", "content": "Write a paragraph."}])
+    assert [body["reasoning_effort"] for body in seen] == [CHECK_EFFORT, "high"]
