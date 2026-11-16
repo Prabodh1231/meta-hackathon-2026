@@ -105,10 +105,11 @@ Your files stay where they are. The library keeps its own index in `~/.groundwor
 
 The library works like a mail app or a file explorer: one line per paper, newest first.
 
-- **Select:** click a paper. Its details open on the right: summary (marked **Written by Muse**: it's Muse's reading, not the paper's words), topics, keywords and JEL codes, DOI, link and file location. **Ctrl-click** adds or drops a paper, **Shift-click** selects through to it, the box in front of a row does the same as Ctrl-click, and **Ctrl A** selects every paper shown. With the list selected, ↑ and ↓ move between papers (hold Shift to select several) and Esc clears the selection.
+- **Select:** click a paper. Its details open on the right: summary (marked **Written by Muse**: it's Muse's reading, not the paper's words), topics, keywords and JEL codes, [related papers](#related-in-your-library), DOI, link and file location. **Ctrl-click** adds or drops a paper, **Shift-click** selects through to it, the box in front of a row does the same as Ctrl-click, and **Ctrl A** selects every paper shown. With the list selected, ↑ and ↓ move between papers (hold Shift to select several) and Esc clears the selection.
 - **Act on what's selected:** the bar above the list changes to **N selected** with **Open**, **Add to topic**, **Use for drafting**, **Copy citation** and **Remove**. **Right-click** a paper for the same actions, plus Mark as read or unread, Star, Edit details, Show in folder on disk, Cited papers and Citing papers.
+- **Peek at a paper:** press **Space** for a [quick look](#quick-look) without opening it.
 - **Open a paper:** double-click it, or press Enter. A PDF opens in the app's reader described below, a Word file, slides or an image in the app your computer opens it with, and a web page in your browser.
-- **Find a paper:** type in the search box at the top. Every word has to match, in any order, anywhere in the paper's record: title, authors, journal, keywords, tags, JEL codes, topics and summary. Under the matching papers, **Inside your papers** lists passages from the papers' own text that contain all of your words, with the page each is on; click one to open the paper at that page with the words marked (the reader's Find box holds them, so ↑ ↓ there step through the paper's other matches). The page shown is the number printed on the paper, which can differ from the reader's own page count. The **All types** menu narrows to PDFs, slides, notes and so on.
+- **Find a paper:** type in the search box at the top. Every word has to match, in any order, anywhere in the paper's record: title, authors, journal, keywords, tags, JEL codes, topics and summary. Under the matching papers, **Inside your papers** lists passages from the papers' own text that contain all of your words, with the page each is on; click one to open the paper at that page with the words marked (the reader's Find box holds them, so ↑ ↓ there step through the paper's other matches). The page shown is the number printed on the paper, which can differ from the reader's own page count. The [filter chips](#filters-and-saved-views) above the list narrow it further.
 - **Sort and columns:** click a column header to sort by it, and again to reverse; the library opens sorted the same way next time. Right-click the header row to choose columns: Authors, Year, Journal, Added, Cited by, Topics.
 - **Unread and starred:** a paper you add is **unread** (bold, with a blue edge) until you open it; right-click to mark it read or unread yourself. Click the ☆ beside a title to star a paper you want to find again.
 - **Copy a citation:** **Copy citation** copies the selected papers' references as APA, MLA, IEEE or BibTeX, or saves them as a `.bib` file.
@@ -126,6 +127,35 @@ The top of the sidebar holds ready-made views. One shows only while it has somet
 - **Needs attention:** papers marked **Retracted**, papers with no year or author in their record (**Needs metadata**), and papers Muse still owes a summary.
 - **Unread** and **Starred**.
 - **Unfiled** (in no topic) and **Removed**.
+
+### Filters and saved views
+
+The row of chips above the list narrows whatever view or topic you are in:
+
+- **Type**, **Topic**, **Author** and **Journal** each open a list with the number of papers beside every choice. Tick as many as you like: within one chip the choices add up (PDFs *or* slides), and across chips they narrow (PDFs *and* by Suri). Authors and journals are listed with the most papers first; type a letter to jump to a name.
+- **Year** takes one choice: the last 5 or 10 years, a decade, before 2000, or papers with no year in their record.
+- **Has highlights** shows only the papers you have highlighted passages in. It appears once you have highlighted something.
+- A chip that is set turns green and says what it is set to; its **×** clears it, and **Clear filters** clears them all. The chips work together with the search box and the Timeline.
+
+**Save as view** (at the right of the chips, once a chip or the search is set) keeps the search and the filters under **Saved views** in the sidebar, with the view or topic you were in. A saved view stores the question, not the answer: its count and its papers are worked out each time, so "Last 5 years" moves on with the calendar and new papers join by themselves. The Timeline's range isn't saved.
+
+- Click a saved view to open it. Clicking another view or topic leaves it, and clears its search and filters.
+- While it's open, **Rename** and **Delete** sit beside its name above the list; right-clicking it in the sidebar offers the same. Deleting a view never touches your papers, and the message offers **Undo**.
+- Saving under a name that is already used replaces that view.
+
+### Quick look
+
+Select a paper and press **Space** (or choose **Quick look** above the list or in the right-click menu). A panel shows its first page, its abstract (or Muse's summary when there is no abstract) and the passages you have highlighted in it, with your notes.
+
+- **↑ ↓** move to the next paper with the panel still open, so you can run through a list after a big import.
+- **Enter** opens the paper; **Space** or **Esc** closes the panel and leaves the paper selected.
+- Looking doesn't mark a paper as read.
+
+### Related in your library
+
+A paper's details list up to five papers in your library that are closest to it, each with the reason: **Cites this paper**, **Cited by this paper**, **N shared references** (works both cite), **Both on …** (keywords the two carry and most of your library doesn't) or **Similar wording** with the words. Click one to go to it; if a search or filter is hiding it, those are cleared.
+
+The list comes from the papers' reference lists and the words in their titles, keywords and summaries. Muse isn't asked, so it's instant and works offline; the first paper you open after adding sources takes a couple of seconds while the references are matched.
 
 ### Topics
 
@@ -415,6 +445,7 @@ The draft has a title and Background, The gap, Research questions, Hypotheses, V
 | Esc | Leave focus mode; close the PDF viewer or a menu; clear the search box; leave the Library or Network for the draft |
 | ↑ ↓ | Move between papers in the library list (when it has focus); with Shift, select several |
 | Enter / Delete | In the library list: open the selected paper / remove the selected papers (with Undo) |
+| Space | In the library list: quick look at the selected paper; ↑ ↓ move on, Space or Esc closes |
 | Ctrl A | In the library list: select every paper shown |
 
 On a Mac, use Cmd in place of Ctrl.

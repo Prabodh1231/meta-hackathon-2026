@@ -39,6 +39,7 @@ import type {
   SourceSettings,
   PageText,
   RefStyle,
+  RelatedDoc,
   ResolvedCitation,
   Settings,
   ProposalResult,
@@ -62,7 +63,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 21
+export const API_VERSION = 22
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -184,6 +185,8 @@ export const api = {
   setFolderMember: (docId: number, folderId: number, member: boolean) =>
     request<Doc>('PUT', `/documents/${docId}/folders/${folderId}`, { member }),
 
+  /** The library papers closest to one paper, with why: citations, shared references, shared words. */
+  related: (docId: number, limit = 5) => request<RelatedDoc[]>('GET', `/documents/${docId}/related?limit=${limit}`),
   citedWorks: (docId: number) => request<CitedWorks>('GET', `/documents/${docId}/cited`),
   missingWorks: (q = '') => request<MissingWorks>('GET', `/missing${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   fetchCitedWork: (docId: number, idx: number) => request<FetchResult>('POST', `/documents/${docId}/cited/${idx}/fetch`),

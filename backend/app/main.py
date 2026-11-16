@@ -234,7 +234,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 21
+API_VERSION = 22
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -521,6 +521,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def missing_works(q: str = "", limit: int = 100):
         """Works the papers about a topic cite that the library lacks, most cited first."""
         return lib.missing_works(q, max(1, min(limit, 500)))
+
+    @app.get("/documents/{doc_id}/related")
+    def related(doc_id: int, limit: int = 5):
+        """The library papers closest to this one, each with why (citations, shared references, shared words)."""
+        return lib.related(doc_id, max(1, min(limit, 20)))
 
     @app.get("/documents/{doc_id}/cited")
     def cited_works(doc_id: int):

@@ -125,3 +125,13 @@ def test_highlights_go_with_their_paper(setup):
     add(c, ids["reef"], CORAL)
     assert c.delete(f"/documents/{ids['reef']}").status_code == 200
     assert c.post("/highlights/fetch", json={}).json() == []
+
+
+def test_a_papers_highlights_name_the_page_as_it_is_printed(setup):
+    c, lib, ids = setup
+    add(c, ids["sleep"], SPINDLES)
+    assert c.get(f"/documents/{ids['sleep']}/highlights").json()[0]["page_label"] is None  # the page prints no number
+    with lib.lock:
+        lib.conn.execute("UPDATE pages SET label = '341' WHERE doc_id = ? AND page = 1", (ids["sleep"],))
+    [h] = c.get(f"/documents/{ids['sleep']}/highlights").json()
+    assert (h["page"], h["page_label"]) == (1, "341")  # the reader still opens at the PDF's own page 1

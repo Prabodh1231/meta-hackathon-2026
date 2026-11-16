@@ -21,6 +21,12 @@ contextBridge.exposeInMainWorld('rc', {
     ipcRenderer.on('rc:insert-quote', listener)
     return () => ipcRenderer.removeListener('rc:insert-quote', listener)
   },
+  // In the main window: be told when it comes back to the front. Returns an unsubscribe.
+  onWindowFocus: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('rc:window-focus', listener)
+    return () => ipcRenderer.removeListener('rc:window-focus', listener)
+  },
   // The demo corpus, copied into the data folder; resolves to that folder.
   copySamples: () => ipcRenderer.invoke('rc:copy-samples'),
   // A dropped file carries no path in the sandboxed page; Electron can tell where it is.

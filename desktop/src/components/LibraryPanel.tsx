@@ -5,8 +5,14 @@ import type { Doc, Folder, IngestJob, PassageHit, RefStyle, RemovedDoc } from '.
 import {
   type TimeField, type TimeWindow, buildAxis, docSpan, fmtDay, fmtPublished, gotAt, inWindow, posLabel, removedSince,
 } from '../timeline'
+import {
+  type Filters, type SavedView, NO_FILTERS, authorChoices, filterable, filtersActive, matches, readViews, sameFilters, sameYear,
+  venueChoices, yearChoices, yearLabel,
+} from '../libraryFilters'
 import { Abstract } from './CitingPapersDialog'
 import { ImportProgress, owedText } from './ImportProgress'
+import { QuickLook } from './QuickLook'
+import { RelatedPapers } from './RelatedPapers'
 import { Timeline } from './Timeline'
 import { TrustBadges, isRetracted, needsMetadata } from './TrustBadges'
 
@@ -317,6 +323,7 @@ const SORT_KEY = 'gw.library.sort'
 const COLS_KEY = 'gw.library.columns'
 const KEPT_KEY = 'gw.library.keepBoth'
 const REMOVING_KEY = 'gw.library.removing' // removals whose Undo was still open: finished at the next start
+const VIEWS_KEY = 'gw.library.views' // the reader's saved views
 
 function load<T>(key: string, fallback: T, ok: (v: unknown) => boolean): T {
   try {
@@ -355,13 +362,26 @@ function matchedWords(snippet: string): string {
   return runs.map((r) => r.split(stx).join('').split(etx).join('').trim()).sort((a, b) => b.length - a.length)[0] ?? ''
 }
 
+/** A search's words, and whether a paper's record has every one of them (in any order). */
+const wordsOf = (query: string) => query.toLowerCase().split(/\s+/).filter(Boolean)
+function hasWords(d: Doc, words: string[]): boolean {
+  if (!words.length) return true
+  const hay =
+    `${d.title} ${d.authors.join(' ')} ${d.venue} ${d.tags.join(' ')} ${d.keywords.join(' ')} ${d.jel_codes.map((j) => j.code).join(' ')} ${d.folders.map((f) => f.name).join(' ')} ${d.summary}`.toLowerCase()
+  return words.every((w) => hay.includes(w))
+}
+const toggled = <T,>(xs: T[], x: T): T[] => (xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x])
+/** "PDFs", "PDFs +2": what a chip shows of the choices ticked in it. */
+const firstAnd = (labels: string[]) =>
+  labels.length ? `${labels[0].length > 26 ? labels[0].slice(0, 25) + '…' : labels[0]}${labels.length > 1 ? ` +${labels.length - 1}` : ''}` : ''
+
 /** Something wrong with its record that the reader can fix: retracted, no year or author, or Muse's part still owed. */
 function needsAttention(d: Doc): boolean {
   return isRetracted(d) || needsMetadata(d) || d.missing.length > 0
 }
 
 type MenuItem =
-  | { label: string; kbd?: string; danger?: boolean; disabled?: boolean; checked?: boolean; keepOpen?: boolean; run: () => void }
+  | { label: string; kbd?: string; count?: number; danger?: boolean; disabled?: boolean; checked?: boolean; keepOpen?: boolean; run: () => void }
   | { head: string }
   | 'sep'
 
@@ -376,13 +396,25 @@ function PopMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuIt
       left: Math.max(8, Math.min(x, window.innerWidth - el.offsetWidth - 8)),
       top: Math.max(8, Math.min(y, window.innerHeight - el.offsetHeight - 8)),
     })
-    el.querySelector<HTMLElement>('button:not(:disabled)')?.focus()
   }, [x, y])
+  // The keyboard goes to the menu once it's placed and showing: while hidden it can't take it.
+  const placed = pos !== null
+  useLayoutEffect(() => {
+    if (placed) ref.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus()
+  }, [placed])
   useDismiss(true, onClose, ref)
   const move = (dir: 1 | -1) => {
     const all = [...(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [])]
     const at = all.indexOf(document.activeElement as HTMLElement)
     all[(at + dir + all.length) % all.length]?.focus()
+  }
+  /** A letter goes to the next choice with a word starting with it (a long list of authors or journals). */
+  const jump = (letter: string) => {
+    const all = [...(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [])]
+    const at = all.indexOf(document.activeElement as HTMLElement)
+    const starts = (el: HTMLElement) =>
+      (el.querySelector('.lib-pop-label')?.textContent ?? '').toLowerCase().split(/[\s,]+/).some((w) => w.startsWith(letter.toLowerCase()))
+    ;[...all.slice(at + 1), ...all.slice(0, at + 1)].find(starts)?.focus()
   }
   return (
     <div
@@ -394,6 +426,7 @@ function PopMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuIt
       onKeyDown={(e) => {
         if (e.key === 'Escape') (e.stopPropagation(), onClose())
         else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') (e.preventDefault(), move(e.key === 'ArrowDown' ? 1 : -1))
+        else if (e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) jump(e.key)
       }}
     >
       {items.map((item, i) =>
@@ -415,11 +448,51 @@ function PopMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuIt
           >
             {item.checked !== undefined && <span className="lib-pop-check" aria-hidden="true">{item.checked ? '✓' : ''}</span>}
             <span className="lib-pop-label">{item.label}</span>
+            {item.count !== undefined && <span className="lib-pop-count">{item.count}</span>}
             {item.kbd && <kbd>{item.kbd}</kbd>}
           </button>
         ),
       )}
     </div>
+  )
+}
+
+/** One filter above the list. Empty, it names what it filters by; set, it says to what, with an × to clear it. */
+function Chip({ name, value, onOpen, onClear }: { name: string; value: string; onOpen: (under: HTMLElement) => void; onClear: () => void }) {
+  return (
+    <span className={`lib-chip${value ? ' on' : ''}`}>
+      <button aria-haspopup="menu" onClick={(e) => onOpen(e.currentTarget.parentElement!)} title={value ? `${name}: ${value}` : `Narrow the list by ${name.toLowerCase()}`}>
+        {name}
+        {value && <>: <b>{value}</b></>}
+        <span className="lib-chip-caret" aria-hidden="true">▾</span>
+      </button>
+      {value && (
+        <button className="lib-chip-x" onClick={onClear} aria-label={`Clear the ${name.toLowerCase()} filter`} title="Clear this filter">×</button>
+      )}
+    </span>
+  )
+}
+
+/** Naming a view: when it's saved, and when it's renamed. */
+function ViewNameForm({ initial, action, onDone, onCancel }: { initial: string; action: string; onDone: (name: string) => void; onCancel: () => void }) {
+  const [name, setName] = useState(initial)
+  return (
+    <form
+      className="lib-view-form"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (name.trim()) onDone(name.trim())
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return
+        e.stopPropagation()
+        onCancel()
+      }}
+    >
+      <input autoFocus value={name} maxLength={60} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.currentTarget.select()} aria-label="Name of the view" placeholder="Name this view" />
+      <button className="primary" disabled={!name.trim()}>{action}</button>
+      <button type="button" onClick={onCancel}>Cancel</button>
+    </form>
   )
 }
 
@@ -488,7 +561,7 @@ function DocTable({
   return (
     <div className="lib-table-wrap">
       <p id="lib-table-keys" className="sr-only">
-        Up and down arrows move between papers, with Shift to select several; Enter opens the paper; Delete removes what is selected;
+        Up and down arrows move between papers, with Shift to select several; Enter opens the paper; Space shows a quick look at it; Delete removes what is selected;
         Control A selects every paper shown; Escape clears the selection.
       </p>
       {(rows.length > 0 || ghosts.length > 0) && (
@@ -845,8 +918,11 @@ function EditDetails({ doc: d, run, onDone }: { doc: Doc; run: Run; onDone: () =
 }
 
 /** Everything about one source, and what can be done with it. */
-function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle, onUseWholeLibrary, onClose, onCited, onCiting, onRetry, onOpen, onStar, onCopyCitation, onRemove, run }: {
+function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle, onUseWholeLibrary, onClose, onCited, onCiting, onRetry, onOpen, onStar, onCopyCitation, onRemove, docById, onShowDoc, run }: {
   doc: Doc
+  /** Every paper in the library, to name the related ones; a click on one goes to it. */
+  docById: Map<number, Doc>
+  onShowDoc: (id: number) => void
   on: boolean // Muse drafts from it
   scopeCount: number // sources used for drafting in all, this one included when `on`
   onUseWholeLibrary: () => void
@@ -973,6 +1049,8 @@ function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle
         </div>
       )}
       <JelChips doc={d} />
+
+      <RelatedPapers doc={d} docById={docById} byline={(r) => [authorsShort(r), r.year && r.year > 0 ? r.year : ''].filter(Boolean).join(' ')} onShow={onShowDoc} />
 
       <h4 className="lib-doc-label">File</h4>
       <dl className="lib-detail-meta">
@@ -1150,6 +1228,8 @@ const VIEW_ICON: Record<View, string> = { all: '◫', recent: '◷', drafting: '
 const RECENT_DAYS = 14
 const TOP_TOPICS = 8
 const UNDO_MS = 8000
+const MAX_CHOICES = 300 // authors or journals listed in a filter's menu, the ones with the most papers
+type MenuKind = 'row' | 'topic' | 'cite' | 'columns' | 'f-kind' | 'f-year' | 'f-topic' | 'f-author' | 'f-venue' | 'view'
 const STYLE_NAME: Record<RefStyle, string> = { apa: 'APA', mla: 'MLA', ieee: 'IEEE', bibtex: 'BibTeX' }
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? ds[0].title.slice(0, 48) + '…' : ds[0].title}”` : `${ds.length} papers`)
@@ -1164,7 +1244,12 @@ export const LibraryPanel = memo(function LibraryPanel({
   folderSimilarity, onOpenPdf, jobs, focusTopic, onAddPaths, onCancelJob, onDismissJob,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
-  const [kind, setKind] = useState<'all' | Doc['kind']>('all')
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS) // the chips above the list
+  const [views, setViewsState] = useState<SavedView[]>(() =>
+    readViews(load<unknown>(VIEWS_KEY, [], () => true)).filter((v) => typeof v.scope === 'number' || (v.scope in VIEW_NAME && v.scope !== 'removed')),
+  )
+  const [naming, setNaming] = useState<{ id: string | null } | null>(null) // the name form: a new view (no id yet), or one being renamed
+  const [peek, setPeek] = useState(false) // Quick look is open on the selected paper
   const [scope, setScope] = useState<Scope>('all') // the view or topic being browsed
   const [picked, setPicked] = useState<Set<number>>(new Set()) // the selected rows
   const [cur, setCur] = useState<number | null>(null) // the row the keyboard is on
@@ -1181,7 +1266,8 @@ export const LibraryPanel = memo(function LibraryPanel({
   const [allTopics, setAllTopics] = useState(false)
   const [dropOn, setDropOn] = useState<Scope | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
-  const [menu, setMenu] = useState<{ kind: 'row' | 'topic' | 'cite' | 'columns'; x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{ kind: MenuKind; x: number; y: number; viewId?: string } | null>(null)
+  const menuClosed = useRef<{ kind: MenuKind; at: number } | null>(null) // so a click on an open chip closes its menu
   const [toast, setToast] = useState<{ text: string; undo?: () => void; n: number } | null>(null)
   const [hiding, setHiding] = useState<Set<number>>(new Set()) // removed a moment ago; Undo brings them back
   const pending = useRef<{ ids: number[]; timer: number } | null>(null)
@@ -1261,7 +1347,7 @@ export const LibraryPanel = memo(function LibraryPanel({
     if (!focus) return
     setScope('all')
     onQuery('')
-    setKind('all')
+    setFilters(NO_FILTERS)
     setTimeline(null)
     pickOnly(focus.id)
     const t = window.setTimeout(() => document.getElementById(`lib-doc-${focus.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350)
@@ -1272,7 +1358,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   useEffect(() => {
     if (!focusTopic) return
     onQuery('')
-    setKind('all')
+    setFilters(NO_FILTERS)
     setTimeline(null)
     setScope(focusTopic.id)
     pickOnly(null)
@@ -1281,6 +1367,28 @@ export const LibraryPanel = memo(function LibraryPanel({
   useEffect(() => {
     if (typeof scope === 'number' && !folders.some((f) => f.id === scope)) setScope('all') // the open topic was deleted or merged
   }, [folders, scope])
+
+  useEffect(() => {
+    setFilters((f) => (f.topics.every((id) => folders.some((x) => x.id === id)) ? f : { ...f, topics: f.topics.filter((id) => folders.some((x) => x.id === id)) }))
+  }, [folders])
+
+  // Reading happens in the reader's own window: what was highlighted or opened there shows here
+  // when this window is in front again. The desktop app says when that is; in a browser the
+  // page's own focus event does.
+  useEffect(() => {
+    let last = 0
+    const onFocus = () => {
+      if (Date.now() - last < 1000) return // both signals may come for one return
+      last = Date.now()
+      onChanged().catch(() => {})
+    }
+    const off = window.rc?.onWindowFocus?.(onFocus)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      off?.()
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [onChanged])
 
   // The removal log changes whenever the library does (removed here, in Duplicate files, restored).
   useEffect(() => {
@@ -1296,6 +1404,17 @@ export const LibraryPanel = memo(function LibraryPanel({
   const showDoc = (id: number) => {
     setScope('all')
     setTimeline(null)
+    pickOnly(id)
+    window.setTimeout(() => document.getElementById(`lib-doc-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
+  }
+  /** Go to a paper named in another's details: where it is in the list now, or in the whole library. */
+  const goTo = (id: number) => {
+    if (!rows.some((d) => d.id === id)) {
+      setScope('all')
+      onQuery('')
+      setFilters(NO_FILTERS)
+      setTimeline(null)
+    }
     pickOnly(id)
     window.setTimeout(() => document.getElementById(`lib-doc-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
   }
@@ -1346,7 +1465,8 @@ export const LibraryPanel = memo(function LibraryPanel({
   }, [scope, sort.key])
 
   // Search: every word, in any order, anywhere in the paper's record.
-  const words = useMemo(() => query.toLowerCase().split(/\s+/).filter(Boolean), [query])
+  const words = useMemo(() => wordsOf(query), [query])
+  const thisYear = new Date().getFullYear()
   const searching = words.length > 0
   const openFolder = typeof scope === 'number' ? folders.find((f) => f.id === scope) : undefined
   const citedSet = useMemo(() => new Set(cited), [cited])
@@ -1373,18 +1493,16 @@ export const LibraryPanel = memo(function LibraryPanel({
     return { ...timeline, lo: clamp(timeline.lo), hi: clamp(timeline.hi) }
   }, [timeline, axis])
   const narrowed = !!tl && !!axis && (tl.mode === 'asof' || tl.lo > axis.start || tl.hi < axis.end || tl.field === 'published')
-  // What the view, the type filter and the timeline leave, before the search narrows it.
+  // What the view, the filters and the timeline leave, before the search narrows it.
   const scoped = useMemo(
     () =>
       docs.filter(
-        (d) => (kind === 'all' || d.kind === kind) && inView(d, scope) && (!tl || !axis || ((s) => !!s && inWindow(axis, tl, s))(docSpan(tl.field, d))),
+        (d) => matches(filterable(d), filters, thisYear) && inView(d, scope) && (!tl || !axis || ((s) => !!s && inWindow(axis, tl, s))(docSpan(tl.field, d))),
       ),
-    [docs, kind, scope, inView, tl, axis],
+    [docs, filters, thisYear, scope, inView, tl, axis],
   )
   const rows = useMemo(() => {
-    const hay = (d: Doc) =>
-      `${d.title} ${d.authors.join(' ')} ${d.venue} ${d.tags.join(' ')} ${d.keywords.join(' ')} ${d.jel_codes.map((j) => j.code).join(' ')} ${d.folders.map((f) => f.name).join(' ')} ${d.summary}`.toLowerCase()
-    const shown = searching ? scoped.filter((d) => ((h) => words.every((w) => h.includes(w)))(hay(d))) : [...scoped]
+    const shown = searching ? scoped.filter((d) => hasWords(d, words)) : [...scoped]
     const fit = (d: Doc) => d.folders.find((f) => f.id === scope)?.score ?? (d.folders.some((f) => f.id === scope) ? 101 : -1)
     const last = '￿' // nothing to sort by: after everything else
     const value = (d: Doc): string | number =>
@@ -1427,11 +1545,11 @@ export const LibraryPanel = memo(function LibraryPanel({
         ? removed.filter(
             (r) =>
               removedSince(axis, tl, r) &&
-              (kind === 'all' || r.kind === kind) &&
+              matches({ kind: r.kind, authors: r.authors, year: r.year, venue: r.venue }, filters, thisYear) &&
               (!searching || ((h) => words.every((w) => h.includes(w)))(`${r.title} ${r.authors.join(' ')} ${r.venue}`.toLowerCase())),
           )
         : [],
-    [tl, axis, scope, removed, kind, searching, words],
+    [tl, axis, scope, removed, filters, thisYear, searching, words],
   )
 
   // ---------- the selection, and what can be done with it ----------
@@ -1463,6 +1581,85 @@ export const LibraryPanel = memo(function LibraryPanel({
     setCur(id)
   }
   const clearSelection = () => pickOnly(null)
+  /** Move to the paper above or below (Shift selects through to it). */
+  const step = (dir: 1 | -1, range = false) => {
+    const i = rows.findIndex((d) => d.id === cur)
+    const next = rows[Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + dir))]
+    if (!next) return
+    select(next.id, { range })
+    document.getElementById(`lib-doc-${next.id}`)?.scrollIntoView({ block: 'nearest' })
+  }
+  // Quick look shows the one selected paper: with none or several selected it closes.
+  useEffect(() => {
+    if (peek && !current) setPeek(false)
+  }, [peek, current])
+  const closePeek = () => {
+    setPeek(false)
+    requestAnimationFrame(() => tableRef.current?.focus({ preventScroll: true }))
+  }
+  const canOpen = (d: Doc) => /^https?:\/\//i.test(d.source) || d.kind === 'pdf' || !!window.rc?.openFile
+
+  // ---------- saved views: a search and filters kept in the sidebar ----------
+
+  const setViews = (next: SavedView[]) => {
+    setViewsState(next)
+    save(VIEWS_KEY, next)
+  }
+  /** The saved view on screen now: the same view or topic, search and filters. */
+  const activeView = useMemo(
+    () => views.find((v) => v.scope === scope && v.query.trim() === query.trim() && sameFilters(v.filters, filters)),
+    [views, scope, query, filters],
+  )
+  const viewCounts = useMemo(
+    () =>
+      new Map(
+        views.map((v) => {
+          const vw = wordsOf(v.query)
+          return [v.id, docs.filter((d) => inView(d, v.scope as Scope) && matches(filterable(d), v.filters, thisYear) && hasWords(d, vw)).length]
+        }),
+      ),
+    [views, docs, inView, thisYear],
+  )
+  const openView = (v: SavedView) => {
+    if (typeof v.scope === 'number' && !folders.some((f) => f.id === v.scope)) {
+      return say(`“${v.name}” was saved inside a topic that is gone. Delete the view, or save it again.`)
+    }
+    setScope(v.scope as Scope)
+    onQuery(v.query)
+    setFilters(v.filters)
+    setTimeline(null)
+    setNaming(null)
+    setPicked(new Set())
+    setCur(null)
+    setOpenRemoved(null)
+  }
+  const saveView = (name: string) => {
+    const same = views.find((v) => v.name.toLowerCase() === name.toLowerCase())
+    const view: SavedView = { id: same?.id ?? Date.now().toString(36), name, scope, query: query.trim(), filters }
+    setViews(same ? views.map((v) => (v === same ? view : v)) : [...views, view])
+    setNaming(null)
+    say(same ? `Updated the view “${name}”.` : `Saved “${name}” under Saved views. It stays current as papers arrive.`)
+  }
+  const renameView = (id: string, name: string) => {
+    setViews(views.map((v) => (v.id === id ? { ...v, name } : v)))
+    setNaming(null)
+  }
+  const deleteView = (v: SavedView) => {
+    const before = views
+    const wasOpen = activeView?.id === v.id
+    setViews(views.filter((x) => x.id !== v.id))
+    setNaming(null)
+    // Deleting the view on screen leaves it, as clicking another view does: its search and filters
+    // go with it, so the list isn't left narrowed by a view that no longer exists.
+    if (wasOpen) {
+      setFilters(NO_FILTERS)
+      onQuery('')
+    }
+    say(`Deleted the view “${v.name}”. Your papers aren't touched.`, () => {
+      setViews(before)
+      if (wasOpen) openView(v)
+    })
+  }
   const selectAll = () => setPicked(rows.length > 0 && rows.every((d) => sel.has(d.id)) ? new Set() : new Set(rows.map((d) => d.id)))
 
   const allDrafting = chosen.length > 0 && chosen.every((d) => drafting.has(d.id))
@@ -1563,7 +1760,7 @@ export const LibraryPanel = memo(function LibraryPanel({
       say(`Exported ${plural(entries.length, 'entry').replace('entrys', 'entries')} as BibTeX.`)
     })
 
-  // ↑ ↓ move between papers (Shift selects through), Enter opens, Delete removes, Ctrl+A selects all, Esc clears.
+  // ↑ ↓ move between papers (Shift selects through), Enter opens, Space peeks, Delete removes, Ctrl+A selects all, Esc clears.
   const onTableKey = (e: React.KeyboardEvent) => {
     const onRow = e.target === e.currentTarget // not on a header button, checkbox or star inside the table
     if (e.key === 'Escape') return clearSelection()
@@ -1572,15 +1769,15 @@ export const LibraryPanel = memo(function LibraryPanel({
       return setPicked(new Set(rows.map((d) => d.id)))
     }
     if (e.key === 'Enter' && onRow && current) return openFile(current)
+    if (e.key === ' ' && onRow) {
+      e.preventDefault() // Space would scroll the list
+      if (current) setPeek(true)
+      return
+    }
     if (e.key === 'Delete' && chosen.length) return remove(chosen)
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
     e.preventDefault()
-    const i = rows.findIndex((d) => d.id === cur)
-    const next = rows[Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + (e.key === 'ArrowDown' ? 1 : -1)))]
-    if (next) {
-      select(next.id, { range: e.shiftKey })
-      document.getElementById(`lib-doc-${next.id}`)?.scrollIntoView({ block: 'nearest' })
-    }
+    step(e.key === 'ArrowDown' ? 1 : -1, e.shiftKey)
   }
 
   const under = (el: HTMLElement) => ((r) => ({ x: r.left, y: r.bottom + 4 }))(el.getBoundingClientRect())
@@ -1597,6 +1794,39 @@ export const LibraryPanel = memo(function LibraryPanel({
             save(COLS_KEY, next)
           },
         })),
+      ]
+    }
+    const pick = <T,>(choices: { value: T; label: string; count: number }[], on: T[], set: (next: T[]) => Partial<Filters>): MenuItem[] =>
+      choices.map((c) => ({
+        label: c.label, count: c.count, checked: on.includes(c.value), keepOpen: true,
+        run: () => setFilters((f) => ({ ...f, ...set(toggled(on, c.value)) })),
+      }))
+    if (menu.kind === 'f-kind') {
+      return pick(kinds.map((k) => ({ value: k.id, label: k.label, count: docs.filter((d) => d.kind === k.id).length })), filters.kinds, (kinds) => ({ kinds }))
+    }
+    if (menu.kind === 'f-year') {
+      return years.map((y) => ({
+        label: y.label, count: y.count, checked: sameYear(filters.year, y.value),
+        run: () => setFilters((f) => ({ ...f, year: sameYear(f.year, y.value) ? null : y.value })),
+      }))
+    }
+    if (menu.kind === 'f-topic') {
+      return pick(bySize.map((t) => ({ value: t.id, label: t.name, count: t.doc_count })), filters.topics, (topics) => ({ topics }))
+    }
+    if (menu.kind === 'f-author') {
+      return [{ head: 'Most papers first' }, ...pick(authors.slice(0, MAX_CHOICES), filters.authors, (authors) => ({ authors }))]
+    }
+    if (menu.kind === 'f-venue') {
+      return [{ head: 'Most papers first' }, ...pick(venues.slice(0, MAX_CHOICES), filters.venues, (venues) => ({ venues }))]
+    }
+    if (menu.kind === 'view') {
+      const v = views.find((x) => x.id === menu.viewId)
+      if (!v) return []
+      return [
+        { label: 'Open', run: () => openView(v) },
+        { label: 'Rename…', run: () => setNaming({ id: v.id }) },
+        'sep',
+        { label: 'Delete view', danger: true, run: () => deleteView(v) },
       ]
     }
     if (menu.kind === 'topic') {
@@ -1617,7 +1847,7 @@ export const LibraryPanel = memo(function LibraryPanel({
     const one = current
     const at = { x: menu.x, y: menu.y }
     return [
-      ...(one ? [{ label: 'Open', kbd: 'Enter', run: () => openFile(one) }] : []),
+      ...(one ? [{ label: 'Open', kbd: 'Enter', run: () => openFile(one) }, { label: 'Quick look', kbd: 'Space', run: () => setPeek(true) }] : []),
       { label: 'Add to topic…', run: () => setMenu({ kind: 'topic', ...at }) },
       { label: allDrafting ? 'Stop drafting from' : 'Use for drafting', run: () => toggleDrafting(chosen) },
       { label: 'Copy citation…', run: () => setMenu({ kind: 'cite', ...at }) },
@@ -1641,7 +1871,36 @@ export const LibraryPanel = memo(function LibraryPanel({
   // ---------- the sidebar ----------
 
   const kinds = FILTERS.filter((f) => docs.some((d) => d.kind === f.id))
-  const filtering = kind !== 'all' || searching || narrowed
+  const filtering = filtersActive(filters) || searching || narrowed
+  const authors = useMemo(() => authorChoices(docs), [docs])
+  const venues = useMemo(() => venueChoices(docs), [docs])
+  const years = useMemo(() => yearChoices(docs, thisYear), [docs, thisYear])
+  const anyHighlights = docs.some((d) => d.highlights > 0)
+  const labels = <T,>(choices: { value: T; label: string }[], on: T[]) => on.map((v) => choices.find((c) => c.value === v)?.label ?? String(v))
+  /** The choices ticked in each chip, by name. */
+  const ticked = {
+    kind: labels(FILTERS.map((f) => ({ value: f.id, label: f.label })), filters.kinds),
+    year: filters.year ? [yearLabel(filters.year)] : [],
+    topic: labels(folders.map((f) => ({ value: f.id, label: f.name })), filters.topics),
+    author: labels(authors, filters.authors),
+    venue: labels(venues, filters.venues),
+  }
+  /** What each chip shows it is set to ('' when it isn't). */
+  const chip = { kind: firstAnd(ticked.kind), year: firstAnd(ticked.year), topic: firstAnd(ticked.topic), author: firstAnd(ticked.author), venue: firstAnd(ticked.venue) }
+  /** A click on a chip opens its menu, or closes it when it's the one open. */
+  const chipMenu = (kind: MenuKind) => (el: HTMLElement) => {
+    const c = menuClosed.current
+    if (c && c.kind === kind && performance.now() - c.at < 300) return
+    setMenu({ kind, ...under(el) })
+  }
+  /** "Unread · mobile money · PDFs · Last 5 years": a name to start from. */
+  const suggestedName = () =>
+    [
+      typeof scope === 'number' ? openFolder?.name : scope !== 'all' ? VIEW_NAME[scope] : '',
+      searching ? query.trim() : '',
+      ...[ticked.kind, ticked.year, ticked.topic, ticked.author, ticked.venue].map((t) => t.join(', ')),
+      filters.highlighted ? 'Highlighted' : '',
+    ].filter(Boolean).join(' · ').slice(0, 60)
   const count = (v: View) => (v === 'removed' ? removed.length : docs.filter((d) => inView(d, v)).length)
   const alike = useMemo(() => alikeTopics(docs, folders, keptBoth), [docs, folders, keptBoth])
   const bySize = useMemo(() => [...folders].sort((a, b) => b.doc_count - a.doc_count || a.name.localeCompare(b.name)), [folders])
@@ -1652,9 +1911,14 @@ export const LibraryPanel = memo(function LibraryPanel({
     return (
       <button
         key={String(id)}
-        className={`lib-nav-item${scope === id ? ' on' : ''}${dropOn === id ? ' drop' : ''}`}
-        aria-current={scope === id ? 'page' : undefined}
+        className={`lib-nav-item${scope === id && !activeView ? ' on' : ''}${dropOn === id ? ' drop' : ''}`}
+        aria-current={scope === id && !activeView ? 'page' : undefined}
         onClick={() => {
+          // Leaving a saved view leaves its search and filters too: "All sources" then shows all of them.
+          if (activeView) {
+            setFilters(NO_FILTERS)
+            onQuery('')
+          }
           setScope(id)
           setPicked(new Set())
           setCur(null)
@@ -1807,6 +2071,32 @@ export const LibraryPanel = memo(function LibraryPanel({
           {view('starred')}
           {view('none')}
           {view('removed')}
+          {views.length > 0 && (
+            <div className="lib-nav-label">
+              Saved views <span className="lib-nav-note">kept current</span>
+            </div>
+          )}
+          {views.map((v) =>
+            naming?.id === v.id ? (
+              <ViewNameForm key={v.id} initial={v.name} action="Rename" onDone={(name) => renameView(v.id, name)} onCancel={() => setNaming(null)} />
+            ) : (
+              <button
+                key={v.id}
+                className={`lib-nav-item${activeView?.id === v.id ? ' on' : ''}`}
+                aria-current={activeView?.id === v.id ? 'page' : undefined}
+                onClick={() => openView(v)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setMenu({ kind: 'view', x: e.clientX, y: e.clientY, viewId: v.id })
+                }}
+                title="A search and filters you saved. Right-click to rename or delete it."
+              >
+                <span className="lib-nav-ico" aria-hidden="true">⌕</span>
+                <span className="lib-nav-name">{v.name}</span>
+                <span className="lib-nav-count">{viewCounts.get(v.id) ?? 0}</span>
+              </button>
+            ),
+          )}
           {folders.length > 0 && (
             <div className="lib-nav-label">
               Topics <span className="lib-nav-note">largest first</span>
@@ -1876,12 +2166,69 @@ export const LibraryPanel = memo(function LibraryPanel({
             )}
             {showingRemoved && <RemovedTable entries={removed} open={openRemoved} onOpen={openGhost} />}
 
+            {docs.length > 0 && !showingRemoved && (
+              <div className="lib-chips" role="group" aria-label="Filters">
+                <button
+                  className={`ghost lib-tl-btn${timeline ? ' on' : ''}`}
+                  aria-pressed={!!timeline}
+                  onClick={() => (timeline ? setTimeline(null) : openTimeline('added'))}
+                  title="Narrow the library to when you got each source or when it was published"
+                >
+                  ◷ Timeline
+                </button>
+                {(kinds.length > 1 || chip.kind) && (
+                  <Chip name="Type" value={chip.kind} onOpen={chipMenu('f-kind')} onClear={() => setFilters((f) => ({ ...f, kinds: [] }))} />
+                )}
+                {(years.length > 1 || chip.year) && (
+                  <Chip name="Year" value={chip.year} onOpen={chipMenu('f-year')} onClear={() => setFilters((f) => ({ ...f, year: null }))} />
+                )}
+                {folders.length > 0 && (
+                  <Chip name="Topic" value={chip.topic} onOpen={chipMenu('f-topic')} onClear={() => setFilters((f) => ({ ...f, topics: [] }))} />
+                )}
+                {(authors.length > 1 || chip.author) && (
+                  <Chip name="Author" value={chip.author} onOpen={chipMenu('f-author')} onClear={() => setFilters((f) => ({ ...f, authors: [] }))} />
+                )}
+                {(venues.length > 1 || chip.venue) && (
+                  <Chip name="Journal" value={chip.venue} onOpen={chipMenu('f-venue')} onClear={() => setFilters((f) => ({ ...f, venues: [] }))} />
+                )}
+                {(anyHighlights || filters.highlighted) && (
+                  <span className={`lib-chip${filters.highlighted ? ' on' : ''}`}>
+                    <button aria-pressed={filters.highlighted} onClick={() => setFilters((f) => ({ ...f, highlighted: !f.highlighted }))} title="Only papers you have highlighted passages in">
+                      Has highlights
+                    </button>
+                  </span>
+                )}
+                {filtersActive(filters) && (
+                  <button className="link" onClick={() => setFilters(NO_FILTERS)}>Clear filters</button>
+                )}
+                <span className="spacer" />
+                {naming && naming.id === null ? (
+                  <ViewNameForm initial={suggestedName()} action="Save" onDone={saveView} onCancel={() => setNaming(null)} />
+                ) : activeView ? (
+                  <span className="lib-view-on">
+                    <span className="muted">Saved view:</span> <b>{activeView.name}</b>
+                    <button className="link" onClick={() => setNaming({ id: activeView.id })}>Rename</button>
+                    <button className="link" onClick={() => deleteView(activeView)}>Delete</button>
+                  </span>
+                ) : (
+                  (filtersActive(filters) || searching) && (
+                    <button className="lib-view-save" onClick={() => setNaming({ id: null })} title="Keep this search and these filters in the sidebar. The view stays current as papers arrive.">
+                      Save as view
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+
             {docs.length > 0 && !showingRemoved && chosen.length > 0 && (
               <div className="lib-tools lib-actions" role="toolbar" aria-label="Actions for the selected papers">
                 <button className="icon" onClick={clearSelection} aria-label="Clear the selection" title="Clear the selection (Esc)">×</button>
                 <b role="status">{chosen.length} selected</b>
                 {current && (
                   <button onClick={() => openFile(current)} title="Open the paper (Enter, or double-click it)">Open</button>
+                )}
+                {current && (
+                  <button onClick={() => setPeek(true)} title="Its first page, abstract and your highlights, without opening it (Space)">Quick look</button>
                 )}
                 <button aria-haspopup="menu" onClick={(e) => setMenu({ kind: 'topic', ...under(e.currentTarget) })}>Add to topic ▾</button>
                 <button onClick={() => toggleDrafting(chosen)} title="The sources Muse drafts from and searches for citations in (Compose, Cite my sources)">
@@ -1893,24 +2240,6 @@ export const LibraryPanel = memo(function LibraryPanel({
             )}
             {docs.length > 0 && !showingRemoved && chosen.length === 0 && (
               <div className="lib-tools">
-                <button
-                  className={`ghost lib-tl-btn${timeline ? ' on' : ''}`}
-                  aria-pressed={!!timeline}
-                  onClick={() => (timeline ? setTimeline(null) : openTimeline('added'))}
-                  title="Narrow the library to when you got each source or when it was published"
-                >
-                  ◷ Timeline
-                </button>
-                {kinds.length > 1 && (
-                  <select className="lib-kind" aria-label="Type" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-                    <option value="all">All types</option>
-                    {kinds.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.label} ({docs.filter((d) => d.kind === f.id).length})
-                      </option>
-                    ))}
-                  </select>
-                )}
                 <span className="muted">
                   {filtering || scope !== 'all' ? `${rows.length} of ${docs.length}` : `${rows.length} sources`}
                   {searching && <> with “{query.trim()}”</>}
@@ -2027,11 +2356,11 @@ export const LibraryPanel = memo(function LibraryPanel({
                       className="link"
                       onClick={() => {
                         onQuery('')
-                        setKind('all')
+                        setFilters(NO_FILTERS)
                         setTimeline(null)
                       }}
                     >
-                      {narrowed ? 'Clear the search, type filter and timeline' : 'Clear the search and type filter'}
+                      {narrowed ? 'Clear the search, filters and timeline' : 'Clear the search and filters'}
                     </button>
                   </>
                 ) : typeof scope === 'number' ? (
@@ -2064,6 +2393,8 @@ export const LibraryPanel = memo(function LibraryPanel({
               onStar={() => mark([current], { starred: !current.starred })}
               onCopyCitation={(el) => setMenu({ kind: 'cite', ...under(el) })}
               onRemove={() => remove([current])}
+              docById={docById}
+              onShowDoc={goTo}
               run={run}
             />
           </div>
@@ -2087,6 +2418,24 @@ export const LibraryPanel = memo(function LibraryPanel({
         )}
       </div>
 
+      {peek && current && (
+        <QuickLook
+          doc={current}
+          at={rows.findIndex((d) => d.id === current.id) + 1}
+          of={rows.length}
+          kindLabel={KIND_LABEL[current.kind]}
+          onStep={(dir) => step(dir)}
+          onOpen={
+            canOpen(current)
+              ? () => {
+                  closePeek()
+                  openFile(current)
+                }
+              : null
+          }
+          onClose={closePeek}
+        />
+      )}
       {menu && (
         <PopMenu
           key={`${menu.kind}-${menu.x}-${menu.y}`}
@@ -2094,6 +2443,7 @@ export const LibraryPanel = memo(function LibraryPanel({
           y={menu.y}
           items={menuItems()}
           onClose={() => {
+            menuClosed.current = { kind: menu.kind, at: performance.now() }
             closeMenu()
             tableRef.current?.focus({ preventScroll: true })
           }}

@@ -9,7 +9,7 @@ import os
 import queue
 import re
 import threading
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +27,7 @@ from .references import format_references
 from .retrieval import RecentCache, fts_query, reciprocal_rank_fusion
 from .settings import Settings, write_env_file
 from .text_utils import sentence_spans, tokenize
-from .topics import choose_k, jaccard, kmeans, tfidf_cosines, tfidf_matrix
+from .topics import choose_k, jaccard, kmeans, tfidf_cosines, tfidf_matrix, tfidf_vocab
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +53,12 @@ CHECK_WORKERS = 4
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
 MAX_KEYWORD_TAGS = 8
 MIN_TEXT_HITS = 3  # chunks of a paper that must mention a searched topic for it to count as about it
+# Related papers: what makes one paper related to another when neither cites the other.
+RELATED_MIN_SHARED_REFS = 2  # one shared reference is chance where a field has standard citations
+RELATED_MIN_SHARED_TERMS = 2  # keywords or tags the two carry and most of the library doesn't
+RELATED_MIN_COSINE = 0.2  # likeness of their titles, keywords, tags and summaries (TF-IDF)
+RELATED_TERMS_SHOWN = 4
+RELATED_WORDS_SHOWN = 3
 
 # Draft versions: an automatic snapshot when the newest version is this old, and one of the
 # draft as it was before an edit that changes at least LARGE_EDIT_PCT of a draft this long.
@@ -144,6 +150,7 @@ class Library:
         self._expansions = RecentCache(SEARCH_CACHE)  # query -> the provider's expansions
         self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
         self._answers_from = self.provider  # whose answers those are
+        self._graph_cache: tuple[int, dict] | None = None  # see _whole_graph
         # Search is keyword search plus the provider, and folders, highlights and
         # duplication use word statistics. No search model is loaded here, so the
         # library lists at once.
@@ -591,6 +598,76 @@ class Library:
         graph["query"] = query.strip()
         return graph
 
+    # ---------- related papers ----------
+
+    def _whole_graph(self) -> dict:
+        """The library's citation graph, kept until a paper's record or a reference list changes:
+        matching every reference against every paper is the slow part, and opening one paper's
+        details after another asks for it each time. Shared, so read it and don't change it."""
+        with self.lock:
+            docs, refs = self._graph_inputs()
+        key = hash((
+            tuple((d["id"], d["title"], d["year"], d["doi"], tuple(d["authors"])) for d in docs),
+            tuple((i, tuple((r.raw, r.title, r.year, r.doi) for r in rs)) for i, rs in sorted(refs.items())),
+        ))
+        if self._graph_cache is None or self._graph_cache[0] != key:
+            self._graph_cache = (key, build_graph(docs, refs))
+        return self._graph_cache[1]
+
+    def related(self, doc_id: int, limit: int = 5) -> list[dict]:
+        """The papers in the library closest to one paper, the closest first, each with why:
+        it cites this paper or this paper cites it, the two cite the same works, they carry the
+        same keywords, or their titles, keywords and summaries use the same distinctive words.
+        All of it comes from reference lists and word statistics; no model is asked."""
+        self.get_document(doc_id)
+        graph = self._whole_graph()
+        with self.lock:
+            ids, texts = self._folder_doc_texts()
+            tags = self._all_tags()
+            terms = {r["id"]: self._terms(r["keywords"], tags.get(r["id"], []))
+                     for r in self.conn.execute("SELECT id, keywords FROM documents")}
+        me = f"doc:{doc_id}"
+        found: dict[int, dict] = defaultdict(lambda: {
+            "cites_this": False, "cited_by_this": False, "shared_refs": 0, "shared_terms": [], "similarity": 0, "words": []})
+        for e in graph["citations"]:
+            if e["target"] == me:
+                found[int(e["source"][4:])]["cites_this"] = True
+            elif e["source"] == me and e["target"].startswith("doc:"):
+                found[int(e["target"][4:])]["cited_by_this"] = True
+        for e in graph["coupling"]:
+            if me in (e["source"], e["target"]) and e["weight"] >= RELATED_MIN_SHARED_REFS:
+                found[int((e["target"] if e["source"] == me else e["source"])[4:])]["shared_refs"] = e["weight"]
+
+        # A keyword most of the library carries ("economics" in an economics library) relates nothing.
+        held = Counter(t for ts in terms.values() for t in ts)
+        common = {t for t, n in held.items() if len(terms) >= 4 and n > len(terms) / 2}
+        mine = terms.get(doc_id, set()) - common
+        if doc_id in ids:
+            x, vocab = tfidf_vocab(texts)
+            row = x[ids.index(doc_id)]
+            cosine = x @ row
+            for i, other in enumerate(ids):
+                if other == doc_id:
+                    continue
+                shared = sorted(mine & terms.get(other, set()))
+                close = float(cosine[i]) >= RELATED_MIN_COSINE
+                if not (close or len(shared) >= RELATED_MIN_SHARED_TERMS or other in found):
+                    continue
+                f = found[other]
+                f["similarity"] = round(float(cosine[i]) * 100)
+                f["shared_terms"] = shared[:RELATED_TERMS_SHOWN]
+                if close:  # the words that carry most of the likeness, so the reader can judge it
+                    weight = x[i] * row
+                    f["words"] = [vocab[j] for j in np.argsort(weight)[::-1][:RELATED_WORDS_SHOWN] if weight[j] > 0]
+
+        def score(f: dict) -> float:
+            return (4.0 * f["cites_this"] + 4.0 * f["cited_by_this"] + 0.5 * min(f["shared_refs"], 8)
+                    + 0.5 * min(len(f["shared_terms"]), 3) + 4.0 * f["similarity"] / 100)
+
+        titles = {n["doc_id"]: n["title"] for n in graph["nodes"] if n["kind"] == "paper"}
+        ranked = sorted(found.items(), key=lambda kv: (-score(kv[1]), titles.get(kv[0], ""), kv[0]))
+        return [{"doc_id": other, **f} for other, f in ranked[:max(0, limit)]]
+
     # ---------- cited papers ----------
 
     def _refs_and_docs(self, doc_id: int) -> tuple[dict, list[Reference], list[dict]]:
@@ -691,6 +768,8 @@ class Library:
         ):
             folders[r["doc_id"]].append({k: r[k] for k in ("id", "name", "state", "score")})
         removals = self._removals_by_file()
+        marked = {r["doc_id"]: r["n"] for r in self.conn.execute(
+            f"SELECT doc_id, COUNT(*) AS n FROM highlights WHERE doc_id {scope} GROUP BY doc_id", ids)}
         numbered = [r["id"] for r in rows if r["page_numbering"] != "index"]
         labels: dict[int, list[str]] = defaultdict(list)
         if numbered:
@@ -715,6 +794,7 @@ class Library:
             d["previously_removed"] = self._earlier_removal(d, removals)
             d["published_checked"] = bool(d["published_checked"])
             d["unread"], d["starred"] = bool(d["unread"]), bool(d["starred"])
+            d["highlights"] = marked.get(d["id"], 0)  # passages the reader highlighted in it
             out.append(d)
         return out
 

@@ -1862,7 +1862,7 @@ export default function App() {
         />
       )}
 
-      {pdfView && <ReaderDialog doc={pdfView.doc} page={pdfView.page} find={pdfView.find} onClose={() => setPdfView(null)} onInsertQuote={insertQuote} />}
+      {pdfView && <ReaderDialog doc={pdfView.doc} page={pdfView.page} find={pdfView.find} onClose={() => (setPdfView(null), void refresh().catch(() => {}))} onInsertQuote={insertQuote} />}
 
       {showSettings && (
         <SettingsDialog

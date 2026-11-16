@@ -151,6 +151,9 @@ function createWindow() {
   win.on('closed', () => {
     if (appWindow === win) appWindow = null
   })
+  // Back in front (from the reader window, say): the page is told, so the library can show what
+  // was highlighted or opened meanwhile. The page's own focus event doesn't come reliably here.
+  win.on('focus', () => !win.isDestroyed() && win.webContents.send('rc:window-focus'))
   // A file dropped where the page doesn't handle it would replace the app with that file,
   // losing unsaved typing.
   win.webContents.on('will-navigate', (e, url) => {

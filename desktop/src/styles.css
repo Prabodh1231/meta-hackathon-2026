@@ -1955,3 +1955,60 @@ button.lib-use.on { font-weight: 600; }
 :root[data-theme="dark"] .lib-toast button { color: #1f6a3c; }
 :root[data-theme="dark"] .lib-toast button:hover:not(:disabled) { background: rgb(0 0 0 / 0.08); }
 :root[data-theme="dark"] .lib-toast .lib-toast-x { color: #56665b; }
+
+/* Filter chips above the list, and saving them (with the search) as a view */
+.lib-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: none; min-height: 44px; padding: 7px 20px; border-bottom: 1px solid var(--border); }
+.lib-chip { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); font-size: 12.5px; overflow: hidden; }
+.lib-chip button { display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 0; background: none; padding: 3px 10px; font-size: inherit; white-space: nowrap; }
+.lib-chip b { font-weight: 600; }
+.lib-chip-caret { font-size: 9px; color: var(--muted); margin-left: 2px; }
+.lib-chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); }
+.lib-chip.on .lib-chip-caret { color: inherit; }
+.lib-chip .lib-chip-x { padding: 3px 9px 3px 4px; font-size: 14px; line-height: 1; color: inherit; }
+.lib-chips > .link { font-size: 12.5px; }
+.lib-view-save { font-size: 12.5px; padding: 3px 10px; }
+.lib-view-on { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; white-space: nowrap; }
+.lib-view-on .link { font-size: 12.5px; }
+.lib-view-form { display: flex; align-items: center; gap: 6px; }
+.lib-view-form input { width: 230px; padding: 3px 9px; font-size: 12.5px; background: var(--panel); }
+.lib-view-form button { font-size: 12.5px; padding: 3px 10px; }
+.lib-nav .lib-view-form { flex-wrap: wrap; padding: 4px 6px 8px; }
+.lib-nav .lib-view-form input { width: 100%; }
+.lib-pop-count { flex: none; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Related papers, in a paper's details */
+.lib-related { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.lib-related button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: calc(100% + 16px); margin: 0 -8px; padding: 6px 8px; border: none; border-radius: 8px; background: none; text-align: left; }
+.lib-related-title { font: 13.5px/1.35 var(--doc-font); color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lib-related-by { font-size: 12px; color: var(--muted); }
+.lib-related-why { font-size: 12px; color: var(--accent); }
+.lib-related-none { margin: 0; font-size: 12.5px; line-height: 1.5; }
+
+/* Quick look: a peek at the selected paper, over the library */
+.ql-back { position: absolute; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgb(15 25 18 / 0.32); }
+.ql { display: flex; flex-direction: column; width: min(960px, 100%); max-height: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 24px 60px -16px rgb(0 0 0 / 0.45); outline: none; overflow: hidden; }
+.ql-top { display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 12px 10px 18px; border-bottom: 1px solid var(--border); }
+.ql-at { font-size: 12px; }
+.ql-keys { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ql-keys kbd { font: 600 10.5px Consolas, monospace; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin: 0 1px; background: var(--bg); color: var(--text); }
+.ql-body { display: flex; flex: 1; min-height: 0; }
+.ql-page { flex: none; width: 440px; padding: 18px 20px; overflow-y: auto; background: var(--bg); border-right: 1px solid var(--border); }
+.ql-sheet { display: block; width: 400px; max-width: 100%; background: #fff; border-radius: 2px; box-shadow: 0 1px 3px rgb(0 0 0 / 0.18), 0 10px 24px -14px rgb(0 0 0 / 0.35); }
+.ql-sheet[hidden] { display: none; }
+img.ql-sheet { height: auto; }
+.ql-wait { height: 518px; background: var(--panel); opacity: 0.6; }
+.ql-text { padding: 26px 28px; font: 12.5px/1.6 var(--doc-font); color: #1c1c1c; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ql-none { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.ql-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 18px 22px 22px; overflow-y: auto; }
+.ql-title { margin: 0; font: 600 19px/1.3 var(--doc-font); }
+.ql-authors { margin: 0; font-size: 13px; }
+.ql-facts { margin: 0; font-size: 12.5px; color: var(--muted); }
+.ql-info .lib-doc-label { margin: 10px 0 0; }
+.ql-prose { margin: 0; font: 14px/1.6 var(--doc-font); }
+.ql-marks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ql-marks li { padding-left: 10px; border-left: 3px solid var(--mark); font: 13.5px/1.5 var(--doc-font); }
+.ql-mark-page { margin-left: 6px; font: 12px system-ui, sans-serif; color: var(--muted); white-space: nowrap; }
+.ql-mark-note { display: block; margin-top: 2px; font: 12.5px/1.45 system-ui, sans-serif; color: var(--muted); }
+.ql-more { margin: 0; font-size: 12.5px; }
+.ql-foot { display: flex; justify-content: flex-end; flex: none; padding: 10px 18px; border-top: 1px solid var(--border); }
+@media (max-width: 900px) { .ql-page { width: 300px; } .ql-keys { display: none; } }
