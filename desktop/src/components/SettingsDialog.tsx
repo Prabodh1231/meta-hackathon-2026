@@ -469,15 +469,15 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
                   label="Cite markers search"
                   value={s.cite_scope}
                   options={[
-                    { value: 'ticked', label: 'Ticked sources' },
+                    { value: 'ticked', label: 'Sources used for drafting' },
                     { value: 'library', label: 'Whole library' },
                   ]}
                   onChange={(v) => onChange({ cite_scope: v })}
                 />
                 <p className="muted">
                   {s.cite_scope === 'ticked'
-                    ? 'The sources ticked in the Library, or all of them when none are ticked, as drafting from sources does.'
-                    : 'Always every source, whatever is ticked in the Library.'}
+                    ? 'The sources under Drafting from in the Library, or all of them when none are chosen, as drafting from sources does.'
+                    : 'Always every source, whatever you are drafting from.'}
                 </p>
               </Setting>
             </>
@@ -505,8 +505,8 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
 
           {section === 'library' && (
             <>
-              <Setting title="New folders start at" hint="How closely a paper must match a new subject folder to be filed in it. You can change each folder's threshold later.">
-                <Slider label="New folders start at" value={s.folder_similarity} min={0} max={100} step={5} unit="%" onChange={(v) => onChange({ folder_similarity: v })} />
+              <Setting title="New topics start at" hint="How closely a paper must match a new topic to be filed in it. You can change each topic's threshold later.">
+                <Slider label="New topics start at" value={s.folder_similarity} min={0} max={100} step={5} unit="%" onChange={(v) => onChange({ folder_similarity: v })} />
               </Setting>
               <Setting
                 title="Contact email (optional)"

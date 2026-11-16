@@ -14,11 +14,11 @@ const SECTIONS: { title: string; groups: (g: string) => boolean }[] = [
   { title: 'Actions', groups: (g) => g === 'DO' },
   { title: 'Go to', groups: (g) => g === 'GO' },
   { title: 'Drafts', groups: (g) => g === 'DRAFT' },
-  { title: 'Folders', groups: (g) => g === 'FOLDER' },
-  { title: 'Sources', groups: (g) => !['DO', 'GO', 'DRAFT', 'FOLDER'].includes(g) },
+  { title: 'Topics', groups: (g) => g === 'TOPIC' },
+  { title: 'Sources', groups: (g) => !['DO', 'GO', 'DRAFT', 'TOPIC'].includes(g) },
 ]
 
-/** Ctrl K launcher: run an action, or jump to a draft, folder or source, without a permanent sidebar.
+/** Ctrl K launcher: run an action, or jump to a draft, topic or source, without a permanent sidebar.
  * A combobox over a listbox, so screen readers hear the highlighted row as the arrows move it. */
 export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClose: () => void }) {
   const [query, setQuery] = useState('')

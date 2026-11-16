@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+import sqlite3
 import logging
 import mimetypes
 import os
@@ -368,6 +369,7 @@ class Library:
                 self.conn.execute("UPDATE documents SET refs_parsed = 0 WHERE id = ?", (doc_id,))
             else:
                 fields["missing"] = json.dumps(missing)
+                fields["unread"] = 0 if restore else 1  # new to the reader; one coming back isn't
                 if restore:
                     fields["added_at"] = restore["added_at"]
                 cols = ", ".join(fields)
@@ -712,6 +714,7 @@ class Library:
             d["page_range"] = d["page_span"] or page_range(labels[d["id"]])
             d["previously_removed"] = self._earlier_removal(d, removals)
             d["published_checked"] = bool(d["published_checked"])
+            d["unread"], d["starred"] = bool(d["unread"]), bool(d["starred"])
             out.append(d)
         return out
 
@@ -775,6 +778,18 @@ class Library:
                     [(doc_id, t.strip().lower()) for t in fields["tags"] if t.strip()],
                 )
         return self.get_document(doc_id)
+
+    def mark_documents(self, doc_ids: list[int], unread: bool | None = None, starred: bool | None = None) -> dict:
+        """Mark documents read or unread, starred or not. Reading marks, not metadata: nothing here
+        counts as a correction to the paper's record."""
+        marks = {k: int(v) for k, v in (("unread", unread), ("starred", starred)) if v is not None}
+        ids = list(dict.fromkeys(doc_ids))
+        if marks and ids:
+            cols = ", ".join(f"{k} = ?" for k in marks)
+            with self.lock, self.conn:
+                self.conn.execute(
+                    f"UPDATE documents SET {cols} WHERE id IN ({','.join('?' * len(ids))})", (*marks.values(), *ids))
+        return {"ok": True}
 
     def delete_document(self, doc_id: int, reason: str = "removed", duplicate_of: int | None = None,
                         trashed: bool = False) -> None:
@@ -1338,6 +1353,34 @@ class Library:
         self._rankings.put(key, dict(zip(ids, scores)))
         return sorted(zip(ids, scores), key=lambda kv: -kv[1])
 
+    def find_passages(self, query: str, limit: int = 12) -> list[dict]:
+        """The library's search box looking inside the papers: for each paper whose text has every
+        word of `query` in one passage, its best passage, best papers first. `snippet` is the words
+        around the matches, each match wrapped in the control characters STX and ETX for the app to mark.
+        Keyword search only (stemmed, so "bleached" finds "bleaching"): instant, and no model call."""
+        tokens = [t for t in re.findall(r"[\w-]{2,}", query.lower()) if t.strip("-_")]
+        if not tokens:
+            return []
+        match = " ".join('"' + t + '"' for t in tokens)
+        try:
+            with self.lock:
+                rows = self.conn.execute(
+                    "SELECT c.doc_id, c.page, p.label, snippet(chunks_fts, 0, char(2), char(3), '…', 32) AS snippet "
+                    "FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                    "LEFT JOIN pages p ON p.doc_id = c.doc_id AND p.page = c.page "
+                    "WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT 400", (match,)).fetchall()
+        except sqlite3.Error:  # words FTS can't parse match nothing
+            return []
+        best: dict[int, dict] = {}
+        for r in rows:
+            hit = best.get(r["doc_id"])
+            if hit:
+                hit["passages"] += 1
+            elif len(best) < limit:
+                best[r["doc_id"]] = {"doc_id": r["doc_id"], "page": r["page"], "label": r["label"],
+                                     "snippet": " ".join(r["snippet"].split()), "passages": 1}
+        return list(best.values())
+
     def _keyword(self, query: str, n: int, doc_ids: list[int] | None) -> list[tuple[int, float]]:
         match = fts_query(query)
         if not match:
@@ -1463,7 +1506,7 @@ class Library:
     def _folder_name(name: str) -> str:
         name = " ".join(str(name).split())[:40]
         if not name:
-            raise ValueError("A folder needs a name")
+            raise ValueError("A topic needs a name")
         return name
 
     @staticmethod
@@ -1478,7 +1521,7 @@ class Library:
         name, similarity = self._folder_name(name), self._similarity(similarity)
         with self.lock, self.conn:
             if self.conn.execute("SELECT 1 FROM folders WHERE name = ?", (name,)).fetchone():
-                raise ValueError(f"A folder called {name!r} already exists")
+                raise ValueError(f"A topic called {name!r} already exists")
             folder_id = self.conn.execute(
                 "INSERT INTO folders (name, similarity) VALUES (?, ?)", (name, similarity)
             ).lastrowid
@@ -1501,7 +1544,7 @@ class Library:
             if name is not None:
                 clash = self.conn.execute("SELECT id FROM folders WHERE name = ?", (name,)).fetchone()
                 if clash and clash["id"] != folder_id:
-                    raise ValueError(f"A folder called {name!r} already exists")
+                    raise ValueError(f"A topic called {name!r} already exists")
                 self.conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))
             if similarity is not None:
                 self.conn.execute("UPDATE folders SET similarity = ? WHERE id = ?", (similarity, folder_id))
@@ -1707,8 +1750,25 @@ class Library:
         with self.lock:
             row = self.conn.execute("SELECT id FROM folders WHERE name = ?", (self._folder_name(name),)).fetchone()
         if not row:
-            raise LookupError(f"No folder called {name!r}. Create it first with New folder.")
+            raise LookupError(f"No topic called {name!r}. Create it first with New topic.")
         return self.set_folder_membership(doc_id, row["id"], True)
+
+    def merge_folders(self, folder_id: int, into_id: int) -> list[dict]:
+        """Fold one folder into another: every paper filed in `folder_id` is filed in `into_id` as
+        the user's own choice (so re-filing keeps it there), and `folder_id` is deleted."""
+        if folder_id == into_id:
+            raise ValueError("A topic can't be merged into itself")
+        with self.lock, self.conn:
+            found = {r["id"] for r in self.conn.execute("SELECT id FROM folders WHERE id IN (?, ?)", (folder_id, into_id))}
+            for fid in (folder_id, into_id):
+                if fid not in found:
+                    raise LookupError(f"Folder {fid} not found")
+            self.conn.execute(
+                "INSERT INTO doc_folders (doc_id, folder_id, state) "
+                "SELECT doc_id, ?, 'user' FROM doc_folders WHERE folder_id = ? AND state != 'rejected' "
+                "ON CONFLICT(doc_id, folder_id) DO UPDATE SET state = 'user'", (into_id, folder_id))
+            self.conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+        return self.list_folders()
 
     def delete_folder(self, folder_id: int) -> list[dict]:
         """Removes the folder only; its documents stay in the library."""

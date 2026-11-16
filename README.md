@@ -32,7 +32,7 @@ Many researchers also work without access to Scopus or Web of Science. Every pap
 
 Groundwork is a personal knowledge platform for one researcher:
 
-- **A virtual library.** The papers you already have, organised by what they say. Your files stay where they are, and folders only point at them.
+- **A virtual library.** The papers you already have, organised by what they say. Your files stay where they are, and topics only point at them.
 - **Free papers without the hunt.** For the works your papers cite, Groundwork finds legal open-access copies through OpenAlex, Semantic Scholar and CORE, and downloads them in one click. No subscription needed.
 - **Writing you can trust.** It drafts only from your sources, attaches a quote to each sentence, and shows you that quote highlighted on its page.
 
@@ -42,7 +42,7 @@ Only the text passages Muse needs, and images that need OCR, are sent to the API
 
 Muse Spark (`muse-spark-1.3`) through Meta's [Model API](https://dev.meta.ai/products/meta-model-api) does the reading, writing and checking in Groundwork. Search is local keyword search, expanded and ranked by Muse Ember (`muse-ember-1.0`), Meta's efficient model, through the same API. Muse calls use strict JSON schemas.
 
-1. **Reading:** Muse extracts each source's title, authors, year and summary, tags papers that have no keyword list of their own, and reads scanned pages and images with OCR. Word statistics first rank papers against your subject folders; Muse then scores the strongest candidates.
+1. **Reading:** Muse extracts each source's title, authors, year and summary, tags papers that have no keyword list of their own, and reads scanned pages and images with OCR. Word statistics first rank papers against your topics; Muse then scores the strongest candidates.
 2. **Search:** keyword (BM25) search on your computer finds matching passages; Muse Ember expands the search and ranks the best passages first.
 3. **Writing:** Muse drafts from the top-ranked passages. Every sentence must cite a passage and include a verbatim quote from it.
 4. **Checking:** the app locates that quote in the source, then Muse judges whether it supports the sentence: Supported, Partly supported, or Not supported.
@@ -53,7 +53,7 @@ Muse Spark (`muse-spark-1.3`) through Meta's [Model API](https://dev.meta.ai/pro
 ### A virtual library for everything you read
 
 - Add files, a whole folder, or a pasted link or path, or drop files on the window. Groundwork reads PDF, Word (.docx), PowerPoint (.pptx), Markdown, plain text, HTML and images (PNG, JPEG, WebP).
-- **Your files stay where they are.** Groundwork never copies or moves them; it keeps its own index in `~/.groundwork/`. Subject folders are virtual: a folder points at your files, so one paper can sit in several folders at once, and deleting a folder deletes no paper.
+- **Your files stay where they are.** Groundwork never copies or moves them; it keeps its own index in `~/.groundwork/`. Topics are virtual: a topic points at your files, so one paper can sit in several topics at once, and deleting a topic deletes no paper.
 - **Folders by meaning.** Type a subject such as "Digital finance" and choose how closely a paper must match; papers are filed by what they say, not by where they are saved.
 - **Real titles, not file names.** Each paper is listed by the title, authors and year Muse reads from inside it, so `scan_0042.pdf` still shows up as the paper it is. Papers Groundwork downloads for you are saved as `Author Year - Title.pdf`.
 - Lookups in OpenAlex and Crossref add journal details, the authors' abstract and citation counts. Tick papers to limit drafting and cite searches to just those.
@@ -62,8 +62,8 @@ Muse Spark (`muse-spark-1.3`) through Meta's [Model API](https://dev.meta.ai/pro
 ![The Add sources menu: paste a link or path, or drop files](docs/images/add-sources.png)
 *Add sources: pick files or a folder, or paste a link or path.*
 
-![Library: subject folders, a sortable table of sources, and one paper's details and abstract](docs/images/library.png)
-*The Library: subject folders, a sortable table of sources, and the open paper's details.*
+![Library: views and topics, one line per source, and the selected paper's details](docs/images/library.png)
+*The Library works like a mail app: views and topics, one line per source, and the selected paper's details.*
 
 ### Write with checked citations
 

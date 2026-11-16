@@ -39,6 +39,9 @@ export interface Doc {
   /** '' not looked up yet, 'not_found', 'mismatch' (the DOI on the paper is another work's: see index_title). */
   enriched: '' | 'found' | 'not_found' | 'mismatch'
   index_title: string
+  /** Not opened since it was added (or marked unread), as a mail app shows new mail. */
+  unread: boolean
+  starred: boolean
   /** This same file was removed once before it was added again. */
   previously_removed: {
     id: number
@@ -85,6 +88,16 @@ export interface DocFolder {
   name: string
   state: 'auto' | 'user'
   score: number | null // percent match; null if never scored
+}
+
+/** A passage found by searching inside the papers: the best one in its paper. */
+export interface PassageHit {
+  doc_id: number
+  page: number
+  label: string | null // the printed page number, when known
+  /** The words around the matches; each match is wrapped in the characters STX (2) and ETX (3). */
+  snippet: string
+  passages: number // how many passages in the paper match
 }
 
 export interface Folder {

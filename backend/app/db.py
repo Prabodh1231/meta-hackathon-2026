@@ -308,6 +308,10 @@ _ADDED_COLUMNS = [
     ("documents", "index_title", "TEXT NOT NULL DEFAULT ''"),  # the other work's title, for a mismatch
     # 1 once the user named the draft: saves then keep its title instead of taking the first line.
     ("drafts", "named", "INTEGER NOT NULL DEFAULT 0"),
+    # Reading marks, as a mail app keeps them. A document is unread from when it is added until
+    # the user opens it (or marks it read); documents from before the marks existed count as read.
+    ("documents", "unread", "INTEGER NOT NULL DEFAULT 0"),
+    ("documents", "starred", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

@@ -174,9 +174,9 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
         <div className="segmented" role="radiogroup" aria-label="Papers from">
           {(
             [
-              ['topic', 'About a topic'],
-              ['folder', 'A folder'],
-              ['ticked', `Ticked in the Library (${selected.size})`],
+              ['topic', 'About a subject'],
+              ['folder', 'A topic'],
+              ['ticked', `Drafting from (${selected.size})`],
             ] as const
           ).map(([v, label]) => (
             <button key={v} role="radio" aria-checked={source === v} className={source === v ? 'active' : ''} onClick={() => (setSource(v), setPapers(null))}>
@@ -186,7 +186,7 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
         </div>
         {source === 'topic' && (
           <form className="mx-row" onSubmit={(e) => (e.preventDefault(), topic.trim() && find({ topic: topic.trim() }, topic.trim()))}>
-            <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. cryptocurrency adoption" aria-label="Topic" autoFocus />
+            <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. cryptocurrency adoption" aria-label="Subject" autoFocus />
             <button className="primary" disabled={!topic.trim() || !!busy}>Find papers</button>
           </form>
         )}
@@ -194,7 +194,7 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
           <div className="mx-row">
             <select
               value={folderId}
-              aria-label="Folder"
+              aria-label="Topic"
               onChange={(e) => {
                 const id = Number(e.target.value)
                 setFolderId(id)
@@ -202,7 +202,7 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
                 if (f) find({ folder_id: id }, f.name)
               }}
             >
-              <option value="">Choose a folder…</option>
+              <option value="">Choose a topic…</option>
               {folders.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name} ({f.doc_count})
@@ -211,7 +211,7 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
             </select>
           </div>
         )}
-        {source === 'ticked' && selected.size === 0 && <p className="muted">Tick papers in the Library first, or choose a topic or folder.</p>}
+        {source === 'ticked' && selected.size === 0 && <p className="muted">In the Library, select papers and choose Use for drafting first, or pick a subject or a topic here.</p>}
         {busy && <p className="muted">{busy}</p>}
         {papers && (
           <div className="mx-papers">
@@ -223,7 +223,7 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
                 {chosen.size ? 'Choose none' : 'Choose all'}
               </button>
             </div>
-            {papers.length === 0 && <p className="muted">No papers found. Try other words, or another folder.</p>}
+            {papers.length === 0 && <p className="muted">No papers found. Try other words, or another topic.</p>}
             <ul>
               {papers.map((p) => (
                 <li key={p.id}>

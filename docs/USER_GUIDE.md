@@ -33,7 +33,7 @@ The window has four parts:
 | **Main area** | The place you picked. In Write, the draft with the writing tools beside it. |
 | **Status bar** (bottom) | Live counts for the draft: words, citations (*12 supported · 1 needs attention · 1 checking*, in the same words as Check) and duplication. Click one to open Check. Outside Write they're marked **Draft**, since they're the open draft's numbers. |
 
-**One search box.** In Write, the box searches everything (sources, drafts, folders) and runs any action; Ctrl K opens it from anywhere. In the Library it filters your sources, and in the Network it finds papers about a topic. The green chip in the box says which one it's doing. Esc clears it, and Ctrl K still searches everything. Ctrl K lists **Actions** first, then **Go to**, **Drafts**, **Folders** and **Sources**, each with how many match; ↑ ↓ move, Enter runs or opens.
+**One search box.** In Write, the box searches everything (sources, drafts, topics) and runs any action; Ctrl K opens it from anywhere. In the Library it filters your sources and looks inside them, and in the Network it finds papers about a topic. The green chip in the box says which one it's doing. Esc clears it, and Ctrl K still searches everything. Ctrl K lists **Actions** first, then **Go to**, **Drafts**, **Topics** and **Sources**, each with how many match; ↑ ↓ move, Enter runs or opens.
 
 ### The writing tools
 
@@ -95,33 +95,50 @@ The library reads PDF, Word (.docx), PowerPoint (.pptx), Markdown, plain text, H
 
 While files are being added, a card at the top of the library shows each file's stage, and each source appears in the list as soon as it's read (Muse takes about 15 seconds per file). Messages like "Added 6 sources" close by themselves after a few seconds; error messages stay until you click them.
 
-Files are added in the background. A card under the Library's header shows each file's progress (reading, Muse reading it, filing into folders), and **Stop** cancels the rest. When Muse can't write a summary or tags (it's offline or rate-limited), the paper is still searchable and citable; it's marked *no summary yet* and the library offers **Try again**.
+Files are added in the background. A card under the Library's header shows each file's progress (reading, Muse reading it, filing into topics), and **Stop** cancels the rest. When Muse can't write a summary or tags (it's offline or rate-limited), the paper is still searchable and citable; it's marked *no summary yet* and the library offers **Try again**.
 
 Your files stay where they are. The library keeps its own index in `~/.groundwork/`; only text passages, and images that need OCR, are sent to Muse.
 
 ## 2. Organize the library
 
-![The library: folders, a sortable table, and the open paper's details](images/library.png)
+![The library: views and topics, one line per paper, and the selected paper's details](images/library.png)
 
-- **Find a paper:** type in the search box at the top. It matches titles, authors, journals, keywords, tags, JEL codes and summaries. The **All types** menu narrows to PDFs, slides, notes and so on.
-- **Sort:** click a column header (Title, Authors, Year, Type, Added). Click again to reverse.
-- **See a paper's details:** click its row. Its details open on the right: summary (marked **Written by Muse**: it's Muse's reading, not the paper's words), folders, keywords and JEL codes, DOI, link and file location. With the table selected, ↑ and ↓ move between papers and Esc closes the details.
-- **Open a paper:** double-click its row (or press Enter with it selected). A PDF opens in the app's reader described below, a Word file, slides or an image in the app your computer opens it with, and a web page in your browser.
+The library works like a mail app or a file explorer: one line per paper, newest first.
+
+- **Select:** click a paper. Its details open on the right: summary (marked **Written by Muse**: it's Muse's reading, not the paper's words), topics, keywords and JEL codes, DOI, link and file location. **Ctrl-click** adds or drops a paper, **Shift-click** selects through to it, the box in front of a row does the same as Ctrl-click, and **Ctrl A** selects every paper shown. With the list selected, ↑ and ↓ move between papers (hold Shift to select several) and Esc clears the selection.
+- **Act on what's selected:** the bar above the list changes to **N selected** with **Open**, **Add to topic**, **Use for drafting**, **Copy citation** and **Remove**. **Right-click** a paper for the same actions, plus Mark as read or unread, Star, Edit details, Show in folder on disk, Cited papers and Citing papers.
+- **Open a paper:** double-click it, or press Enter. A PDF opens in the app's reader described below, a Word file, slides or an image in the app your computer opens it with, and a web page in your browser.
+- **Find a paper:** type in the search box at the top. Every word has to match, in any order, anywhere in the paper's record: title, authors, journal, keywords, tags, JEL codes, topics and summary. Under the matching papers, **Inside your papers** lists passages from the papers' own text that contain all of your words, with the page each is on; click one to open the paper at that page. The **All types** menu narrows to PDFs, slides, notes and so on.
+- **Sort and columns:** click a column header to sort by it, and again to reverse; the library opens sorted the same way next time. Right-click the header row to choose columns: Authors, Year, Journal, Added, Cited by, Topics.
+- **Unread and starred:** a paper you add is **unread** (bold, with a blue edge) until you open it; right-click to mark it read or unread yourself. Click the ☆ beside a title to star a paper you want to find again.
+- **Copy a citation:** **Copy citation** copies the selected papers' references as APA, MLA, IEEE or BibTeX, or saves them as a `.bib` file.
 - **Correct its details:** **Edit details** fixes the title, authors, year, journal, DOI or link. Reference lists are built from these, and your corrections are kept if the file is added again.
 - **Read the whole PDF:** **Open PDF** in its details opens it in the app's reader, in a window of its own, where you can highlight passages and add notes (see [Highlights and notes](#highlights-and-notes)). It opens maximized; resize it, snap it to half the screen or move it to another monitor to keep it beside your draft, and it remembers that. The next paper you open replaces it in the same window. **Open in PDF viewer** at the top opens the file in Chromium's viewer instead, for thumbnails and print. The reader has its own page counter, zoom and search (see [Highlights and notes](#highlights-and-notes)). **Show in folder** finds the file on disk.
-- **Remove it:** **Remove from library** at the bottom of its details. The file on disk isn't touched.
+- **Remove:** select papers and press Delete, or choose **Remove**. They leave the list at once and a message offers **Undo** for a few seconds. The files on disk aren't touched, and afterwards you can still bring a paper back from **Removed**.
 
-### Subject folders
+### Views
 
-Folders are subjects, not places on disk. Click **New folder**, type a subject (say, *Digital finance*) and pick how closely a paper must match it (50% by default). Every paper that matches is filed in, and one paper can sit in several folders.
+The top of the sidebar holds ready-made views. One shows only while it has something in it:
 
-- Open a folder to change its threshold with the slider, rename it or delete it. Papers stay in the library when a folder is deleted.
-- Take a paper out of a folder with the × on its folder chip, or add it to one by typing a folder name under **Folders** in its details. Dragging a row onto a folder files it there too. Your own changes survive re-filing.
-- **⋯ → Re-file papers into folders** scores every paper against your folders again.
+- **All sources**, and **Recently added** (the last 14 days).
+- **Drafting from:** the papers Muse drafts from (see below).
+- **Cited in this draft:** what the open draft cites.
+- **Needs attention:** papers marked **Retracted**, papers with no year or author in their record (**Needs metadata**), and papers Muse still owes a summary.
+- **Unread** and **Starred**.
+- **Unfiled** (in no topic) and **Removed**.
+
+### Topics
+
+A topic is a subject, not a place on disk, so one paper can sit in several. Click **New topic**, type a subject (say, *Digital finance*) and pick how closely a paper must match it (50% by default). Every paper that matches is filed in. The sidebar lists your topics largest first; **Show all** lists the rest.
+
+- Open a topic to change its threshold with the slider, rename it or delete it. Papers stay in the library when a topic is deleted.
+- Add papers to a topic with **Add to topic**, or drag the selected papers onto it. Take a paper out with the × on its topic chip in its details. Your own changes survive re-filing.
+- When two topics hold the same papers, or nearly, a note above the list offers to **merge** them into the larger one. **Keep both** dismisses it for that pair.
+- **⋯ → Re-file papers into topics** scores every paper against your topics again.
 
 ### Pick the sources to draft from
 
-Tick the box in front of a paper to have Muse's drafts (Compose, Cite my sources) and the cite searches use only the ticked papers. The bar above the table says **Drafting from: whole library** or **Drafting from: N selected**, and **Use whole library** unticks them all. A paper's details say the same, and whether that paper is included. A red **Retracted** pill or an amber **Needs metadata** flag (no year or author in its record) warns you before you rely on a source; both also show in Network, Sources and the reference list.
+Muse drafts (Compose, Cite my sources) and searches for citations in your whole library, unless you narrow it: select papers and choose **Use for drafting**. Those papers get a green dot, and the **Drafting from** view lists them. The bar above the list says **Drafting from: whole library** or **Drafting from: N of M**, and **Use whole library** clears the choice. A paper's details say the same, and whether that paper is included. A red **Retracted** pill or an amber **Needs metadata** flag (no year or author in its record) warns you before you rely on a source; both also show in Network, Sources and the reference list.
 
 ### Timeline
 
@@ -133,7 +150,7 @@ Tick the box in front of a paper to have Muse's drafts (Compose, Cite my sources
 
 ### Removed sources
 
-Removing a source, yourself or from Find duplicate files, keeps a record of it under **Removed**: when it was added, when and why it was removed (and which copy was kept, for a duplicate), and whether its file went to the Recycle Bin. **Restore** reads the file again and brings it back under its old id, so drafts that cite it work again, with its old added date, your corrections and your folders. If the file has moved or gone to the Recycle Bin, put it back first. If you add a file you removed before, its details say so. **Forget this record** clears the entry.
+Removing a source, yourself or from Find duplicate files, keeps a record of it under **Removed** once the Undo message has closed: when it was added, when and why it was removed (and which copy was kept, for a duplicate), and whether its file went to the Recycle Bin. **Restore** reads the file again and brings it back under its old id, so drafts that cite it work again, with its old added date, your corrections and your topics. If the file has moved or gone to the Recycle Bin, put it back first. If you add a file you removed before, its details say so. **Forget this record** clears the entry.
 
 ### More library tools (⋯)
 
@@ -295,7 +312,7 @@ While Check is open, matching passages are underlined in the draft: red for an u
 **Network** in the rail shows your papers as a graph. It starts by asking what to show, since laying out a whole library at once can keep the window busy for a long time:
 
 - **Map this topic:** type a topic there or in the search box at the top. You get the papers about it and the works they cite that you don't have.
-- **Map the ticked papers:** the papers ticked in the Library.
+- **Map the papers you're drafting from:** the papers under **Drafting from** in the Library.
 - **Map the whole library:** every paper. Above 60 papers it warns that this can take a while.
 
 **Change** next to the counts goes back to choosing.
@@ -325,7 +342,7 @@ Esc returns to the draft.
 
 ![Making a matrix: papers about a topic, the columns, a name](images/matrix-new.png)
 
-1. **Papers:** those *about a topic* you type, those in *a folder*, or those *ticked in the Library*. Untick any you don't want (at most 80; copies of the same paper are offered once).
+1. **Papers:** those *about a subject* you type, those in *a topic*, or those you are *drafting from* in the Library. Untick any you don't want (at most 80; copies of the same paper are offered once).
 2. **Columns:** the standard five questions, which you can rename, reword or remove, and add your own: an outcome measure, a theory, a dataset. Each has a sentence saying what to extract. Under **Paper details**, switch on details from each paper's record (Year, Journal and Cited are on to start with; also Authors, Published, Volume (issue), Pages, Publisher, DOI, Abstract, Keywords and JEL codes).
 3. **Build the matrix.** Muse reads several papers at once (about a minute for 30) while you keep working; cells fill in as they're read, and the progress bar says about how long is left. If you're in another place in the app or another window when it finishes, a desktop notification says so. **Find gaps** and **Write** show how long they've been working, and why when Muse is slow.
 
@@ -396,7 +413,9 @@ The draft has a title and Background, The gap, Research questions, Hypotheses, V
 | Ctrl Shift F | Focus mode on or off |
 | Ctrl Z / Ctrl Y | Undo / redo in the draft |
 | Esc | Leave focus mode; close the PDF viewer or a menu; clear the search box; leave the Library or Network for the draft |
-| ↑ ↓ | Move between papers in the library table (when it has focus) |
+| ↑ ↓ | Move between papers in the library list (when it has focus); with Shift, select several |
+| Enter / Delete | In the library list: open the selected paper / remove the selected papers (with Undo) |
+| Ctrl A | In the library list: select every paper shown |
 
 On a Mac, use Cmd in place of Ctrl.
 
@@ -417,7 +436,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 - **Citation style:** APA 7, MLA 9 or IEEE, for the reference list in Sources and for Export.
 - **Passages Muse drafts from** (3 to 20, default 8): fewer is faster and sticks to the closest matches; more covers more ground.
-- **Cite markers search:** the sources ticked in the Library (all of them when none are ticked), or always the whole library.
+- **Cite markers search:** the sources under **Drafting from** in the Library (all of them when none are chosen), or always the whole library.
 
 **Review & history**
 
@@ -427,7 +446,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 **Library**
 
-- **New folders start at** a similarity of N% (default 50%).
+- **New topics start at** a similarity of N% (default 50%).
 - **Contact email** (optional): sent to OpenAlex, Semantic Scholar and Crossref when finding free copies of cited papers.
 - **Look papers up in scholarly indexes** (on by default): after an import, each paper's DOI or title is sent to OpenAlex and Crossref for its journal details, abstract, reference list and citation count.
 - **CORE API key** (optional): with a key (free from core.ac.uk/services/api), free copies are also searched for in CORE, which gathers full texts from university repositories. The key is checked with CORE before it's saved.

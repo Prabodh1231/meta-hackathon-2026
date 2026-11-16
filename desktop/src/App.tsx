@@ -81,7 +81,7 @@ const TAB = Object.fromEntries(TABS.map((t) => [t.tab, t])) as Record<Tab, (type
 
 /** What the one search box does in each place. */
 const SEARCH: Record<Exclude<Mode, 'write'>, { scope: string; placeholder: string }> = {
-  library: { scope: 'Library', placeholder: 'Filter by title, author, keyword, JEL code…' },
+  library: { scope: 'Library', placeholder: 'Search titles, authors, and inside papers…' },
   network: { scope: 'Network', placeholder: 'Search a topic: blockchain, financial inclusion…' },
   matrix: { scope: 'Matrix', placeholder: 'Filter studies and cells…' },
 }
@@ -1134,7 +1134,7 @@ export default function App() {
       hint: [d.authors[0], d.year].filter(Boolean).join(' '),
       run: () => showPaper(d.id),
     })),
-    ...folders.map((f) => ({ group: 'FOLDER', name: f.name, hint: `${f.doc_count} docs`, run: openLibrary })),
+    ...folders.map((f) => ({ group: 'TOPIC', name: f.name, hint: `${f.doc_count} sources`, run: openLibrary })),
     ...drafts
       .filter((d) => d.id !== draftId)
       .map((d) => ({ group: 'DRAFT', name: d.title || 'Untitled', hint: `${d.words} words`, run: () => switchDraft(d.id) })),

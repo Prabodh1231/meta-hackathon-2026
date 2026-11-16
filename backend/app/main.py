@@ -147,6 +147,16 @@ class DocumentPatch(BaseModel):
     tags: list[str] | None = None
 
 
+class MarksIn(BaseModel):
+    doc_ids: list[int]
+    unread: bool | None = None
+    starred: bool | None = None
+
+
+class FolderMergeIn(BaseModel):
+    into_id: int
+
+
 class TopicPatch(BaseModel):
     label: str = Field(min_length=1)
     description: str | None = None
@@ -224,7 +234,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 20
+API_VERSION = 21
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -394,6 +404,16 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         lib.delete_document(doc_id, reason, duplicate_of, trashed)
         return {"ok": True}
 
+    @app.post("/library/marks")
+    def mark_documents(body: MarksIn):
+        """Mark papers read or unread, starred or not."""
+        return lib.mark_documents(body.doc_ids, body.unread, body.starred)
+
+    @app.get("/library/passages")
+    def find_passages(q: str, limit: int = 12):
+        """Search inside the papers: the best passage of each paper that has every word of `q`."""
+        return lib.find_passages(q, max(1, min(limit, 50)))
+
     @app.get("/library/removed")
     def list_removed():
         return lib.list_removed()
@@ -466,6 +486,10 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.patch("/folders/{folder_id}")
     def update_folder(folder_id: int, body: FolderPatch):
         return lib.update_folder(folder_id, body.name, body.similarity)
+
+    @app.post("/folders/{folder_id}/merge")
+    def merge_folders(folder_id: int, body: FolderMergeIn):
+        return lib.merge_folders(folder_id, body.into_id)
 
     @app.delete("/folders/{folder_id}")
     def delete_folder(folder_id: int):

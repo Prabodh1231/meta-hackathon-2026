@@ -34,6 +34,7 @@ import type {
   IngestJob,
   IngestResult,
   ModelSettings,
+  PassageHit,
   SearchSettings,
   SourceSettings,
   PageText,
@@ -61,7 +62,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 20
+export const API_VERSION = 21
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -142,6 +143,12 @@ export const api = {
     if (why?.duplicateOf != null) q.set('duplicate_of', String(why.duplicateOf))
     return request<{ ok: boolean }>('DELETE', `/documents/${id}?${q}`)
   },
+  /** Mark papers read or unread, starred or not. */
+  markDocuments: (docIds: number[], marks: { unread?: boolean; starred?: boolean }) =>
+    request<{ ok: boolean }>('POST', '/library/marks', { doc_ids: docIds, ...marks }),
+  /** Search inside the papers: the best passage of each paper that has every word of `q`. */
+  findPassages: (q: string, limit = 12) =>
+    request<PassageHit[]>('GET', `/library/passages?q=${encodeURIComponent(q)}&limit=${limit}`),
   removed: () => request<RemovedDoc[]>('GET', '/library/removed'),
   /** Add a removed source back from its file, under its old id and added date. */
   restoreRemoved: (id: number) => request<Doc>('POST', `/library/removed/${id}/restore`),
@@ -170,6 +177,8 @@ export const api = {
   updateFolder: (id: number, patch: { name?: string; similarity?: number }) =>
     request<Folder[]>('PATCH', `/folders/${id}`, patch),
   deleteFolder: (id: number) => request<Folder[]>('DELETE', `/folders/${id}`),
+  /** Fold one topic into another: its papers move over and it is deleted. */
+  mergeFolders: (id: number, intoId: number) => request<Folder[]>('POST', `/folders/${id}/merge`, { into_id: intoId }),
   classifyDocument: (docId: number) => request<Doc>('POST', `/documents/${docId}/classify`),
   addToFolder: (docId: number, name: string) => request<Doc>('POST', `/documents/${docId}/folders`, { name }),
   setFolderMember: (docId: number, folderId: number, member: boolean) =>
