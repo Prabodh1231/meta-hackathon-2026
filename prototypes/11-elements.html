@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Design elements · Glacier + ember</title>
+<style>
+/* Mock only. Twenty layout and component patterns seen on a modern product landing page, each redrawn
+   with Groundwork's content in the Glacier + ember palette. Patterns are copied; fonts, artwork, logos
+   and wording are not. */
+:root {
+  --bg: #eef1f4; --panel: #fbfcfd; --text: #18222c; --muted: #54616e; --border: #d5dce3; --line: rgb(24 34 44 / .09);
+  --accent: #33485c; --accent-text: #fff; --hover: rgba(51, 72, 92, .08); --rail: #e3e8ed; --lead: #18222c; --follow: #738494;
+  --ice: #8fa9bd; --ember: #f2773a; --ember-ink: #ad4c17; --peach: #ffd2ad; --ban1: #111a23; --ban2: #33485c;
+  --ok: #23703f; --ok-bg: #dff3e6; --warn: #8a5f00; --warn-bg: #fbefcf; --bad: #c2412d; --bad-bg: #fbe3df; --pending: #93a1ae; --pending-bg: #e6ebf0;
+  --mark: #ffe27a;
+  --doc-font: Charter, "Bitstream Charter", Georgia, serif;
+  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --shadow: 0 1px 2px rgb(24 34 44 / .06), 0 8px 24px -12px rgb(24 34 44 / .2);
+  --lift: 0 2px 4px rgb(24 34 44 / .05), 0 22px 40px -22px rgb(24 34 44 / .4);
+}
+[data-theme="dark"] {
+  --bg: #0d1116; --panel: #151b22; --text: #e6ebf0; --muted: #8d9aa8; --border: #26303b; --line: rgb(230 235 240 / .08);
+  --accent: #ff9a5c; --accent-text: #2e1202; --hover: rgba(255, 255, 255, .07); --rail: #0f141a; --lead: #e6ebf0; --follow: #8799ab;
+  --ice: #5f7b92; --ember: #f2773a; --ember-ink: #ff9a5c; --peach: #5a3520; --ban1: #0a0e12; --ban2: #2c4054;
+  --ok: #56d08a; --ok-bg: #12261a; --warn: #e3b341; --warn-bg: #2b2111; --bad: #ff8a78; --bad-bg: #2d1614; --pending: #8d9aa8; --pending-bg: #222b35;
+  --mark: #6b5a14;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -12px rgb(0 0 0 / .6); --lift: 0 22px 40px -22px rgb(0 0 0 / .8);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--ui); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+svg.ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.concept { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 8px 14px; background: #111a23; color: #d3dce5; font-size: 12.5px; }
+.concept b { color: #fff; } .concept a { color: #ffb98e; } .concept .sp { flex: 1; }
+.concept .seg { display: flex; border: 1px solid #3a4856; border-radius: 7px; overflow: hidden; }
+.concept .seg button { padding: 4px 10px; color: #c9d4de; } .concept .seg button + button { border-left: 1px solid #3a4856; }
+.concept .seg button[aria-pressed="true"] { background: #e6ebf0; color: #111a23; font-weight: 600; }
+
+.col { max-width: 1120px; margin: 0 auto; padding: 0 28px; border-inline: 1px solid var(--line); background: var(--panel); }
+.intro { padding: 56px 0 40px; }
+.say { margin: 0; max-width: 780px; font: 300 30px/1.22 var(--display); letter-spacing: -.015em; color: var(--follow); text-wrap: pretty; }
+.say b { font-weight: 400; color: var(--lead); }
+.intro p { max-width: 640px; margin: 16px 0 0; color: var(--muted); }
+.group { margin: 0 -28px; padding: 14px 28px; border-block: 1px solid var(--line); background: var(--bg); font: 600 12px/1 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 24px 0 40px; }
+.el { display: flex; flex-direction: column; min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.el.full { grid-column: 1 / -1; }
+.el-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.num { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--accent-text); font: 700 12.5px/1 var(--ui); }
+.el-head h3 { flex: 1; margin: 0; font: 600 15px/1.3 var(--ui); }
+.where { flex: none; padding: 2px 9px; border-radius: 99px; background: var(--hover); color: var(--accent); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 170px; padding: 26px 22px; background: var(--bg); overflow: hidden; }
+.stage.plain { background: var(--panel); } .stage.flush { padding: 0; align-items: stretch; } .stage.left { justify-content: flex-start; }
+.notes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+.notes b { display: block; margin-bottom: 2px; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text); }
+.recipe { padding: 8px 16px; border-top: 1px solid var(--line); font: 11.5px/1.5 Consolas, monospace; color: var(--muted); }
+
+/* 1 colour */
+.sw { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.sw div { font-size: 11.5px; color: var(--muted); } .sw i { display: block; height: 54px; margin-bottom: 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--c); }
+.sw b { display: block; color: var(--text); font-size: 12.5px; } .sw code { font: 11px Consolas, monospace; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; width: 100%; align-items: center; font-size: 12px; color: var(--muted); }
+.chip { display: inline-block; padding: 0 8px; border-radius: 5px; font: 600 11.5px/1.8 var(--ui); }
+.chip.ok { background: var(--ok-bg); color: var(--ok); } .chip.warn { background: var(--warn-bg); color: var(--warn); } .chip.bad { background: var(--bad-bg); color: var(--bad); } .chip.wait { background: var(--pending-bg); color: var(--muted); }
+/* 2 type */
+.scale { width: 100%; display: grid; gap: 10px; } .scale > div { display: grid; grid-template-columns: 96px 1fr; align-items: baseline; gap: 14px; }
+.scale small { font: 11.5px Consolas, monospace; color: var(--muted); }
+.t44 { font: 300 44px/1.1 var(--display); letter-spacing: -.02em; } .t30 { font: 300 30px/1.2 var(--display); letter-spacing: -.015em; color: var(--follow); } .t30 b { font-weight: 400; color: var(--lead); }
+.t17 { font: 500 17px/1.3 var(--ui); } .t14 { font: 14px/1.5 var(--ui); color: var(--muted); } .t19 { font: 600 19px/1.3 var(--doc-font); }
+/* 3 eyebrow */
+.eyebrow { font-size: 13px; color: var(--muted); } .eyebrow b { color: var(--ember-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* 4 blurbs */
+.blurbs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; width: 100%; }
+.blurbs span { display: grid; place-items: center; width: 30px; height: 30px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 7px; color: var(--accent); background: var(--panel); }
+.blurbs p { margin: 0; color: var(--follow); font-size: 14.5px; line-height: 1.45; } .blurbs b { font-weight: 600; color: var(--lead); }
+/* 5 buttons */
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: center; }
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 6px; font-weight: 600; background: var(--accent); color: var(--accent-text); }
+.btn:hover { filter: brightness(1.1); } .btn .ar { transition: transform .15s; } .btn:hover .ar { transform: translateX(3px); }
+.btn.quiet { background: var(--panel); color: var(--accent); border: 1px solid var(--border); } .btn.quiet:hover { border-color: var(--accent); filter: none; }
+.btn.white { background: #fff; color: var(--ban1); }
+.link { color: var(--accent); font-weight: 600; font-size: 13.5px; } .link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.sq { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; background: var(--hover); color: var(--accent); } .sq:hover { background: var(--accent); color: var(--accent-text); }
+.pair { display: flex; gap: 6px; } .pair .sq { border: 1px solid var(--border); background: var(--panel); } .pair .sq[disabled] { opacity: .4; cursor: default; }
+/* 6 tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); width: 100%; }
+.tabs button { padding: 10px 14px; color: var(--muted); font-weight: 600; font-size: 13.5px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button[aria-selected="true"] { color: var(--text); border-color: var(--ember); }
+.tabs em { font-style: normal; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: var(--bad-bg); color: var(--bad); font-size: 11px; }
+/* 7 notice */
+.notice { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 14px; border-radius: 8px; background: var(--ban1); color: #e6ebf0; font-size: 13px; }
+.notice span { flex: 1; } .notice a { color: #ffb98e; font-weight: 600; cursor: pointer; } .notice button { color: #9fb0c0; font-size: 16px; line-height: 1; }
+/* 8 guides */
+.guides { width: 100%; height: 210px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--panel); display: grid; grid-template-rows: 1.2fr 1fr 1fr; }
+.guides > div { display: grid; grid-template-columns: 1fr minmax(0, 70%) 1fr; border-top: 1px solid var(--line); }
+.guides > div:first-child { border-top: 0; } .guides > div:nth-child(2) { background: var(--bg); }
+.guides > div > i { grid-column: 2; border-inline: 1px dashed var(--ice); padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; justify-content: center; font-style: normal; font-size: 11px; color: var(--muted); }
+.guides u { display: block; height: 7px; border-radius: 4px; background: var(--border); text-decoration: none; }
+/* 9 card */
+.card { position: relative; display: flex; flex-direction: column; width: 100%; max-width: 330px; min-height: 280px; text-align: left; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: box-shadow .2s, transform .2s, border-color .2s; }
+.card:hover { box-shadow: var(--lift); transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.card:hover .sq { background: var(--accent); color: var(--accent-text); }
+.card-head { display: flex; justify-content: space-between; gap: 12px; padding: 18px 18px 0 20px; } .card h4 { margin: 0; font: 500 17px/1.3 var(--ui); }
+.card p { margin: 6px 20px 0; color: var(--muted); font-size: 13px; }
+.tally { display: grid; gap: 10px; margin: auto 20px 20px; padding-top: 18px; } .tally .big { font: 300 38px/1 var(--display); letter-spacing: -.02em; } .tally .big small { font: 13px var(--ui); color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+.bar { display: grid; grid-template-columns: 112px 1fr 20px; align-items: center; gap: 10px; font-size: 12.5px; }
+.bar i { height: 8px; border-radius: 99px; background: var(--pending-bg); overflow: hidden; } .bar i::after { content: ""; display: block; height: 100%; width: var(--w); border-radius: 99px; background: var(--c); } .bar b { text-align: right; }
+/* 10, 11 art */
+.art { display: block; width: 100%; height: 100%; min-height: 220px; }
+.frame-wrap { position: relative; width: 100%; min-height: 260px; display: grid; place-items: center; padding: 28px; }
+.frame-wrap .art { position: absolute; inset: 0; }
+.frame { position: relative; width: min(100%, 420px); border-radius: 10px; overflow: hidden; background: var(--panel); box-shadow: var(--lift); border: 1px solid var(--border); }
+.frame-bar { display: flex; align-items: center; gap: 5px; padding: 8px 10px; background: var(--rail); border-bottom: 1px solid var(--border); } .frame-bar i { width: 8px; height: 8px; border-radius: 50%; background: var(--ice); }
+.frame-bar span { flex: 1; margin-left: 8px; height: 14px; border-radius: 99px; background: var(--panel); }
+.frame-body { display: grid; grid-template-columns: 44px 1fr; min-height: 150px; } .frame-body > i { background: var(--rail); border-right: 1px solid var(--border); }
+.frame-body div { padding: 16px 18px; display: grid; gap: 8px; align-content: start; font: 600 14px var(--doc-font); } .frame-body u { display: block; height: 7px; border-radius: 4px; background: var(--border); } .frame-body u.s { width: 60%; }
+/* 12 banner, 13 dark panel */
+.banner { position: relative; width: 100%; padding: 32px 34px; border-radius: 12px; overflow: hidden; color: #fff; background: linear-gradient(120deg, var(--ban1) 25%, var(--ban2)); }
+.banner .art { position: absolute; top: -30%; right: -8%; width: 62%; height: 170%; min-height: 0; -webkit-mask-image: linear-gradient(to right, transparent, #000 55%); mask-image: linear-gradient(to right, transparent, #000 55%); }
+.banner h4 { position: relative; margin: 0; max-width: 14em; font: 400 28px/1.15 var(--display); letter-spacing: -.02em; }
+.banner p { position: relative; margin: 10px 0 20px; max-width: 30em; color: rgb(255 255 255 / .78); } .banner .btn { position: relative; }
+.night { width: 100%; padding: 30px 32px; border-radius: 12px; color: #dfe7ee; background: radial-gradient(rgb(255 255 255 / .09) 1px, transparent 1.4px) 0 0 / 18px 18px, #0f1720; }
+.night h4 { margin: 0 0 22px; max-width: 30em; font: 300 24px/1.25 var(--display); letter-spacing: -.01em; color: #8ea3b6; } .night h4 b { font-weight: 400; color: #fff; }
+.flow { display: flex; align-items: center; flex-wrap: wrap; gap: 0; row-gap: 10px; }
+.flow span { padding: 7px 14px; border-radius: 7px; background: #24384c; border: 1px solid #3a5066; font-weight: 600; font-size: 13px; color: #fff; }
+.flow span.hot { background: var(--ember); border-color: var(--ember); color: #2e1202; } .flow i { width: 34px; height: 0; border-top: 1.5px dashed #5f7b92; }
+.gnums { display: flex; gap: 44px; flex-wrap: wrap; margin-top: 28px; } .gnums strong { display: block; font: 300 38px/1.1 var(--display); letter-spacing: -.02em; background: linear-gradient(90deg, #ffd2ad, #f2773a 55%, #8fa9bd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.gnums span { font-size: 12.5px; color: #9fb0c0; }
+/* 14 stats, 15 strip */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; text-align: center; }
+.stats button { position: relative; padding: 4px 12px 22px; color: var(--muted); } .stats strong { display: block; font: 300 42px/1.1 var(--display); letter-spacing: -.02em; color: var(--follow); }
+.stats span { display: block; max-width: 13em; margin: 6px auto 0; font-size: 13px; }
+.stats button::after { content: ""; position: absolute; left: 28%; right: 28%; bottom: 0; height: 2px; border-radius: 2px; background: var(--ember); opacity: 0; transition: opacity .2s; }
+.stats button.on strong, .stats button:hover strong { color: var(--lead); } .stats button.on { color: var(--text); } .stats button.on::after { opacity: 1; }
+.strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; border-block: 1px solid var(--line); background: var(--panel); }
+.strip button { padding: 14px 16px 16px; text-align: left; min-width: 0; } .strip button + button { border-left: 1px solid var(--line); } .strip button:hover { background: var(--hover); }
+.strip small { display: block; font-size: 11.5px; color: var(--muted); } .strip span { display: block; font: 600 14px/1.3 var(--doc-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 16 accordion */
+.acc { width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.acc details + details { border-top: 1px solid var(--line); }
+.acc summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; list-style: none; } .acc summary::-webkit-details-marker { display: none; }
+.acc summary > i { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: var(--accent); color: var(--accent-text); font: 600 12px var(--doc-font); font-style: normal; }
+.acc summary span { flex: 1; font: 600 15px/1.3 var(--doc-font); } .acc summary span.sq { flex: none; font: 14px/1 var(--ui); } .acc summary .sq::before { content: "+"; font-size: 17px; line-height: 1; } .acc details[open] summary .sq::before { content: "−"; }
+.acc .body { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; padding: 2px 14px 16px 54px; color: var(--muted); font-size: 13px; } .acc .body b { color: var(--text); font-size: 15px; margin-right: 4px; } .acc .body .link { margin-left: auto; }
+/* 17 story, 18 quote */
+.story { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 330px; min-height: 210px; padding: 22px; text-align: left; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.story small { color: var(--muted); font-size: 12px; } .story h4 { flex: 1; margin: 0; font: 600 19px/1.3 var(--doc-font); }
+.story dl { display: flex; gap: 26px; margin: 0; } .story dt { font: 300 24px/1.1 var(--display); } .story dd { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.quote { width: 100%; max-width: 420px; padding: 24px 26px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; border-left: 3px solid var(--ember); }
+.quote q { display: block; font: 19px/1.5 var(--doc-font); quotes: none; } mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }
+.quote footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; font-size: 12.5px; color: var(--muted); } .quote footer b { display: block; color: var(--text); }
+/* 19 split header + carousel */
+.split { width: 100%; } .split-head { display: grid; grid-template-columns: 1fr 1fr auto; gap: 24px; align-items: end; margin-bottom: 18px; }
+.split-head h4 { margin: 0; font: 400 22px/1.25 var(--display); letter-spacing: -.01em; } .split-head p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.reel { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; scroll-behavior: smooth; } .reel::-webkit-scrollbar { display: none; }
+.topic { flex: none; width: 190px; scroll-snap-align: start; text-align: left; } .topic i { display: block; height: 150px; border-radius: 10px; margin-bottom: 8px; background: linear-gradient(160deg, var(--a), var(--b)); position: relative; overflow: hidden; }
+.topic i::after { content: attr(data-n); position: absolute; left: 14px; bottom: 10px; font: 300 34px/1 var(--display); font-style: normal; color: #fff; }
+.topic b { display: block; font: 600 14.5px/1.3 var(--doc-font); } .topic small { color: var(--muted); font-size: 12px; }
+/* 20 footer */
+.foot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; width: 100%; font-size: 13px; }
+.foot h4 { margin: 0 0 8px; font-size: 13px; } .foot a { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; color: var(--muted); cursor: pointer; } .foot a:hover { color: var(--accent); }
+kbd { font: 600 11px Consolas, monospace; border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; background: var(--panel); color: var(--text); }
+.end { padding: 8px 0 56px; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 860px) {
+  .grid { grid-template-columns: minmax(0, 1fr); } .col { padding: 0 16px; } .group { margin: 0 -16px; padding-inline: 16px; }
+  .say { font-size: 24px; } .t44 { font-size: 32px; } .t30 { font-size: 23px; } .sw { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .blurbs, .foot { grid-template-columns: minmax(0, 1fr); } .stats { grid-template-columns: repeat(2, 1fr); row-gap: 14px; } .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } .strip button:nth-child(n+3) { display: none; }
+  .split-head { grid-template-columns: 1fr auto; } .split-head p { display: none; } .notes { grid-template-columns: 1fr; gap: 8px; } .banner h4 { font-size: 23px; }
+  .scale > div { grid-template-columns: 1fr; gap: 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="ra" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--peach)"/><stop offset=".55" style="stop-color:var(--ember)"/><stop offset="1" style="stop-color:var(--ice)"/></linearGradient>
+  <linearGradient id="rb" x1="1" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--ember)"/><stop offset=".6" style="stop-color:var(--ice)"/><stop offset="1" style="stop-color:var(--ban2)"/></linearGradient>
+  <linearGradient id="rc" x1=".2" y1="0" x2=".8" y2="1"><stop offset="0" style="stop-color:var(--ice)"/><stop offset="1" style="stop-color:var(--ban2)"/></linearGradient>
+  <symbol id="ribbons" viewBox="0 0 600 600" preserveAspectRatio="none">
+    <path fill="url(#ra)" d="M620-20C400 40 520 250 330 350 210 414 262 556 170 640h450Z"/>
+    <path fill="url(#rb)" opacity=".9" d="M620 30C486 128 566 300 420 396 322 462 384 578 312 640h308Z"/>
+    <path fill="url(#rc)" opacity=".88" d="M620 170C552 250 604 380 516 458 462 506 500 598 464 640h156Z"/>
+    <path fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1.5" d="M620 30C486 128 566 300 420 396 322 462 384 578 312 640M620 170C552 250 604 380 516 458 462 506 500 598 464 640"/>
+  </symbol>
+  <symbol id="wide" viewBox="0 0 600 240" preserveAspectRatio="none">
+    <path fill="url(#ra)" d="M-10 250C80 120 190 210 300 120 400 40 470 110 610 10V250Z"/>
+    <path fill="url(#rb)" opacity=".9" d="M-10 250C120 170 230 240 350 160 450 96 520 150 610 90V250Z"/>
+    <path fill="url(#rc)" opacity=".88" d="M-10 250C160 214 280 250 400 204 490 170 550 200 610 170V250Z"/>
+  </symbol>
+</defs></svg>
+
+<div class="concept">
+  <span><b>Mock</b> · Design elements we can copy, in Glacier + ember</span>
+  <span class="sp"></span>
+  <a href="10-home.html">See them together on the Home mock</a>
+  <div class="seg" id="theme"><button data-v="light" aria-pressed="true">Light</button><button data-v="dark" aria-pressed="false">Dark</button></div>
+</div>
+
+<div class="col">
+  <div class="intro">
+    <h1 class="say"><b>Twenty elements worth copying.</b> Each one is a pattern from the reference page, redrawn with Groundwork's own content and colours.</h1>
+    <p>Tell me the numbers you want and where. Patterns like these are free to reuse; the reference site's typeface, wave artwork, logo and wording are not, so those are replaced here with system fonts, a new ribbon drawing and Groundwork's words.</p>
+  </div>
+
+  <div class="group">Foundations</div>
+  <div class="grid">
+    <article class="el full">
+      <div class="el-head"><span class="num">1</span><h3>Colour: Glacier + ember</h3><span class="where">Whole app</span></div>
+      <div class="stage plain" style="flex-direction:column">
+        <div class="sw" id="sw">
+          <div><i style="--c:var(--bg)"></i><b>Page</b><code data-var="--bg"></code></div>
+          <div><i style="--c:var(--panel)"></i><b>Surface</b><code data-var="--panel"></code></div>
+          <div><i style="--c:var(--rail)"></i><b>Rail</b><code data-var="--rail"></code></div>
+          <div><i style="--c:var(--border)"></i><b>Border</b><code data-var="--border"></code></div>
+          <div><i style="--c:var(--text)"></i><b>Text</b><code data-var="--text"></code></div>
+          <div><i style="--c:var(--muted)"></i><b>Muted text</b><code data-var="--muted"></code></div>
+          <div><i style="--c:var(--accent)"></i><b>Accent</b><code data-var="--accent"></code></div>
+          <div><i style="--c:var(--ice)"></i><b>Ice</b><code data-var="--ice"></code></div>
+          <div><i style="--c:var(--ember)"></i><b>Ember</b><code data-var="--ember"></code></div>
+          <div><i style="--c:var(--peach)"></i><b>Peach</b><code data-var="--peach"></code></div>
+        </div>
+        <div class="chips">Citation colours stay as they are: <span class="chip ok">Supported</span><span class="chip warn">Partly supported</span><span class="chip bad">Not supported</span><span class="chip wait">Checking…</span></div>
+      </div>
+      <div class="notes"><div><b>On the reference page</b>Near-white surfaces, one strong accent for buttons and links, and a warm gradient kept for artwork.</div><div><b>In Groundwork</b>Slate is the accent in light, ember in dark. Ember is too pale for small text on white, so in light it marks things (underlines, the active tab, artwork) and never carries words.</div></div>
+    </article>
+
+    <article class="el full">
+      <div class="el-head"><span class="num">2</span><h3>Two-tone statement and the type scale</h3><span class="where">Home · empty states · section heads</span></div>
+      <div class="stage plain left"><div class="scale">
+        <div><small>44 / light</small><span class="t44">Research you can stand behind.</span></div>
+        <div><small>30 / two-tone</small><span class="t30"><b>Everything a literature review needs.</b> Five tools that share one library.</span></div>
+        <div><small>19 / Charter</small><span class="t19">Sleep and memory consolidation: a review</span></div>
+        <div><small>17 / medium</small><span class="t17">Check every citation</span></div>
+        <div><small>14 / body</small><span class="t14">What needs you comes first, worst at the top.</span></div>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>Every section opens with one sentence in the dark colour that runs straight into a second in a muted colour. No separate subtitle.</div><div><b>In Groundwork</b>Section openers on Home, the first line of an empty Library or empty Check panel, and Settings section heads. Paper and draft titles stay in Charter.</div></div>
+      <div class="recipe">weight 300 (lead sentence 400) · line-height 1.15 to 1.22 · letter-spacing -0.02em · lead in text colour, rest in a muted tone at 3:1 or better</div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">3</span><h3>Eyebrow with a live number</h3><span class="where">Home · Check</span></div>
+      <div class="stage plain"><p class="eyebrow">Claims in your drafts backed by a source: <b>91.4%</b></p></div>
+      <div class="notes"><div><b>On the reference page</b>A single small line above the headline with one figure that keeps updating.</div><div><b>In Groundwork</b>Above the Home headline, and at the top of Check as the one-line summary. Updates when a check finishes.</div></div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">4</span><h3>Icon blurb</h3><span class="where">Getting started · Settings</span></div>
+      <div class="stage plain"><div class="blurbs">
+        <p><span><svg class="ic" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16Z"/></svg></span><b>Cite as you write.</b> Muse finds the passage while you keep typing.</p>
+        <p><span><svg class="ic" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span><b>See the proof.</b> Every citation opens the exact quote.</p>
+        <p><span><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><b>Stays on your computer.</b> Papers and drafts never leave it.</p>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>A small outlined icon, then a bold phrase that runs into a muted sentence. Three across.</div><div><b>In Groundwork</b>The Getting started screen, and the short explanations at the top of each Settings section.</div></div>
+    </article>
+  </div>
+
+  <div class="group">Buttons and controls</div>
+  <div class="grid">
+    <article class="el">
+      <div class="el-head"><span class="num">5</span><h3>Buttons</h3><span class="where">Whole app</span></div>
+      <div class="stage plain" style="flex-direction:column;gap:18px">
+        <div class="row"><button class="btn">Continue writing <span class="ar">›</span></button><button class="btn quiet">Add sources</button><button class="link">Open draft ›</button></div>
+        <div class="row"><button class="sq" aria-label="Open"><svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg></button><button class="sq" aria-label="Expand"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+          <span class="pair"><button class="sq" disabled aria-label="Previous"><svg class="ic" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></svg></button><button class="sq" aria-label="Next"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></span></div>
+      </div>
+      <div class="notes"><div><b>On the reference page</b>One solid button per section with an arrow that slides on hover, a white outlined partner, text links ending in a chevron, and small square icon buttons.</div><div><b>In Groundwork</b>Replaces today's rounded buttons everywhere. One solid button per view; the square buttons for card corners, row expanders and stepping through Quick look.</div></div>
+      <div class="recipe">height 40 · radius 6 · weight 600 · arrow moves 3px on hover · icon buttons 30 square, radius 7</div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">6</span><h3>Underline tabs</h3><span class="where">Write side panel · Library</span></div>
+      <div class="stage plain"><div class="tabs" role="tablist"><button role="tab" aria-selected="true">Compose</button><button role="tab" aria-selected="false">Check<em>3</em></button><button role="tab" aria-selected="false">Sources</button></div></div>
+      <div class="notes"><div><b>On the reference page</b>Plain text tabs on a hairline; the current one gets a short coloured underline.</div><div><b>In Groundwork</b>Compose / Check / Sources in the side panel, and Drafts / Recently read / Saved views on Home. The underline is ember.</div></div>
+    </article>
+
+    <article class="el full">
+      <div class="el-head"><span class="num">7</span><h3>Notice bar</h3><span class="where">Top of the window</span></div>
+      <div class="stage plain"><div class="notice"><span>3 citations finished checking while you were in the Library. <a>Review them ›</a></span><button aria-label="Dismiss">×</button></div></div>
+      <div class="notes"><div><b>On the reference page</b>A slim dark line across the very top with one sentence, one link and a close button.</div><div><b>In Groundwork</b>For things that finished elsewhere: a matrix is ready, checks completed, an update is available. One at a time, and it goes when dismissed.</div></div>
+    </article>
+  </div>
+
+  <div class="group">Surfaces</div>
+  <div class="grid">
+    <article class="el">
+      <div class="el-head"><span class="num">8</span><h3>Hairline guides and bands</h3><span class="where">Home · Settings · Getting started</span></div>
+      <div class="stage"><div class="guides">
+        <div><i><u style="width:70%"></u><u style="width:45%"></u></i></div>
+        <div><i><u style="width:55%"></u><u></u></i></div>
+        <div><i><u style="width:35%"></u><u style="width:80%"></u></i></div>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>Content sits in one centred column with a faint vertical rule down each edge; sections alternate white and tinted, split by hairlines.</div><div><b>In Groundwork</b>Any long scrolling page. Not for Write (the page is the column) or the Library list (it needs the full width).</div></div>
+      <div class="recipe">column max 1080 · rules at 9% opacity (dashed here only so you can see them) · bands alternate surface and page colour</div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">9</span><h3>Tool card</h3><span class="where">Home · Library details</span></div>
+      <div class="stage"><button class="card">
+        <div class="card-head"><h4>Check every citation</h4><span class="sq"><svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg></span></div>
+        <p>What needs you comes first, worst at the top.</p>
+        <div class="tally"><div class="big">18<small>citations in this draft</small></div>
+          <div class="bar" style="--w:78%;--c:var(--ok)"><span>Supported</span><i></i><b>14</b></div>
+          <div class="bar" style="--w:11%;--c:var(--warn)"><span>Partly supported</span><i></i><b>2</b></div>
+          <div class="bar" style="--w:6%;--c:var(--bad)"><span>Not supported</span><i></i><b>1</b></div></div>
+      </button></div>
+      <div class="notes"><div><b>On the reference page</b>A bordered card: title top left, a square arrow button top right, a live preview filling the rest. It lifts on hover and the whole card is the link.</div><div><b>In Groundwork</b>The five tool cards on Home, and as the frame for Related papers and the Quick look summary.</div></div>
+      <div class="recipe">radius 10 · 1px border · title 17/500 · hover: lift 2px, deeper shadow, border tints toward the accent</div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">10</span><h3>Ribbon artwork</h3><span class="where">Home · banner · empty states</span></div>
+      <div class="stage flush plain"><svg class="art" aria-hidden="true"><use href="#wide"/></svg></div>
+      <div class="notes"><div><b>On the reference page</b>A flowing silk-like gradient that bleeds off the edge of the headline area and reappears inside cards.</div><div><b>In Groundwork</b>A new drawing: three overlapping ribbons, peach into ember into ice into slate. One file, coloured from the palette, so it follows light and dark.</div></div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">11</span><h3>Framed preview on a gradient</h3><span class="where">Getting started · user guide</span></div>
+      <div class="stage flush plain"><div class="frame-wrap"><svg class="art" aria-hidden="true"><use href="#wide"/></svg>
+        <div class="frame"><div class="frame-bar"><i></i><i></i><i></i><span></span></div><div class="frame-body"><i></i><div>Sleep and memory consolidation<u></u><u></u><u class="s"></u><span><span class="chip ok">Supported</span> <span class="chip warn">Partly supported</span></span></div></div></div>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>A product screenshot in a simple window frame, floating on a gradient panel.</div><div><b>In Groundwork</b>Each Getting started step shows the real screen this way, and the same frame suits pictures in the user guide.</div></div>
+    </article>
+
+    <article class="el full">
+      <div class="el-head"><span class="num">12</span><h3>Dark banner with one action</h3><span class="where">Home · end of Getting started</span></div>
+      <div class="stage plain"><div class="banner"><svg class="art" aria-hidden="true"><use href="#ribbons"/></svg>
+        <h4>New here? Walk through a finished review.</h4><p>The sample library opens a demo draft with four citations to check. One is wrong on purpose.</p><button class="btn white">Try the sample library <span class="ar">›</span></button></div></div>
+      <div class="notes"><div><b>On the reference page</b>One wide dark panel in the middle of a light page, with a short headline, a white button and artwork on the right.</div><div><b>In Groundwork</b>The sample-library invitation. Used once per page at most, so it keeps its weight.</div></div>
+    </article>
+
+    <article class="el full">
+      <div class="el-head"><span class="num">13</span><h3>Night panel: dot grid, flow chips, gradient numbers</h3><span class="where">Check explainer · Network</span></div>
+      <div class="stage plain"><div class="night">
+        <h4><b>How a citation gets checked.</b> Four steps, all on your own papers.</h4>
+        <div class="flow"><span>Your sentence</span><i></i><span>Find a source</span><i></i><span>Read the passage</span><i></i><span class="hot">Verdict</span></div>
+        <div class="gnums"><div><strong>157</strong><span>papers searched</span></div><div><strong>4.2 s</strong><span>typical check</span></div><div><strong>91%</strong><span>supported</span></div></div>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>A deep navy section with a faint dot grid, a diagram of labelled chips joined by dashed lines, and numbers filled with a gradient.</div><div><b>In Groundwork</b>A "how checking works" explainer opened from the Check legend, and the backdrop for the Network view, where papers are the chips.</div></div>
+    </article>
+  </div>
+
+  <div class="group">Data and lists</div>
+  <div class="grid">
+    <article class="el full">
+      <div class="el-head"><span class="num">14</span><h3>Big-number row</h3><span class="where">Home · Check · Library header</span></div>
+      <div class="stage plain"><div class="stats">
+        <button class="on"><strong>157</strong><span>papers, 12 of them unread</span></button><button><strong>412</strong><span>highlights and notes</span></button><button><strong>91%</strong><span>of citations supported</span></button><button><strong>6</strong><span>drafts, 3 edited this week</span></button>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>Four very large light-weight figures with a caption each; the current one is dark with a short underline, the others muted.</div><div><b>In Groundwork</b>Library at a glance on Home. A smaller version could replace the meters in the Write dock: words, citations supported, duplication, changed since last version.</div></div>
+      <div class="recipe">figure 42 to 44 / weight 300 · caption 13 muted · active: dark figure + 2px ember underline</div>
+    </article>
+
+    <article class="el full">
+      <div class="el-head"><span class="num">15</span><h3>Divided strip</h3><span class="where">Home · Library</span></div>
+      <div class="stage flush plain" style="align-items:center"><div class="strip">
+        <button><small>Draft · 2 hours ago</small><span>Sleep and memory consolidation</span></button><button><small>Draft · yesterday</small><span>Thesis chapter 2: Methods</span></button><button><small>Paper · yesterday</small><span>Rasch &amp; Born (2013)</span></button><button><small>Matrix · Nov 14</small><span>Napping and recall</span></button>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>A quiet row of equal cells split by hairlines, used for customer logos under the headline.</div><div><b>In Groundwork</b>Recently opened drafts and papers. No boxes or shadows, so it reads as part of the page.</div></div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">16</span><h3>Expanding rows</h3><span class="where">Sources tab · Check</span></div>
+      <div class="stage"><div class="acc">
+        <details open><summary><i>RB</i><span>Rasch &amp; Born (2013) backs six claims in this draft.</span><span class="sq"></span></summary><div class="body"><span><b>6</b>claims</span><span><b>23</b>highlights</span><span><b>2</b>drafts cite it</span><button class="link">Open paper ›</button></div></details>
+        <details><summary><i>D</i><span>Diekelmann et al. (2011) backs three.</span><span class="sq"></span></summary><div class="body"><span><b>3</b>claims</span><span><b>6</b>highlights</span><span><b>1</b>draft cites it</span><button class="link">Open paper ›</button></div></details>
+        <details><summary><i>L</i><span>Lahl et al. (2008) backs one, partly.</span><span class="sq"></span></summary><div class="body"><span><b>1</b>claim</span><span><b>0</b>highlights</span><span><b>1</b>draft cites it</span><button class="link">Open paper ›</button></div></details>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>A stack of one-sentence rows, each with a mark on the left and a plus button; the open row shows a picture and a line of figures.</div><div><b>In Groundwork</b>The cited-sources list in Sources, one sentence per paper, opening to its figures and passages.</div></div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">17</span><h3>Story card with two figures</h3><span class="where">Home · Drafts</span></div>
+      <div class="stage"><button class="story"><small>Edited 2 hours ago · v8</small><h4>Sleep and memory consolidation: a review</h4><dl><div><dt>2,140</dt><dd>words</dd></div><div><dt>14 of 18</dt><dd>citations supported</dd></div></dl><span class="link">Open draft ›</span></button></div>
+      <div class="notes"><div><b>On the reference page</b>A customer story card: a headline, two large figures with captions, and a text link.</div><div><b>In Groundwork</b>Each draft in the Drafts list and on Home, so its health shows before it's opened.</div></div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">18</span><h3>Passage card</h3><span class="where">Check · Quick look</span></div>
+      <div class="stage"><div class="quote"><q>…<mark>sleep after learning supports the consolidation</mark> of declarative memory, with the largest effect when sleep follows within a few hours.</q><footer><span><b>Rasch &amp; Born (2013)</b>Psychological Reviews, p. 4</span><button class="link">Open at page 4 ›</button></footer></div></div>
+      <div class="notes"><div><b>On the reference page</b>A customer quote card: large quote, then a name and role, then a link.</div><div><b>In Groundwork</b>The source passage behind a citation, in Charter, with the matched words marked and an ember edge.</div></div>
+    </article>
+
+    <article class="el">
+      <div class="el-head"><span class="num">19</span><h3>Link columns with shortcuts</h3><span class="where">Foot of Home · Help</span></div>
+      <div class="stage plain"><div class="foot">
+        <div><h4>Write</h4><a>New draft <kbd>Ctrl N</kbd></a><a>Import .docx <kbd>Ctrl O</kbd></a><a>Ask Muse <kbd>Ctrl J</kbd></a></div>
+        <div><h4>Library</h4><a>Add sources</a><a>Topics</a><a>Review matrix</a></div>
+        <div><h4>Help</h4><a>User guide</a><a>Shortcuts</a><a>Settings</a></div>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>A footer of plain link columns under small bold headings.</div><div><b>In Groundwork</b>The foot of Home, doubling as a shortcut reference, since a desktop app has no site footer.</div></div>
+    </article>
+
+    <article class="el full">
+      <div class="el-head"><span class="num">20</span><h3>Split header with a card reel</h3><span class="where">Library · Home</span></div>
+      <div class="stage plain"><div class="split">
+        <div class="split-head"><h4>Your topics, at a glance</h4><p>Nine topics hold your 157 papers. The largest are first.</p><span class="pair"><button class="sq" id="prev" aria-label="Previous"><svg class="ic" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></svg></button><button class="sq" id="next" aria-label="Next"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></span></div>
+        <div class="reel" id="reel">
+          <button class="topic"><i data-n="41" style="--a:var(--ban2);--b:var(--ice)"></i><b>Sleep and memory</b><small>4 unread</small></button>
+          <button class="topic"><i data-n="28" style="--a:var(--ember);--b:var(--peach)"></i><b>Napping</b><small>2 unread</small></button>
+          <button class="topic"><i data-n="24" style="--a:var(--ice);--b:var(--ban2)"></i><b>Methods</b><small>All read</small></button>
+          <button class="topic"><i data-n="19" style="--a:var(--ban1);--b:var(--ember)"></i><b>Slow-wave sleep</b><small>1 unread</small></button>
+          <button class="topic"><i data-n="17" style="--a:var(--ban2);--b:var(--peach)"></i><b>Reactivation</b><small>3 unread</small></button>
+          <button class="topic"><i data-n="12" style="--a:var(--ice);--b:var(--ember)"></i><b>Ageing</b><small>2 unread</small></button>
+          <button class="topic"><i data-n="9" style="--a:var(--ban1);--b:var(--ice)"></i><b>Emotion</b><small>All read</small></button>
+        </div>
+      </div></div>
+      <div class="notes"><div><b>On the reference page</b>Heading on the left, a short description on the right, and a pair of arrow buttons that slide a row of tall picture cards.</div><div><b>In Groundwork</b>Topics as a reel at the top of the Library, or Related papers in a paper's details. Worth it only where there are more items than fit.</div></div>
+    </article>
+  </div>
+  <p class="end">Sample numbers throughout. Nothing here is in the app yet.</p>
+</div>
+
+<script>
+const hex = () => document.querySelectorAll('#sw code').forEach((c) => { c.textContent = getComputedStyle(document.documentElement).getPropertyValue(c.dataset.var).trim() })
+hex()
+document.getElementById('theme').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  document.documentElement.dataset.theme = b.dataset.v
+  e.currentTarget.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); hex()
+})
+document.querySelectorAll('.tabs').forEach((t) => t.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (b) t.querySelectorAll('button').forEach((x) => x.setAttribute('aria-selected', String(x === b)))
+}))
+document.querySelectorAll('.stats button').forEach((b, i, all) => b.addEventListener('click', () => all.forEach((x) => x.classList.toggle('on', x === b))))
+document.querySelector('.notice button').addEventListener('click', (e) => { const n = e.currentTarget.parentElement; n.style.opacity = .35; setTimeout(() => { n.style.opacity = 1 }, 900) })
+const reel = document.getElementById('reel'), prev = document.getElementById('prev'), next = document.getElementById('next')
+const ends = () => { prev.disabled = reel.scrollLeft < 4; next.disabled = reel.scrollLeft + reel.clientWidth > reel.scrollWidth - 4 }
+prev.onclick = () => reel.scrollBy({ left: -404 }); next.onclick = () => reel.scrollBy({ left: 404 })
+reel.addEventListener('scroll', ends); addEventListener('resize', ends); ends()
+</script>
+</body></html>

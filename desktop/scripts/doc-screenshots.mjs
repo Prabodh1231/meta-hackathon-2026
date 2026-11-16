@@ -13,7 +13,9 @@ const btn = (p, name, exact = false) => p.getByRole('button', { name, exact }).f
 
 const openMatrix = async (p) => { await btn(p, /^Matrix/).click(); await wait(p, 2000); await btn(p, /^Open .Cryptocurrency/).click(); await wait(p, 3000) }
 
+// The app opens on Home; every shot but `home` starts from Write (see below).
 const SHOTS = {
+  home: async (p) => {},
   write: async (p) => {},
   'tools-closed': async (p) => { await btn(p, 'Close the writing tools').click() },
   focus: async (p) => { await btn(p, 'Focus mode').click() },
@@ -48,6 +50,7 @@ for (const [name, steps] of Object.entries(SHOTS)) {
       force()
     })
     await wait(page, 5000)
+    if (name !== 'home') { await page.locator('.rail-btn', { hasText: 'Write' }).click(); await wait(page, 800) }
     await steps(page)
     await wait(page, 800)
     await page.mouse.move(1359, 679)

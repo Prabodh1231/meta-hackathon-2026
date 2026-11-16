@@ -15,7 +15,9 @@ import { DemoGuide } from './components/DemoGuide'
 import { DraftNameField, DraftsPanel } from './components/DraftsPanel'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { ExportControl } from './components/ExportControl'
-import { GettingStarted } from './components/GettingStarted'
+import { GettingStarted, gettingStartedSteps } from './components/GettingStarted'
+import { HomeView } from './components/HomeView'
+import { NoticeBar, type BarNotice } from './components/NoticeBar'
 import { HistoryPanel } from './components/HistoryPanel'
 import { Icon, type IconName } from './components/Icon'
 import { LibraryPanel } from './components/LibraryPanel'
@@ -60,9 +62,10 @@ import type {
 
 const UNREACHABLE = new BackendUnreachable().message
 
-/** The places in the app: the draft, the library, the citation network, and review matrices. */
-type Mode = 'write' | 'library' | 'network' | 'matrix'
+/** The places in the app: home, the draft, the library, the citation network, and review matrices. */
+type Mode = 'home' | 'write' | 'library' | 'network' | 'matrix'
 const MODES: { mode: Mode; label: string; icon: IconName; hint: string }[] = [
+  { mode: 'home', label: 'Home', icon: 'home', hint: 'Where you left off, and everything in one place' },
   { mode: 'write', label: 'Write', icon: 'write', hint: 'Your draft, with the writing tools beside it' },
   { mode: 'library', label: 'Library', icon: 'library', hint: 'Add, organize and pick your sources' },
   { mode: 'network', label: 'Network', icon: 'network', hint: 'Who cites whom in your library' },
@@ -82,7 +85,7 @@ type ComposeKind = 'cite' | 'chat'
 const TAB = Object.fromEntries(TABS.map((t) => [t.tab, t])) as Record<Tab, (typeof TABS)[number]>
 
 /** What the one search box does in each place. */
-const SEARCH: Record<Exclude<Mode, 'write'>, { scope: string; placeholder: string }> = {
+const SEARCH: Record<Exclude<Mode, 'home' | 'write'>, { scope: string; placeholder: string }> = {
   library: { scope: 'Library', placeholder: 'Search titles, authors, and inside papers…' },
   network: { scope: 'Network', placeholder: 'Search a topic: blockchain, financial inclusion…' },
   matrix: { scope: 'Matrix', placeholder: 'Filter studies and cells…' },
@@ -156,7 +159,7 @@ export default function App() {
   const [docs, setDocs] = useState<Doc[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [mode, setMode] = useState<Mode>('write')
+  const [mode, setMode] = useState<Mode>('home') // the app opens on Home
   const [tab, setTab] = useState<Tab>('compose')
   const [compose, setCompose] = useState<ComposeKind>('cite')
   const [sourcesView, setSourcesView] = useState<'cited' | 'refs'>('cited')
@@ -179,6 +182,10 @@ export default function App() {
   const [matrixSeen, setMatrixSeen] = useState(false) // mounted once opened, so a matrix keeps its place
   const [errors, setErrors] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+  // What finished while the writer was elsewhere in the app, across the top of the window until dismissed.
+  const [bar, setBar] = useState<BarNotice | null>(null)
+  const modeRef = useRef(mode)
+  modeRef.current = mode
 
   /** A passage chosen in the reader, into the draft at the cursor as a quote with its citation. It's the
    * paper's own words, so the citation is verified, as Insert quote in the Highlights tab is. */
@@ -267,6 +274,11 @@ export default function App() {
   const openLibrary = useCallback(() => setMode('library'), [])
   const [libFocus, setLibFocus] = useState<{ id: number; n: number } | null>(null)
   const [libTopic, setLibTopic] = useState<{ id: number; n: number } | null>(null) // a topic to open in the library
+  const [libView, setLibView] = useState<{ id: string; n: number } | null>(null) // a saved view to open there (from Home)
+  const openView = useCallback((id: string) => {
+    setLibView((v) => ({ id, n: (v?.n ?? 0) + 1 }))
+    setMode('library')
+  }, [])
   const openTopic = useCallback((id: number) => {
     setLibTopic((t) => ({ id, n: (t?.n ?? 0) + 1 }))
     setMode('library')
@@ -560,7 +572,12 @@ export default function App() {
       if (fresh.some((f) => f.done !== before.get(f.id)?.done || f.finished_at)) refresh().catch(() => {})
       for (const f of fresh.filter((f) => f.finished_at)) {
         if (f.state === 'failed') onError(`Adding files stopped: ${f.error}`)
-        else if (f.done) setNotice(`Added ${f.done} source${f.done === 1 ? '' : 's'} to your library${f.failed ? `; ${f.failed} couldn't be read` : ''}.`)
+        else if (f.done) {
+          const added = `Added ${f.done} source${f.done === 1 ? '' : 's'} to your library${f.failed ? `; ${f.failed} couldn't be read` : ''}.`
+          // In the Library the new rows are in view already; anywhere else, say so where it will be seen.
+          if (modeRef.current === 'library') setNotice(added)
+          else setBar({ id: `import-${f.id}`, text: added, action: { label: 'Open the Library', run: () => setMode('library') } })
+        }
       }
     }, 700)
     return () => window.clearTimeout(t)
@@ -816,6 +833,10 @@ export default function App() {
   // Once running, keep an eye on the backend so an outage shows in the dock instead of
   // surfacing only as errors on the next click. The desktop app restarts it automatically.
   const [offline, setOffline] = useState(false)
+  const staleBackend = !!health && health.api !== API_VERSION && !offline
+  useEffect(() => {
+    if (staleBackend) setBar({ id: 'update', text: 'Groundwork was updated. Restart the app to finish updating.' })
+  }, [staleBackend])
   const [logPath, setLogPath] = useState('')
   const started = health !== null
   useEffect(() => {
@@ -1141,6 +1162,26 @@ export default function App() {
   const cites = useMemo(() => tally(stats.chips, citeMarks), [stats.chips, citeMarks])
   const focusedMark = citeFocus ? citeMarks.find((m) => m.cid === citeFocus) ?? null : null
 
+  // Citations that were checking when the writer left Write, and finished while they were away.
+  const awayChecks = useRef(0)
+  useEffect(() => {
+    if (mode === 'write') {
+      awayChecks.current = 0
+      return
+    }
+    if (cites.checking > awayChecks.current) awayChecks.current = cites.checking
+    else if (cites.checking === 0 && awayChecks.current > 0) {
+      const n = awayChecks.current
+      awayChecks.current = 0
+      const where = mode === 'home' ? 'on Home' : mode === 'library' ? 'in the Library' : mode === 'network' ? 'in the Network' : 'in the Matrix'
+      setBar({
+        id: `checks-${Date.now()}`,
+        text: `${n} citation${n === 1 ? '' : 's'} finished checking while you were ${where}.`,
+        action: { label: n === 1 ? 'Review it' : 'Review them', run: () => showCitations() },
+      })
+    }
+  }, [cites.checking, mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const paletteItems: PaletteItem[] = [
     ...docs.map((d) => ({
       group: d.kind.toUpperCase(),
@@ -1152,6 +1193,7 @@ export default function App() {
     ...drafts
       .filter((d) => d.id !== draftId)
       .map((d) => ({ group: 'DRAFT', name: d.title || 'Untitled', hint: `${d.words} words`, run: () => switchDraft(d.id) })),
+    { group: 'GO', name: 'Home', hint: 'where you left off, and everything in one place', run: () => setMode('home') },
     { group: 'GO', name: 'Write', hint: 'the draft and its tools', run: () => setMode('write') },
     { group: 'GO', name: 'Library', hint: 'add and organize sources', run: openLibrary },
     { group: 'GO', name: 'Citation network', hint: 'who cites whom, shared references', run: () => setMode('network') },
@@ -1184,18 +1226,76 @@ export default function App() {
     { group: 'DO', name: "Most-cited papers you don't have", hint: 'what your papers cite most, by topic', run: findMissing },
     { group: 'DO', name: 'Load sample library', hint: 'six files on sleep and coral reefs, and a demo draft', run: trySamples },
     ...(demo ? [{ group: 'DO', name: 'Open demo draft', hint: 'with its checklist', run: openDemoDraft }] : []),
-    { group: 'DO', name: 'Show getting started', hint: 'connect the AI, add sources, write, cite', run: () => {
-      setMode('write')
-      setHideGuide(false)
-      try {
-        localStorage.removeItem(GUIDE_KEY)
-      } catch {
-        /* storage unavailable */
-      }
-    } },
+    { group: 'DO', name: 'Show getting started', hint: 'connect the AI, add sources, write, cite', run: () => (setMode('home'), showTheGuide()) },
     { group: 'DO', name: toolsOpen ? 'Close the writing tools' : 'Open the writing tools', hint: 'Ctrl+\\', run: () => (toolsOpen ? setToolsOpen(false) : revealTools()) },
     { group: 'DO', name: 'Focus mode', hint: 'only the page · Ctrl+Shift+F', run: toggleFocus },
     { group: 'DO', name: 'Settings', hint: 'appearance, writing, review, library, AI model', run: () => setShowSettings('appearance') },
+  ]
+
+  // Getting started: above an empty draft in Write and as a section of Home, until it's hidden or done.
+  const guide =
+    health && !hideGuide && (docs.length === 0 || stats.words === 0)
+      ? {
+          mock: health.provider === 'mock',
+          sources: docs.length,
+          words: stats.words,
+          citations: stats.citations,
+          onConnectModel: () => setShowSettings('model'),
+          onAddSources: openLibrary,
+          onTrySamples: window.rc?.copySamples ? trySamples : undefined,
+          onAsk: () => showCompose('cite'),
+          onOpenWord: pickWord,
+        }
+      : null
+  function hideTheGuide() {
+    setHideGuide(true)
+    try {
+      localStorage.setItem(GUIDE_KEY, '1')
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  function showTheGuide() {
+    setHideGuide(false)
+    try {
+      localStorage.removeItem(GUIDE_KEY)
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  // The open draft's first lines, for its card on Home (read when Home is shown, not at every keystroke).
+  const excerpt = useMemo(
+    () => (mode === 'home' ? (editor.current?.getText() ?? '').replace(title, '').replace(/\s+/g, ' ').trim().slice(0, 300) : ''),
+    [mode, stats, draftId, title], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const homeLinks = [
+    {
+      head: 'Write',
+      items: [
+        { label: 'New draft', keys: 'Ctrl N', run: () => void newDraft() },
+        { label: 'Import a Word file', keys: 'Ctrl O', run: pickWord },
+        { label: 'Ask Muse', keys: 'Ctrl J', run: askAboutSelection },
+        { label: 'Focus mode', keys: 'Ctrl Shift F', run: toggleFocus },
+      ],
+    },
+    {
+      head: 'Library',
+      items: [
+        { label: 'Add sources', run: openLibrary },
+        { label: 'Review matrix', run: () => setMode('matrix') },
+        { label: 'Citation network', run: () => setMode('network') },
+        { label: 'Find duplicate files', run: findDuplicateFiles },
+      ],
+    },
+    {
+      head: 'Help',
+      items: [
+        { label: 'Search everything', keys: 'Ctrl K', run: () => setPaletteOpen(true) },
+        { label: 'Show getting started', run: showTheGuide },
+        { label: 'Settings', run: () => setShowSettings('appearance') },
+        { label: 'AI model', run: () => setShowSettings('model') },
+      ],
+    },
   ]
 
   const running = jobs.filter((j) => j.finished_at == null)
@@ -1236,6 +1336,7 @@ export default function App() {
           </button>
         </div>
       )}
+      <NoticeBar notice={bar} onClose={() => setBar(null)} />
       <header className="app-bar">
         <div className="doc-id" ref={draftsMenu}>
           <img className="logo" src={logoUrl} alt="" title="Groundwork: write only what your sources say" />
@@ -1322,7 +1423,7 @@ export default function App() {
           )}
         </div>
 
-        {mode === 'write' ? (
+        {mode === 'write' || mode === 'home' ? (
           <button className="search-pill" onClick={() => setPaletteOpen(true)}>
             <Icon name="search" size={16} />
             <span>Search sources, drafts and actions</span>
@@ -1402,6 +1503,40 @@ export default function App() {
           ))}
         </nav>
 
+        <div className="view home-view" hidden={mode !== 'home'}>
+          <HomeView
+            visible={mode === 'home'}
+            docs={docs}
+            folders={folders}
+            drafts={drafts}
+            draftId={draftId}
+            docTitle={docTitle}
+            excerpt={excerpt}
+            words={stats.words}
+            cites={cites}
+            chips={stats.chips}
+            demo={demo}
+            canTrySamples={!!window.rc?.copySamples}
+            guide={guide ? gettingStartedSteps(guide) : null}
+            onHideGuide={hideTheGuide}
+            onWrite={() => {
+              setMode('write')
+              editor.current?.focus()
+            }}
+            onCheck={() => showCitations()}
+            onAddSources={openLibrary}
+            onOpenDraft={switchDraft}
+            onOpenPaper={showPaper}
+            onOpenTopic={openTopic}
+            onOpenView={openView}
+            onGo={setMode}
+            onTrySamples={trySamples}
+            onOpenDemo={openDemoDraft}
+            onShowDrafts={() => setDraftsOpen(true)}
+            links={homeLinks}
+          />
+        </div>
+
         <div className={`view write-view${toolsOpen ? '' : ' tools-closed'}`} hidden={mode !== 'write'}>
           <main className="writing">
             <WritingEditor
@@ -1418,26 +1553,8 @@ export default function App() {
                     onRemove={removeSamples}
                     onHide={() => setDemo({ ...demo, hidden: true })}
                   />
-                ) : health && !hideGuide && (docs.length === 0 || stats.words === 0) ? (
-                  <GettingStarted
-                    mock={health.provider === 'mock'}
-                    sources={docs.length}
-                    words={stats.words}
-                    citations={stats.citations}
-                    onConnectModel={() => setShowSettings('model')}
-                    onAddSources={openLibrary}
-                    onTrySamples={window.rc?.copySamples ? trySamples : undefined}
-                    onAsk={() => showCompose('cite')}
-                    onOpenWord={pickWord}
-                    onHide={() => {
-                      setHideGuide(true)
-                      try {
-                        localStorage.setItem(GUIDE_KEY, '1')
-                      } catch {
-                        /* storage unavailable */
-                      }
-                    }}
-                  />
+                ) : guide ? (
+                  <GettingStarted {...guide} onHide={hideTheGuide} />
                 ) : null
               }
               onStats={onStats}
@@ -1588,7 +1705,7 @@ export default function App() {
               {/* Kept mounted (hidden) so results survive a look at a source. */}
               <div hidden={tab !== 'check' || showingSource} className="check-tool">
                 {!citeFocus && (
-                  <CheckSummary tally={cites} rechecking={recheckingAll} onRecheckAll={recheckAll} dup={dup} onCheckDup={runCheck} />
+                  <CheckSummary tally={cites} rechecking={recheckingAll} onRecheckAll={recheckAll} dup={dup} onCheckDup={runCheck} sources={docs.length} />
                 )}
                 {focusedMark && (focusedMark.state === 'none' || focusedMark.state === 'weak' || focusedMark.state === 'unsupported') && (
                   <div className="cite-focus-actions" role="group" aria-label="Actions for this cite marker">
@@ -1691,6 +1808,7 @@ export default function App() {
             onError={onError}
             focus={libFocus}
             focusTopic={libTopic}
+            focusView={libView}
             jobs={jobs}
             onAddPaths={addToLibrary}
             onCancelJob={cancelJob}
@@ -1721,6 +1839,13 @@ export default function App() {
               onWriteProposal={(id) => setProposalFrom({ matrixId: id })}
               openRequest={openMatrix}
               visible={mode === 'matrix'}
+              onReady={(m) =>
+                setBar({
+                  id: `matrix-${m.id}`,
+                  text: `“${m.name}” is ready: Muse finished reading ${m.cells} cell${m.cells === 1 ? '' : 's'}.`,
+                  action: { label: 'Open the matrix', run: () => (setOpenMatrix({ id: m.id, at: Date.now() }), setMode('matrix')) },
+                })
+              }
             />
           </div>
         )}

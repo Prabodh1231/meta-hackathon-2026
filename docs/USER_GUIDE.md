@@ -7,6 +7,7 @@ Groundwork keeps the papers, notes, slides, scans and web pages you're writing f
 This guide is about using the app. For setup, see the [README](../README.md#run-it). For how the code fits together, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 - [The layout](#the-layout)
+- [Home](#home)
 - [Try the demo](#try-the-demo)
 - [1. Add your sources](#1-add-your-sources)
 - [2. Organize the library](#2-organize-the-library)
@@ -29,11 +30,28 @@ The window has four parts:
 | Part | What it holds |
 |---|---|
 | **Top bar** | The draft's name (click it to rename), whether it's saved, its version (**v8 ▾** opens Versions) and how much changed since; **Drafts** beside it; one search box; Export; Focus mode; Settings. |
-| **Rail** (left) | The places in the app: **Write**, **Library**, **Network** and **Matrix**. One fills the window at a time. |
+| **Rail** (left) | The places in the app: **Home**, **Write**, **Library**, **Network** and **Matrix**. One fills the window at a time. The app opens on Home. |
 | **Main area** | The place you picked. In Write, the draft with the writing tools beside it. |
 | **Status bar** (bottom) | Live counts for the draft: words, citations (*12 supported · 1 needs attention · 1 checking*, in the same words as Check) and duplication. Click one to open Check. Outside Write they're marked **Draft**, since they're the open draft's numbers. |
 
-**One search box.** In Write, the box searches everything (sources, drafts, topics) and runs any action; Ctrl K opens it from anywhere. In the Library it filters your sources and looks inside them, and in the Network it finds papers about a topic. The green chip in the box says which one it's doing. Esc clears it, and Ctrl K still searches everything. Ctrl K lists **Actions** first, then **Go to**, **Drafts**, **Topics** (picking one opens it in the Library) and **Sources**, each with how many match; ↑ ↓ move, Enter runs or opens.
+**One search box.** On Home and in Write, the box searches everything (sources, drafts, topics) and runs any action; Ctrl K opens it from anywhere. In the Library it filters your sources and looks inside them, and in the Network it finds papers about a topic. The chip in the box says which one it's doing. Esc clears it, and Ctrl K still searches everything. Ctrl K lists **Actions** first, then **Go to**, **Drafts**, **Topics** (picking one opens it in the Library) and **Sources**, each with how many match; ↑ ↓ move, Enter runs or opens.
+
+**Notices at the top.** When something finishes while you're in another part of the app, a dark line across the top of the window says so, with a link to it: citations that finished checking while you were away from Write, a review matrix that Muse finished reading, files that were added while you weren't in the Library, or an update that needs a restart. One shows at a time and it stays until you follow its link or close it with **×**. Quick confirmations still appear at the bottom and close by themselves.
+
+## Home
+
+![Home: the headline, what you had open last, and the five tools](images/home.png)
+
+**Home** is where the app opens: one scrolling page with everything in one place. Nothing on it is a setting; every part is a way into the rest of the app.
+
+- **The top** has one line that stays current (the share of the open draft's citations backed by a source), **Continue writing**, **Open the library**, and a row of what you had open or added last: your two most recent drafts and your newest sources.
+- **Getting started** shows here, with a small drawing of the screen each step happens on, until its steps are done or you hide it. The same steps show above an empty draft in Write, and they tick off together.
+- **Five tool cards** each show what's in that tool right now and open it when clicked: the open draft's first lines and one of its checked quotes (Write), the draft's citations counted as Check counts them, the papers you've highlighted most, the Network, and your review matrices.
+- **The sample library** has a dark banner of its own. Once the demo is loaded it shows how many of its five steps you've done and opens the demo draft.
+- **Your library at a glance** gives four numbers: sources (and how many are unread), highlights and notes, the share of the open draft's citations that are supported, and drafts. Each opens the place it counts.
+- **Your topics** are a row of cards, largest first, with how many papers in each are unread. The arrows move along the row; a card opens that topic in the Library.
+- **Pick up where you left off** has three tabs: **Drafts** (words and citations supported for each), **Recently added** (pages and highlights) and **Saved views** (the views you kept in the Library).
+- **The foot of the page** lists the main actions with their keyboard shortcuts.
 
 ### The writing tools
 
@@ -42,8 +60,8 @@ The panel beside the draft has three tools, one for each job:
 | Tool | What it's for |
 |---|---|
 | **Compose** | Writing with Muse. On top, **From your reading**: your highlights, best first for the paragraph you're in. Below, **Ask Muse**, one box with a switch: **Cite my sources** (Muse drafts from your library, every sentence cited and checked) or **Just chat** (Muse answers from its own knowledge, uncited). See [Compose](#compose). |
-| **Check** | Everything that needs you, worst first. A summary at the top counts the citations in the same words as the draft's marks, with a legend, and gives the duplication share; then **Needs your attention**, **Still checking** and **Supported** (folded); then **Duplication**. The red number on Check is how many need attention. See [Back up each claim](#4-back-up-each-claim). |
-| **Sources** | What the draft cites, source by source, each with its citations' marks; and the **Reference list**. See [Reference list](#reference-list). |
+| **Check** | Everything that needs you, worst first. A summary at the top gives the share of citations backed by a source, counts them in the same words as the draft's marks, with a legend, and gives the duplication share; **How a citation gets checked** under the legend opens a short explanation of the four steps; then **Needs your attention**, **Still checking** and **Supported** (folded); then **Duplication**. The red number on Check is how many need attention. See [Back up each claim](#4-back-up-each-claim). |
+| **Sources** | What the draft cites, one line per source that opens to its figures and its citations' marks; and the **Reference list**. See [Reference list](#reference-list). |
 
 Versions aren't a tool: they open from **v8 ▾** under the draft's name (see [Versions](#versions)).
 
@@ -65,7 +83,7 @@ The save state stays in the corner. Esc, or **Exit focus**, brings the rest back
 
 ## Try the demo
 
-A new library opens on **Getting started**. If its first step says *Connect the AI*, the app is running on the offline mock, which matches words instead of reading them; **Add a Muse key** opens Settings at **AI model**. The status bar says so too: *Offline mock* shows in amber, and clicking it opens the same place.
+With a new library, **Getting started** shows on Home and above the empty draft in Write. If its first step says *Connect the AI*, the app is running on the offline mock, which matches words instead of reading them; **Add a Muse key** opens Settings at **AI model**. The status bar says so too: *Offline mock* shows in amber, and clicking it opens the same place.
 
 **Try the sample library** (under *Add your sources*, or **Load sample library** in Ctrl K) adds six small files on sleep and coral reefs: two papers, reading notes, a fieldwork log, lab slides and a chapter outline. When they're in, the demo draft opens: four sentences from those papers, each with a cite marker that starts checking it at once. One sentence is false on purpose: the sleep paper found that reactivation during REM sleep did nothing, so Muse marks the claim that it helped as unsupported. (On the mock it may only be marked partial, or even pass.)
 
@@ -93,7 +111,7 @@ You can also drop files anywhere on the window. A single Word file opens the [im
 
 The library reads PDF, Word (.docx), PowerPoint (.pptx), Markdown, plain text, HTML and images (PNG, JPEG, WebP). Scanned pages and images are read with OCR.
 
-While files are being added, a card at the top of the library shows each file's stage, and each source appears in the list as soon as it's read (Muse takes about 15 seconds per file). Messages like "Added 6 sources" close by themselves after a few seconds; error messages stay until you click them.
+While files are being added, a card at the top of the library shows each file's stage, and each source appears in the list as soon as it's read (Muse takes about 15 seconds per file). Messages like "Added 6 sources" close by themselves after a few seconds; error messages stay until you click them. If you're somewhere other than the Library when an import finishes, the message shows in the notice bar at the top instead, with **Open the Library**.
 
 Files are added in the background. A card under the Library's header shows each file's progress (reading, Muse reading it, filing into topics), and **Stop** cancels the rest. When Muse can't write a summary or tags (it's offline or rate-limited), the paper is still searchable and citable; it's marked *no summary yet* and the library offers **Try again**.
 
@@ -135,7 +153,7 @@ The row of chips above the list narrows whatever view or topic you are in:
 - **Type**, **Topic**, **Author** and **Journal** each open a list with the number of papers beside every choice. Tick as many as you like: within one chip the choices add up (PDFs *or* slides), and across chips they narrow (PDFs *and* by Suri). Authors and journals are listed with the most papers first; type a letter to jump to a name.
 - **Year** takes one choice: the last 5 or 10 years, a decade, before 2000, or papers with no year in their record.
 - **Has highlights** shows only the papers you have highlighted passages in. It appears once you have highlighted something.
-- A chip that is set turns green and says what it is set to; its **×** clears it, and **Clear filters** clears them all. The chips work together with the search box and the Timeline.
+- A chip that is set is filled in and says what it is set to; its **×** clears it, and **Clear filters** clears them all. The chips work together with the search box and the Timeline.
 
 **Save as view** (at the right of the chips, once a chip or the search is set) keeps the search and the filters under **Saved views** in the sidebar, with the view or topic you were in. A saved view stores the question, not the answer: its count and its papers are worked out each time, so "Last 5 years" moves on with the calendar and new papers join by themselves. The Timeline's range isn't saved.
 
@@ -309,7 +327,7 @@ Point at a citation to see what backs it: its verdict, the quote and Muse's reas
 
 For a PDF you see the page as it's printed, with the quote highlighted on it. **Text** switches to the text read from the page (handy for small print, and what other kinds of source always show); **Page** switches back, and the app remembers your pick. If a quote can't be placed on the page image (a scan, say), the text is shown instead, with a note.
 
-The page line gives both numbers when they differ: the printed page (p. 342) and the PDF page (2 of 2). The arrows turn pages. **Open the whole PDF at this page** opens it in its PDF window at that page:
+Above the page, a card gives the passage in the source's own words, with the matched part marked and a little of what's around it. The page line gives both numbers when they differ: the printed page (p. 342) and the PDF page (2 of 2). The arrows turn pages. **Open at page 342 ›** on the card opens the PDF in its own window at that page:
 
 ![The PDF in its own window, at the cited page](images/pdf-viewer.png)
 
@@ -317,7 +335,7 @@ Close that window as you would any other. **‹ Back** returns to the tool you c
 
 ### Reference list
 
-**Sources** lists the sources the draft cites. **Cited sources** shows each one with a mark for every citation of it and a count in words (such as *2 supported · 1 partly supported*; point at the count for the breakdown, click the source for its details in the Library, a mark for its quote); sentences still waiting for a source are listed last as **No source yet**. Your own reading notes are listed separately under **Your notes**, with a grey **Your note** pill, in both Cited sources and the reference list, so they aren't mistaken for published papers. **Reference list** lists them as soon as it opens (**Rebuild** builds it again), in the style chosen in Settings: APA 7, MLA 9 or IEEE. **Copy** copies the list, and **Copy as BibTeX** copies the same sources as BibTeX entries for a reference manager or LaTeX.
+**Sources** lists the sources the draft cites. **Cited sources** gives each one a line that says how it's used (*Chen & Martinez 2021 is cited three times; two are supported.*); point at the line for the breakdown. Click the line, or its **+**, to open it: how many citations and how many are supported, **Open paper ›** for its details in the Library, and a mark for every citation (click one for its quote). The first source is open to begin with. Sentences still waiting for a source are listed last as **No source yet**. Your own reading notes come after the papers, with a grey mark and a grey **Your note** pill, in both Cited sources and the reference list, so they aren't mistaken for published papers. **Reference list** lists them as soon as it opens (**Rebuild** builds it again), in the style chosen in Settings: APA 7, MLA 9 or IEEE. **Copy** copies the list, and **Copy as BibTeX** copies the same sources as BibTeX entries for a reference manager or LaTeX.
 
 ## 5. Check the draft
 
@@ -348,6 +366,8 @@ While Check is open, matching passages are underlined in the draft: red for an u
 **Change** next to the counts goes back to choosing.
 
 ![The citation network](images/network.png)
+
+The graph is drawn on a dark panel in both the light and the dark theme. The ten most-linked papers are orange and carry their names; the others are pale blue.
 
 - An arrow from A to B means A cites B. Grey lines join papers that share references, and dashed amber lines (Shared keywords) join papers with keywords in common. The checkboxes at the top turn each kind on or off.
 - Dashed circles are works that several of your papers cite but that aren't in your library. They're off at first, since a topic can bring dozens of them; the list beside the graph names them either way, and **Missing works** draws them.
@@ -442,7 +462,7 @@ The draft has a title and Background, The gap, Research questions, Hypotheses, V
 | Ctrl \ | Open or close the writing tools |
 | Ctrl Shift F | Focus mode on or off |
 | Ctrl Z / Ctrl Y | Undo / redo in the draft |
-| Esc | Leave focus mode; close the PDF viewer or a menu; clear the search box; leave the Library or Network for the draft |
+| Esc | Leave focus mode; close the PDF viewer or a menu; clear the search box; leave Home, the Library or the Network for the draft |
 | ↑ ↓ | Move between papers in the library list (when it has focus); with Shift, select several |
 | Enter / Delete | In the library list: open the selected paper / remove the selected papers (with Undo) |
 | Space | In the library list: quick look at the selected paper; ↑ ↓ move on, Space or Esc closes |

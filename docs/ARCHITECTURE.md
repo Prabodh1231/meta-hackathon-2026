@@ -90,7 +90,8 @@ React 19 with Tiptap 3, built by Vite. Entry: [desktop/src/App.tsx](../desktop/s
 **Layout.** `App` holds the shared state and draws:
 
 - the **app bar**: the draft's name (click to rename; an unnamed draft shows its first line in italics), save state, the version button that opens `HistoryPanel` as a menu (`versionsOpen`) and the change since it, a **Drafts** button for the drafts menu (`DraftsPanel`), the search box, `ExportControl`, Settings;
-- the **rail**, which sets `mode`: `write`, `library` or `network`;
+- the **rail**, which sets `mode`: `home` (where the app opens), `write`, `library`, `network` or `matrix`;
+  - *Home:* `HomeView`, one scrolling page built from what `App` already holds (drafts, sources, topics, the open draft's citation tally) plus the matrices, saved views and other drafts' citation counts it fetches when shown. `NoticeBar`, above the app bar, shows what finished while another place was open (`bar` in `App`).
 - one **view** per mode:
   - *Write:* `WritingEditor` and the side panel, which has three tools (`tab`): **Compose** (`HighlightsPanel`, ranked for the cursor's paragraph by itself, then one Muse box switching, by `compose`, between `AssistantPanel` for drafting from sources and `AskPanel`, a plain chatbot kept per draft in `ask_turns`); **Check** (`CheckSummary`, `CitePanel`, then `ReviewPanel`; `SourceViewer` or `FindingView` while a cited passage is open); **Sources** (`SourcesPanel`: the cited sources with their citations' marks, and `ReferencesPanel`). Panels that hold work in progress stay mounted while hidden. `CitationWire` draws the line from a citation to its quote. Closed, the panel is a strip of the three icons (`toolsOpen`); focus mode (`focusMode`) hides the rail, panel, app bar and dock. The duplication check runs in the background while Write is open (`runCheck`: once the draft has text, then 15 s after edits settle, or 4 s while Check is open); its underlines show only while Check is.
   - *Library:* `LibraryPanel`: ready-made views and topics (the `folders` tables), one line per source with mail-style selection (click, Ctrl/Shift-click, an action bar and a right-click menu for the selection), and the selected paper's details. Removing waits for the Undo message to close before calling the backend.
@@ -124,7 +125,7 @@ Autosave runs 0.8 s after the last edit. Saves are queued one at a time, so an o
 
 **Settings** are loaded once the backend is up and applied in `App`: the page's width, text size and font are `data-page-width`, `data-text-size` and `data-doc-font` on `<html>`, which [styles.css](../desktop/src/styles.css) turns into `--page-w`, `--page-size` and `--page-font`. Until they arrive, `DEFAULT_SETTINGS` in `SettingsDialog.tsx` applies.
 
-**Styles** are one sheet, [styles.css](../desktop/src/styles.css), built on CSS variables. Light and dark themes switch `data-theme` on the root ([theme.ts](../desktop/src/theme.ts)).
+**Styles** are two sheets built on CSS variables: [styles.css](../desktop/src/styles.css), which holds the palette (Glacier + ember: a slate accent in light, ember in dark) and the app's screens, and [design.css](../desktop/src/design.css), which holds the shared design elements (two-tone statements, large buttons, underline tabs, the notice bar, Home, tool and story cards, the night panel, expanding rows, the passage card). Light and dark themes switch `data-theme` on the root ([theme.ts](../desktop/src/theme.ts)). The Network's canvas redefines the variables to stay dark in both themes. The artwork is one drawing, `Ribbons`, coloured from the palette.
 
 ## Pipeline
 

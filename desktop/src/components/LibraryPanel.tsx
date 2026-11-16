@@ -1,3 +1,4 @@
+import { Ribbons } from './Ribbons'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { MuseTag } from './MuseTag'
 import { api } from '../api'
@@ -31,6 +32,8 @@ interface Props {
   focus?: { id: number; n: number } | null
   /** A topic to open (from the palette); `n` changes per request. */
   focusTopic?: { id: number; n: number } | null
+  /** A saved view to open (from Home); `n` changes per request. */
+  focusView?: { id: string; n: number } | null
   onFindDuplicates: () => void
   onCitedPapers: (docId: number) => void
   /** List the works that cite a paper (OpenAlex). */
@@ -1241,7 +1244,7 @@ const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? 
  * every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs: allDocs, folders, query, onQuery, selected: drafting, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
-  folderSimilarity, onOpenPdf, jobs, focusTopic, onAddPaths, onCancelJob, onDismissJob,
+  folderSimilarity, onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS) // the chips above the list
@@ -1633,6 +1636,11 @@ export const LibraryPanel = memo(function LibraryPanel({
     setCur(null)
     setOpenRemoved(null)
   }
+  // Open a requested saved view (picked on Home).
+  useEffect(() => {
+    const v = focusView && views.find((x) => x.id === focusView.id)
+    if (v) openView(v)
+  }, [focusView?.n]) // eslint-disable-line react-hooks/exhaustive-deps
   const saveView = (name: string) => {
     const same = views.find((v) => v.name.toLowerCase() === name.toLowerCase())
     const view: SavedView = { id: same?.id ?? Date.now().toString(36), name, scope, query: query.trim(), filters }
@@ -2336,9 +2344,11 @@ export const LibraryPanel = memo(function LibraryPanel({
               </div>
             )}
             {docs.length === 0 && !showingRemoved && !importing && (
-              <div className="lib-empty">
-                <div className="lib-empty-title">Your library is empty</div>
-                <p>Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.</p>
+              <div className="lib-empty empty-art">
+                <Ribbons shape="wide" />
+                <p className="say say-sm">
+                  <b>Your library is empty.</b> Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.
+                </p>
                 <ol>
                   <li>Click <b>Add sources</b>, or drop files anywhere on the window</li>
                   <li>Muse reads each one and writes a summary and tags</li>

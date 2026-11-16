@@ -173,17 +173,17 @@ export function QuickLook({ doc, at, of, kindLabel, onStep, onOpen, onClose }: {
             {facts && <p className="ql-facts">{facts}</p>}
 
             {doc.abstract ? (
-              <>
-                <h4 className="lib-doc-label">Abstract</h4>
+              <section className="card-frame">
+                <h4>Abstract</h4>
                 <p className="ql-prose">{doc.abstract}</p>
-              </>
+              </section>
             ) : doc.summary ? (
-              <>
-                <h4 className="lib-doc-label">
+              <section className="card-frame">
+                <h4>
                   Summary <MuseTag from="this paper's text" />
                 </h4>
                 <p className="ql-prose">{doc.summary}</p>
-              </>
+              </section>
             ) : (
               <p className="muted ql-prose">No abstract or summary yet.</p>
             )}

@@ -167,6 +167,19 @@ export function SourceViewer({ target, doc, onOpenPdf }: {
   const highlight = page === target.page && target.start != null && target.end != null
   // Highlight what the backend matched on its own extracted text; the model's quote otherwise.
   const needle = page !== target.page ? null : text != null && highlight ? text.slice(target.start!, target.end!) : target.quote || null
+  // The source's own words for the card above the page: what was matched, with a little of what's
+  // around it once the page's text is in; the claimed quote until then.
+  const tidy = (t: string) => t.replace(/\s+/g, ' ')
+  const passage =
+    target.status === 'quote_not_found' || !target.quote
+      ? null
+      : text != null && highlight && page === target.page
+        ? {
+            before: tidy(text.slice(Math.max(0, target.start! - 70), target.start!)).replace(/^\S*\s/, ''),
+            hit: tidy(text.slice(target.start!, target.end!)),
+            after: tidy(text.slice(target.end!, target.end! + 70)).replace(/\s\S*$/, ''),
+          }
+        : { before: '', hit: tidy(target.quote), after: '' }
   const pick = (v: View) => {
     setView(v)
     try {
@@ -207,10 +220,31 @@ export function SourceViewer({ target, doc, onOpenPdf }: {
           )}
         </div>
       )}
-      {isPdf && onOpenPdf && doc && (
-        <button className="link open-pdf" onClick={() => onOpenPdf(doc, page)}>
-          Open the whole PDF at this page
-        </button>
+      {passage ? (
+        <div className="passage-card">
+          <q>
+            {passage.before && `…${passage.before}`}
+            <mark>{passage.hit}</mark>
+            {passage.after && `${passage.after}…`}
+          </q>
+          <footer>
+            <span>
+              <b>{target.label}</b>
+              {doc?.venue || doc?.title}
+            </span>
+            {isPdf && onOpenPdf && doc && (
+              <button className="link-go" onClick={() => onOpenPdf(doc, target.page)} title="Open the whole PDF at this page">
+                Open at page {text != null && pageData?.label && page === target.page ? pageData.label : target.page} ›
+              </button>
+            )}
+          </footer>
+        </div>
+      ) : (
+        isPdf && onOpenPdf && doc && (
+          <button className="link open-pdf" onClick={() => onOpenPdf(doc, page)}>
+            Open the whole PDF at this page
+          </button>
+        )
       )}
       {error && <p className="error-text">{error}</p>}
       {failed && view === 'page' && <p className="muted">{failed}</p>}
