@@ -1,28 +1,40 @@
 :root {
-  --bg: #eef2ec;
-  --panel: #fbfcfa;
-  --text: #18241c;
-  --muted: #56665b;
-  --border: #d3dcd0;
-  --accent: #2d5a3d;
+  /* Glacier + ember (Nov 16): cool grey surfaces, a slate accent, and ember kept for marks and artwork */
+  --bg: #eef1f4;
+  --panel: #fbfcfd;
+  --text: #18222c;
+  --muted: #54616e;
+  --border: #d5dce3;
+  --line: rgb(24 34 44 / 0.09); /* hairlines: page guides, section dividers */
+  --accent: #33485c;
   --accent-text: #ffffff;
-  --hover: rgba(45, 90, 61, 0.09);
+  --hover: rgba(51, 72, 92, 0.08);
+  --lead: var(--text); /* the first sentence of a two-tone statement */
+  --follow: #738494; /* the rest of it: large text only (3.4:1 on the page) */
+  --ice: #8fa9bd;
+  --ember: #f2773a; /* marks things (underlines, the active tab, artwork); too pale to carry small text */
+  --ember-ink: #ad4c17; /* ember for words: 5.3:1 on the panel */
+  --peach: #ffd2ad;
+  --ban1: #111a23; /* dark banners and the notice bar */
+  --ban2: #33485c;
   --ok: #23703f; /* 5.9:1 on the panel, for text */
   --ok-bg: #dff3e6;
   --warn: #8a5f00; /* 5.6:1 on the panel, for text */
   --warn-bg: #fbefcf;
-  --bad: #c2412d;
+  --bad: #b5371f; /* 4.9:1 on its own tint */
   --bad-bg: #fbe3df;
-  --pending: #93a396;
-  --pending-bg: #e8eee7;
+  --pending: #93a1ae;
+  --pending-bg: #e6ebf0;
   --matrix: #2f6db5; /* citations written from a review matrix */
   --matrix-bg: #e1ecf9;
   --mark: #ffe27a;
   --doc-font: Charter, "Bitstream Charter", Georgia, serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif; /* light, large headings */
   --ins: #d6f0dd;
   --del: #f9dcd6;
-  --rail: #e4eae2;
-  --shadow: 0 1px 2px rgb(20 40 26 / 0.06), 0 8px 24px -12px rgb(20 40 26 / 0.18);
+  --rail: #e3e8ed;
+  --shadow: 0 1px 2px rgb(24 34 44 / 0.06), 0 8px 24px -12px rgb(24 34 44 / 0.2);
+  --lift: 0 2px 4px rgb(24 34 44 / 0.05), 0 22px 40px -22px rgb(24 34 44 / 0.4);
   --panel-w: 400px;
   /* The draft's page, set in Settings (App puts data-page-width etc. on <html>) */
   --page-w: 760px;
@@ -39,29 +51,37 @@
 
 /* theme.ts sets data-theme from Settings (System follows the OS). */
 :root[data-theme="dark"] {
-  --bg: #0f1511;
-  --panel: #171e19;
-  --text: #e4ebe5;
-  --muted: #8b9b90;
-  --border: #29342c;
-  --accent: #7cc79a;
-  --accent-text: #0d1a11;
+  --bg: #0d1116;
+  --panel: #151b22;
+  --text: #e6ebf0;
+  --muted: #8d9aa8;
+  --border: #26303b;
+  --line: rgb(230 235 240 / 0.08);
+  --accent: #ff9a5c; /* ember is the accent in the dark */
+  --accent-text: #2e1202;
   --hover: rgba(255, 255, 255, 0.07);
+  --follow: #8799ab;
+  --ice: #5f7b92;
+  --ember-ink: #ff9a5c;
+  --peach: #5a3520;
+  --ban1: #0a0e12;
+  --ban2: #2c4054;
   --ok: #56d08a;
   --ok-bg: #12261a;
   --warn: #e3b341;
   --warn-bg: #2b2111;
   --bad: #ff8a78;
   --bad-bg: #2d1614;
-  --pending: #8b9b90;
-  --pending-bg: #232c25;
+  --pending: #8d9aa8;
+  --pending-bg: #222b35;
   --matrix: #7fb2f0;
   --matrix-bg: #15233a;
   --mark: #6b5a14;
   --ins: #183a24;
   --del: #45201b;
-  --rail: #121914;
+  --rail: #0f141a;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  --lift: 0 22px 40px -22px rgb(0 0 0 / 0.8);
   color-scheme: dark;
 }
 
@@ -82,7 +102,7 @@ button {
 }
 button:hover:not(:disabled) { background: var(--hover); }
 button:disabled { opacity: 0.5; cursor: default; }
-button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
 button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
 /* A main button that can't be used yet is plainly grey, not a paler green that still looks pressable */
 button.primary:disabled { background: var(--pending-bg); color: var(--muted); border-color: var(--border); opacity: 1; }
@@ -98,7 +118,8 @@ textarea { width: 100%; resize: vertical; }
 .empty { color: var(--muted); padding: 12px; }
 .row { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 6px 0; }
 
-.app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
+/* Rows: the notice bar (empty most of the time), the app bar, the place, the status bar */
+.app { display: grid; grid-template-rows: auto auto 1fr auto; height: 100%; }
 /* The rail picks the place (Write, Library, Network); each fills the rest of the window */
 .workspace { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 0; }
 /* clip, not hidden: scrolling a quote into view must not scroll the whole view and hide the tabs */
@@ -209,7 +230,7 @@ textarea { width: 100%; resize: vertical; }
 
 /* Focus mode: the page and its toolbar only */
 .app.focus { grid-template-rows: minmax(0, 1fr); }
-.app.focus .app-bar, .app.focus .rail, .app.focus .dock, .app.focus .side-panel { display: none; }
+.app.focus .app-bar, .app.focus .rail, .app.focus .dock, .app.focus .side-panel, .app.focus .notice-slot { display: none; }
 .app.focus .workspace, .app.focus .write-view { grid-template-columns: minmax(0, 1fr); }
 .focus-exit {
   position: fixed; top: 10px; right: 16px; z-index: 60; display: flex; align-items: center; gap: 10px;
@@ -370,7 +391,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .settings-nav button { border: none; background: none; text-align: left; padding: 8px 10px; border-radius: 8px; color: var(--muted); }
 .settings-nav button.on { background: var(--panel); color: var(--accent); font-weight: 600; box-shadow: var(--shadow); }
 .settings-body { overflow-y: auto; padding: 16px 24px 28px; /* a fade at the bottom edge: there's more below */ mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); }
-.settings-body .modal-head h2 { font: 600 17px/1.3 var(--doc-font); }
+.settings-body .modal-head h2 { font: 400 22px/1.2 var(--display); letter-spacing: -0.01em; }
 .setting + .setting { padding-top: 16px; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
 .setting > .muted { margin: -2px 0 10px; line-height: 1.5; }
 .setting .segmented + .muted, .setting .setting-input + .muted, .setting-slider + .muted { margin: 8px 0 0; }
@@ -452,8 +473,8 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
   background:
     linear-gradient(var(--panel) 30%, transparent) top / 100% 28px no-repeat local,
     linear-gradient(transparent, var(--panel) 70%) bottom / 100% 28px no-repeat local,
-    radial-gradient(farthest-side at 50% 0, rgb(20 40 26 / 0.16), transparent) top / 100% 10px no-repeat scroll,
-    radial-gradient(farthest-side at 50% 100%, rgb(20 40 26 / 0.16), transparent) bottom / 100% 10px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 0, rgb(24 34 44 / 0.16), transparent) top / 100% 10px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgb(24 34 44 / 0.16), transparent) bottom / 100% 10px no-repeat scroll,
     var(--panel);
 }
 .draft-preview { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
@@ -1705,15 +1726,17 @@ tr:hover .mx-row-actions, .mx-row-actions:focus-within { opacity: 1; }
 .proposal-repaired summary { color: var(--matrix); }
 
 /* ---------- Writing tools: three jobs (Compose, Check, Sources) ---------- */
-.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 8px 12px 0; padding: 4px; border-radius: 12px; background: var(--rail); flex: none; }
+/* Underline tabs: plain words on a hairline, the current one marked with a short ember line */
+.tools { display: flex; gap: 2px; margin: 2px 12px 0; border-bottom: 1px solid var(--line); flex: none; }
 .tool {
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 4px 6px;
-  border: none; border-radius: 9px; background: transparent; color: var(--muted); font-size: 13px;
+  position: relative; display: flex; align-items: center; gap: 7px; padding: 9px 12px 8px; margin-bottom: -1px;
+  border: none; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; background: transparent;
+  color: var(--muted); font-size: 13.5px; font-weight: 600;
 }
-.tool:hover:not(:disabled) { color: var(--text); }
-.tool.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+.tool:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.tool.on { color: var(--text); border-bottom-color: var(--ember); }
 .tool.on svg { color: var(--accent); }
-.tool .tab-badge { top: 3px; right: 12px; }
+.tool .tab-badge { position: static; margin-left: -1px; }
 /* A badge is only ever "needs your attention": the same red as the words for it */
 .tab-badge { background: var(--bad); color: var(--panel); }
 .side-panel .tab-hint { margin-top: 8px; }
@@ -1947,14 +1970,14 @@ button.lib-use.on { font-weight: 600; }
 .lib-pop kbd { font: 11px Consolas, monospace; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
 .lib-pop hr { width: 100%; flex: none; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
 .lib-pop-head { flex: none; padding: 6px 10px 4px; font: 700 10.5px/1.2 system-ui, sans-serif; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lib-toast { position: absolute; z-index: 60; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: min(640px, calc(100% - 40px)); padding: 9px 10px 9px 16px; border-radius: 10px; background: #18241c; color: #e4ebe5; font-size: 13px; box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.4); }
-.lib-toast button { border: none; background: none; padding: 2px 6px; color: #9fd8b4; font-weight: 600; white-space: nowrap; }
+.lib-toast { position: absolute; z-index: 60; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: min(640px, calc(100% - 40px)); padding: 9px 10px 9px 16px; border-radius: 10px; background: #18222c; color: #e6ebf0; font-size: 13px; box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.4); }
+.lib-toast button { border: none; background: none; padding: 2px 6px; color: #ffb98e; font-weight: 600; white-space: nowrap; }
 .lib-toast button:hover:not(:disabled) { background: rgb(255 255 255 / 0.12); }
-.lib-toast .lib-toast-x { color: #a9b8ad; font-size: 16px; font-weight: 400; }
-:root[data-theme="dark"] .lib-toast { background: #e4ebe5; color: #18241c; }
-:root[data-theme="dark"] .lib-toast button { color: #1f6a3c; }
+.lib-toast .lib-toast-x { color: #9fb0c0; font-size: 16px; font-weight: 400; }
+:root[data-theme="dark"] .lib-toast { background: #e6ebf0; color: #18222c; }
+:root[data-theme="dark"] .lib-toast button { color: #ad4c17; }
 :root[data-theme="dark"] .lib-toast button:hover:not(:disabled) { background: rgb(0 0 0 / 0.08); }
-:root[data-theme="dark"] .lib-toast .lib-toast-x { color: #56665b; }
+:root[data-theme="dark"] .lib-toast .lib-toast-x { color: #54616e; }
 
 /* Filter chips above the list, and saving them (with the search) as a view */
 .lib-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: none; min-height: 44px; padding: 7px 20px; border-bottom: 1px solid var(--border); }
@@ -1985,7 +2008,7 @@ button.lib-use.on { font-weight: 600; }
 .lib-related-none { margin: 0; font-size: 12.5px; line-height: 1.5; }
 
 /* Quick look: a peek at the selected paper, over the library */
-.ql-back { position: absolute; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgb(15 25 18 / 0.32); }
+.ql-back { position: absolute; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgb(13 20 28 / 0.32); }
 .ql { display: flex; flex-direction: column; width: min(960px, 100%); max-height: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 24px 60px -16px rgb(0 0 0 / 0.45); outline: none; overflow: hidden; }
 .ql-top { display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 12px 10px 18px; border-bottom: 1px solid var(--border); }
 .ql-at { font-size: 12px; }

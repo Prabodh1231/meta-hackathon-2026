@@ -34,8 +34,8 @@ export function RelatedPapers({ doc, docById, byline, onShow }: {
   if (!related) return null
   const shown = related.filter((r) => docById.has(r.doc_id))
   return (
-    <>
-      <h4 className="lib-doc-label" title="From the papers' reference lists and the words in their records. Muse isn't asked.">Related in your library</h4>
+    <section className="card-frame lib-related-frame">
+      <h4 title="From the papers' reference lists and the words in their records. Muse isn't asked.">Related in your library</h4>
       {shown.length === 0 ? (
         <p className="muted lib-related-none">No other paper here cites it, is cited by it, shares its references or reads like it.</p>
       ) : (
@@ -54,6 +54,6 @@ export function RelatedPapers({ doc, docById, byline, onShow }: {
           })}
         </ul>
       )}
-    </>
+    </section>
   )
 }

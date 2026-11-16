@@ -23,6 +23,12 @@ const PATHS = {
   plus: 'M12 5v14M5 12h14',
   drafts: 'M8 3h8l4 4v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM16 3v4h4M10 12h6M10 16h4M3 7v12a2 2 0 0 0 2 2',
   word: 'M6 3h9l4 4v14H6zM15 3v4h4M8.5 11l1.5 6 2-4.5 2 4.5 1.5-6',
+  home: 'M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z',
+  open: 'M7 17L17 7M9 7h8v8', // the corner arrow on a card: it opens that place
+  back: 'M19 12H5M11 6l-6 6 6 6',
+  forward: 'M5 12h14M13 6l6 6-6 6',
+  lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+  check: 'M5 12l5 5 9-10',
 } as const
 
 export type IconName = keyof typeof PATHS

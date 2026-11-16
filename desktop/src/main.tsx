@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ReaderWindow } from './components/ReaderDialog'
 import { applyTheme, cachedTheme } from './theme'
 import './styles.css'
+import './design.css'
 
 applyTheme(cachedTheme())
 

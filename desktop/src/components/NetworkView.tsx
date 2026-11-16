@@ -23,7 +23,6 @@ type Scope = { kind: 'topic'; topic: string } | { kind: 'ticked'; ids: number[] 
 const LARGE = 60 // a whole library bigger than this gets a warning before it's drawn
 const HUBS = 10 // papers named on the graph without pointing at them: the most connected
 
-const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 function byline(n: GraphNode): string {
   return [n.authors[0], n.year].filter(Boolean).join(' ')
@@ -78,6 +77,8 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
 
   useEffect(() => {
     if (!graph || !box.current) return
+    // The canvas is a night panel in both themes (design.css), so the colours are read from it, not the page.
+    const css = (name: string) => getComputedStyle(box.current ?? document.documentElement).getPropertyValue(name).trim()
     const accent = css('--accent'), muted = css('--muted'), border = css('--border'), text = css('--text'), panel = css('--panel')
     const shown = graph.nodes.filter((n) => n.kind === 'paper' || showMissing)
     const ids = new Set(shown.map((n) => n.id))
@@ -128,6 +129,7 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
       style: [
         { selector: 'node', style: { width: 'data(size)', height: 'data(size)', 'background-color': accent, label: '', color: text, 'font-size': 11, 'text-valign': 'bottom', 'text-margin-y': 4, 'text-outline-color': panel, 'text-outline-width': 2.5 } },
         // Names on a pale plate, drawn above other nodes, so a neighbour never hides them.
+        { selector: 'node[?hub]', style: { 'background-color': css('--ember') } },
         { selector: 'node[?hub], node.named', style: { label: 'data(label)', 'z-index': 10, 'text-background-color': panel, 'text-background-opacity': 0.85, 'text-background-padding': '2px', 'text-background-shape': 'roundrectangle', 'text-outline-width': 0 } },
         { selector: 'node[?hub]', style: { 'font-weight': 600, 'font-size': 12 } },
         { selector: 'node[kind = "missing"]', style: { 'background-color': css('--pending-bg'), 'border-width': 2, 'border-color': text, 'border-style': 'dashed', color: muted, 'font-style': 'italic' } },
@@ -375,7 +377,7 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
             {showKeywords && <span><svg width="38" height="12" aria-hidden="true"><line x1="1" y1="6" x2="37" y2="6" stroke="var(--warn)" strokeWidth="2" strokeDasharray="4 3" /></svg> share keywords</span>}
             <span><svg width="38" height="14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="currentColor" /><circle cx="26" cy="7" r="4" fill="currentColor" /></svg> your papers; bigger = more links</span>
             {showMissing && <span><svg width="38" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="var(--pending-bg)" stroke="var(--text)" strokeDasharray="2 1.5" /></svg> cited, but not in your library</span>}
-            <span className="network-legend-tip">Names show for the {HUBS} most-linked papers; point at any other to see it.</span>
+            <span className="network-legend-tip">The {HUBS} most-linked papers are orange and named; point at any other to see it.</span>
             <span className="network-legend-tip">Keyboard: Tab to the graph, then arrow keys move between papers and Enter opens one. List is the accessible equivalent: the same papers in a sortable table.</span>
           </div>
         </div>

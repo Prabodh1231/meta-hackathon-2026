@@ -1,3 +1,5 @@
+import { Blurb } from './GettingStarted'
+import type { IconName } from './Icon'
 import { useEffect, useRef, useState } from 'react'
 import { useFocusTrap } from '../useFocusTrap'
 import { api } from '../api'
@@ -33,6 +35,16 @@ export const DEFAULT_SETTINGS: Settings = {
   folder_similarity: 50,
   contact_email: '',
   index_lookup: true,
+}
+
+/** What each section is for, in a line at its top. */
+const ABOUT: Record<Section, { icon: IconName; lead: string; text: string }> = {
+  appearance: { icon: 'focus', lead: 'How the app looks.', text: 'Theme, page width, text size and the font of your draft. Nothing here changes what you have written.' },
+  writing: { icon: 'write', lead: 'How Muse writes and cites.', text: 'The citation style for exports, how much Muse reads before drafting, and which sources it may cite.' },
+  review: { icon: 'review', lead: 'How drafts are checked and kept.', text: 'How close a match counts as duplication, when citations are rechecked, and how often versions are saved.' },
+  library: { icon: 'library', lead: 'How papers are filed and looked up.', text: 'How closely a paper must match a topic to be filed there, and whether new papers are looked up in scholarly indexes.' },
+  search: { icon: 'search', lead: 'How your library is searched.', text: 'What runs on this computer, and what the AI adds on top.' },
+  model: { icon: 'assistant', lead: 'The AI that reads your sources.', text: 'Muse needs a key. Without one, a stand-in matches words instead of reading them.' },
 }
 
 const FONTS: { value: Settings['doc_font']; label: string; family: string }[] = [
@@ -384,6 +396,9 @@ export function SettingsDialog({ settings: s, onChange, onModelChanged, onClose,
               ×
             </button>
           </header>
+          <Blurb icon={ABOUT[section].icon} lead={ABOUT[section].lead} inline>
+            {ABOUT[section].text}
+          </Blurb>
 
           {section === 'appearance' && (
             <>

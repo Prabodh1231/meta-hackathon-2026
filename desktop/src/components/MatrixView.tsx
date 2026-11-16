@@ -33,6 +33,8 @@ interface Props {
   openRequest?: { id: number; at: number } | null
   /** The Matrix place is on screen: a matrix finishing while it isn't sends a desktop notification. */
   visible: boolean
+  /** A matrix finished being read while another place in the app was showing. */
+  onReady?: (m: { id: number; name: string; cells: number }) => void
 }
 
 const STATUS_TEXT: Record<MatrixCell['status'], string> = {
@@ -567,7 +569,7 @@ async function save(name: string, data: ArrayBuffer, ext: string) {
   return file
 }
 
-export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences, onInsertFinding, onWriteProposal, openRequest, visible }: Props) {
+export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences, onInsertFinding, onWriteProposal, openRequest, visible, onReady }: Props) {
   const [list, setList] = useState<MatrixSummary[] | null>(null)
   const [matrix, setMatrix] = useState<Matrix | null>(null)
   const [creating, setCreating] = useState(false)
@@ -611,6 +613,7 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
           if (!m.pending) {
             refreshList()
             notifyDone(`“${m.name}” is ready`, `Muse finished reading ${m.cells} cells.`, !visible)
+            if (!visible) onReady?.({ id: m.id, name: m.name, cells: m.cells })
           }
         })
         .catch(() => {})
