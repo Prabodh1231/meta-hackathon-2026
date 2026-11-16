@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Library · works like a mail app</title>
+<link rel="stylesheet" href="write-shared.css">
+<style>
+.concept .steps button b { font-weight: 700; margin-right: 4px; }
+.concept .xl { color: #9fb3a5; font-size: 12px; margin-left: auto; flex: none; }
+.concept .xl + .steps { margin-left: 0; }
+.app { grid-template-columns: 68px minmax(0, 1fr); }
+.search { cursor: text; }
+.search .scope { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--rail); color: var(--text); }
+.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; color: var(--text); }
+.search:focus-within { border-color: var(--accent); }
+
+.lib { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; background: var(--panel); }
+.lib-head { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+.lib-head h2 { margin: 0; font: 600 20px/1 var(--doc-font); }
+.lib-head .muted, .muted { color: var(--muted); font-size: 12.5px; }
+.sp { flex: 1; }
+.lib { min-height: 0; }
+.lib-body { display: grid; grid-template-columns: 216px minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+
+/* Sidebar: ready-made views, then folders */
+.nav { background: var(--bg); border-right: 1px solid var(--border); overflow: auto; padding: 10px 8px 16px; }
+.nav .lbl { font: 700 10.5px/1 "Segoe UI"; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 12px 10px 6px; display: flex; align-items: center; gap: 6px; }
+.nav button.it { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px 6px 10px; border-radius: 8px; text-align: left; font-size: 13px; }
+.nav button.it:hover { background: var(--hover); }
+.nav button.it.on { background: var(--panel); color: var(--accent); font-weight: 600; box-shadow: var(--shadow); }
+.nav button.it.drop { outline: 2px dashed var(--accent); }
+.nav .ico { width: 16px; text-align: center; color: var(--muted); flex: none; font-size: 13px; }
+.nav .on .ico { color: inherit; }
+.nav .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav .ct { font-size: 11.5px; color: var(--muted); min-width: 22px; text-align: right; }
+.nav .ct.warn { color: var(--warn); font-weight: 700; }
+.nav .more { color: var(--accent); font-size: 12.5px; padding: 6px 10px 6px 34px; }
+.nav .merge { margin: 6px 6px 2px; padding: 8px 10px; border-radius: 8px; background: var(--warn-bg); font-size: 12px; line-height: 1.4; }
+.nav .merge button { color: var(--accent); font-weight: 600; margin-right: 8px; }
+
+/* List */
+.main { display: grid; grid-template-rows: 44px minmax(0, 1fr); min-width: 0; }
+.tools { display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid var(--border); white-space: nowrap; min-width: 0; }
+.tools.sel { background: #e3efe6; }
+.tools .ghost { height: 28px; padding: 0 10px; font-size: 12.5px; background: var(--panel); }
+.tools .ghost.danger { color: var(--bad); }
+.tools .x { width: 28px; height: 28px; border-radius: 7px; color: var(--muted); }
+.tools .x:hover { background: var(--hover); }
+.tools .scope { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.tools .scope b { color: var(--text); }
+.tools .scope.some b { color: var(--ok); }
+.link { color: var(--accent); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.wrap { overflow: auto; outline: 0; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 13px; }
+th { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--border); text-align: left; font: 600 11.5px/1 "Segoe UI"; color: var(--muted); padding: 0; }
+th button { width: 100%; padding: 9px 8px; text-align: left; display: flex; gap: 5px; align-items: center; }
+th button:hover { background: var(--hover); color: var(--text); }
+td { height: 33px; padding: 0 8px; border-bottom: 1px solid #e6ebe4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; user-select: none; }
+tr:hover td { background: #f1f5ef; }
+tr.sel td { background: #dcebe0; }
+tr.sel.cur td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.c-pick { width: 34px; text-align: center; padding-left: 12px; }
+.c-star { width: 26px; padding: 0; text-align: center; color: #b9c4bb; cursor: pointer; }
+.c-star.on { color: #c98a00; }
+.c-authors { width: 150px; } .c-year { width: 54px; } .c-venue { width: 190px; } .c-added { width: 84px; } .c-cites { width: 64px; text-align: right; } .c-folders { width: 170px; }
+td.c-authors, td.c-year, td.c-venue, td.c-added, td.c-cites, td.c-folders { color: var(--muted); }
+td.c-cites { padding-right: 12px; }
+input[type=checkbox] { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); vertical-align: middle; cursor: pointer; }
+.tc { display: flex; align-items: center; min-width: 0; }
+.tc > * { flex: none; }
+.tc .ttl { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ttl { font-weight: 500; color: var(--text); }
+tr.unread .ttl { font-weight: 700; }
+tr.unread td.c-pick { box-shadow: inset 3px 0 0 #3b7dd8; }
+.pill { display: inline-block; font: 700 10px/1.6 "Segoe UI"; border-radius: 999px; padding: 0 6px; margin-left: 6px; vertical-align: 1px; }
+.pill.cited { color: var(--ok); background: var(--ok-bg); }
+.pill.warn { color: var(--warn); background: var(--warn-bg); }
+.pill.bad { color: #fff; background: var(--bad); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 7px; vertical-align: 1px; }
+.kind { font: 700 9.5px/1.5 "Segoe UI"; letter-spacing: .04em; padding: 0 5px; border-radius: 4px; color: var(--bad); background: var(--bad-bg); margin-right: 8px; vertical-align: 1px; }
+.kind.docx { color: #1f5fae; background: #dde9f8; } .kind.text { color: var(--warn); background: var(--warn-bg); } .kind.pptx { color: #a6501a; background: #f9e3d3; }
+.sect td { height: 30px; background: var(--bg); font: 700 10.5px/1 "Segoe UI"; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+tr.hit td { height: auto; white-space: normal; padding: 8px 8px 9px; line-height: 1.45; cursor: pointer; }
+tr.hit .from { font-size: 12px; color: var(--muted); }
+tr.hit mark { background: var(--mark); border-radius: 2px; padding: 0 1px; }
+.empty { padding: 48px 20px; text-align: center; color: var(--muted); }
+.empty b { display: block; font: 600 17px var(--doc-font); color: var(--text); margin-bottom: 6px; }
+
+/* Details */
+.pane { width: 330px; border-left: 1px solid var(--border); overflow: auto; padding: 16px 18px 24px; }
+.pane h3 { font: 600 18px/1.25 var(--doc-font); margin: 8px 0 6px; }
+.pane p { margin: 0 0 8px; font-size: 13px; }
+.pane .acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 14px; }
+.pane .acts .ghost { height: 30px; font-size: 12.5px; }
+.pane .acts .ghost.on { background: var(--ok-bg); border-color: #9fcdb0; color: var(--ok); font-weight: 600; }
+.pane h4 { font: 700 10.5px/1 "Segoe UI"; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 16px 0 6px; }
+.pane .sum { font: 13.5px/1.55 var(--doc-font); }
+.tag { display: inline-block; font-size: 12px; padding: 1px 8px; margin: 0 4px 4px 0; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); }
+.pane ul { margin: 8px 0; padding-left: 18px; font-size: 13px; }
+.pane li { margin-bottom: 4px; }
+
+/* With the details open the list gives up Journal and Added so titles keep their room. */
+@media (max-width: 1500px) { .lib-body.has-pane .c-venue, .lib-body.has-pane .c-added { display: none; } }
+
+/* Menus and toast */
+.menu { position: fixed; z-index: 60; min-width: 210px; max-height: 70vh; overflow: auto; padding: 5px; background: var(--panel); border-radius: 10px; box-shadow: var(--pop); font-size: 13px; }
+.menu button, .menu label { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border-radius: 6px; text-align: left; cursor: pointer; }
+.menu button:hover, .menu label:hover { background: var(--hover); }
+.menu button.danger { color: var(--bad); }
+.menu kbd { margin-left: auto; }
+.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+.menu .hd { padding: 6px 10px 4px; font: 700 10.5px/1 "Segoe UI"; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.toast { position: fixed; z-index: 80; left: 50%; bottom: 48px; transform: translateX(-50%); display: flex; gap: 14px; align-items: center; padding: 9px 16px; border-radius: 10px; background: #18241c; color: #e4ebe5; font-size: 13px; box-shadow: var(--pop); }
+.toast button { color: #9fd8b4; font-weight: 600; }
+.dock { grid-column: 2; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid var(--border); background: var(--panel); font-size: 12.5px; color: var(--muted); }
+.rail { grid-row: 2 / 4; }
+</style></head>
+<body>
+<div class="concept"><b>Library · works like a mail app</b><span>Click selects, Ctrl/Shift-click selects more, right-click for the menu, double-click or Enter opens, Delete removes.</span><a href="index.html">all concepts</a><span class="xl">Optional extras:</span><div class="steps" id="extras" aria-label="Optional extras"></div></div>
+<div class="app">
+  <header class="bar">
+    <div class="logo">G</div>
+    <div class="docid"><div class="name">Mobile money and financial inclusion <span class="pen">✎</span></div><div class="sub">Saved · <button>v8 ▾</button></div></div>
+    <button class="drafts-btn">▤ Drafts · 7 ▾</button>
+    <label class="search"><span>⌕</span><span class="scope">Library</span><input id="q" placeholder="Search titles, authors, journals, keywords…" autocomplete="off" spellcheck="false"><kbd>Ctrl K</kbd></label>
+    <div class="right"><button class="ghost">⤓ Export</button><button class="ghost sq">⚙</button></div>
+  </header>
+  <nav class="rail">
+    <button><span class="ico">✎</span>Write</button>
+    <button class="on"><span class="ico">▥</span>Library</button>
+    <button><span class="ico">⚯</span>Network</button>
+    <button><span class="ico">▦</span>Matrix</button>
+  </nav>
+  <section class="lib">
+    <header class="lib-head"><h2>Library</h2><span class="muted" id="count"></span><span class="sp"></span><button class="primary">+ Add sources</button><button class="ghost sq" title="Duplicates, missing papers, look up details">⋯</button></header>
+    <div class="lib-body">
+      <nav class="nav" id="nav" aria-label="Views and folders"></nav>
+      <div class="main">
+        <div class="tools" id="tools"></div>
+        <div class="wrap" id="wrap" tabindex="0" aria-label="Sources"></div>
+      </div>
+      <aside class="pane" id="pane" hidden></aside>
+    </div>
+  </section>
+  <footer class="dock"><span>Draft: <b>153</b> words</span><span>Citations: <b style="color:var(--ok)">12 supported</b> · <span style="color:var(--bad)">1 needs attention</span></span><span class="sp"></span><span id="dockn"></span></footer>
+</div>
+<script src="09-library-data.js"></script>
+<script>
+const $ = (s, el = document) => el.querySelector(s)
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const surname = (a) => (a.includes(',') ? a.split(',')[0] : a.split(' ').pop()).trim()
+const authorsShort = (d) => (d.a.length > 2 ? `${surname(d.a[0])} et al.` : d.a.map(surname).join(' & '))
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
+const KIND = { pdf: 'PDF', docx: 'DOC', text: 'NOTE', pptx: 'SLIDES', image: 'SCAN' }
+
+// ---------- state ----------
+const docs = LIB.docs
+const byId = new Map(docs.map((d) => [d.id, d]))
+const latest = docs.reduce((m, d) => (d.ad > m ? d.ad : m), '')
+// This library was all added within three weeks, so "recent" here is the last few days of adding.
+const weekAgo = new Date(new Date(latest) - 3 * 864e5).toISOString().slice(0, 10)
+const retracted = (d) => /^retracted/i.test(d.t)
+const needs = (d) => !d.y || !d.a.length || retracted(d)
+// Mock state: which papers the open draft cites (the five most cited worldwide), and which are unread.
+const cited = new Set([...docs].sort((a, b) => (b.c ?? 0) - (a.c ?? 0)).slice(0, 5).map((d) => d.id))
+const unread = new Set(docs.filter((d) => d.ad >= '2026-11-01').map((d) => d.id))
+const starred = new Set([...cited].slice(0, 3))
+const removed = [] // { doc }
+const drafting = new Set() // "Drafting from": empty means the whole library
+const sel = new Set() // selected rows
+let cur = null, anchor = null // the row with the keyboard focus, and where a Shift range starts
+let view = 'all', query = '', sort = { key: 'ad', dir: -1 }, allFolders = false
+const extras = { A: false, B: false, C: false, D: false, E: false }
+const cols = { a: true, y: true, v: true, ad: true, c: false, f: false }
+const EXTRA = { A: 'Search inside papers', B: 'Copy citation', C: 'Unread and star', D: 'Tidy folders', E: 'Choose columns' }
+const COLS = [['a', 'Authors', 'c-authors', 1], ['y', 'Year', 'c-year', -1], ['v', 'Journal', 'c-venue', 1], ['ad', 'Added', 'c-added', -1], ['c', 'Cited by', 'c-cites', -1], ['f', 'Folders', 'c-folders', 1]]
+const folderWord = () => (extras.D ? 'topic' : 'folder')
+
+// ---------- what's shown ----------
+const VIEWS = [
+  ['all', '▤', 'All sources', () => true],
+  ['recent', '◷', 'Recently added', (d) => d.ad >= weekAgo],
+  ['drafting', '●', 'Drafting from', (d) => drafting.has(d.id)],
+  ['cited', '❝', 'Cited in this draft', (d) => cited.has(d.id)],
+  ['needs', '!', 'Needs attention', needs],
+  ['unfiled', '◌', 'Unfiled', (d) => !d.f.length],
+]
+function rows() {
+  if (view === 'removed') return []
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const inView = view.startsWith('f:') ? (d) => d.f.includes(view.slice(2))
+    : view === 'starred' ? (d) => starred.has(d.id) : view === 'unread' ? (d) => unread.has(d.id)
+    : VIEWS.find((v) => v[0] === view)[3]
+  const hay = (d) => `${d.t} ${d.a.join(' ')} ${d.v} ${d.s} ${d.f.join(' ')}`.toLowerCase()
+  const val = (d) => (sort.key === 't' ? d.t.toLowerCase() : sort.key === 'a' ? authorsShort(d).toLowerCase() || '￿'
+    : sort.key === 'y' ? d.y ?? 0 : sort.key === 'v' ? d.v.toLowerCase() || '￿' : sort.key === 'c' ? d.c ?? -1 : sort.key === 'f' ? d.f.length : d.ad + String(d.id).padStart(6, '0'))
+  return docs.filter((d) => inView(d) && words.every((w) => hay(d).includes(w)))
+    .sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir)
+}
+
+// ---------- render ----------
+function render() { renderNav(); renderTools(); renderTable(); renderPane(); renderExtras() }
+function renderExtras() {
+  $('#extras').innerHTML = Object.keys(EXTRA).map((k) => `<button data-x="${k}" aria-pressed="${extras[k]}"><b>${k}</b>${EXTRA[k]}</button>`).join('')
+}
+function renderNav() {
+  const it = (id, ico, name, n, cls = '') => `<button class="it${view === id ? ' on' : ''}" data-view="${esc(id)}"><span class="ico">${ico}</span><span class="nm">${esc(name)}</span><span class="ct ${cls}">${n}</span></button>`
+  let h = '<div class="lbl">Library</div>'
+  for (const [id, ico, name, fn] of VIEWS) {
+    const n = docs.filter(fn).length
+    if (id === 'drafting') h += it(id, ico, 'Drafting from', n || 'all')
+    else if (n || id === 'all') h += it(id, ico, name, n, id === 'needs' ? 'warn' : '')
+  }
+  if (extras.C) h += it('starred', '★', 'Starred', starred.size) + it('unread', '•', 'Unread', unread.size)
+  if (removed.length) h += it('removed', '↺', 'Removed', removed.length)
+  const fs = [...LIB.folders].map((f) => ({ ...f, n: docs.filter((d) => d.f.includes(f.name)).length })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))
+  h += `<div class="lbl">${extras.D ? 'Topics' : 'Folders'}<span class="sp"></span><span style="text-transform:none;letter-spacing:0;font-weight:400">largest first</span></div>`
+  if (extras.D) h += `<div class="merge" id="merge"><b>Sleep</b> and <b>Sleep Science</b> hold the same 4 papers.<br><button data-merge>Merge them</button><button data-merge="no">Keep both</button></div>`
+  for (const f of allFolders ? fs : fs.slice(0, 8)) h += it('f:' + f.name, '▣', f.name, f.n)
+  h += `<button class="more" data-allfolders>${allFolders ? 'Show fewer' : `Show all ${fs.length}`}</button>`
+  h += `<button class="it" data-newfolder><span class="ico">+</span><span class="nm">New ${folderWord()}</span></button>`
+  $('#nav').innerHTML = h
+  $('#count').textContent = `${plural(docs.length, 'source')} · ${fs.length} ${folderWord()}s`
+  $('#dockn').textContent = `${docs.length} sources · Muse · keyword + Muse search`
+}
+function renderTools() {
+  const t = $('#tools'), n = sel.size
+  t.className = 'tools' + (n ? ' sel' : '')
+  if (n) {
+    const allIn = [...sel].every((id) => drafting.has(id))
+    t.innerHTML = `<button class="x" data-act="clear" title="Clear the selection (Esc)">✕</button><b>${n} selected</b>
+      <button class="ghost" data-act="open">Open</button>
+      <button class="ghost" data-act="folder">Add to ${folderWord()} ▾</button>
+      <button class="ghost" data-act="draft">${allIn ? 'Stop drafting from' : 'Use for drafting'}</button>
+      ${extras.B ? '<button class="ghost" data-act="cite">Copy citation ▾</button>' : ''}
+      <button class="ghost danger" data-act="remove">Remove</button>`
+    return
+  }
+  const r = rows(), name = view.startsWith('f:') ? view.slice(2) : view === 'removed' ? 'Removed' : view === 'starred' ? 'Starred' : view === 'unread' ? 'Unread' : VIEWS.find((v) => v[0] === view)[2]
+  const sorted = { ad: sort.dir < 0 ? 'newest first' : 'oldest first', t: 'by title', a: 'by author', y: sort.dir < 0 ? 'newest year first' : 'oldest year first', v: 'by journal', c: 'most cited first', f: 'by folders' }[sort.key]
+  t.innerHTML = `<b>${esc(name)}</b><span class="muted">${view === 'removed' ? plural(removed.length, 'source') : `${r.length}${query ? ` of ${docs.length} matching “${esc(query)}”` : ''} · ${sorted}`}</span>
+    ${extras.A && !query ? `<button class="link" data-try>Try “${LIB.hitQuery}”</button>` : ''}
+    <button class="ghost" title="Narrow by when you got each source or when it was published">◷ Timeline</button><span class="sp"></span>
+    <span class="scope${drafting.size ? ' some' : ''}"><b>Drafting from:</b> ${drafting.size ? `${drafting.size} selected` : 'whole library'}</span>
+    ${drafting.size ? '<button class="link" data-act="whole">Use whole library</button>' : ''}`
+}
+function titleCell(d) {
+  return `<div class="tc">${drafting.has(d.id) ? '<span class="dot" title="Muse drafts from this"></span>' : ''}<span class="kind ${d.k}">${KIND[d.k]}</span><span class="ttl">${esc(d.t)}</span>` +
+    (cited.has(d.id) ? '<span class="pill cited" title="Your draft cites this">Cited</span>' : '') +
+    (retracted(d) ? '<span class="pill bad">Retracted</span>' : !d.y || !d.a.length ? '<span class="pill warn" title="No year or author in its record">Needs metadata</span>' : '') + '</div>'
+}
+function renderTable() {
+  const w = $('#wrap'), top = w.scrollTop
+  if (view === 'removed') {
+    w.innerHTML = `<table><thead><tr><th><button>Title</button></th><th class="c-added"><button>Removed</button></th><th class="c-venue"></th></tr></thead><tbody>${removed.map((r, i) =>
+      `<tr><td><span class="ttl">${esc(r.t)}</span></td><td class="c-added">today</td><td class="c-venue"><button class="link" data-restore="${i}">Restore</button></td></tr>`).join('')}</tbody></table>`
+    return
+  }
+  const r = rows(), on = COLS.filter((c) => cols[c[0]]), span = 2 + on.length + (extras.C ? 1 : 0)
+  const th = (key, label, cls) => `<th class="${cls}" data-sort="${key}"><button>${label}<span>${sort.key === key ? (sort.dir > 0 ? '▲' : '▼') : ''}</span></button></th>`
+  const cell = (d, k) => (k === 'a' ? esc(authorsShort(d)) : k === 'y' ? d.y ?? '' : k === 'v' ? esc(d.v) : k === 'ad' ? d.ad : k === 'c' ? (d.c ?? '').toLocaleString() : esc(d.f.join(', ')))
+  let h = `<table><thead><tr><th class="c-pick"><input type="checkbox" id="all" title="Select all (Ctrl+A)" ${r.length && r.every((d) => sel.has(d.id)) ? 'checked' : ''}></th>
+    ${extras.C ? '<th class="c-star"></th>' : ''}${th('t', 'Title', 'c-title')}${on.map((c) => th(c[0], c[1], c[2])).join('')}</tr></thead><tbody>`
+  h += r.map((d) => `<tr data-id="${d.id}" class="${sel.has(d.id) ? 'sel' : ''}${cur === d.id ? ' cur' : ''}${extras.C && unread.has(d.id) ? ' unread' : ''}" draggable="true">
+    <td class="c-pick"><input type="checkbox" ${sel.has(d.id) ? 'checked' : ''} aria-label="Select"></td>
+    ${extras.C ? `<td class="c-star${starred.has(d.id) ? ' on' : ''}" title="Star">${starred.has(d.id) ? '★' : '☆'}</td>` : ''}
+    <td class="c-title" title="${esc(d.t)}">${titleCell(d)}</td>${on.map((c) => `<td class="${c[2]}">${cell(d, c[0])}</td>`).join('')}</tr>`).join('')
+  if (extras.A && query) {
+    const same = query.toLowerCase().split(/\s+/).filter(Boolean).sort().join(' ') === LIB.hitQuery.split(' ').sort().join(' ')
+    h += `<tr class="sect"><td colspan="${span}">Inside your papers</td></tr>`
+    h += same ? LIB.hits.filter((x) => byId.has(x.id)).map((x) => `<tr class="hit" data-hit="${x.id}" data-page="${x.page}"><td></td><td colspan="${span - 1}">${x.sn}<div class="from">${esc(authorsShort(byId.get(x.id)) || 'No author')} ${byId.get(x.id).y ?? ''} · ${esc(byId.get(x.id).t.slice(0, 70))} · <b>page ${x.page}</b></div></td></tr>`).join('')
+      : `<tr class="hit"><td></td><td colspan="${span - 1}" class="muted">In the app, passages containing these words would be listed here with their page numbers. This mock has them only for “${LIB.hitQuery}”.</td></tr>`
+  }
+  h += '</tbody></table>'
+  if (!r.length && !(extras.A && query)) h += `<div class="empty"><b>${query ? 'No matches' : 'Nothing here yet'}</b>${query ? `Nothing has all of these words: “${esc(query)}”.` : view === 'drafting' ? 'Muse is drafting from your whole library. Select papers and choose Use for drafting to narrow it.' : ''}</div>`
+  w.innerHTML = h
+  w.scrollTop = top
+}
+function renderPane() {
+  const p = $('#pane'), ids = [...sel].filter((id) => byId.has(id))
+  p.hidden = !ids.length
+  p.parentElement.classList.toggle('has-pane', ids.length > 0)
+  if (!ids.length) return
+  if (ids.length > 1) {
+    p.innerHTML = `<h3>${ids.length} papers selected</h3><p class="muted">The buttons above the list, the right-click menu and the Delete key work on all of them.</p>
+      <ul>${ids.slice(0, 12).map((id) => `<li>${esc(byId.get(id).t)}</li>`).join('')}${ids.length > 12 ? `<li class="muted">and ${ids.length - 12} more</li>` : ''}</ul>`
+    return
+  }
+  const d = byId.get(ids[0]), on = drafting.has(d.id)
+  p.innerHTML = `<span class="kind ${d.k}">${KIND[d.k]}</span>${cited.has(d.id) ? '<span class="pill cited">Your draft cites this</span>' : ''}${retracted(d) ? '<span class="pill bad">Retracted</span>' : ''}
+    <h3>${esc(d.t)}</h3><p>${esc(d.a.join(', ')) || '<span class="muted">No author in its record</span>'}</p>
+    <p class="muted">${[d.y, esc(d.v), d.p > 1 ? `${d.p} pages` : ''].filter(Boolean).join(' · ')}</p>
+    <div class="acts"><button class="primary" data-act="open">Open ${d.k === 'pdf' ? 'PDF' : 'file'}</button>
+      <button class="ghost${on ? ' on' : ''}" data-act="draft">${on ? '● Drafting from this' : 'Use for drafting'}</button>
+      <button class="ghost" data-act="edit">Edit details</button>${extras.B ? '<button class="ghost" data-act="cite">Copy citation ▾</button>' : ''}</div>
+    ${d.s ? `<h4>Summary · written by Muse</h4><p class="sum">${esc(d.s)}</p>` : ''}
+    <h4>${extras.D ? 'Topics' : 'Folders'}</h4><div>${d.f.map((f) => `<span class="tag">${esc(f)}</span>`).join('') || '<span class="muted">None yet</span>'}</div>
+    <h4>File</h4><p class="muted">Added ${d.ad}${d.c != null ? ` · cited ${d.c.toLocaleString()} times worldwide` : ''}${d.doi ? `<br>DOI ${esc(d.doi)}` : ''}</p>`
+}
+
+// ---------- selection ----------
+function select(id, e = {}) {
+  const r = rows().map((d) => d.id)
+  if (e.shiftKey && anchor != null && r.includes(anchor)) {
+    const [a, b] = [r.indexOf(anchor), r.indexOf(id)].sort((x, y) => x - y)
+    if (!e.ctrlKey && !e.metaKey) sel.clear()
+    for (const x of r.slice(a, b + 1)) sel.add(x)
+  } else if (e.ctrlKey || e.metaKey || e.toggle) {
+    sel.has(id) ? sel.delete(id) : sel.add(id)
+    anchor = id
+  } else {
+    sel.clear(); sel.add(id); anchor = id
+  }
+  cur = id
+  render()
+}
+const clearSel = () => { sel.clear(); cur = anchor = null; render() }
+
+// ---------- actions on the selection ----------
+let toastTimer
+function toast(msg, undo) {
+  document.querySelector('.toast')?.remove()
+  const t = document.createElement('div')
+  t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg
+  if (undo) { const b = document.createElement('button'); b.textContent = 'Undo'; b.onclick = () => { undo(); t.remove(); render() }; t.append(b) }
+  document.body.append(t)
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.remove(), 6000)
+}
+const picked = () => [...sel].map((id) => byId.get(id)).filter(Boolean)
+const what = (ds) => (ds.length === 1 ? `“${ds[0].t.length > 48 ? ds[0].t.slice(0, 48) + '…' : ds[0].t}”` : `${ds.length} papers`)
+const apa = (d) => `${d.a.map(surname).join(', ') || 'Anon.'} (${d.y ?? 'n.d.'}). ${d.t}.${d.v ? ` ${d.v}.` : ''}${d.doi ? ` https://doi.org/${d.doi}` : ''}`
+const ACT = {
+  open(ds) { for (const d of ds) unread.delete(d.id); toast(ds.length === 1 ? `Opens ${what(ds)} in the reader` : `Opens ${ds.length} papers, each in the reader`); render() },
+  draft(ds) {
+    const off = ds.every((d) => drafting.has(d.id))
+    for (const d of ds) off ? drafting.delete(d.id) : drafting.add(d.id)
+    toast(off ? `Muse no longer drafts from ${what(ds)}` : `Muse now drafts only from the ${plural(drafting.size, 'paper')} under “Drafting from”`)
+    render()
+  },
+  whole() { drafting.clear(); if (view === 'drafting') view = 'all'; render() },
+  remove(ds) {
+    for (const d of ds) { docs.splice(docs.indexOf(d), 1); byId.delete(d.id); removed.unshift(d); sel.delete(d.id); drafting.delete(d.id) }
+    cur = anchor = null
+    toast(`Removed ${what(ds)}. The files stay on disk; restore from Removed.`, () => { for (const d of ds) { removed.splice(removed.indexOf(d), 1); docs.push(d); byId.set(d.id, d) } })
+    render()
+  },
+  edit() { toast('Opens the same Edit details form as today') },
+  read(ds) { const on = ds.some((d) => unread.has(d.id)); for (const d of ds) on ? unread.delete(d.id) : unread.add(d.id); render() },
+  star(ds) { const on = ds.every((d) => starred.has(d.id)); for (const d of ds) on ? starred.delete(d.id) : starred.add(d.id); render() },
+  clear: clearSel,
+}
+function act(name, at) {
+  const ds = picked()
+  if (name === 'folder') return menu(at, [{ hd: `Add ${what(ds)} to` }, ...LIB.folders.map((f) => ({ label: f.name, run() { for (const d of ds) if (!d.f.includes(f.name)) d.f.push(f.name); toast(`Added ${what(ds)} to ${f.name}`); render() } })), { hr: 1 }, { label: `New ${folderWord()}…`, run: () => toast(`Opens the New ${folderWord()} form`) }])
+  if (name === 'cite') return menu(at, ['APA', 'MLA', 'IEEE', 'BibTeX'].map((s) => ({ label: `Copy as ${s}`, run() { navigator.clipboard?.writeText(ds.map(apa).join('\n')).catch(() => {}); toast(`Copied ${plural(ds.length, s + ' citation')}`) } })).concat([{ hr: 1 }, { label: 'Export as .bib…', run: () => toast(`Saves ${plural(ds.length, 'entry').replace('entrys', 'entries')} to a .bib file`) }]))
+  if (name !== 'clear' && name !== 'whole' && !ds.length) return
+  ACT[name](ds)
+}
+
+// ---------- menus ----------
+function menu(at, items) {
+  closeMenu()
+  const m = document.createElement('div')
+  m.className = 'menu'; m.setAttribute('role', 'menu')
+  for (const i of items) {
+    if (i.hr) { m.append(document.createElement('hr')); continue }
+    if (i.hd) { const d = document.createElement('div'); d.className = 'hd'; d.textContent = i.hd; m.append(d); continue }
+    if (i.check != null) {
+      const l = document.createElement('label'); l.innerHTML = `<input type="checkbox" ${i.check ? 'checked' : ''}> ${esc(i.label)}`
+      l.querySelector('input').onchange = i.run; m.append(l); continue
+    }
+    const b = document.createElement('button'); b.setAttribute('role', 'menuitem'); b.className = i.danger ? 'danger' : ''
+    b.innerHTML = `${esc(i.label)}${i.kbd ? `<kbd>${i.kbd}</kbd>` : ''}`
+    b.onclick = () => { closeMenu(); i.run() }
+    m.append(b)
+  }
+  document.body.append(m)
+  const r = at.getBoundingClientRect ? at.getBoundingClientRect() : { left: at.x, bottom: at.y }
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + 'px'
+  m.style.top = Math.max(8, Math.min(r.bottom + 4, innerHeight - m.offsetHeight - 8)) + 'px'
+}
+const closeMenu = () => document.querySelector('.menu')?.remove()
+function rowMenu(at) {
+  const ds = picked(), one = ds.length === 1
+  const anchorEl = { getBoundingClientRect: () => ({ left: at.x, bottom: at.y - 4 }) }
+  menu(at, [
+    { label: one ? 'Open' : `Open ${ds.length} papers`, kbd: 'Enter', run: () => act('open') },
+    { label: `Add to ${folderWord()}…`, run: () => act('folder', anchorEl) },
+    { label: ds.every((d) => drafting.has(d.id)) ? 'Stop drafting from' : 'Use for drafting', run: () => act('draft') },
+    ...(extras.B ? [{ label: 'Copy citation…', run: () => act('cite', anchorEl) }] : []),
+    ...(extras.C ? [{ label: ds.some((d) => unread.has(d.id)) ? 'Mark as read' : 'Mark as unread', run: () => act('read') }, { label: ds.every((d) => starred.has(d.id)) ? 'Remove star' : 'Star', run: () => act('star') }] : []),
+    ...(one ? [{ hr: 1 }, { label: 'Edit details…', run: () => act('edit') }, { label: 'Show in folder on disk', run: () => toast('Opens File Explorer at the file') }] : []),
+    { hr: 1 }, { label: 'Remove from library', kbd: 'Del', danger: true, run: () => act('remove') },
+  ])
+}
+
+// ---------- events ----------
+document.addEventListener('mousedown', (e) => { if (!e.target.closest('.menu')) closeMenu() })
+$('#extras').onclick = (e) => {
+  const k = e.target.closest('[data-x]')?.dataset.x
+  if (!k) return
+  extras[k] = !extras[k]
+  if (k === 'C' && !extras.C && (view === 'starred' || view === 'unread')) view = 'all'
+  render()
+  if (extras[k]) toast({ A: 'A on: type a search to see passages from inside your papers under the titles.', B: 'B on: Copy citation is in the selection bar, the right-click menu and the details.', C: 'C on: unread papers are bold with a blue edge; click a star; Starred and Unread are in the sidebar.', D: 'D on: folders are called Topics, and look-alike topics offer to merge.', E: 'E on: right-click a column header to choose columns.' }[k])
+}
+$('#nav').onclick = (e) => {
+  const b = e.target.closest('button')
+  if (!b) return
+  if (b.dataset.view) { view = b.dataset.view; sel.clear(); cur = anchor = null; $('#wrap').scrollTop = 0 }
+  else if ('allfolders' in b.dataset) allFolders = !allFolders
+  else if ('newfolder' in b.dataset) toast(`Opens the New ${folderWord()} form`)
+  else if ('merge' in b.dataset) {
+    if (b.dataset.merge !== 'no') { for (const d of docs) d.f = [...new Set(d.f.map((f) => (f === 'Sleep Science' ? 'Sleep' : f)))]; LIB.folders = LIB.folders.filter((f) => f.name !== 'Sleep Science'); toast('Merged Sleep Science into Sleep') }
+    extras.D = true; render(); $('#merge')?.remove(); return
+  }
+  render()
+}
+// Drop selected rows on a folder to file them there (as today, now for many at once).
+$('#nav').ondragover = (e) => { const b = e.target.closest('[data-view^="f:"]'); if (b) { e.preventDefault(); b.classList.add('drop') } }
+$('#nav').ondragleave = (e) => e.target.closest('.it')?.classList.remove('drop')
+$('#nav').ondrop = (e) => {
+  const b = e.target.closest('[data-view^="f:"]'); if (!b) return
+  const name = b.dataset.view.slice(2), ds = picked()
+  for (const d of ds) if (!d.f.includes(name)) d.f.push(name)
+  toast(`Added ${what(ds)} to ${name}`); render()
+}
+$('#tools').onclick = (e) => {
+  const b = e.target.closest('button')
+  if (!b) return
+  if ('try' in b.dataset) { $('#q').value = query = LIB.hitQuery; render(); return }
+  if (b.dataset.act) act(b.dataset.act, b)
+}
+$('#pane').onclick = (e) => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act, b) }
+const wrap = $('#wrap')
+wrap.onclick = (e) => {
+  if (e.target.id === 'all') { const r = rows(); const on = r.every((d) => sel.has(d.id)); for (const d of r) on ? sel.delete(d.id) : sel.add(d.id); return render() }
+  const rs = e.target.closest('[data-restore]')
+  if (rs) { const d = removed.splice(+rs.dataset.restore, 1)[0]; docs.push(d); byId.set(d.id, d); if (!removed.length) view = 'all'; toast(`Restored “${d.t.slice(0, 48)}”`); return render() }
+  const th = e.target.closest('th[data-sort]')
+  if (th) { const k = th.dataset.sort; sort = { key: k, dir: sort.key === k ? -sort.dir : k === 't' ? 1 : (COLS.find((c) => c[0] === k)?.[3] ?? 1) }; return render() }
+  const hit = e.target.closest('tr[data-hit]')
+  if (hit) return toast(`Opens the reader at page ${hit.dataset.page}, with the passage highlighted`)
+  const tr = e.target.closest('tr[data-id]')
+  if (!tr) return
+  const id = +tr.dataset.id
+  if (e.target.closest('.c-star')) { starred.has(id) ? starred.delete(id) : starred.add(id); return render() }
+  if (e.detail >= 2) return
+  select(id, e.target.closest('.c-pick') ? { toggle: true, shiftKey: e.shiftKey } : e)
+}
+wrap.ondblclick = (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && !e.target.closest('.c-pick, .c-star')) { if (!sel.has(+tr.dataset.id)) select(+tr.dataset.id); act('open') } }
+wrap.oncontextmenu = (e) => {
+  const th = e.target.closest('th')
+  if (th && extras.E) {
+    e.preventDefault()
+    return menu({ x: e.clientX, y: e.clientY }, [{ hd: 'Columns' }, ...COLS.map(([k, label]) => ({ label, check: cols[k], run() { cols[k] = !cols[k]; renderTable() } }))])
+  }
+  const tr = e.target.closest('tr[data-id]')
+  if (!tr) return
+  e.preventDefault()
+  if (!sel.has(+tr.dataset.id)) select(+tr.dataset.id)
+  rowMenu({ x: e.clientX, y: e.clientY })
+}
+wrap.ondragstart = (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && !sel.has(+tr.dataset.id)) select(+tr.dataset.id); e.dataTransfer.setData('text/plain', [...sel].join(',')) }
+wrap.onkeydown = (e) => {
+  const r = rows().map((d) => d.id)
+  if (e.key === 'Escape') return clearSel()
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); for (const id of r) sel.add(id); return render() }
+  if (e.key === 'Enter') return act('open')
+  if (e.key === 'Delete') return act('remove')
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  e.preventDefault()
+  const i = r.indexOf(cur), next = r[Math.max(0, Math.min(r.length - 1, i < 0 ? 0 : i + (e.key === 'ArrowDown' ? 1 : -1)))]
+  if (next == null) return
+  select(next, { shiftKey: e.shiftKey })
+  document.querySelector(`tr[data-id="${next}"]`)?.scrollIntoView({ block: 'nearest' })
+}
+$('#q').oninput = (e) => { query = e.target.value.trim(); sel.clear(); cur = anchor = null; render() }
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#q').focus() } })
+render()
+</script>
+</body></html>
