@@ -1,4 +1,5 @@
 import json
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -75,19 +76,17 @@ def stream(client, claim, **kw):
     return [json.loads(line) for line in res.text.splitlines()]
 
 
-def test_stream_shows_candidates_first_then_each_check(client):
+def test_stream_ends_with_what_the_plain_endpoint_answers(client):
     claim = "Spindle density after a cue predicted next-morning recall of word pairs."
     updates = stream(client, claim)
-    first, last = updates[0], updates[-1]
-    # The candidates arrive unchecked, with their quote already located on its page.
-    assert first["done"] is False and first["results"]
-    assert all(r["status"] == "pending" and r["start"] is not None for r in first["results"])
-    # One more update per check, and only the last is marked done.
-    assert len(updates) == len(first["results"]) + 1
+    # Only the last update is marked done, and nothing is left unchecked in it.
     assert [u["done"] for u in updates] == [False] * (len(updates) - 1) + [True]
-    assert all(r["status"] != "pending" for r in last["results"])
-    # It ends with what the plain endpoint answers.
-    assert last["results"] == suggest(client, claim)
+    assert all(u["results"] for u in updates)
+    last = updates[-1]["results"]
+    assert all(r["status"] != "pending" for r in last)
+    assert last == suggest(client, claim)
+    # Every candidate arrives with its quote already located on its page.
+    assert all(r["start"] is not None for u in updates for r in u["results"])
 
 
 def test_stream_with_nothing_to_check_is_one_done_line(client):
@@ -128,10 +127,66 @@ def test_a_failed_check_drops_that_candidate_only(tmp_path):
     assert all("Reef" not in r["label"] for r in last["results"])
 
 
-def test_when_every_check_fails_the_stream_ends_with_the_error(tmp_path):
+def test_when_every_check_fails_the_cite_fails(tmp_path):
     client = flaky_client(tmp_path, " ")
-    updates = stream(client, "Spindle density after a cue predicted recall.")
-    assert updates[0]["done"] is False
-    assert updates[-1] == {"error": "Muse didn't answer"}
+    claim = {"claim": "Spindle density after a cue predicted recall."}
+    # With nothing to show, the failure is the answer: before the reply starts, or as its
+    # last line if candidates were already listed as being checked.
+    try:
+        res = client.post("/citations/suggest/stream", json=claim)
+    except RuntimeError:
+        pass
+    else:
+        assert json.loads(res.text.splitlines()[-1]) == {"error": "Muse didn't answer"}
     with pytest.raises(RuntimeError):  # the plain endpoint fails as it did before
-        client.post("/citations/suggest", json={"claim": "Spindle density after a cue predicted recall."})
+        client.post("/citations/suggest", json=claim)
+
+
+class SlowSearch(MockProvider):
+    """A mock whose query expansion (the full search's first step) waits to be released."""
+
+    def __init__(self):
+        super().__init__()
+        self.release = threading.Event()
+
+    def expand_query(self, query):
+        self.release.wait(10)
+        return super().expand_query(query)
+
+
+def library(tmp_path, provider):
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=provider)
+    for name, text in [("sleep.md", SLEEP), ("reef.md", REEF)]:
+        (tmp_path / name).write_text(text, encoding="utf-8")
+        lib.ingest_path(str(tmp_path / name))
+    return lib
+
+
+def test_quick_keyword_search_shows_a_supported_source_before_the_full_search_is_back(tmp_path):
+    provider = SlowSearch()
+    lib = library(tmp_path, provider)
+    updates = lib.suggest_citations_stream("Spindle density after each cue predicted recall of the cued word pairs.")
+    results, done = next(updates)  # the full search is still waiting on its expansion
+    assert not done and not provider.release.is_set()
+    assert [r["status"] for r in results] == ["verified"]
+    assert results[0]["quote"].startswith("Spindle density after each cue")
+    provider.release.set()
+    *_, (final, done) = updates
+    assert done and final[0]["status"] == "verified"
+    assert all(r["status"] != "pending" for r in final)
+    assert len({(r["chunk_id"], r["quote"]) for r in final}) == len(final)  # picked by both, checked once
+
+
+def test_a_quick_candidate_the_full_search_dropped_is_listed_only_if_supported(tmp_path):
+    lib = library(tmp_path, MockProvider())
+    claim = "Spindle density after each cue predicted recall of the cued word pairs the next morning."
+    hits = {h["title"]: h for h in lib.search("spindle recall reef coral transects", k=8, mode="keyword")}
+    sleep, reef = hits["Sleep study"], hits["Reef survey"]
+    supported = (0.9, sleep, "Spindle density after each cue predicted recall of the cued word pairs the next morning.")
+    unrelated = (0.1, reef, "Divers surveyed forty transects along the outer reef slope in March.")
+    full_pick = (0.2, sleep, "Participants slept in the lab for two nights before testing began.")
+    lib._cite_candidates = lambda claim, doc_ids, limit, mode="auto": [supported, unrelated] if mode == "keyword" else [full_pick]
+    quotes = {r["quote"]: r["status"] for r in lib.suggest_citations(claim)}
+    assert quotes[supported[2]] == "verified"  # an extra supported source is kept
+    assert full_pick[2] in quotes  # the full search's candidate is listed whatever its verdict
+    assert unrelated[2] not in quotes  # an unsupported quick-only candidate is not
