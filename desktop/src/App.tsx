@@ -1,6 +1,6 @@
 import type { JSONContent } from '@tiptap/core'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { API_VERSION, api, backendLogPath } from './api'
+import { API_VERSION, BackendUnreachable, api, backendLogPath } from './api'
 import { AskPanel } from './components/AskPanel'
 import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
@@ -57,6 +57,8 @@ import type {
   SourceMatch,
   VersionList,
 } from './types'
+
+const UNREACHABLE = new BackendUnreachable().message
 
 /** The places in the app: the draft, the library, the citation network, and review matrices. */
 type Mode = 'write' | 'library' | 'network' | 'matrix'
@@ -368,7 +370,14 @@ export default function App() {
     return () => window.removeEventListener('mousedown', close)
   }, [draftsOpen, versionsOpen])
 
-  const onError = useCallback((msg: string) => setErrors((e) => [...e.slice(-2), msg]), [])
+  // While the backend is still starting, a tool that asked it too early (the highlights for the first
+  // paragraph, say) is not an error to show: the status bar says "Starting backend…" and it asks again.
+  const startedRef = useRef(false)
+  startedRef.current = health !== null
+  const onError = useCallback((msg: string) => {
+    if (!startedRef.current && msg === UNREACHABLE) return
+    setErrors((e) => [...e.slice(-2), msg])
+  }, [])
 
   useEffect(() => {
     applyTheme(settings.theme)

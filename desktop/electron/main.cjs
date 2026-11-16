@@ -232,6 +232,8 @@ const SAVE_TYPES = {
   docx: 'Word document',
   xlsx: 'Excel workbook',
   csv: 'CSV (comma-separated values)',
+  bib: 'BibTeX references',
+  txt: 'Text file',
 }
 
 ipcMain.handle('rc:save-file', async (event, defaultName, data) => {
