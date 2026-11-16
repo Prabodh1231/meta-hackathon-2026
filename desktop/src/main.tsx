@@ -15,7 +15,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       {/* The desktop app opens a paper's reader in a window of its own: the same page, with ?reader=<id>. */}
-      {reader ? <ReaderWindow docId={Number(reader)} page={Number(params.get('page')) || 1} /> : <App />}
+      {reader ? <ReaderWindow docId={Number(reader)} page={Number(params.get('page')) || 1} find={params.get('find') ?? undefined} /> : <App />}
     </ErrorBoundary>
   </StrictMode>,
 )

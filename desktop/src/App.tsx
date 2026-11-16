@@ -215,12 +215,12 @@ export default function App() {
   const [citingFor, setCitingFor] = useState<number | null>(null) // paper whose citing works are listed
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [askAttach, setAskAttach] = useState<{ text: string; n: number } | null>(null) // text sent to Compose's chat
-  const [pdfView, setPdfView] = useState<{ doc: Doc; page: number } | null>(null) // a PDF in the app's reader
+  const [pdfView, setPdfView] = useState<{ doc: Doc; page: number; find?: string } | null>(null) // a PDF in the app's reader
   // The app's own reader, where text can be highlighted; it links to Chromium's viewer for search and
   // print. In the desktop app it gets a resizable window of its own; in a plain browser, a dialog.
-  const openPdf = useCallback((doc: Doc, page = 1) => {
-    if (!window.rc?.openReader) return setPdfView({ doc, page })
-    window.rc.openReader(doc.id, page, doc.title).catch((e) => {
+  const openPdf = useCallback((doc: Doc, page = 1, find?: string) => {
+    if (!window.rc?.openReader) return setPdfView({ doc, page, find })
+    window.rc.openReader(doc.id, page, doc.title, find).catch((e) => {
       const why = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e)
       setErrors((es) => [...es.slice(-2), `Could not open the PDF: ${why}`])
     })
@@ -266,6 +266,11 @@ export default function App() {
 
   const openLibrary = useCallback(() => setMode('library'), [])
   const [libFocus, setLibFocus] = useState<{ id: number; n: number } | null>(null)
+  const [libTopic, setLibTopic] = useState<{ id: number; n: number } | null>(null) // a topic to open in the library
+  const openTopic = useCallback((id: number) => {
+    setLibTopic((t) => ({ id, n: (t?.n ?? 0) + 1 }))
+    setMode('library')
+  }, [])
   const showPaper = useCallback((id: number) => {
     setMode('library')
     setLibFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
@@ -1143,7 +1148,7 @@ export default function App() {
       hint: [d.authors[0], d.year].filter(Boolean).join(' '),
       run: () => showPaper(d.id),
     })),
-    ...folders.map((f) => ({ group: 'TOPIC', name: f.name, hint: `${f.doc_count} sources`, run: openLibrary })),
+    ...folders.map((f) => ({ group: 'TOPIC', name: f.name, hint: `${f.doc_count} sources`, run: () => openTopic(f.id) })),
     ...drafts
       .filter((d) => d.id !== draftId)
       .map((d) => ({ group: 'DRAFT', name: d.title || 'Untitled', hint: `${d.words} words`, run: () => switchDraft(d.id) })),
@@ -1685,6 +1690,7 @@ export default function App() {
             onChanged={refresh}
             onError={onError}
             focus={libFocus}
+            focusTopic={libTopic}
             jobs={jobs}
             onAddPaths={addToLibrary}
             onCancelJob={cancelJob}
@@ -1856,7 +1862,7 @@ export default function App() {
         />
       )}
 
-      {pdfView && <ReaderDialog doc={pdfView.doc} page={pdfView.page} onClose={() => setPdfView(null)} onInsertQuote={insertQuote} />}
+      {pdfView && <ReaderDialog doc={pdfView.doc} page={pdfView.page} find={pdfView.find} onClose={() => setPdfView(null)} onInsertQuote={insertQuote} />}
 
       {showSettings && (
         <SettingsDialog

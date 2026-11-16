@@ -447,10 +447,11 @@ ipcMain.handle('rc:insert-quote', async (_event, citation) => {
   appWindow.webContents.send('rc:insert-quote', citation)
 })
 
-ipcMain.handle('rc:open-reader', async (_event, docId, page, title) => {
+ipcMain.handle('rc:open-reader', async (_event, docId, page, title, find) => {
   const id = Number.parseInt(docId, 10)
   if (!(id > 0)) throw new Error('No such paper')
   const query = { reader: String(id), page: String(Math.max(1, Number.parseInt(page, 10) || 1)) }
+  if (typeof find === 'string' && find.trim()) query.find = find.trim().slice(0, 200) // words to mark on that page
   const name = typeof title === 'string' && title.trim() ? title.trim().slice(0, 200) : 'PDF'
   const win = readerWindowFor()
   win.setTitle(`${name} · Reader`)

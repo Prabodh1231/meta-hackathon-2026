@@ -597,7 +597,7 @@ declare global {
       /** A library PDF in its own resizable window, at a page (the desktop app only). */
       openPdf?: (path: string, page: number, title: string) => Promise<void>
       /** A library PDF in the app's reader, in its own window, at a page (the desktop app only). */
-      openReader?: (docId: number, page: number, title: string) => Promise<void>
+      openReader?: (docId: number, page: number, title: string, find?: string) => Promise<void>
       /** From the reader window: insert a quote with its citation into the draft in the main window. */
       insertQuote?: (citation: Citation) => Promise<void>
       /** In the main window: quotes sent from the reader window. Returns an unsubscribe. */

@@ -23,6 +23,8 @@ interface Props {
   onError: (msg: string) => void
   /** A paper to bring into view and open (from the network view or the palette); `n` changes per request. */
   focus?: { id: number; n: number } | null
+  /** A topic to open (from the palette); `n` changes per request. */
+  focusTopic?: { id: number; n: number } | null
   onFindDuplicates: () => void
   onCitedPapers: (docId: number) => void
   /** List the works that cite a paper (OpenAlex). */
@@ -31,8 +33,8 @@ interface Props {
   cited: number[] // documents the draft cites
   /** Where a new folder's similarity starts (Settings). */
   folderSimilarity: number
-  /** Show a PDF in the app's reader, at a page. */
-  onOpenPdf: (doc: Doc, page?: number) => void
+  /** Show a PDF in the app's reader, at a page, with `find` marked there. */
+  onOpenPdf: (doc: Doc, page?: number, find?: string) => void
   /** Background imports, newest first, with each file's progress. */
   jobs: IngestJob[]
   /** Add files and folders on disk, in the background. */
@@ -314,6 +316,7 @@ const DEFAULT_COLS: ColKey[] = ['authors', 'year', 'venue', 'added']
 const SORT_KEY = 'gw.library.sort'
 const COLS_KEY = 'gw.library.columns'
 const KEPT_KEY = 'gw.library.keepBoth'
+const REMOVING_KEY = 'gw.library.removing' // removals whose Undo was still open: finished at the next start
 
 function load<T>(key: string, fallback: T, ok: (v: unknown) => boolean): T {
   try {
@@ -335,6 +338,21 @@ function save(key: string, value: unknown) {
 const MATCHED = new RegExp(`${String.fromCharCode(2)}(.*?)${String.fromCharCode(3)}`)
 function Snippet({ text }: { text: string }) {
   return <>{text.split(MATCHED).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part))}</>
+}
+
+/** The removals still waiting on their Undo message, as kept across a restart. */
+function removing(): number[] {
+  return load<number[]>(REMOVING_KEY, [], (v) => Array.isArray(v) && v.every((id) => typeof id === 'number'))
+}
+function forgetRemoving(ids: number[]) {
+  save(REMOVING_KEY, removing().filter((id) => !ids.includes(id)))
+}
+
+/** The longest run of matched words in a search snippet ("mobile money"), for the reader to mark. */
+function matchedWords(snippet: string): string {
+  const [stx, etx] = [String.fromCharCode(2), String.fromCharCode(3)]
+  const runs = snippet.match(new RegExp(`(?:${stx}[^${etx}]*${etx} ?)+`, 'g')) ?? []
+  return runs.map((r) => r.split(stx).join('').split(etx).join('').trim()).sort((a, b) => b.length - a.length)[0] ?? ''
 }
 
 /** Something wrong with its record that the reader can fix: retracted, no year or author, or Muse's part still owed. */
@@ -438,7 +456,7 @@ function DocTable({
   hits: PassageHit[] | null
   hitQuery: string
   docById: Map<number, Doc>
-  onOpenHit: (d: Doc, page: number) => void
+  onOpenHit: (d: Doc, hit: PassageHit) => void
 }) {
   const allOn = rows.length > 0 && rows.every((d) => sel.has(d.id))
   const someOn = !allOn && rows.some((d) => sel.has(d.id))
@@ -602,7 +620,7 @@ function DocTable({
             const d = docById.get(h.doc_id)
             if (!d) return null
             return (
-              <button key={h.doc_id} className="lib-hit" onClick={() => onOpenHit(d, h.page)} title={`Open the paper at this page (it has “${hitQuery}” here)`}>
+              <button key={h.doc_id} className="lib-hit" onClick={() => onOpenHit(d, h)} title={`Open the paper at this page, with “${hitQuery}” marked`}>
                 <span className="lib-hit-text"><Snippet text={h.snippet} /></span>
                 <span className="lib-hit-from">
                   {[authorsShort(d), d.year].filter(Boolean).join(' ') || 'No author'} · {d.title.length > 80 ? d.title.slice(0, 80) + '…' : d.title} ·{' '}
@@ -1143,7 +1161,7 @@ const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? 
  * every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs: allDocs, folders, query, onQuery, selected: drafting, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
-  folderSimilarity, onOpenPdf, jobs, onAddPaths, onCancelJob, onDismissJob,
+  folderSimilarity, onOpenPdf, jobs, focusTopic, onAddPaths, onCancelJob, onDismissJob,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [kind, setKind] = useState<'all' | Doc['kind']>('all')
@@ -1250,6 +1268,16 @@ export const LibraryPanel = memo(function LibraryPanel({
     return () => window.clearTimeout(t)
   }, [focus?.n]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Open a requested topic (picked in the palette).
+  useEffect(() => {
+    if (!focusTopic) return
+    onQuery('')
+    setKind('all')
+    setTimeline(null)
+    setScope(focusTopic.id)
+    pickOnly(null)
+  }, [focusTopic?.n]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (typeof scope === 'number' && !folders.some((f) => f.id === scope)) setScope('all') // the open topic was deleted or merged
   }, [folders, scope])
@@ -1278,10 +1306,10 @@ export const LibraryPanel = memo(function LibraryPanel({
       await onChanged()
     })
   /** The paper itself: a PDF in the reader (at `page`), other files in their own app, a web page in the browser. Opening it marks it read. */
-  const openFile = (d: Doc, page = 1) => {
+  const openFile = (d: Doc, page = 1, find?: string) => {
     if (d.unread) mark([d], { unread: false })
     if (/^https?:\/\//i.test(d.source)) window.open(d.url || d.source, '_blank', 'noreferrer')
-    else if (d.kind === 'pdf') onOpenPdf(d, page)
+    else if (d.kind === 'pdf') onOpenPdf(d, page, find)
     else if (window.rc?.openFile) window.rc.openFile(d.source).catch((e) => onError(`Could not open “${d.title}”: ${e instanceof Error ? e.message : e}`))
   }
   const openGhost = (id: number | null) => {
@@ -1463,6 +1491,7 @@ export const LibraryPanel = memo(function LibraryPanel({
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e))
     } finally {
+      forgetRemoving(p.ids)
       await onChanged().catch(() => {})
       setBusy(null)
       setHiding((h) => new Set([...h].filter((id) => !p.ids.includes(id))))
@@ -1470,6 +1499,20 @@ export const LibraryPanel = memo(function LibraryPanel({
   }
   const commitRef = useRef(commitRemoval)
   commitRef.current = commitRemoval
+  // The app was closed while a removal's Undo was still open: finish that removal now. Once, when
+  // the library first loads (the backend is up by then).
+  const loaded = allDocs.length > 0
+  const resumed = useRef(false)
+  useEffect(() => {
+    if (!loaded || resumed.current) return
+    resumed.current = true
+    if (pending.current) return
+    const ids = removing().filter((id) => allDocs.some((d) => d.id === id))
+    if (!ids.length) return save(REMOVING_KEY, [])
+    setHiding((h) => new Set([...h, ...ids]))
+    pending.current = { ids, timer: 0 }
+    void commitRef.current()
+  }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
   /** Remove sources: they leave the list now, and the library when the Undo message closes. */
   const remove = (ds: Doc[]) => {
     if (!ds.length) return
@@ -1479,11 +1522,13 @@ export const LibraryPanel = memo(function LibraryPanel({
     setPicked(new Set())
     setCur(null)
     pending.current = { ids, timer: window.setTimeout(() => void commitRef.current(), UNDO_MS) }
+    save(REMOVING_KEY, [...removing(), ...ids]) // if the app closes before then, the next start finishes it
     say(`Removed ${named(ds)}. ${ds.length === 1 ? 'Its file stays where it is' : 'Their files stay where they are'}, and Removed keeps a record.`, () => {
       const p = pending.current
       if (!p || p.ids !== ids) return // already out of the library: restore it from Removed
       window.clearTimeout(p.timer)
       pending.current = null
+      forgetRemoving(ids)
       setHiding((h) => new Set([...h].filter((id) => !ids.includes(id))))
     })
   }
@@ -1948,7 +1993,7 @@ export const LibraryPanel = memo(function LibraryPanel({
                 hits={hits}
                 hitQuery={query.trim()}
                 docById={docById}
-                onOpenHit={openFile}
+                onOpenHit={(d, h) => openFile(d, h.page, matchedWords(h.snippet))}
               />
             )}
 
