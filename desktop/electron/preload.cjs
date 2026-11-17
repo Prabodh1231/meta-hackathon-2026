@@ -27,6 +27,22 @@ contextBridge.exposeInMainWorld('rc', {
     ipcRenderer.on('rc:window-focus', listener)
     return () => ipcRenderer.removeListener('rc:window-focus', listener)
   },
+  // In the main window: the window is closing and waits (a few seconds at most) for `callback`,
+  // which saves what was typed last. Returns an unsubscribe.
+  onBeforeClose: (callback) => {
+    const listener = () => {
+      Promise.resolve()
+        .then(callback)
+        .catch(() => {})
+        .then(() => ipcRenderer.send('rc:ready-to-close'))
+    }
+    ipcRenderer.on('rc:before-close', listener)
+    ipcRenderer.send('rc:close-guard', true)
+    return () => {
+      ipcRenderer.removeListener('rc:before-close', listener)
+      ipcRenderer.send('rc:close-guard', false)
+    }
+  },
   // The demo corpus, copied into the data folder; resolves to that folder.
   copySamples: () => ipcRenderer.invoke('rc:copy-samples'),
   // A dropped file carries no path in the sandboxed page; Electron can tell where it is.

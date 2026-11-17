@@ -199,6 +199,9 @@ export default function App() {
   insertQuoteRef.current = insertQuote
   // Quotes from the reader in its own window (the desktop app).
   useEffect(() => window.rc?.onInsertQuote?.((c) => insertQuoteRef.current(c)), [])
+  // Closing the window (the desktop app): it waits for the last typing to be saved. Autosave runs
+  // a moment after a keystroke, so without this a sentence typed just before closing was lost.
+  useEffect(() => window.rc?.onBeforeClose?.(async () => void (await editor.current?.flush())), [])
   // An info message closes by itself after a while (errors stay until clicked): left open, the
   // demo draft's "Opened…" message covered the page and status bar for whole sessions.
   useEffect(() => {

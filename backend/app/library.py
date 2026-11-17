@@ -19,13 +19,13 @@ import numpy as np
 
 from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
-from .citegraph import build_graph, focus, keyword_links, missing_works
+from .citegraph import build_graph, focus, keyword_links, match_all, missing_works
 from .refparse import Reference, match_reference, norm, parse_references
 from .ingest import ParsedDocument, chunk_page, clean_page_label, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
 from .references import format_references
 from .retrieval import RecentCache, fts_query, reciprocal_rank_fusion
-from .settings import Settings, write_env_file
+from .settings import Settings, legacy_data_dir, write_env_file
 from .text_utils import sentence_spans, tokenize
 from .topics import choose_k, jaccard, kmeans, tfidf_cosines, tfidf_matrix, tfidf_vocab
 
@@ -150,7 +150,7 @@ class Library:
         self._expansions = RecentCache(SEARCH_CACHE)  # query -> the provider's expansions
         self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
         self._answers_from = self.provider  # whose answers those are
-        self._graph_cache: tuple[int, dict] | None = None  # see _whole_graph
+        self._graph_cache: tuple | None = None  # see _network
         # Search is keyword search plus the provider, and folders, highlights and
         # duplication use word statistics. No search model is loaded here, so the
         # library lists at once.
@@ -162,6 +162,45 @@ class Library:
         self._backfill_keywords()
         self._fix_page_labels()
         self._backfill_file_dates()
+        self._repair_moved_sources()
+
+    def _repair_moved_sources(self, legacy: Path | None = None) -> int:
+        """Papers the app downloaded into its own data folder are stored by full path, so when
+        the folder was renamed (~/.research-companion to ~/.groundwork) those paths went stale
+        and the papers stopped opening. Point each at the same file in today's data folder.
+        Only a path whose file is gone from the old place and present in the new one is changed,
+        so it is safe on every start. Returns how many were repaired."""
+        legacy = legacy or legacy_data_dir()
+        data_dir = self.settings.data_dir
+        prefix = os.path.normcase(str(legacy)) + os.sep
+        if os.path.normcase(str(data_dir)) + os.sep == prefix:
+            return 0
+
+        def moved(source: str) -> str | None:
+            if _is_web(source) or not os.path.normcase(source).startswith(prefix) or os.path.isfile(source):
+                return None
+            new = data_dir / source[len(prefix):]
+            return str(new) if new.is_file() else None
+
+        with self.lock, self.conn:
+            taken = {r["source"] for r in self.conn.execute("SELECT source FROM documents")}
+            fixed = 0
+            for r in self.conn.execute("SELECT id, source FROM documents").fetchall():
+                new = moved(r["source"])
+                if not new or new in taken:  # a document already holds the file where it is now
+                    continue
+                self.conn.execute("UPDATE documents SET source = ? WHERE id = ?", (new, r["id"]))
+                self.conn.execute("DELETE FROM file_hashes WHERE path IN (?, ?)", (r["source"], new))  # hashed again when needed
+                taken.add(new)
+                fixed += 1
+            # The removal log too, so a removed paper can still be restored from its file.
+            for r in self.conn.execute("SELECT id, source FROM removed_documents").fetchall():
+                new = moved(r["source"])
+                if new:
+                    self.conn.execute("UPDATE removed_documents SET source = ? WHERE id = ?", (new, r["id"]))
+        if fixed:
+            log.info("Repaired the paths of %s papers after the data folder moved to %s", fixed, data_dir)
+        return fixed
 
     # ---------- ingestion ----------
 
@@ -560,11 +599,12 @@ class Library:
     def missing_works(self, query: str = "", limit: int = 100) -> dict:
         """What the papers about a topic (every paper, with no topic) cite that the library lacks,
         ranked by how many of them cite it."""
+        docs, refs, ref_matches, _ = self._network()
         with self.lock:
-            docs, refs = self._graph_inputs()
             matches = self._topic_matches(query) if query.strip() else None
-        citing = {d["id"] for d in docs} if matches is None else set(matches)
-        works = missing_works(docs, refs, citing)
+        ids = {d["id"] for d in docs}
+        citing = ids if matches is None else set(matches) & ids
+        works = missing_works(docs, refs, citing, ref_matches)
         titles = {d["id"]: d["title"] for d in docs}
         for w in works[:limit]:
             w["citers"] = [{"id": i, "title": titles[i]} for i in w["citers"]]
@@ -576,21 +616,23 @@ class Library:
     def citation_graph(self, query: str = "", doc_ids: list[int] | None = None) -> dict:
         """Who cites whom: among the papers about a topic, among `doc_ids` (the papers the user
         ticked), or across the whole library when neither is given."""
+        docs, _, _, graph = self._network()
         with self.lock:
-            docs, refs = self._graph_inputs()
             tags = self._all_tags()
             terms = {r["id"]: self._terms(r["keywords"], tags.get(r["id"], []))
                      for r in self.conn.execute("SELECT id, keywords FROM documents")}
             matches = self._topic_matches(query) if query.strip() else None
-        graph = build_graph(docs, refs)
+        # `graph` is the kept one, shared with other requests: build on it, never change it.
+        ids = {d["id"] for d in docs}
+        terms = {i: t for i, t in terms.items() if i in ids}  # a paper added this very moment is not in the graph yet
         if doc_ids is not None:
-            chosen = set(doc_ids) & {d["id"] for d in docs}
+            chosen = set(doc_ids) & ids
             graph = focus(graph, chosen, keyword_links({i: terms[i] for i in chosen}))
             graph["doc_ids"] = sorted(chosen)
             return graph
         if matches is None:
-            graph["keyword"] = keyword_links(terms, min_shared=2)
-            return graph
+            return {**graph, "keyword": keyword_links(terms, min_shared=2)}
+        matches = {i: m for i, m in matches.items() if i in ids}
         graph = focus(graph, set(matches), keyword_links({i: terms[i] for i in matches}))
         for n in graph["nodes"]:
             if n["kind"] == "paper":
@@ -600,19 +642,27 @@ class Library:
 
     # ---------- related papers ----------
 
-    def _whole_graph(self) -> dict:
-        """The library's citation graph, kept until a paper's record or a reference list changes:
-        matching every reference against every paper is the slow part, and opening one paper's
-        details after another asks for it each time. Shared, so read it and don't change it."""
+    def _network(self) -> tuple[list[dict], dict[int, list[Reference]], dict, dict]:
+        """Every paper, every reference list, the library paper each reference points at, and the
+        citation graph built from them: kept until a paper's record or a reference list changes.
+        Comparing every reference with every paper is the slow part (seconds on a library of a
+        hundred papers), and the network, the missing-works list and each paper's related papers
+        all need it. Shared between requests, so read what this returns and don't change it."""
         with self.lock:
             docs, refs = self._graph_inputs()
         key = hash((
             tuple((d["id"], d["title"], d["year"], d["doi"], tuple(d["authors"])) for d in docs),
             tuple((i, tuple((r.raw, r.title, r.year, r.doi) for r in rs)) for i, rs in sorted(refs.items())),
         ))
-        if self._graph_cache is None or self._graph_cache[0] != key:
-            self._graph_cache = (key, build_graph(docs, refs))
-        return self._graph_cache[1]
+        kept = self._graph_cache
+        if kept is None or kept[0] != key:
+            matches = match_all(docs, refs)
+            kept = self._graph_cache = (key, docs, refs, matches, build_graph(docs, refs, matches))
+        return kept[1:]
+
+    def _whole_graph(self) -> dict:
+        """The library's citation graph (see _network)."""
+        return self._network()[3]
 
     def related(self, doc_id: int, limit: int = 5) -> list[dict]:
         """The papers in the library closest to one paper, the closest first, each with why:

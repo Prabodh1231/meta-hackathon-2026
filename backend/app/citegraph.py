@@ -5,7 +5,7 @@ lists (see refparse), never from embeddings."""
 from collections import Counter, defaultdict
 from itertools import combinations
 
-from .refparse import Reference, match_reference, norm
+from .refparse import Match, Reference, match_reference, norm
 
 MIN_GHOST_CITERS = 2  # a work the library lacks becomes a node once this many papers cite it
 MIN_GHOST_TITLE = 15  # shorter parsed titles are usually fragments, not works
@@ -26,10 +26,25 @@ def ghost_key(ref: Reference) -> str | None:
     return f"{title[:70]}|{ref.year}"
 
 
-def build_graph(docs: list[dict], refs_by_doc: dict[int, list[Reference]]) -> dict:
+def match_all(docs: list[dict], refs_by_doc: dict[int, list[Reference]]) -> dict[int, list[Match | None]]:
+    """The library paper each reference entry points at (None when it's a work the library lacks),
+    per citing paper, in the order of its reference list. Comparing every entry with every paper
+    is the slow part of the network, so callers that ask often keep this and pass it on as `matches`."""
+    by_id = {d["id"]: d for d in docs}
+    return {
+        doc_id: [match_reference(ref, docs, by_id[doc_id].get("year"), doc_id) for ref in refs]
+        for doc_id, refs in refs_by_doc.items() if doc_id in by_id
+    }
+
+
+def build_graph(docs: list[dict], refs_by_doc: dict[int, list[Reference]],
+                matches: dict[int, list[Match | None]] | None = None) -> dict:
     """docs: dicts with id/title/authors/year/doi. Returns nodes, citation edges, coupling edges
-    and the missing-works list. Matching is recomputed here, so a corrected title or a newly
-    added paper changes the edges without re-reading any PDF."""
+    and the missing-works list. Matching is worked out from the papers as they are now (or taken
+    from `matches`, see match_all), so a corrected title or a newly added paper changes the edges
+    without re-reading any PDF."""
+    if matches is None:
+        matches = match_all(docs, refs_by_doc)
     by_id = {d["id"]: d for d in docs}
     cites: dict[int, dict[str, str]] = defaultdict(dict)  # citing doc -> {work key: how it matched}
     ghosts: dict[str, dict] = {}
@@ -37,8 +52,7 @@ def build_graph(docs: list[dict], refs_by_doc: dict[int, list[Reference]]) -> di
         doc = by_id.get(doc_id)
         if not doc:
             continue
-        for ref in refs:
-            m = match_reference(ref, docs, doc.get("year"), doc_id)
+        for ref, m in zip(refs, matches[doc_id]):
             if m:
                 cites[doc_id].setdefault(f"doc:{m.doc_id}", m.how)
                 continue
@@ -94,19 +108,22 @@ def build_graph(docs: list[dict], refs_by_doc: dict[int, list[Reference]]) -> di
     }
 
 
-def missing_works(docs: list[dict], refs_by_doc: dict[int, list[Reference]], citing: set[int] | None = None) -> list[dict]:
+def missing_works(docs: list[dict], refs_by_doc: dict[int, list[Reference]], citing: set[int] | None = None,
+                  matches: dict[int, list[Match | None]] | None = None) -> list[dict]:
     """Works the given papers (every paper when None) cite that the library lacks, the most cited
     first. Unlike the graph's missing nodes, a work one paper cites counts too. Each names the papers
     citing it and one reference entry to fetch it by, an entry with a DOI when any has one."""
+    if matches is None:
+        matches = match_all(docs, {i: r for i, r in refs_by_doc.items() if citing is None or i in citing})
     by_id = {d["id"]: d for d in docs}
     works: dict[str, dict] = {}
     for doc_id, refs in refs_by_doc.items():
         doc = by_id.get(doc_id)
         if not doc or (citing is not None and doc_id not in citing):
             continue
-        for idx, ref in enumerate(refs):
+        for idx, (ref, m) in enumerate(zip(refs, matches[doc_id])):
             key = ghost_key(ref)
-            if not key or match_reference(ref, docs, doc.get("year"), doc_id):
+            if not key or m:
                 continue
             w = works.setdefault(key, {"id": f"ghost:{key}", "title": _clean(ref.title), "first_author": "", "year": ref.year,
                                        "doi": "", "citers": [], "ref": {"doc_id": doc_id, "idx": idx}})

@@ -33,6 +33,7 @@ function defaultDataDir() {
 }
 const LOG_PATH = path.join(DATA_DIR, 'logs', 'backend.log')
 const MAX_RESTARTS_PER_MINUTE = 3
+const CLOSE_WAIT_MS = 4000 // how long a closing window waits for the draft's last save
 // The demo corpus: the repo's samples folder, or its copy shipped in resources/samples. The
 // library reads a copy in the data folder, so removing the samples never touches the app's files.
 const SAMPLES_SOURCE = app.isPackaged ? path.join(process.resourcesPath, 'samples') : path.join(__dirname, '..', '..', 'samples')
@@ -150,6 +151,33 @@ function createWindow() {
   appWindow = win
   win.on('closed', () => {
     if (appWindow === win) appWindow = null
+  })
+  // Closing waits for the page to save the last typing (autosave runs a moment after a keystroke,
+  // so a sentence typed just before closing used to be lost). Only while the page has said it is
+  // listening, and never longer than CLOSE_WAIT_MS: a page that hangs must not keep the app open.
+  let guarded = false
+  let readyToClose = false
+  const fromThisWindow = (event) => !win.isDestroyed() && event.sender === win.webContents
+  const onGuard = (event, on) => fromThisWindow(event) && (guarded = !!on)
+  const closeNow = () => {
+    if (win.isDestroyed() || readyToClose) return
+    readyToClose = true
+    win.close()
+  }
+  const onReady = (event) => fromThisWindow(event) && closeNow()
+  ipcMain.on('rc:close-guard', onGuard)
+  ipcMain.on('rc:ready-to-close', onReady)
+  win.webContents.on('did-start-loading', () => (guarded = false)) // a reloaded page says so again
+  win.webContents.on('render-process-gone', () => (guarded = false))
+  win.on('close', (e) => {
+    if (readyToClose || !guarded) return
+    e.preventDefault()
+    win.webContents.send('rc:before-close')
+    setTimeout(closeNow, CLOSE_WAIT_MS)
+  })
+  win.on('closed', () => {
+    ipcMain.removeListener('rc:close-guard', onGuard)
+    ipcMain.removeListener('rc:ready-to-close', onReady)
   })
   // Back in front (from the reader window, say): the page is told, so the library can show what
   // was highlighted or opened meanwhile. The page's own focus event doesn't come reliably here.
