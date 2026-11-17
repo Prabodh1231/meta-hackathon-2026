@@ -619,6 +619,8 @@ declare global {
       onInsertQuote?: (callback: (citation: Citation) => void) => () => void
       /** In the main window: called when it comes back to the front. Returns an unsubscribe. */
       onWindowFocus?: (callback: () => void) => () => void
+      /** The window is about to close: it stays open until the promise `callback` returns settles. */
+      onBeforeClose?: (callback: () => Promise<void>) => () => void
       /** Where a dropped or picked file is on disk ('' for one that isn't a file on disk). */
       pathForFile?: (file: File) => string
       /** Copies the demo corpus into the data folder and resolves to that folder. */

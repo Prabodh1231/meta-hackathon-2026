@@ -35,6 +35,7 @@ _QUOTED = re.compile(r"[\"“”‘’']([^\"“”]{12,}?)[,.]?[\"“”’']")
 
 
 @lru_cache(maxsize=65536)
+@lru_cache(maxsize=50_000)  # the same titles and entries are compared again and again when the graph is built
 def norm(text: str) -> str:
     text = unicodedata.normalize("NFKC", text).lower()
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
@@ -205,9 +206,14 @@ def parse_references(text: str) -> list[Reference]:
     return [r for r in refs if _looks_like_reference(r)]
 
 
+@lru_cache(maxsize=50_000)
+def _words(text: str) -> frozenset[str]:
+    return frozenset(text.split())
+
+
 def _similar(a: str, b: str, cutoff: float = 0.9) -> bool:
     """SequenceMatcher ratio >= cutoff, skipping the slow exact ratio when a cheap upper bound already rules it out."""
-    wa, wb = set(a.split()), set(b.split())
+    wa, wb = _words(a), _words(b)
     if len(wa & wb) < 0.6 * max(len(wa), len(wb), 1):
         return False  # a ratio of 0.9 needs nearly every word shared
     m = SequenceMatcher(None, a, b)

@@ -3,10 +3,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def legacy_data_dir() -> Path:
+    """Where the library lived before the app was renamed."""
+    return Path.home() / ".research-companion"
+
+
 def default_data_dir() -> Path:
     """~/.groundwork. A library from before the rename, in ~/.research-companion, is used where
     it is until the desktop app moves it on its next start."""
-    new, legacy = Path.home() / ".groundwork", Path.home() / ".research-companion"
+    new, legacy = Path.home() / ".groundwork", legacy_data_dir()
     return legacy if not new.exists() and legacy.exists() else new
 
 
