@@ -286,6 +286,13 @@ export default function App() {
     setLibTopic((t) => ({ id, n: (t?.n ?? 0) + 1 }))
     setMode('library')
   }, [])
+  // The Library's search box says what it searches: the folders on its front page, or the open one.
+  const [libHint, setLibHint] = useState('')
+  /** "Map it" on a topic: the citation network, searched for the topic's name. */
+  const mapTopic = useCallback((name: string) => {
+    setNetQuery(name)
+    setMode('network')
+  }, [])
   const showPaper = useCallback((id: number) => {
     setMode('library')
     setLibFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
@@ -1447,7 +1454,7 @@ export default function App() {
                 if (query) setQuery('')
                 else e.currentTarget.blur()
               }}
-              placeholder={SEARCH[mode].placeholder}
+              placeholder={mode === 'library' && libHint ? libHint : SEARCH[mode].placeholder}
               aria-label={`Search the ${SEARCH[mode].scope.toLowerCase()}`}
             />
             {query && (
@@ -1823,6 +1830,8 @@ export default function App() {
             folderSimilarity={settings.folder_similarity}
             onOpenPdf={openPdf}
             cited={citedIds}
+            onMapTopic={mapTopic}
+            onSearchHint={setLibHint}
           />
         </div>
 

@@ -1,8 +1,8 @@
 import { Ribbons } from './Ribbons'
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MuseTag } from './MuseTag'
 import { api } from '../api'
-import type { Doc, Folder, IngestJob, PassageHit, RefStyle, RemovedDoc } from '../types'
+import type { Doc, Folder, FolderColor, IngestJob, PassageHit, RefStyle, RemovedDoc } from '../types'
 import {
   type TimeField, type TimeWindow, buildAxis, docSpan, fmtDay, fmtPublished, gotAt, inWindow, posLabel, removedSince,
 } from '../timeline'
@@ -16,6 +16,18 @@ import { QuickLook } from './QuickLook'
 import { RelatedPapers } from './RelatedPapers'
 import { Timeline } from './Timeline'
 import { TrustBadges, isRetracted, needsMetadata } from './TrustBadges'
+import {
+  type MenuItem, type Run, type Scope, type View, FolderBar, KIND_LABEL, NewFolderForm, PopMenu, VIEW_NAME, ViewNameForm, alikeTopics, authorsShort,
+  load, plural, save, useDismiss,
+} from './libraryParts'
+import type { FrontItem } from './FolderTile'
+import { type FrontLayout, type FrontSort, type RecentShown, LibraryFront, SizeSlider, tileWidth } from './LibraryFront'
+import { FolderSummary } from './FolderSummary'
+import { FolderPeek } from './FolderPeek'
+import { FolderMenu } from './FolderMenu'
+import { DropShelf, draggedIds } from './DropShelf'
+import { PaperCovers, coversPerRow } from './PaperCovers'
+import { type Recent, noteRecent, readRecent } from '../recentlyOpened'
 
 interface Props {
   docs: Doc[]
@@ -50,16 +62,12 @@ interface Props {
   onAddPaths: (paths: string[]) => Promise<void>
   onCancelJob: (id: number) => void
   onDismissJob: (id: number) => void
+  /** Show a topic in the citation network (its name searched there). */
+  onMapTopic?: (name: string) => void
+  /** What the app bar's search box says it searches: the folders, or the open folder. */
+  onSearchHint?: (placeholder: string) => void
 }
 
-const KIND_LABEL: Record<Doc['kind'], string> = {
-  pdf: 'PDF',
-  docx: 'Doc',
-  text: 'Notes',
-  web: 'Web',
-  pptx: 'Slides',
-  image: 'Scan',
-}
 const FILTERS: { id: Doc['kind']; label: string }[] = [
   { id: 'pdf', label: 'PDFs' },
   { id: 'docx', label: 'Docs' },
@@ -69,21 +77,10 @@ const FILTERS: { id: Doc['kind']; label: string }[] = [
   { id: 'image', label: 'Scans' },
 ]
 
-/** 'Okafor & Raman', 'Chen et al.': surnames, as a reference list shows them. */
-function authorsShort(d: { authors: string[] }): string {
-  const surname = (a: string) => (a.includes(',') ? a.split(',')[0] : a.split(' ').pop() ?? a).trim()
-  if (d.authors.length > 2) return `${surname(d.authors[0])} et al.`
-  return d.authors.map(surname).join(' & ')
-}
 
-type Run = (label: string, fn: () => Promise<unknown>) => Promise<void>
 type ColKey = 'authors' | 'year' | 'venue' | 'added' | 'citations' | 'folders'
 type SortKey = 'title' | ColKey | 'match'
 type Sort = { key: SortKey; dir: 1 | -1 }
-/** The ready-made views: every source, the last two weeks' additions, what Muse drafts from, what the
- * open draft cites, records that need fixing, unread, starred, sources in no topic, and the removal log. */
-type View = 'all' | 'recent' | 'drafting' | 'cited' | 'needs' | 'unread' | 'starred' | 'none' | 'removed'
-type Scope = View | number // a view, or one topic
 
 /** "Removed on 3 Oct 2026 as a duplicate of “…”, and its file went to the Recycle Bin." */
 function removalText(r: { removed_at: string; reason: string; duplicate_of_title: string; file_trashed?: boolean }): string {
@@ -138,148 +135,6 @@ function FolderChips({ doc: d, editable, run }: { doc: Doc; editable: boolean; r
   )
 }
 
-function SimilaritySlider({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled?: boolean }) {
-  return (
-    <label className="sim">
-      <span>Similarity</span>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        step={5}
-        value={value}
-        disabled={disabled}
-        aria-label="Similarity threshold"
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-      <b>{value}%</b>
-    </label>
-  )
-}
-
-/** A topic is defined by the subject the user types and how closely a paper must match it. */
-function NewFolderForm({ initial, onCreate, onCancel }: {
-  initial: number
-  onCreate: (name: string, similarity: number) => void
-  onCancel: () => void
-}) {
-  const [name, setName] = useState('')
-  const [similarity, setSimilarity] = useState(initial)
-  return (
-    <form
-      className="newfolder"
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (name.trim()) onCreate(name.trim(), similarity)
-      }}
-    >
-      <div className="newfolder-title">New topic</div>
-      <input
-        autoFocus
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === 'Escape' && onCancel()}
-        placeholder="Subject, e.g. Digital finance"
-        aria-label="Topic name"
-      />
-      <SimilaritySlider value={similarity} onChange={setSimilarity} />
-      <p className="muted">
-        Every paper that matches this subject at {similarity}% or more is filed here, and a paper can be in several topics. Lower it to take in looser matches, raise it to be stricter.
-      </p>
-      <div className="newfolder-actions">
-        <button className="primary" disabled={!name.trim()}>
-          Create topic
-        </button>
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-    </form>
-  )
-}
-
-/** Shown for an opened topic: its name, how closely a paper has to match to be filed here,
- * and renaming or deleting it. */
-function FolderBar({ folder, run }: { folder: Folder; run: Run }) {
-  const [value, setValue] = useState(folder.similarity)
-  const [renaming, setRenaming] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const pending = useRef<number | undefined>(undefined)
-  const latest = useRef({ folder, run, value })
-  latest.current = { folder, run, value }
-  const save = () => {
-    pending.current = undefined
-    const { folder: f, run: r, value: v } = latest.current
-    if (v !== f.similarity) r('Re-filing…', () => api.updateFolder(f.id, { similarity: v }))
-  }
-  // Wait for the slider to settle (it can move many steps in a second) before re-filing.
-  const change = (v: number) => {
-    latest.current.value = v
-    setValue(v)
-    window.clearTimeout(pending.current)
-    pending.current = window.setTimeout(save, 450)
-  }
-  useEffect(() => {
-    if (pending.current === undefined) setValue(folder.similarity)
-  }, [folder.similarity])
-  useEffect(() => {
-    setRenaming(false)
-    setDeleting(false)
-  }, [folder.id])
-  useEffect(
-    () => () => {
-      if (pending.current !== undefined) {
-        window.clearTimeout(pending.current)
-        save()
-      }
-    },
-    [], // eslint-disable-line react-hooks/exhaustive-deps
-  )
-  return (
-    <div className="lib-folderbar">
-      <div className="lib-folderbar-top">
-        {renaming ? (
-          <input
-            autoFocus
-            defaultValue={folder.name}
-            aria-label="Topic name"
-            onBlur={() => setRenaming(false)}
-            onKeyDown={(e) => {
-              const name = e.currentTarget.value.trim()
-              if (e.key === 'Escape') setRenaming(false)
-              if (e.key === 'Enter' && name) {
-                setRenaming(false)
-                run('Renaming…', () => api.updateFolder(folder.id, { name }))
-              }
-            }}
-          />
-        ) : (
-          <b className="lib-folderbar-name" onDoubleClick={() => setRenaming(true)} title="Double-click to rename">
-            {folder.name}
-          </b>
-        )}
-        <span className="spacer" />
-        {deleting ? (
-          <>
-            <button className="danger" onClick={() => run('Deleting topic…', () => api.deleteFolder(folder.id))}>
-              Delete topic
-            </button>
-            <button onClick={() => setDeleting(false)}>Keep</button>
-          </>
-        ) : (
-          <>
-            <button className="link" onClick={() => setRenaming(true)}>Rename</button>
-            <button className="link danger-link" onClick={() => setDeleting(true)} title="The sources stay in your library">
-              Delete
-            </button>
-          </>
-        )}
-      </div>
-      <SimilaritySlider value={value} onChange={change} />
-      <span className="muted">Papers matching {value}% or more are filed here. What you add or remove by hand is kept.</span>
-    </div>
-  )
-}
 
 /** JEL classification codes the authors printed; hover for the field each belongs to. */
 function JelChips({ doc }: { doc: Doc }) {
@@ -328,21 +183,6 @@ const KEPT_KEY = 'gw.library.keepBoth'
 const REMOVING_KEY = 'gw.library.removing' // removals whose Undo was still open: finished at the next start
 const VIEWS_KEY = 'gw.library.views' // the reader's saved views
 
-function load<T>(key: string, fallback: T, ok: (v: unknown) => boolean): T {
-  try {
-    const v: unknown = JSON.parse(localStorage.getItem(key) ?? 'null')
-    return ok(v) ? (v as T) : fallback
-  } catch {
-    return fallback
-  }
-}
-function save(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    // no storage (a private window): the choice lasts until the app closes
-  }
-}
 
 /** A search hit's words, marked: the backend wraps each match in the characters STX … ETX. */
 const MATCHED = new RegExp(`${String.fromCharCode(2)}(.*?)${String.fromCharCode(3)}`)
@@ -383,82 +223,6 @@ function needsAttention(d: Doc): boolean {
   return isRetracted(d) || needsMetadata(d) || d.missing.length > 0
 }
 
-type MenuItem =
-  | { label: string; kbd?: string; count?: number; danger?: boolean; disabled?: boolean; checked?: boolean; keepOpen?: boolean; run: () => void }
-  | { head: string }
-  | 'sep'
-
-/** A menu at a point on screen (a right-click, or under a button), kept inside the window. */
-function PopMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    setPos({
-      left: Math.max(8, Math.min(x, window.innerWidth - el.offsetWidth - 8)),
-      top: Math.max(8, Math.min(y, window.innerHeight - el.offsetHeight - 8)),
-    })
-  }, [x, y])
-  // The keyboard goes to the menu once it's placed and showing: while hidden it can't take it.
-  const placed = pos !== null
-  useLayoutEffect(() => {
-    if (placed) ref.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus()
-  }, [placed])
-  useDismiss(true, onClose, ref)
-  const move = (dir: 1 | -1) => {
-    const all = [...(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [])]
-    const at = all.indexOf(document.activeElement as HTMLElement)
-    all[(at + dir + all.length) % all.length]?.focus()
-  }
-  /** A letter goes to the next choice with a word starting with it (a long list of authors or journals). */
-  const jump = (letter: string) => {
-    const all = [...(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [])]
-    const at = all.indexOf(document.activeElement as HTMLElement)
-    const starts = (el: HTMLElement) =>
-      (el.querySelector('.lib-pop-label')?.textContent ?? '').toLowerCase().split(/[\s,]+/).some((w) => w.startsWith(letter.toLowerCase()))
-    ;[...all.slice(at + 1), ...all.slice(0, at + 1)].find(starts)?.focus()
-  }
-  return (
-    <div
-      ref={ref}
-      className="lib-pop"
-      role="menu"
-      style={pos ?? { left: x, top: y, visibility: 'hidden' }}
-      onContextMenu={(e) => e.preventDefault()}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') (e.stopPropagation(), onClose())
-        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') (e.preventDefault(), move(e.key === 'ArrowDown' ? 1 : -1))
-        else if (e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) jump(e.key)
-      }}
-    >
-      {items.map((item, i) =>
-        item === 'sep' ? (
-          <hr key={i} />
-        ) : 'head' in item ? (
-          <div key={i} className="lib-pop-head">{item.head}</div>
-        ) : (
-          <button
-            key={i}
-            role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
-            aria-checked={item.checked}
-            className={item.danger ? 'danger' : undefined}
-            disabled={item.disabled}
-            onClick={() => {
-              if (!item.keepOpen) onClose()
-              item.run()
-            }}
-          >
-            {item.checked !== undefined && <span className="lib-pop-check" aria-hidden="true">{item.checked ? '✓' : ''}</span>}
-            <span className="lib-pop-label">{item.label}</span>
-            {item.count !== undefined && <span className="lib-pop-count">{item.count}</span>}
-            {item.kbd && <kbd>{item.kbd}</kbd>}
-          </button>
-        ),
-      )}
-    </div>
-  )
-}
 
 /** One filter above the list. Empty, it names what it filters by; set, it says to what, with an × to clear it. */
 function Chip({ name, value, onOpen, onClear }: { name: string; value: string; onOpen: (under: HTMLElement) => void; onClear: () => void }) {
@@ -476,33 +240,11 @@ function Chip({ name, value, onOpen, onClear }: { name: string; value: string; o
   )
 }
 
-/** Naming a view: when it's saved, and when it's renamed. */
-function ViewNameForm({ initial, action, onDone, onCancel }: { initial: string; action: string; onDone: (name: string) => void; onCancel: () => void }) {
-  const [name, setName] = useState(initial)
-  return (
-    <form
-      className="lib-view-form"
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (name.trim()) onDone(name.trim())
-      }}
-      onKeyDown={(e) => {
-        if (e.key !== 'Escape') return
-        e.stopPropagation()
-        onCancel()
-      }}
-    >
-      <input autoFocus value={name} maxLength={60} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.currentTarget.select()} aria-label="Name of the view" placeholder="Name this view" />
-      <button className="primary" disabled={!name.trim()}>{action}</button>
-      <button type="button" onClick={onCancel}>Cancel</button>
-    </form>
-  )
-}
 
 /** The library as a list: one line per source, selected as in a mail app or a file explorer. */
 function DocTable({
   rows, sel, cur, drafting, cited, folder, sort, onSort, cols, onSelect, onSelectAll, onOpenFile, onStar, onRowMenu, onHeaderMenu, onKeyDown, tableRef,
-  ghosts, ghostsSince, openGhost, onOpenGhost, hits, hitQuery, docById, onOpenHit,
+  ghosts, ghostsSince, openGhost, onOpenGhost, onOpenTopic, children,
 }: {
   rows: Doc[]
   sel: Set<number>
@@ -528,15 +270,14 @@ function DocTable({
   ghostsSince: string
   openGhost: number | null
   onOpenGhost: (id: number) => void
-  /** Passages found inside the papers for the search (null: not searching, or still looking). */
-  hits: PassageHit[] | null
-  hitQuery: string
-  docById: Map<number, Doc>
-  onOpenHit: (d: Doc, hit: PassageHit) => void
+  /** Inside a topic: a click on one of a paper's other topics opens it. */
+  onOpenTopic: (id: number) => void
+  children?: React.ReactNode // below the rows, in the same scroll: passages found inside the papers
 }) {
   const allOn = rows.length > 0 && rows.every((d) => sel.has(d.id))
   const someOn = !allOn && rows.some((d) => sel.has(d.id))
-  const shown = COLUMNS.filter((c) => cols.includes(c.key))
+  // Inside a topic, "Also in" names each paper's other topics, so the Topics column would repeat it.
+  const shown = COLUMNS.filter((c) => cols.includes(c.key) && !(folder && c.key === 'folders'))
   const columns: { key: SortKey; label: string; first: 1 | -1 }[] = [
     { key: 'title', label: 'Title', first: 1 },
     ...shown,
@@ -591,10 +332,13 @@ function DocTable({
               </th>
               <th className="c-star" aria-label="Starred" />
               {columns.map(header)}
+              {folder && <th className="c-also">Also in</th>}
             </tr>
           </thead>
           <tbody>
-            {rows.map((d) => (
+            {rows.map((d) => {
+              const others = folder ? d.folders.filter((f) => f.id !== folder.id) : []
+              return (
               <tr
                 key={d.id}
                 id={`lib-doc-${d.id}`}
@@ -654,8 +398,25 @@ function DocTable({
                     {cell(d, c.key)}
                   </td>
                 ))}
+                {folder && (
+                  <td className="c-also" onClick={(e) => (e.target as HTMLElement).closest('button') && e.stopPropagation()} onDoubleClick={(e) => (e.target as HTMLElement).closest('button') && e.stopPropagation()}>
+                    <span className="also">
+                    {others.slice(0, 2).map((f) => (
+                      <button key={f.id} className="also-chip" onClick={() => onOpenTopic(f.id)} title={`Open ${f.name}`}>
+                        {f.name}
+                      </button>
+                    ))}
+                    {others.length > 2 && (
+                      <span className="also-more" title={others.slice(2).map((f) => f.name).join(', ')}>
+                        +{others.length - 2}
+                      </span>
+                    )}
+                    </span>
+                  </td>
+                )}
               </tr>
-            ))}
+              )
+            })}
           </tbody>
           {ghosts.length > 0 && (
             <tbody className="lib-ghosts">
@@ -689,26 +450,37 @@ function DocTable({
           )}
         </table>
       )}
-      {hits && hits.length > 0 && (
-        <section className="lib-hits" aria-label="Passages inside your papers">
-          <h3 className="lib-sect">Inside your papers</h3>
-          {hits.map((h) => {
-            const d = docById.get(h.doc_id)
-            if (!d) return null
-            return (
-              <button key={h.doc_id} className="lib-hit" onClick={() => onOpenHit(d, h)} title={`Open the paper at this page, with “${hitQuery}” marked`}>
-                <span className="lib-hit-text"><Snippet text={h.snippet} /></span>
-                <span className="lib-hit-from">
-                  {[authorsShort(d), d.year].filter(Boolean).join(' ') || 'No author'} · {d.title.length > 80 ? d.title.slice(0, 80) + '…' : d.title} ·{' '}
-                  <b>page {h.label || h.page}</b>
-                  {h.passages > 1 && ` · ${h.passages} passages in this paper`}
-                </span>
-              </button>
-            )
-          })}
-        </section>
-      )}
+      {children}
     </div>
+  )
+}
+
+/** Passages found inside the papers for the search, below the rows or the covers. */
+function PassageHits({ hits, hitQuery, docById, onOpenHit }: {
+  hits: PassageHit[] | null // null: not searching, or still looking
+  hitQuery: string
+  docById: Map<number, Doc>
+  onOpenHit: (d: Doc, hit: PassageHit) => void
+}) {
+  if (!hits?.length) return null
+  return (
+    <section className="lib-hits" aria-label="Passages inside your papers">
+      <h3 className="lib-sect">Inside your papers</h3>
+      {hits.map((h) => {
+        const d = docById.get(h.doc_id)
+        if (!d) return null
+        return (
+          <button key={h.doc_id} className="lib-hit" onClick={() => onOpenHit(d, h)} title={`Open the paper at this page, with “${hitQuery}” marked`}>
+            <span className="lib-hit-text"><Snippet text={h.snippet} /></span>
+            <span className="lib-hit-from">
+              {[authorsShort(d), d.year].filter(Boolean).join(' ') || 'No author'} · {d.title.length > 80 ? d.title.slice(0, 80) + '…' : d.title} ·{' '}
+              <b>page {h.label || h.page}</b>
+              {h.passages > 1 && ` · ${h.passages} passages in this paper`}
+            </span>
+          </button>
+        )
+      })}
+    </section>
   )
 }
 
@@ -1113,15 +885,6 @@ function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle
   )
 }
 
-/** Closes a popup menu on a click outside `ref`. */
-function useDismiss(open: boolean, close: () => void, ref: React.RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && close()
-    window.addEventListener('mousedown', onDown)
-    return () => window.removeEventListener('mousedown', onDown)
-  }, [open, close, ref])
-}
 
 /** One button for every way in: files, a folder on disk, or a pasted link or path. */
 function AddSources({ disabled, onFiles, onFolder, onLink }: {
@@ -1202,49 +965,44 @@ function AddSources({ disabled, onFiles, onFolder, onLink }: {
   )
 }
 
-/** Two topics that hold (nearly) the same papers, the closest pair first; `into` is the one to keep. */
-function alikeTopics(docs: Doc[], folders: Folder[], kept: string[]) {
-  const members = new Map<number, Set<number>>()
-  for (const d of docs) for (const f of d.folders) (members.get(f.id) ?? members.set(f.id, new Set()).get(f.id)!).add(d.id)
-  let best: { from: Folder; into: Folder; shared: number; total: number; key: string } | null = null
-  for (let i = 0; i < folders.length; i++) {
-    for (let j = i + 1; j < folders.length; j++) {
-      const [a, b] = [members.get(folders[i].id), members.get(folders[j].id)]
-      if (!a || !b || Math.min(a.size, b.size) < 2) continue
-      const shared = [...a].filter((id) => b.has(id)).length
-      const total = a.size + b.size - shared
-      const key = `${Math.min(folders[i].id, folders[j].id)}-${Math.max(folders[i].id, folders[j].id)}`
-      if (shared / total < 0.8 || kept.includes(key) || (best && shared / total <= best.shared / best.total)) continue
-      // Keep the larger topic; of two the same size, the shorter name.
-      const keepFirst = a.size !== b.size ? a.size > b.size : folders[i].name.length <= folders[j].name.length
-      best = { from: folders[keepFirst ? j : i], into: folders[keepFirst ? i : j], shared, total, key }
-    }
-  }
-  return best
-}
-
-const VIEW_NAME: Record<View, string> = {
-  all: 'All sources', recent: 'Recently added', drafting: 'Drafting from', cited: 'Cited in this draft', needs: 'Needs attention',
-  unread: 'Unread', starred: 'Starred', none: 'Unfiled', removed: 'Removed',
-}
-const VIEW_ICON: Record<View, string> = { all: '◫', recent: '◷', drafting: '●', cited: '❝', needs: '!', unread: '•', starred: '★', none: '◌', removed: '↺' }
 const RECENT_DAYS = 14
-const TOP_TOPICS = 8
 const UNDO_MS = 8000
 const MAX_CHOICES = 300 // authors or journals listed in a filter's menu, the ones with the most papers
-type MenuKind = 'row' | 'topic' | 'cite' | 'columns' | 'f-kind' | 'f-year' | 'f-topic' | 'f-author' | 'f-venue' | 'view'
+type MenuKind = 'row' | 'topic' | 'cite' | 'columns' | 'f-kind' | 'f-year' | 'f-topic' | 'f-author' | 'f-venue' | 'merge'
+type PaperLayout = 'rows' | 'covers'
+const FRONT_LAYOUT_KEY = 'gw.library.folderLayout'
+const FRONT_SORT_KEY = 'gw.library.folderSort'
+const PAPER_LAYOUT_KEY = 'gw.library.paperLayout'
+const SIZE_KEY = 'gw.library.size'
+const RECENT_SHOWN = 5
+/** The smart folders made from ready-made views, in the order they show; each shows only when it has
+ * something in it, except All sources and Drafting from. */
+const SMART_VIEWS: View[] = ['all', 'recent', 'drafting', 'cited', 'needs', 'unread', 'starred', 'none', 'removed']
+const VIEW_RULE: Record<View, string> = {
+  all: 'Every paper in the library',
+  recent: `Added in the last ${RECENT_DAYS} days`,
+  drafting: 'Papers ticked for Muse to write from; with none ticked it uses them all',
+  cited: 'Papers the open draft cites',
+  needs: 'Retracted, missing a year or authors, or still owed a summary',
+  unread: 'Not opened yet',
+  starred: 'Papers you starred',
+  none: 'In no topic yet',
+  removed: 'Taken out of the library; open one to restore it',
+}
+/** A folder's key on the front page, for a view or a topic. */
+const keyOf = (scope: Scope) => (typeof scope === 'number' ? `t:${scope}` : `v:${scope}`)
 const STYLE_NAME: Record<RefStyle, string> = { apa: 'APA', mla: 'MLA', ieee: 'IEEE', bibtex: 'BibTeX' }
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? ds[0].title.slice(0, 48) + '…' : ds[0].title}”` : `${ds.length} papers`)
 
-/** The library, working like a mail app: ready-made views and topics on the left, every source
- * as one line in a sortable list, and the selected source's details on the right. A click selects,
- * Ctrl or Shift selects more, and the bar above the list (or a right-click) acts on the selection.
- * The app bar's search box filters it and looks inside the papers. Memoized: the app redraws at
+/** The library. It opens on its topics drawn as folders, with smart folders (the ready-made views
+ * and saved views) above them; opening one shows its papers as one line each in a sortable list
+ * (or as covers), with the selected source's details on the right. A click selects, Ctrl or Shift
+ * selects more, and the bar above the list (or a right-click) acts on the selection. The app bar's
+ * search box finds folders on the front page, and inside one filters it and looks inside the papers. Memoized: the app redraws at
  * every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs: allDocs, folders, query, onQuery, selected: drafting, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
-  folderSimilarity, onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob,
+  folderSimilarity, onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onSearchHint,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS) // the chips above the list
@@ -1266,10 +1024,24 @@ export const LibraryPanel = memo(function LibraryPanel({
   )
   const [cols, setCols] = useState<ColKey[]>(() => load<ColKey[]>(COLS_KEY, DEFAULT_COLS, (v) => Array.isArray(v) && v.every((k) => COLUMNS.some((c) => c.key === k))))
   const [keptBoth, setKeptBoth] = useState<string[]>(() => load<string[]>(KEPT_KEY, [], (v) => Array.isArray(v)))
-  const [allTopics, setAllTopics] = useState(false)
-  const [dropOn, setDropOn] = useState<Scope | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
-  const [menu, setMenu] = useState<{ kind: MenuKind; x: number; y: number; viewId?: string } | null>(null)
+  const [menu, setMenu] = useState<{ kind: MenuKind; x: number; y: number; folderId?: number } | null>(null)
+  // The front page: the topics as folders. `opened` is the folder whose papers show, by key
+  // ('t:12', 'v:needs', 's:…'); null shows the folders. `selKey` is the folder selected there.
+  const [opened, setOpened] = useState<string | null>(null)
+  const [selKey, setSelKey] = useState<string | null>(null)
+  const [frontLayout, setFrontLayoutState] = useState<FrontLayout>(() => load<FrontLayout>(FRONT_LAYOUT_KEY, 'grid', (v) => v === 'grid' || v === 'list'))
+  const [frontSort, setFrontSortState] = useState<FrontSort>(() => load<FrontSort>(FRONT_SORT_KEY, 'size', (v) => v === 'size' || v === 'name'))
+  const [paperLayout, setPaperLayoutState] = useState<PaperLayout>(() => load<PaperLayout>(PAPER_LAYOUT_KEY, 'rows', (v) => v === 'rows' || v === 'covers'))
+  const [size, setSizeState] = useState<number>(() => load<number>(SIZE_KEY, 60, (v) => typeof v === 'number' && v >= 0 && v <= 100))
+  const [peekKey, setPeekKey] = useState<string | null>(null) // Space on a folder: its papers listed over the folders
+  const [folderMenu, setFolderMenu] = useState<{ key: string; x: number; y: number } | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null) // the folder whose name is being edited in place
+  const [dragging, setDragging] = useState<number | null>(null) // papers being dragged: the shelf of topics shows
+  const [recent, setRecent] = useState<Recent[]>(readRecent)
+  const frontRef = useRef<HTMLDivElement>(null)
+  const coversRef = useRef<HTMLDivElement>(null)
+  const sectionRef = useRef<HTMLElement>(null)
   const menuClosed = useRef<{ kind: MenuKind; at: number } | null>(null) // so a click on an open chip closes its menu
   const [toast, setToast] = useState<{ text: string; undo?: () => void; n: number } | null>(null)
   const [hiding, setHiding] = useState<Set<number>>(new Set()) // removed a moment ago; Undo brings them back
@@ -1349,6 +1121,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   useEffect(() => {
     if (!focus) return
     setScope('all')
+    setOpened('v:all')
     onQuery('')
     setFilters(NO_FILTERS)
     setTimeline(null)
@@ -1359,16 +1132,15 @@ export const LibraryPanel = memo(function LibraryPanel({
 
   // Open a requested topic (picked in the palette).
   useEffect(() => {
-    if (!focusTopic) return
-    onQuery('')
-    setFilters(NO_FILTERS)
-    setTimeline(null)
-    setScope(focusTopic.id)
-    pickOnly(null)
+    if (focusTopic) openKey(`t:${focusTopic.id}`)
   }, [focusTopic?.n]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (typeof scope === 'number' && !folders.some((f) => f.id === scope)) setScope('all') // the open topic was deleted or merged
+    // The open topic was deleted or merged: back to the folders.
+    if (typeof scope === 'number' && !folders.some((f) => f.id === scope)) {
+      setScope('all')
+      setOpened(null)
+    }
   }, [folders, scope])
 
   useEffect(() => {
@@ -1400,12 +1172,16 @@ export const LibraryPanel = memo(function LibraryPanel({
 
   useEffect(() => {
     if (openRemoved !== null && !removed.some((r) => r.id === openRemoved)) setOpenRemoved(null)
-    if (scope === 'removed' && removed.length === 0) setScope('all')
+    if (scope === 'removed' && removed.length === 0) {
+      setScope('all')
+      setOpened((o) => (o === 'v:removed' ? 'v:all' : o))
+    }
   }, [removed, openRemoved, scope])
 
   /** Bring a source in the library into view (from a removed one's details). */
   const showDoc = (id: number) => {
     setScope('all')
+    setOpened('v:all')
     setTimeline(null)
     pickOnly(id)
     window.setTimeout(() => document.getElementById(`lib-doc-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
@@ -1414,6 +1190,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   const goTo = (id: number) => {
     if (!rows.some((d) => d.id === id)) {
       setScope('all')
+      setOpened('v:all')
       onQuery('')
       setFilters(NO_FILTERS)
       setTimeline(null)
@@ -1430,6 +1207,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   /** The paper itself: a PDF in the reader (at `page`), other files in their own app, a web page in the browser. Opening it marks it read. */
   const openFile = (d: Doc, page = 1, find?: string) => {
     if (d.unread) mark([d], { unread: false })
+    setRecent((r) => noteRecent(r, { kind: 'doc', id: d.id }))
     if (/^https?:\/\//i.test(d.source)) window.open(d.url || d.source, '_blank', 'noreferrer')
     else if (d.kind === 'pdf') onOpenPdf(d, page, find)
     else if (window.rc?.openFile) window.rc.openFile(d.source).catch((e) => onError(`Could not open “${d.title}”: ${e instanceof Error ? e.message : e}`))
@@ -1524,7 +1302,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   // Look inside the papers for the search, a moment after the typing stops.
   useEffect(() => {
     const q = query.trim()
-    if (q.length < 3) return setPassages(null)
+    if (q.length < 3 || opened === null) return setPassages(null) // on the front page the search finds folders
     let stale = false
     const t = window.setTimeout(() => {
       api.findPassages(q).then((hits) => !stale && setPassages({ q, hits })).catch(() => !stale && setPassages(null)) // an older backend can't: titles only
@@ -1533,7 +1311,7 @@ export const LibraryPanel = memo(function LibraryPanel({
       stale = true
       window.clearTimeout(t)
     }
-  }, [query, allDocs])
+  }, [query, allDocs, opened])
   const docById = useMemo(() => new Map(docs.map((d) => [d.id, d])), [docs])
   const hits = useMemo(() => {
     if (!passages || passages.q !== query.trim() || scope === 'removed') return null
@@ -1585,7 +1363,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   }
   const clearSelection = () => pickOnly(null)
   /** Move to the paper above or below (Shift selects through to it). */
-  const step = (dir: 1 | -1, range = false) => {
+  const step = (dir: number, range = false) => {
     const i = rows.findIndex((d) => d.id === cur)
     const next = rows[Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + dir))]
     if (!next) return
@@ -1598,8 +1376,10 @@ export const LibraryPanel = memo(function LibraryPanel({
   }, [peek, current])
   const closePeek = () => {
     setPeek(false)
-    requestAnimationFrame(() => tableRef.current?.focus({ preventScroll: true }))
+    requestAnimationFrame(() => listEl()?.focus({ preventScroll: true }))
   }
+  /** What holds the keyboard inside an open folder: the rows, or the covers. */
+  const listEl = () => (paperLayout === 'covers' ? coversRef.current : tableRef.current) ?? sectionRef.current
   const canOpen = (d: Doc) => /^https?:\/\//i.test(d.source) || d.kind === 'pdf' || !!window.rc?.openFile
 
   // ---------- saved views: a search and filters kept in the sidebar ----------
@@ -1613,19 +1393,11 @@ export const LibraryPanel = memo(function LibraryPanel({
     () => views.find((v) => v.scope === scope && v.query.trim() === query.trim() && sameFilters(v.filters, filters)),
     [views, scope, query, filters],
   )
-  const viewCounts = useMemo(
-    () =>
-      new Map(
-        views.map((v) => {
-          const vw = wordsOf(v.query)
-          return [v.id, docs.filter((d) => inView(d, v.scope as Scope) && matches(filterable(d), v.filters, thisYear) && hasWords(d, vw)).length]
-        }),
-      ),
-    [views, docs, inView, thisYear],
-  )
-  const openView = (v: SavedView) => {
+  /** Show a saved view's search and filters in the view or topic it was saved in. False if that topic is gone. */
+  const openView = (v: SavedView): boolean => {
     if (typeof v.scope === 'number' && !folders.some((f) => f.id === v.scope)) {
-      return say(`“${v.name}” was saved inside a topic that is gone. Delete the view, or save it again.`)
+      say(`“${v.name}” was saved inside a topic that is gone. Delete the view, or save it again.`)
+      return false
     }
     setScope(v.scope as Scope)
     onQuery(v.query)
@@ -1635,18 +1407,20 @@ export const LibraryPanel = memo(function LibraryPanel({
     setPicked(new Set())
     setCur(null)
     setOpenRemoved(null)
+    return true
   }
   // Open a requested saved view (picked on Home).
   useEffect(() => {
-    const v = focusView && views.find((x) => x.id === focusView.id)
-    if (v) openView(v)
+    if (focusView && views.some((x) => x.id === focusView.id)) openKey(`s:${focusView.id}`)
   }, [focusView?.n]) // eslint-disable-line react-hooks/exhaustive-deps
   const saveView = (name: string) => {
     const same = views.find((v) => v.name.toLowerCase() === name.toLowerCase())
     const view: SavedView = { id: same?.id ?? Date.now().toString(36), name, scope, query: query.trim(), filters }
     setViews(same ? views.map((v) => (v === same ? view : v)) : [...views, view])
     setNaming(null)
-    say(same ? `Updated the view “${name}”.` : `Saved “${name}” under Saved views. It stays current as papers arrive.`)
+    setOpened(`s:${view.id}`) // the trail now names the view
+    setSelKey(`s:${view.id}`)
+    say(same ? `Updated the view “${name}”.` : `Saved “${name}” as a smart folder on the Library's front page. It stays current as papers arrive.`)
   }
   const renameView = (id: string, name: string) => {
     setViews(views.map((v) => (v.id === id ? { ...v, name } : v)))
@@ -1659,13 +1433,16 @@ export const LibraryPanel = memo(function LibraryPanel({
     setNaming(null)
     // Deleting the view on screen leaves it, as clicking another view does: its search and filters
     // go with it, so the list isn't left narrowed by a view that no longer exists.
+    const inside = opened === `s:${v.id}`
     if (wasOpen) {
       setFilters(NO_FILTERS)
       onQuery('')
     }
+    if (inside) setOpened(keyOf(scope)) // still in the view or topic it was saved in
+    if (selKey === `s:${v.id}`) setSelKey(null)
     say(`Deleted the view “${v.name}”. Your papers aren't touched.`, () => {
       setViews(before)
-      if (wasOpen) openView(v)
+      if (wasOpen && openView(v)) setOpened(`s:${v.id}`)
     })
   }
   const selectAll = () => setPicked(rows.length > 0 && rows.every((d) => sel.has(d.id)) ? new Set() : new Set(rows.map((d) => d.id)))
@@ -1681,7 +1458,10 @@ export const LibraryPanel = memo(function LibraryPanel({
   }
   const useWholeLibrary = () => {
     for (const id of drafting) onToggle(id)
-    if (scope === 'drafting') setScope('all')
+    if (scope === 'drafting') {
+      setScope('all')
+      setOpened((o) => (o === 'v:drafting' ? 'v:all' : o))
+    }
   }
 
   /** Take the removals whose Undo ran out (or was overtaken) out of the library. */
@@ -1741,9 +1521,12 @@ export const LibraryPanel = memo(function LibraryPanel({
   const fileInto = (ds: Doc[], folder: Folder) => {
     const add = ds.filter((d) => !d.folders.some((f) => f.id === folder.id))
     if (!add.length) return say(`${ds.length === 1 ? 'It is' : 'They are'} already in ${folder.name}.`)
+    // Filing adds a topic and takes none away: say so, since dragging elsewhere usually moves things.
+    const from = openFolder && openFolder.id !== folder.id ? openFolder.name : ''
+    const stay = from ? ` ${add.length === 1 ? 'It stays' : 'They stay'} in ${from} too.` : ''
     run('Filing…', async () => {
       for (const d of add) await api.setFolderMember(d.id, folder.id, true)
-    }).then(() => say(`Added ${named(add)} to ${folder.name}.`))
+    }).then(() => say(`Added ${add.length === 1 ? named(add) : plural(add.length, 'paper')} to ${folder.name}.${stay}`))
   }
   const copyCitations = (ds: Doc[], style: RefStyle) =>
     quietly(async () => {
@@ -1827,14 +1610,22 @@ export const LibraryPanel = memo(function LibraryPanel({
     if (menu.kind === 'f-venue') {
       return [{ head: 'Most papers first' }, ...pick(venues.slice(0, MAX_CHOICES), filters.venues, (venues) => ({ venues }))]
     }
-    if (menu.kind === 'view') {
-      const v = views.find((x) => x.id === menu.viewId)
-      if (!v) return []
+    if (menu.kind === 'merge') {
+      const from = folders.find((f) => f.id === menu.folderId)
+      if (!from) return []
+      const others = bySize.filter((f) => f.id !== from.id)
       return [
-        { label: 'Open', run: () => openView(v) },
-        { label: 'Rename…', run: () => setNaming({ id: v.id }) },
-        'sep',
-        { label: 'Delete view', danger: true, run: () => deleteView(v) },
+        { head: `Merge “${from.name}” into` },
+        ...others.map((into) => ({
+          label: into.name,
+          count: into.doc_count,
+          run: () =>
+            run('Merging topics…', () => api.mergeFolders(from.id, into.id)).then(() => {
+              setSelKey(`t:${into.id}`)
+              say(`Merged ${from.name} into ${into.name}. Its papers are in ${into.name} now.`)
+            }),
+        })),
+        ...(others.length ? [] : [{ label: 'No other topic yet', disabled: true, run: () => {} }]),
       ]
     }
     if (menu.kind === 'topic') {
@@ -1909,52 +1700,184 @@ export const LibraryPanel = memo(function LibraryPanel({
       ...[ticked.kind, ticked.year, ticked.topic, ticked.author, ticked.venue].map((t) => t.join(', ')),
       filters.highlighted ? 'Highlighted' : '',
     ].filter(Boolean).join(' · ').slice(0, 60)
-  const count = (v: View) => (v === 'removed' ? removed.length : docs.filter((d) => inView(d, v)).length)
   const alike = useMemo(() => alikeTopics(docs, folders, keptBoth), [docs, folders, keptBoth])
   const bySize = useMemo(() => [...folders].sort((a, b) => b.doc_count - a.doc_count || a.name.localeCompare(b.name)), [folders])
-  const topics = allTopics ? bySize : bySize.filter((f, i) => i < TOP_TOPICS || f.id === scope)
 
-  const navItem = (id: Scope, name: string, shown: number | string, warn = false) => {
-    const folder = typeof id === 'number' ? folders.find((f) => f.id === id) : undefined
-    return (
-      <button
-        key={String(id)}
-        className={`lib-nav-item${scope === id && !activeView ? ' on' : ''}${dropOn === id ? ' drop' : ''}`}
-        aria-current={scope === id && !activeView ? 'page' : undefined}
-        onClick={() => {
-          // Leaving a saved view leaves its search and filters too: "All sources" then shows all of them.
-          if (activeView) {
-            setFilters(NO_FILTERS)
-            onQuery('')
+  // ---------- the front page: topics as folders, smart folders above them ----------
+
+  const byAdded = useMemo(() => [...docs].sort((a, b) => b.added_at.localeCompare(a.added_at) || b.id - a.id), [docs])
+  const members = useMemo(() => {
+    const m = new Map<number, Doc[]>()
+    for (const d of byAdded) for (const f of d.folders) (m.get(f.id) ?? m.set(f.id, []).get(f.id)!).push(d)
+    return m
+  }, [byAdded])
+  const topicItems = useMemo<FrontItem[]>(
+    () =>
+      bySize.map((f) => {
+        const ds = members.get(f.id) ?? []
+        return { key: `t:${f.id}`, kind: 'topic' as const, name: f.name, docs: ds, count: ds.length, folder: f }
+      }),
+    [bySize, members],
+  )
+  const smartItems = useMemo<FrontItem[]>(() => {
+    const out: FrontItem[] = []
+    for (const v of SMART_VIEWS) {
+      const ds = v === 'removed' ? [] : byAdded.filter((d) => inView(d, v))
+      const n = v === 'removed' ? removed.length : ds.length
+      if (n === 0 && v !== 'all' && v !== 'drafting') continue
+      out.push({
+        key: `v:${v}`, kind: 'smart', name: VIEW_NAME[v], rule: VIEW_RULE[v], docs: ds, count: n, view: v,
+        countText: v === 'drafting' && n === 0 ? 'Whole library' : v === 'removed' ? plural(n, 'removed source') : undefined,
+      })
+    }
+    for (const sv of views) {
+      const vw = wordsOf(sv.query)
+      const ds = byAdded.filter((d) => inView(d, sv.scope as Scope) && matches(filterable(d), sv.filters, thisYear) && hasWords(d, vw))
+      const within = typeof sv.scope === 'number' ? folders.find((f) => f.id === sv.scope)?.name : sv.scope !== 'all' ? VIEW_NAME[sv.scope as View] : ''
+      const rule = ['A saved view', sv.query && `“${sv.query}”`, filtersActive(sv.filters) && 'with filters', within && `in ${within}`].filter(Boolean).join(', ')
+      out.push({ key: `s:${sv.id}`, kind: 'smart', name: sv.name, rule, docs: ds, count: ds.length, saved: sv })
+    }
+    return out
+  }, [byAdded, inView, removed.length, views, thisYear, folders])
+  const itemByKey = useMemo(() => new Map([...smartItems, ...topicItems].map((i) => [i.key, i])), [smartItems, topicItems])
+  const citedBy = useMemo(() => new Map([...itemByKey].map(([k, i]) => [k, i.docs.reduce((n, d) => n + (citedSet.has(d.id) ? 1 : 0), 0)])), [itemByKey, citedSet])
+  // On the front page the search finds folders: by name, or by the titles of the papers in a topic.
+  const frontHit = (text: string) => words.every((w) => text.toLowerCase().includes(w))
+  const shownTopics = useMemo(() => {
+    const list = searching ? topicItems.filter((t) => frontHit(t.name) || t.docs.some((d) => frontHit(d.title))) : topicItems
+    return frontSort === 'name' ? [...list].sort((a, b) => a.name.localeCompare(b.name)) : list
+  }, [topicItems, searching, words, frontSort]) // eslint-disable-line react-hooks/exhaustive-deps
+  const shownSmart = useMemo(() => (searching ? smartItems.filter((i) => frontHit(i.name)) : smartItems), [smartItems, searching, words]) // eslint-disable-line react-hooks/exhaustive-deps
+  const recentShown = useMemo<RecentShown[]>(
+    () =>
+      recent
+        .map((r): RecentShown | null => {
+          if (r.kind === 'doc') {
+            const d = docById.get(r.id)
+            return d ? { kind: 'doc', doc: d } : null
           }
-          setScope(id)
-          setPicked(new Set())
-          setCur(null)
-          setOpenRemoved(null)
-        }}
-        title={folder ? `${folder.similarity}% similarity · drop papers here to file them` : undefined}
-        onDragOver={(e) => {
-          if (!folder) return
-          e.preventDefault()
-          setDropOn(id)
-        }}
-        onDragLeave={() => setDropOn(null)}
-        onDrop={(e) => {
-          setDropOn(null)
-          const ids = new Set(e.dataTransfer.getData('text/plain').split(',').map(Number))
-          const ds = docs.filter((d) => ids.has(d.id))
-          if (folder && ds.length) fileInto(ds, folder)
-        }}
-      >
-        <span className="lib-nav-ico" aria-hidden="true">{typeof id === 'number' ? '▣' : VIEW_ICON[id]}</span>
-        <span className="lib-nav-name">{name}</span>
-        <span className={`lib-nav-count${warn ? ' warn' : ''}`}>{shown}</span>
-      </button>
-    )
+          const item = itemByKey.get(r.key)
+          return item ? { kind: 'folder', item } : null
+        })
+        .filter((r): r is RecentShown => r !== null) // gone since: deleted, merged, removed
+        .slice(0, RECENT_SHOWN),
+    [recent, docById, itemByKey],
+  )
+  const openedItem = opened ? itemByKey.get(opened) : undefined
+  const openedName = openedItem?.name ?? (opened?.startsWith('s:') ? activeView?.name ?? 'Saved view' : typeof scope === 'number' ? openFolder?.name ?? '' : VIEW_NAME[scope])
+  const atFront = opened === null && docs.length > 0
+
+  /** Open a folder: a topic, a ready-made view or a saved view. */
+  const openKey = (key: string) => {
+    if (key.startsWith('s:')) {
+      const v = views.find((x) => `s:${x.id}` === key)
+      if (!v || !openView(v)) return
+    } else {
+      const to: Scope = key.startsWith('t:') ? Number(key.slice(2)) : (key.slice(2) as View)
+      if (typeof to === 'number' && !folders.some((f) => f.id === to)) return
+      onQuery('') // the search was for folders; inside, it searches this one
+      setFilters(NO_FILTERS)
+      setTimeline(null)
+      setScope(to)
+      setNaming(null)
+      pickOnly(null)
+    }
+    setOpened(key)
+    setSelKey(key)
+    setPeekKey(null)
+    setFolderMenu(null)
+    setRenaming(null)
+    setRecent((r) => noteRecent(r, { kind: 'folder', key }))
+    requestAnimationFrame(() => listEl()?.focus({ preventScroll: true }))
   }
-  const view = (v: View, always = false) => {
-    const n = count(v)
-    return n > 0 || always || scope === v ? navItem(v, VIEW_NAME[v], v === 'drafting' && n === 0 ? 'all' : n, v === 'needs') : null
+  /** Back to the folders, with the one just left selected. */
+  const goBack = () => {
+    if (opened === null) return
+    const from = opened
+    onQuery('')
+    setFilters(NO_FILTERS)
+    setTimeline(null)
+    setNaming(null)
+    setPeek(false)
+    pickOnly(null)
+    setOpened(null)
+    setSelKey(from)
+    requestAnimationFrame(() => {
+      const el = frontRef.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(from)}"]`)
+      ;(el ?? frontRef.current)?.focus({ preventScroll: true })
+      el?.scrollIntoView({ block: 'center' })
+    })
+  }
+  useEffect(() => {
+    onSearchHint?.(atFront ? 'Search topics, and the titles of the papers in them…' : opened ? `Search in ${openedName}…` : 'Search titles, authors, and inside papers…')
+  }, [atFront, opened, openedName, onSearchHint])
+  // A folder selected on the front page that is gone now (deleted, merged, emptied) is let go.
+  useEffect(() => {
+    if (selKey && !itemByKey.has(selKey) && docs.length) setSelKey(null)
+  }, [selKey, itemByKey, docs.length])
+
+  const setFrontLayout = (l: FrontLayout) => (setFrontLayoutState(l), save(FRONT_LAYOUT_KEY, l))
+  const setFrontSort = (s: FrontSort) => (setFrontSortState(s), save(FRONT_SORT_KEY, s))
+  const setPaperLayout = (l: PaperLayout) => (setPaperLayoutState(l), save(PAPER_LAYOUT_KEY, l))
+  const setSize = (n: number) => (setSizeState(n), save(SIZE_KEY, n))
+
+  /** Give the keyboard back to a folder on the front page (after a menu, a rename, the peek). */
+  const focusTile = (key: string | null) =>
+    requestAnimationFrame(() => ((key && frontRef.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)) || frontRef.current)?.focus({ preventScroll: true }))
+  /** A name edited in place on the front page: a topic's, or a saved view's. Null: left as it was. */
+  const renamed = (key: string, name: string | null) => {
+    setRenaming(null)
+    focusTile(key)
+    if (!name) return
+    if (key.startsWith('t:')) run('Renaming…', () => api.updateFolder(Number(key.slice(2)), { name }))
+    else if (key.startsWith('s:')) renameView(key.slice(2), name)
+  }
+  const renamedRef = useRef(renamed)
+  renamedRef.current = renamed
+  const onRenamed = useCallback((key: string, name: string | null) => renamedRef.current(key, name), []) // steady, so tiles don't all re-draw
+  const setColor = (f: Folder, color: FolderColor | '') =>
+    quietly(async () => {
+      await api.updateFolder(f.id, { color })
+      await onChanged()
+    })
+  /** Space's peek and the arrows inside it: the folder before or after, in the order they show. */
+  const peekStep = (dir: 1 | -1) => {
+    const order = [...shownSmart, ...shownTopics]
+    const at = order.findIndex((i) => i.key === peekKey)
+    const next = order[Math.max(0, Math.min(order.length - 1, at + dir))]
+    if (!next) return
+    setPeekKey(next.key)
+    setSelKey(next.key)
+    frontRef.current?.querySelector(`[data-key="${CSS.escape(next.key)}"]`)?.scrollIntoView({ block: 'nearest' })
+  }
+  const closeFolderPeek = () => {
+    setPeekKey(null)
+    focusTile(peekKey)
+  }
+  // Up and down in the covers go a row at a time; the rest of the keys work as in the rows.
+  const onCoversKey = (e: React.KeyboardEvent) => {
+    const by = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -coversPerRow(coversRef.current), ArrowDown: coversPerRow(coversRef.current) }[e.key as string]
+    if (by !== undefined && e.target === e.currentTarget) {
+      e.preventDefault()
+      return step(by, e.shiftKey)
+    }
+    onTableKey(e)
+  }
+  // While papers are dragged the shelf of topics shows; it goes when the drag ends, wherever it ends.
+  useEffect(() => {
+    if (dragging === null) return
+    const done = () => setDragging(null)
+    window.addEventListener('dragend', done)
+    window.addEventListener('drop', done)
+    return () => {
+      window.removeEventListener('dragend', done)
+      window.removeEventListener('drop', done)
+    }
+  }, [dragging])
+  const dropOnTopic = (item: FrontItem, ids: number[]) => {
+    setDragging(null)
+    const ds = docs.filter((d) => ids.includes(d.id))
+    if (item.folder && ds.length) fileInto(ds, item.folder)
   }
 
   const emptyText: Partial<Record<View, string>> = {
@@ -1967,17 +1890,58 @@ export const LibraryPanel = memo(function LibraryPanel({
     none: 'Every paper is in a topic.',
   }
   const paneOpen = !!current || chosen.length > 1 || !!currentRemoved
+  const passageHits = <PassageHits hits={hits} hitQuery={query.trim()} docById={docById} onOpenHit={(d, h) => openFile(d, h.page, matchedWords(h.snippet))} />
+  const peekItem = peekKey ? itemByKey.get(peekKey) : undefined
+  const menuItem = folderMenu ? itemByKey.get(folderMenu.key) : undefined
 
   return (
-    <section className={`panel library${paneOpen ? ' has-pane' : ''}`} aria-label="Library">
+    <section
+      ref={sectionRef}
+      tabIndex={-1}
+      className={`panel library${paneOpen && !atFront ? ' has-pane' : ''}${atFront ? ' at-front' : ''}`}
+      aria-label="Library"
+      onKeyDown={(e) => {
+        // Backspace or Alt+Left inside a folder: back to the folders, as in a file explorer.
+        if (opened === null || peek || menu || e.defaultPrevented) return
+        if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return
+        if ((e.key === 'Backspace' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) || (e.altKey && e.key === 'ArrowLeft')) {
+          e.preventDefault()
+          goBack()
+        }
+      }}
+      onDragStart={(e) => {
+        // A paper row or cover being dragged (not text, not a file from outside): show the shelf of topics.
+        const ids = draggedIds(e)
+        if (!ids.length || !(e.target as HTMLElement).closest?.('[id^="lib-doc-"]')) return
+        window.setTimeout(() => setDragging(ids.length), 0) // changing the page inside dragstart can cancel the drag
+      }}
+      onDragEnd={() => setDragging(null)}
+    >
       <header className="lib-head">
-        <div className="lib-title">
-          <h2>Library</h2>
-          <span className="muted">
-            {docs.length} source{docs.length === 1 ? '' : 's'}
-            {folders.length > 0 && ` · ${plural(folders.length, 'topic')}`}
-          </span>
-        </div>
+        {opened === null ? (
+          <div className="lib-title">
+            <h2>Library</h2>
+            <span className="muted">
+              {docs.length} source{docs.length === 1 ? '' : 's'}
+              {folders.length > 0 && ` · ${plural(folders.length, 'topic')}`}
+            </span>
+          </div>
+        ) : (
+          <div className="lib-trail">
+            <button className="lib-up" onClick={goBack} title="Back to the folders (Backspace)" aria-label="Back to the folders">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+            <nav className="lib-crumbs" aria-label="Where you are">
+              <button className="lib-crumb" onClick={goBack}>Library</button>
+              <span className="lib-crumb-sep" aria-hidden="true">›</span>
+              <h2 className="lib-crumb-here" title={openedName}>{openedName}</h2>
+            </nav>
+            <span className="muted lib-trail-count">
+              {openedItem ? (openedItem.countText ?? plural(openedItem.count, openedItem.view === 'removed' ? 'removed source' : 'paper')) : ''}
+              {(citedBy.get(opened) ?? 0) > 0 && openedItem?.view !== 'cited' && ` · ${citedBy.get(opened)} cited in this draft`}
+            </span>
+          </div>
+        )}
         {busy && (
           <div className="lib-busy" role="status">
             <span className="bar" />
@@ -1985,6 +1949,15 @@ export const LibraryPanel = memo(function LibraryPanel({
           </div>
         )}
         <span className="spacer" />
+        {opened !== null && !showingRemoved && docs.length > 0 && (
+          <>
+            {paperLayout === 'covers' && <SizeSlider size={size} onSize={setSize} />}
+            <div className="seg" role="group" aria-label="Show the papers as">
+              <button aria-pressed={paperLayout === 'rows'} onClick={() => setPaperLayout('rows')}>Rows</button>
+              <button aria-pressed={paperLayout === 'covers'} onClick={() => setPaperLayout('covers')} title="Each paper's first page">Covers</button>
+            </div>
+          </>
+        )}
         <AddSources disabled={!!busy} onFiles={addFiles} onFolder={addDiskFolder} onLink={addLink} />
         {docs.length > 0 && (
           <div className="lib-more" ref={moreRef}>
@@ -2068,322 +2041,345 @@ export const LibraryPanel = memo(function LibraryPanel({
       </datalist>
 
       <div className="lib-body">
-        <nav className="lib-nav" aria-label="Views and topics">
-          <div className="lib-nav-label">Library</div>
-          {view('all', true)}
-          {view('recent')}
-          {view('drafting', true)}
-          {view('cited')}
-          {view('needs')}
-          {view('unread')}
-          {view('starred')}
-          {view('none')}
-          {view('removed')}
-          {views.length > 0 && (
-            <div className="lib-nav-label">
-              Saved views <span className="lib-nav-note">kept current</span>
-            </div>
-          )}
-          {views.map((v) =>
-            naming?.id === v.id ? (
-              <ViewNameForm key={v.id} initial={v.name} action="Rename" onDone={(name) => renameView(v.id, name)} onCancel={() => setNaming(null)} />
-            ) : (
-              <button
-                key={v.id}
-                className={`lib-nav-item${activeView?.id === v.id ? ' on' : ''}`}
-                aria-current={activeView?.id === v.id ? 'page' : undefined}
-                onClick={() => openView(v)}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  setMenu({ kind: 'view', x: e.clientX, y: e.clientY, viewId: v.id })
-                }}
-                title="A search and filters you saved. Right-click to rename or delete it."
-              >
-                <span className="lib-nav-ico" aria-hidden="true">⌕</span>
-                <span className="lib-nav-name">{v.name}</span>
-                <span className="lib-nav-count">{viewCounts.get(v.id) ?? 0}</span>
-              </button>
-            ),
-          )}
-          {folders.length > 0 && (
-            <div className="lib-nav-label">
-              Topics <span className="lib-nav-note">largest first</span>
-            </div>
-          )}
-          {alike && (
-            <div className="lib-alike" role="note">
-              <span>
-                <b>{alike.from.name}</b> and <b>{alike.into.name}</b>{' '}
-                {alike.shared === alike.total ? `hold the same ${alike.total} papers.` : `share ${alike.shared} of their ${alike.total} papers.`}
-              </span>
-              <span className="lib-alike-actions">
-                <button
-                  className="link"
-                  disabled={!!busy}
-                  onClick={() => run('Merging topics…', () => api.mergeFolders(alike.from.id, alike.into.id)).then(() => say(`Merged ${alike.from.name} into ${alike.into.name}.`))}
-                >
-                  Merge into {alike.into.name}
-                </button>
-                <button
-                  className="link"
-                  onClick={() => {
-                    const next = [...keptBoth, alike.key]
-                    setKeptBoth(next)
-                    save(KEPT_KEY, next)
+        {atFront && (
+          <div className="lib-front">
+            <LibraryFront
+              smart={shownSmart}
+              topics={shownTopics}
+              totalTopics={topicItems.length}
+              recent={recentShown}
+              query={query}
+              selected={selKey}
+              cited={citedBy}
+              layout={frontLayout}
+              size={size}
+              sort={frontSort}
+              renaming={renaming}
+              scrollRef={frontRef}
+              onLayout={setFrontLayout}
+              onSize={setSize}
+              onSort={setFrontSort}
+              onSelect={setSelKey}
+              onOpen={openKey}
+              onPeek={setPeekKey}
+              onMenu={(key, x, y) => setFolderMenu({ key, x, y })}
+              onRenamed={onRenamed}
+              onNewTopic={() => setCreating(true)}
+              onOpenDoc={(d) => (canOpen(d) ? openFile(d) : showDoc(d.id))}
+              onSearchAll={() => {
+                // Every paper with these words, and the passages inside them: All sources keeps the search.
+                setScope('all')
+                setFilters(NO_FILTERS)
+                setTimeline(null)
+                pickOnly(null)
+                setOpened('v:all')
+              }}
+              notice={
+                alike && (
+                  <div className="lib-alike lf-notice" role="note">
+                    <span>
+                      <b>{alike.from.name}</b> and <b>{alike.into.name}</b>{' '}
+                      {alike.shared === alike.total ? `hold the same ${alike.total} papers.` : `share ${alike.shared} of their ${alike.total} papers.`}
+                    </span>
+                    <span className="lib-alike-actions">
+                      <button
+                        className="link"
+                        disabled={!!busy}
+                        onClick={() => run('Merging topics…', () => api.mergeFolders(alike.from.id, alike.into.id)).then(() => say(`Merged ${alike.from.name} into ${alike.into.name}.`))}
+                      >
+                        Merge into {alike.into.name}
+                      </button>
+                      <button
+                        className="link"
+                        onClick={() => {
+                          const next = [...keptBoth, alike.key]
+                          setKeptBoth(next)
+                          save(KEPT_KEY, next)
+                        }}
+                      >
+                        Keep both
+                      </button>
+                    </span>
+                  </div>
+                )
+              }
+            >
+              {creating && (
+                <NewFolderForm
+                  initial={folderSimilarity}
+                  onCancel={() => setCreating(false)}
+                  onCreate={(name, similarity) => {
+                    setCreating(false)
+                    run('Creating topic…', () => api.createFolder(name, similarity))
                   }}
-                >
-                  Keep both
-                </button>
-              </span>
-            </div>
-          )}
-          {/* The filing threshold (a topic's setting, shown in the topic itself) isn't repeated here: as a bare
-              "50%" beside every topic it read as a score. */}
-          {topics.map((f) => navItem(f.id, f.name, f.doc_count))}
-          {bySize.length > TOP_TOPICS && (
-            <button className="link lib-nav-all" onClick={() => setAllTopics((a) => !a)}>
-              {allTopics ? 'Show fewer' : `Show all ${bySize.length}`}
-            </button>
-          )}
-          <button className="lib-nav-item lib-nav-new" onClick={() => setCreating((c) => !c)} title="Make a topic for a subject you choose">
-            <span className="lib-nav-ico" aria-hidden="true">+</span>
-            <span className="lib-nav-name">New topic</span>
-          </button>
-        </nav>
-
-        <div className="lib-main">
-          <div className="lib-list">
-            {creating && (
-              <NewFolderForm
-                initial={folderSimilarity}
-                onCancel={() => setCreating(false)}
-                onCreate={(name, similarity) => {
-                  setCreating(false)
-                  run('Creating topic…', () => api.createFolder(name, similarity))
-                }}
-              />
-            )}
-            {openFolder && <FolderBar folder={openFolder} run={run} />}
-
-            {showingRemoved && (
-              <div className="lib-tools">
-                <span className="muted">
-                  {removed.length} removed source{removed.length === 1 ? '' : 's'}. What each was is kept here; open one to restore it.
-                </span>
-              </div>
-            )}
-            {showingRemoved && <RemovedTable entries={removed} open={openRemoved} onOpen={openGhost} />}
-
-            {docs.length > 0 && !showingRemoved && (
-              <div className="lib-chips" role="group" aria-label="Filters">
-                <button
-                  className={`ghost lib-tl-btn${timeline ? ' on' : ''}`}
-                  aria-pressed={!!timeline}
-                  onClick={() => (timeline ? setTimeline(null) : openTimeline('added'))}
-                  title="Narrow the library to when you got each source or when it was published"
-                >
-                  ◷ Timeline
-                </button>
-                {(kinds.length > 1 || chip.kind) && (
-                  <Chip name="Type" value={chip.kind} onOpen={chipMenu('f-kind')} onClear={() => setFilters((f) => ({ ...f, kinds: [] }))} />
-                )}
-                {(years.length > 1 || chip.year) && (
-                  <Chip name="Year" value={chip.year} onOpen={chipMenu('f-year')} onClear={() => setFilters((f) => ({ ...f, year: null }))} />
-                )}
-                {folders.length > 0 && (
-                  <Chip name="Topic" value={chip.topic} onOpen={chipMenu('f-topic')} onClear={() => setFilters((f) => ({ ...f, topics: [] }))} />
-                )}
-                {(authors.length > 1 || chip.author) && (
-                  <Chip name="Author" value={chip.author} onOpen={chipMenu('f-author')} onClear={() => setFilters((f) => ({ ...f, authors: [] }))} />
-                )}
-                {(venues.length > 1 || chip.venue) && (
-                  <Chip name="Journal" value={chip.venue} onOpen={chipMenu('f-venue')} onClear={() => setFilters((f) => ({ ...f, venues: [] }))} />
-                )}
-                {(anyHighlights || filters.highlighted) && (
-                  <span className={`lib-chip${filters.highlighted ? ' on' : ''}`}>
-                    <button aria-pressed={filters.highlighted} onClick={() => setFilters((f) => ({ ...f, highlighted: !f.highlighted }))} title="Only papers you have highlighted passages in">
-                      Has highlights
-                    </button>
-                  </span>
-                )}
-                {filtersActive(filters) && (
-                  <button className="link" onClick={() => setFilters(NO_FILTERS)}>Clear filters</button>
-                )}
-                <span className="spacer" />
-                {naming && naming.id === null ? (
-                  <ViewNameForm initial={suggestedName()} action="Save" onDone={saveView} onCancel={() => setNaming(null)} />
-                ) : activeView ? (
-                  <span className="lib-view-on">
-                    <span className="muted">Saved view:</span> <b>{activeView.name}</b>
-                    <button className="link" onClick={() => setNaming({ id: activeView.id })}>Rename</button>
-                    <button className="link" onClick={() => deleteView(activeView)}>Delete</button>
-                  </span>
-                ) : (
-                  (filtersActive(filters) || searching) && (
-                    <button className="lib-view-save" onClick={() => setNaming({ id: null })} title="Keep this search and these filters in the sidebar. The view stays current as papers arrive.">
-                      Save as view
-                    </button>
-                  )
-                )}
-              </div>
-            )}
-
-            {docs.length > 0 && !showingRemoved && chosen.length > 0 && (
-              <div className="lib-tools lib-actions" role="toolbar" aria-label="Actions for the selected papers">
-                <button className="icon" onClick={clearSelection} aria-label="Clear the selection" title="Clear the selection (Esc)">×</button>
-                <b role="status">{chosen.length} selected</b>
-                {current && (
-                  <button onClick={() => openFile(current)} title="Open the paper (Enter, or double-click it)">Open</button>
-                )}
-                {current && (
-                  <button onClick={() => setPeek(true)} title="Its first page, abstract and your highlights, without opening it (Space)">Quick look</button>
-                )}
-                <button aria-haspopup="menu" onClick={(e) => setMenu({ kind: 'topic', ...under(e.currentTarget) })}>Add to topic ▾</button>
-                <button onClick={() => toggleDrafting(chosen)} title="The sources Muse drafts from and searches for citations in (Compose, Cite my sources)">
-                  {allDrafting ? 'Stop drafting from' : 'Use for drafting'}
-                </button>
-                <button aria-haspopup="menu" onClick={(e) => setMenu({ kind: 'cite', ...under(e.currentTarget) })}>Copy citation ▾</button>
-                <button className="danger-text" onClick={() => remove(chosen)} title="Remove from the library (Delete). The files stay on disk.">Remove</button>
-              </div>
-            )}
-            {docs.length > 0 && !showingRemoved && chosen.length === 0 && (
-              <div className="lib-tools">
-                <span className="muted">
-                  {filtering || scope !== 'all' ? `${rows.length} of ${docs.length}` : `${rows.length} sources`}
-                  {searching && <> with “{query.trim()}”</>}
-                </span>
-                {lookupNote && !timeline && (
-                  <span className="muted lib-note" role="status">
-                    {lookupNote}{' '}
-                    <button className="link" onClick={() => setLookupNote('')}>OK</button>
-                  </span>
-                )}
-                <span className="spacer" />
-                <span className={`lib-scope${drafting.size ? ' some' : ''}`} role="status" aria-live="polite" title="The sources Muse drafts from and searches for citations in (Compose, Cite my sources)">
-                  <b>Drafting from:</b> {drafting.size === 0 ? 'whole library' : `${drafting.size} of ${docs.length}`}
-                  {drafting.size > 0 && (
-                    <button className="link" onClick={useWholeLibrary}>
-                      Use whole library
-                    </button>
-                  )}
-                </span>
-              </div>
-            )}
-
-            {timeline && !showingRemoved && docs.length > 0 && (
-              tl && axis ? (
-                <Timeline
-                  docs={docs}
-                  axis={axis}
-                  window={tl}
-                  onChange={setTimeline}
-                  onField={openTimeline}
-                  onClose={() => setTimeline(null)}
-                  shown={rows.length}
-                  ghosts={ghosts.length}
-                  undated={docs.filter((d) => !docSpan(tl.field, d)).length}
-                  toLookUp={notLookedUp}
-                  lookupNote={lookupNote}
-                  busy={!!busy}
-                  onLookUp={() => lookUp()}
                 />
-              ) : (
-                <section className="tl tl-empty">
-                  <span>No source has a publication year yet.</span>
-                  {notLookedUp > 0 && (
-                    <button className="link" onClick={() => lookUp()} disabled={!!busy}>Look up dates in OpenAlex</button>
-                  )}
-                  <button className="link" onClick={() => openTimeline('added')}>Go by date added</button>
-                  {lookupNote && <span className="muted">{lookupNote}</span>}
-                  <span className="spacer" />
-                  <button className="icon" onClick={() => setTimeline(null)} aria-label="Close timeline">×</button>
-                </section>
-              )
-            )}
-
-            {!showingRemoved && (rows.length > 0 || ghosts.length > 0 || (hits?.length ?? 0) > 0) && (
-              <DocTable
-                rows={rows}
-                sel={sel}
-                cur={cur}
-                drafting={drafting}
-                cited={citedSet}
-                folder={openFolder}
-                sort={sort}
-                onSort={setSort}
-                cols={cols}
-                onSelect={select}
-                onSelectAll={selectAll}
-                onOpenFile={openFile}
-                onStar={(d) => mark([d], { starred: !d.starred })}
-                onRowMenu={(id, x, y) => {
-                  if (!sel.has(id)) select(id, {})
-                  setMenu({ kind: 'row', x, y })
-                }}
-                onHeaderMenu={(x, y) => setMenu({ kind: 'columns', x, y })}
-                onKeyDown={onTableKey}
-                tableRef={tableRef}
-                ghosts={ghosts}
-                ghostsSince={tl && axis ? `the end of ${posLabel(axis, tl.hi)}` : ''}
-                openGhost={openRemoved}
-                onOpenGhost={openGhost}
-                hits={hits}
-                hitQuery={query.trim()}
-                docById={docById}
-                onOpenHit={(d, h) => openFile(d, h.page, matchedWords(h.snippet))}
-              />
-            )}
-
-            {docs.length === 0 && !showingRemoved && importing && (
-              <div className="lib-empty">
-                <div className="lib-empty-title">{adding ? `Adding ${adding} file${adding === 1 ? '' : 's'}` : 'Looking for files…'}</div>
-                <p>
-                  Each one appears here as soon as it's read. Muse takes about 15 seconds per file to read it, write a summary and
-                  tag it; the card above shows where each file is.
-                </p>
-              </div>
-            )}
-            {docs.length === 0 && !showingRemoved && !importing && (
-              <div className="lib-empty empty-art">
-                <Ribbons shape="wide" />
-                <p className="say say-sm">
-                  <b>Your library is empty.</b> Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.
-                </p>
-                <ol>
-                  <li>Click <b>Add sources</b>, or drop files anywhere on the window</li>
-                  <li>Muse reads each one and writes a summary and tags</li>
-                  <li>Make a topic (New topic); matching papers are filed in, as many topics as fit</li>
-                </ol>
-              </div>
-            )}
-            {docs.length > 0 && rows.length === 0 && ghosts.length === 0 && !hits?.length && !showingRemoved && (
-              <div className="lib-empty">
-                <div className="lib-empty-title">{filtering ? 'No matches' : typeof scope === 'number' ? 'This topic is empty' : 'Nothing here'}</div>
-                {filtering ? (
-                  <>
-                    {searching && <p>Nothing {scope === 'all' ? 'in your library' : 'here'} has all of these words, in its details or its text.</p>}
-                    <button
-                      className="link"
-                      onClick={() => {
-                        onQuery('')
-                        setFilters(NO_FILTERS)
-                        setTimeline(null)
-                      }}
-                    >
-                      {narrowed ? 'Clear the search, filters and timeline' : 'Clear the search and filters'}
-                    </button>
-                  </>
-                ) : typeof scope === 'number' ? (
-                  <p>Lower the similarity above to take in looser matches, or drag papers onto the topic.</p>
-                ) : (
-                  <p>{emptyText[scope]}</p>
-                )}
-              </div>
-            )}
+              )}
+            </LibraryFront>
+            <FolderSummary
+              item={selKey ? itemByKey.get(selKey) : undefined}
+              topics={topicItems}
+              cited={citedSet}
+              drafting={drafting}
+              onOpen={() => selKey && openKey(selKey)}
+              onDraft={toggleDrafting}
+              onMap={(name) => onMapTopic?.(name)}
+              onOpenKey={openKey}
+            />
           </div>
-        </div>
+        )}
 
-        {current && (
+        {!atFront && (
+          <div className="lib-main">
+            <div className="lib-list">
+              {creating && (
+                <NewFolderForm
+                  initial={folderSimilarity}
+                  onCancel={() => setCreating(false)}
+                  onCreate={(name, similarity) => {
+                    setCreating(false)
+                    run('Creating topic…', () => api.createFolder(name, similarity))
+                  }}
+                />
+              )}
+              {openFolder && <FolderBar folder={openFolder} run={run} />}
+
+              {showingRemoved && (
+                <div className="lib-tools">
+                  <span className="muted">
+                    {removed.length} removed source{removed.length === 1 ? '' : 's'}. What each was is kept here; open one to restore it.
+                  </span>
+                </div>
+              )}
+              {showingRemoved && <RemovedTable entries={removed} open={openRemoved} onOpen={openGhost} />}
+
+              {docs.length > 0 && !showingRemoved && (
+                <div className="lib-chips" role="group" aria-label="Filters">
+                  <button
+                    className={`ghost lib-tl-btn${timeline ? ' on' : ''}`}
+                    aria-pressed={!!timeline}
+                    onClick={() => (timeline ? setTimeline(null) : openTimeline('added'))}
+                    title="Narrow the library to when you got each source or when it was published"
+                  >
+                    ◷ Timeline
+                  </button>
+                  {(kinds.length > 1 || chip.kind) && (
+                    <Chip name="Type" value={chip.kind} onOpen={chipMenu('f-kind')} onClear={() => setFilters((f) => ({ ...f, kinds: [] }))} />
+                  )}
+                  {(years.length > 1 || chip.year) && (
+                    <Chip name="Year" value={chip.year} onOpen={chipMenu('f-year')} onClear={() => setFilters((f) => ({ ...f, year: null }))} />
+                  )}
+                  {folders.length > 0 && (
+                    <Chip name="Topic" value={chip.topic} onOpen={chipMenu('f-topic')} onClear={() => setFilters((f) => ({ ...f, topics: [] }))} />
+                  )}
+                  {(authors.length > 1 || chip.author) && (
+                    <Chip name="Author" value={chip.author} onOpen={chipMenu('f-author')} onClear={() => setFilters((f) => ({ ...f, authors: [] }))} />
+                  )}
+                  {(venues.length > 1 || chip.venue) && (
+                    <Chip name="Journal" value={chip.venue} onOpen={chipMenu('f-venue')} onClear={() => setFilters((f) => ({ ...f, venues: [] }))} />
+                  )}
+                  {(anyHighlights || filters.highlighted) && (
+                    <span className={`lib-chip${filters.highlighted ? ' on' : ''}`}>
+                      <button aria-pressed={filters.highlighted} onClick={() => setFilters((f) => ({ ...f, highlighted: !f.highlighted }))} title="Only papers you have highlighted passages in">
+                        Has highlights
+                      </button>
+                    </span>
+                  )}
+                  {filtersActive(filters) && (
+                    <button className="link" onClick={() => setFilters(NO_FILTERS)}>Clear filters</button>
+                  )}
+                  <span className="spacer" />
+                  {naming && naming.id === null ? (
+                    <ViewNameForm initial={suggestedName()} action="Save" onDone={saveView} onCancel={() => setNaming(null)} />
+                  ) : activeView ? (
+                    <span className="lib-view-on">
+                      <span className="muted">Saved view:</span> <b>{activeView.name}</b>
+                      <button className="link" onClick={() => setNaming({ id: activeView.id })}>Rename</button>
+                      <button className="link" onClick={() => deleteView(activeView)}>Delete</button>
+                    </span>
+                  ) : (
+                    (filtersActive(filters) || searching) && (
+                      <button className="lib-view-save" onClick={() => setNaming({ id: null })} title="Keep this search and these filters in the sidebar. The view stays current as papers arrive.">
+                        Save as view
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+
+              {docs.length > 0 && !showingRemoved && chosen.length > 0 && (
+                <div className="lib-tools lib-actions" role="toolbar" aria-label="Actions for the selected papers">
+                  <button className="icon" onClick={clearSelection} aria-label="Clear the selection" title="Clear the selection (Esc)">×</button>
+                  <b role="status">{chosen.length} selected</b>
+                  {current && (
+                    <button onClick={() => openFile(current)} title="Open the paper (Enter, or double-click it)">Open</button>
+                  )}
+                  {current && (
+                    <button onClick={() => setPeek(true)} title="Its first page, abstract and your highlights, without opening it (Space)">Quick look</button>
+                  )}
+                  <button aria-haspopup="menu" onClick={(e) => setMenu({ kind: 'topic', ...under(e.currentTarget) })}>Add to topic ▾</button>
+                  <button onClick={() => toggleDrafting(chosen)} title="The sources Muse drafts from and searches for citations in (Compose, Cite my sources)">
+                    {allDrafting ? 'Stop drafting from' : 'Use for drafting'}
+                  </button>
+                  <button aria-haspopup="menu" onClick={(e) => setMenu({ kind: 'cite', ...under(e.currentTarget) })}>Copy citation ▾</button>
+                  <button className="danger-text" onClick={() => remove(chosen)} title="Remove from the library (Delete). The files stay on disk.">Remove</button>
+                </div>
+              )}
+              {docs.length > 0 && !showingRemoved && chosen.length === 0 && (
+                <div className="lib-tools">
+                  <span className="muted">
+                    {filtering || scope !== 'all' ? `${rows.length} of ${docs.length}` : `${rows.length} sources`}
+                    {searching && <> with “{query.trim()}”</>}
+                  </span>
+                  {lookupNote && !timeline && (
+                    <span className="muted lib-note" role="status">
+                      {lookupNote}{' '}
+                      <button className="link" onClick={() => setLookupNote('')}>OK</button>
+                    </span>
+                  )}
+                  <span className="spacer" />
+                  <span className={`lib-scope${drafting.size ? ' some' : ''}`} role="status" aria-live="polite" title="The sources Muse drafts from and searches for citations in (Compose, Cite my sources)">
+                    <b>Drafting from:</b> {drafting.size === 0 ? 'whole library' : `${drafting.size} of ${docs.length}`}
+                    {drafting.size > 0 && (
+                      <button className="link" onClick={useWholeLibrary}>
+                        Use whole library
+                      </button>
+                    )}
+                  </span>
+                </div>
+              )}
+
+              {timeline && !showingRemoved && docs.length > 0 && (
+                tl && axis ? (
+                  <Timeline
+                    docs={docs}
+                    axis={axis}
+                    window={tl}
+                    onChange={setTimeline}
+                    onField={openTimeline}
+                    onClose={() => setTimeline(null)}
+                    shown={rows.length}
+                    ghosts={ghosts.length}
+                    undated={docs.filter((d) => !docSpan(tl.field, d)).length}
+                    toLookUp={notLookedUp}
+                    lookupNote={lookupNote}
+                    busy={!!busy}
+                    onLookUp={() => lookUp()}
+                  />
+                ) : (
+                  <section className="tl tl-empty">
+                    <span>No source has a publication year yet.</span>
+                    {notLookedUp > 0 && (
+                      <button className="link" onClick={() => lookUp()} disabled={!!busy}>Look up dates in OpenAlex</button>
+                    )}
+                    <button className="link" onClick={() => openTimeline('added')}>Go by date added</button>
+                    {lookupNote && <span className="muted">{lookupNote}</span>}
+                    <span className="spacer" />
+                    <button className="icon" onClick={() => setTimeline(null)} aria-label="Close timeline">×</button>
+                  </section>
+                )
+              )}
+
+              {!showingRemoved && paperLayout === 'covers' && (rows.length > 0 || (hits?.length ?? 0) > 0) && (
+                <div className="lib-table-wrap lib-covers-wrap" style={{ '--fw': `${tileWidth(size)}px` } as React.CSSProperties}>
+                  <PaperCovers
+                    rows={rows}
+                    sel={sel}
+                    cur={cur}
+                    cited={citedSet}
+                    onSelect={select}
+                    onOpenFile={openFile}
+                    onMenu={(id, x, y) => {
+                      if (!sel.has(id)) select(id, {})
+                      setMenu({ kind: 'row', x, y })
+                    }}
+                    onKeyDown={onCoversKey}
+                    gridRef={coversRef}
+                  />
+                  {passageHits}
+                </div>
+              )}
+              {!showingRemoved && paperLayout === 'rows' && (rows.length > 0 || ghosts.length > 0 || (hits?.length ?? 0) > 0) && (
+                <DocTable
+                  rows={rows}
+                  sel={sel}
+                  cur={cur}
+                  drafting={drafting}
+                  cited={citedSet}
+                  folder={openFolder}
+                  sort={sort}
+                  onSort={setSort}
+                  cols={cols}
+                  onSelect={select}
+                  onSelectAll={selectAll}
+                  onOpenFile={openFile}
+                  onStar={(d) => mark([d], { starred: !d.starred })}
+                  onRowMenu={(id, x, y) => {
+                    if (!sel.has(id)) select(id, {})
+                    setMenu({ kind: 'row', x, y })
+                  }}
+                  onHeaderMenu={(x, y) => setMenu({ kind: 'columns', x, y })}
+                  onKeyDown={onTableKey}
+                  tableRef={tableRef}
+                  ghosts={ghosts}
+                  ghostsSince={tl && axis ? `the end of ${posLabel(axis, tl.hi)}` : ''}
+                  openGhost={openRemoved}
+                  onOpenGhost={openGhost}
+                  onOpenTopic={(id) => openKey(`t:${id}`)}
+                >
+                  {passageHits}
+                </DocTable>
+              )}
+
+              {docs.length === 0 && !showingRemoved && importing && (
+                <div className="lib-empty">
+                  <div className="lib-empty-title">{adding ? `Adding ${adding} file${adding === 1 ? '' : 's'}` : 'Looking for files…'}</div>
+                  <p>
+                    Each one appears here as soon as it's read. Muse takes about 15 seconds per file to read it, write a summary and
+                    tag it; the card above shows where each file is.
+                  </p>
+                </div>
+              )}
+              {docs.length === 0 && !showingRemoved && !importing && (
+                <div className="lib-empty empty-art">
+                  <Ribbons shape="wide" />
+                  <p className="say say-sm">
+                    <b>Your library is empty.</b> Add the papers, notes, slides, scans and web pages you're writing from. They stay on this computer.
+                  </p>
+                  <ol>
+                    <li>Click <b>Add sources</b>, or drop files anywhere on the window</li>
+                    <li>Muse reads each one and writes a summary and tags</li>
+                    <li>Make a topic (New topic); matching papers are filed in, as many topics as fit</li>
+                  </ol>
+                </div>
+              )}
+              {docs.length > 0 && rows.length === 0 && ghosts.length === 0 && !hits?.length && !showingRemoved && (
+                <div className="lib-empty">
+                  <div className="lib-empty-title">{filtering ? 'No matches' : typeof scope === 'number' ? 'This topic is empty' : 'Nothing here'}</div>
+                  {filtering ? (
+                    <>
+                      {searching && <p>Nothing {scope === 'all' ? 'in your library' : 'here'} has all of these words, in its details or its text.</p>}
+                      <button
+                        className="link"
+                        onClick={() => {
+                          onQuery('')
+                          setFilters(NO_FILTERS)
+                          setTimeline(null)
+                        }}
+                      >
+                        {narrowed ? 'Clear the search, filters and timeline' : 'Clear the search and filters'}
+                      </button>
+                    </>
+                  ) : typeof scope === 'number' ? (
+                    <p>Lower the similarity above to take in looser matches, or drag papers onto the topic.</p>
+                  ) : (
+                    <p>{emptyText[scope]}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {!atFront && current && (
           <div className="lib-pane">
             <DocDetails
               key={current.id}
@@ -2409,12 +2405,12 @@ export const LibraryPanel = memo(function LibraryPanel({
             />
           </div>
         )}
-        {chosen.length > 1 && (
+        {!atFront && chosen.length > 1 && (
           <div className="lib-pane">
             <ManyDetails docs={chosen} onClose={clearSelection} />
           </div>
         )}
-        {currentRemoved && chosen.length === 0 && (
+        {!atFront && currentRemoved && chosen.length === 0 && (
           <div className="lib-pane">
             <RemovedDetails
               key={`removed-${currentRemoved.id}`}
@@ -2455,10 +2451,41 @@ export const LibraryPanel = memo(function LibraryPanel({
           onClose={() => {
             menuClosed.current = { kind: menu.kind, at: performance.now() }
             closeMenu()
-            tableRef.current?.focus({ preventScroll: true })
+            if (!atFront) listEl()?.focus({ preventScroll: true })
+            else focusTile(selKey)
           }}
         />
       )}
+      {atFront && peekItem && (
+        <FolderPeek
+          item={peekItem}
+          onClose={closeFolderPeek}
+          onOpen={() => openKey(peekItem.key)}
+          onStep={peekStep}
+        />
+      )}
+      {atFront && folderMenu && menuItem && (
+        <FolderMenu
+          item={menuItem}
+          x={folderMenu.x}
+          y={folderMenu.y}
+          onClose={() => {
+            setFolderMenu(null)
+            focusTile(folderMenu.key)
+          }}
+          onOpen={() => openKey(menuItem.key)}
+          onPeek={() => setPeekKey(menuItem.key)}
+          onColor={(c) => menuItem.folder && setColor(menuItem.folder, c)}
+          onRename={() => requestAnimationFrame(() => setRenaming(menuItem.key))} // after the menu hands the keyboard back, or the field loses it at once
+          onMerge={(x, y) => {
+            const id = menuItem.folder?.id
+            // After the folder menu has handed the keyboard back, so the list of topics keeps it.
+            if (id !== undefined) requestAnimationFrame(() => setMenu({ kind: 'merge', x, y, folderId: id }))
+          }}
+          onDelete={() => menuItem.saved && deleteView(menuItem.saved)}
+        />
+      )}
+      {dragging !== null && <DropShelf topics={topicItems} openKey={opened} count={dragging} onDrop={dropOnTopic} />}
       {toast && (
         <div className="lib-toast" role="status">
           <span>{toast.text}</span>

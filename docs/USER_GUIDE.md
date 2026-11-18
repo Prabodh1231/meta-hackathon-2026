@@ -119,9 +119,26 @@ Your files stay where they are. The library keeps its own index in `~/.groundwor
 
 ## 2. Organize the library
 
-![The library: views and topics, one line per paper, and the selected paper's details](images/library.png)
+![The library's folders: smart folders above the topics, and the selected topic summed up on the right](images/library.png)
 
-The library works like a mail app or a file explorer: one line per paper, newest first.
+The library opens on its **folders**, the way a desktop shows a directory: your [topics](#topics), largest first, with the [smart folders](#smart-folders) above them. Open a folder and its papers show one line each, as in a mail app or a file explorer.
+
+### The folders
+
+- **Select a folder:** click it. The panel on the right sums it up: how many papers and which years, how much of it the open draft cites (green) and how much more is ticked for drafting (blue), papers by year, the newest titles, the most frequent first authors, and the topics it shares papers with (click one to open it). **Use for drafting** ticks all its papers for Muse, and **Map it** shows the topic in the [citation network](#the-citation-network).
+- **Open a folder:** double-click it, press **Enter**, or click **Open** in the panel. A trail at the top, **Library › Topic name**, leads back; so do the ‹ button, **Backspace** and **Alt ←**, which return you to the folders with the one you left still selected.
+- **Move between folders** with the arrow keys.
+- **Peek inside:** press **Space** on a folder to list its papers without opening it. The arrows step to the next folder, **Enter** opens it, **Space** or **Esc** closes the list.
+- **Right-click a topic** to open it, peek inside, give it a **colour** (five, or none), **rename** it in place, or **merge** it into another topic. The colour is kept with the topic in your library.
+- **N cited** on a folder counts the papers in it that the open draft cites.
+- **Recently opened**, at the top, holds the last few papers and folders you opened. Something removed or deleted since drops out of it.
+- **Largest first** or **A–Z** orders the topics. **Folders** or **Rows** shows them as tiles or as a table, and the slider beside it sizes the tiles. The library remembers these choices.
+- **Search** from the box at the top: on the folders, it finds topics by name and by the titles of the papers in them. **Search every paper instead** opens All sources with the same search, including the passages inside the papers.
+- When two topics hold the same papers, or nearly, a note above the folders offers to **merge** them into the larger one. **Keep both** dismisses it for that pair.
+
+### Inside a folder
+
+A folder's papers show one line each, newest first. **Rows** or **Covers** (at the top right) switches to a grid of each paper's first page; the slider sizes them. A PDF's cover is its real first page, drawn as it scrolls into view; anything else, or a PDF whose file can't be found, gets a plain page with its title and authors. Covers select, open, peek and drag just as rows do.
 
 - **Select:** click a paper. Its details open on the right: summary (marked **Written by Muse**: it's Muse's reading, not the paper's words), topics, keywords and JEL codes, [related papers](#related-in-your-library), DOI, link and file location. **Ctrl-click** adds or drops a paper, **Shift-click** selects through to it, the box in front of a row does the same as Ctrl-click, and **Ctrl A** selects every paper shown. With the list selected, ↑ and ↓ move between papers (hold Shift to select several) and Esc clears the selection.
 - **Act on what's selected:** the bar above the list changes to **N selected** with **Open**, **Add to topic**, **Use for drafting**, **Copy citation** and **Remove**. **Right-click** a paper for the same actions, plus Mark as read or unread, Star, Edit details, Show in folder on disk, Cited papers and Citing papers.
@@ -135,9 +152,9 @@ The library works like a mail app or a file explorer: one line per paper, newest
 - **Read the whole PDF:** **Open PDF** in its details opens it in the app's reader, in a window of its own, where you can highlight passages and add notes (see [Highlights and notes](#highlights-and-notes)). It opens maximized; resize it, snap it to half the screen or move it to another monitor to keep it beside your draft, and it remembers that. The next paper you open replaces it in the same window. **Open in PDF viewer** at the top opens the file in Chromium's viewer instead, for thumbnails and print. The reader has its own page counter, zoom and search (see [Highlights and notes](#highlights-and-notes)). **Show in folder** finds the file on disk.
 - **Remove:** select papers and press Delete, or choose **Remove**. They leave the list at once and a message offers **Undo** for a few seconds; closing the app in that time doesn't cancel the removal. The files on disk aren't touched, and afterwards you can still bring a paper back from **Removed**.
 
-### Views
+### Smart folders
 
-The top of the sidebar holds ready-made views. One shows only while it has something in it:
+The green folders with a ⚙ above your topics are filled by a rule, so they keep themselves up to date. One shows only while it has something in it, except All sources and Drafting from:
 
 - **All sources**, and **Recently added** (the last 14 days).
 - **Drafting from:** the papers Muse drafts from (see below).
@@ -145,20 +162,21 @@ The top of the sidebar holds ready-made views. One shows only while it has somet
 - **Needs attention:** papers marked **Retracted**, papers with no year or author in their record (**Needs metadata**), and papers Muse still owes a summary.
 - **Unread** and **Starred**.
 - **Unfiled** (in no topic) and **Removed**.
+- Every [saved view](#filters-and-saved-views) you make.
 
 ### Filters and saved views
 
-The row of chips above the list narrows whatever view or topic you are in:
+The row of chips above the list narrows whatever folder you are in:
 
 - **Type**, **Topic**, **Author** and **Journal** each open a list with the number of papers beside every choice. Tick as many as you like: within one chip the choices add up (PDFs *or* slides), and across chips they narrow (PDFs *and* by Suri). Authors and journals are listed with the most papers first; type a letter to jump to a name.
 - **Year** takes one choice: the last 5 or 10 years, a decade, before 2000, or papers with no year in their record.
 - **Has highlights** shows only the papers you have highlighted passages in. It appears once you have highlighted something.
 - A chip that is set is filled in and says what it is set to; its **×** clears it, and **Clear filters** clears them all. The chips work together with the search box and the Timeline.
 
-**Save as view** (at the right of the chips, once a chip or the search is set) keeps the search and the filters under **Saved views** in the sidebar, with the view or topic you were in. A saved view stores the question, not the answer: its count and its papers are worked out each time, so "Last 5 years" moves on with the calendar and new papers join by themselves. The Timeline's range isn't saved.
+**Save as view** (at the right of the chips, once a chip or the search is set) keeps the search and the filters as a smart folder on the library's front page, with the folder you were in. A saved view stores the question, not the answer: its count and its papers are worked out each time, so "Last 5 years" moves on with the calendar and new papers join by themselves. The Timeline's range isn't saved.
 
-- Click a saved view to open it. Clicking another view or topic leaves it, and clears its search and filters.
-- While it's open, **Rename** and **Delete** sit beside its name above the list; right-clicking it in the sidebar offers the same. Deleting a view never touches your papers, and the message offers **Undo**.
+- Open a saved view like any folder. Going back to the folders leaves it, and clears its search and filters.
+- While it's open, **Rename** and **Delete** sit beside its name above the list; right-clicking its folder offers the same. Deleting a view never touches your papers, and the message offers **Undo**.
 - Saving under a name that is already used replaces that view.
 
 ### Quick look
@@ -177,16 +195,16 @@ The list comes from the papers' reference lists and the words in their titles, k
 
 ### Topics
 
-A topic is a subject, not a place on disk, so one paper can sit in several. Click **New topic**, type a subject (say, *Digital finance*) and pick how closely a paper must match it (50% by default). Every paper that matches is filed in. The sidebar lists your topics largest first; **Show all** lists the rest.
+A topic is a subject, not a place on disk, so one paper can sit in several. Click the **New topic** folder at the end of your topics, type a subject (say, *Digital finance*) and pick how closely a paper must match it (50% by default). Every paper that matches is filed in.
 
 - Open a topic to change its threshold with the slider, rename it or delete it. Papers stay in the library when a topic is deleted.
-- Add papers to a topic with **Add to topic**, or drag the selected papers onto it. Take a paper out with the × on its topic chip in its details. Your own changes survive re-filing.
-- When two topics hold the same papers, or nearly, a note above the list offers to **merge** them into the larger one. **Keep both** dismisses it for that pair.
+- Inside a topic, **Also in** beside each paper names up to two of its other topics (and **+N** for more); click one to open that topic.
+- Add papers to a topic with **Add to topic**, or drag them: while you drag papers, a shelf of your topics appears along the bottom of the library, and dropping on one adds them to it. They stay in the topics they were already in. Take a paper out with the × on its topic chip in its details. Your own changes survive re-filing.
 - **⋯ → Re-file papers into topics** scores every paper against your topics again.
 
 ### Pick the sources to draft from
 
-Muse drafts (Compose, Cite my sources) and searches for citations in your whole library, unless you narrow it: select papers and choose **Use for drafting**. Those papers get a green dot, and the **Drafting from** view lists them. The bar above the list says **Drafting from: whole library** or **Drafting from: N of M**, and **Use whole library** clears the choice. A paper's details say the same, and whether that paper is included. A red **Retracted** pill or an amber **Needs metadata** flag (no year or author in its record) warns you before you rely on a source; both also show in Network, Sources and the reference list.
+Muse drafts (Compose, Cite my sources) and searches for citations in your whole library, unless you narrow it: select papers and choose **Use for drafting**. Those papers get a green dot, and the **Drafting from** folder lists them; **Use for drafting** on a folder's summary ticks all of its papers. The bar above the list says **Drafting from: whole library** or **Drafting from: N of M**, and **Use whole library** clears the choice. A paper's details say the same, and whether that paper is included. A red **Retracted** pill or an amber **Needs metadata** flag (no year or author in its record) warns you before you rely on a source; both also show in Network, Sources and the reference list.
 
 ### Timeline
 
@@ -463,7 +481,9 @@ The draft has a title and Background, The gap, Research questions, Hypotheses, V
 | Ctrl Shift F | Focus mode on or off |
 | Ctrl Z / Ctrl Y | Undo / redo in the draft |
 | Esc | Leave focus mode; close the PDF viewer or a menu; clear the search box; leave Home, the Library or the Network for the draft |
-| ↑ ↓ | Move between papers in the library list (when it has focus); with Shift, select several |
+| Arrows / Enter / Space | On the library's folders: move between folders / open one / peek inside it |
+| Backspace or Alt ← | Inside a library folder: back to the folders |
+| ↑ ↓ | Move between papers in the library list (when it has focus); with Shift, select several. With covers, ← → also move |
 | Enter / Delete | In the library list: open the selected paper / remove the selected papers (with Undo) |
 | Space | In the library list: quick look at the selected paper; ↑ ↓ move on, Space or Esc closes |
 | Ctrl A | In the library list: select every paper shown |

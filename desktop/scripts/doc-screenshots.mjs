@@ -22,7 +22,12 @@ const SHOTS = {
   'drafts-menu': async (p) => { await btn(p, /^Drafts/).click() },
   review: async (p) => { await p.getByRole('tab', { name: /Check/ }).or(btn(p, /^Check/)).first().click(); await wait(p, 6000) },
   'citation-source': async (p) => { await p.locator('.paper, .ProseMirror, [contenteditable]').getByText('Chen & Martinez 2021, p. 341').first().click(); await wait(p, 2500) },
-  library: async (p) => { await btn(p, /^Library/).click(); await wait(p, 1500); await p.locator('tbody tr').nth(2).click(); await wait(p, 1500) },
+  // The Library opens on its folders: select a topic so the summary beside them is filled in.
+  library: async (p) => {
+    await btn(p, /^Library/).click(); await wait(p, 1500)
+    await p.locator('.lf-grid [data-key^="t:"]').first().click(); await wait(p, 600)
+    await p.locator('.lf-scroll').evaluate((e) => (e.scrollTop = 0)); await wait(p, 900) // the smart folders above it in view too
+  },
   'add-sources': async (p) => { await btn(p, /^Library/).click(); await wait(p, 1200); await btn(p, /Add sources/).click() },
   network: async (p) => { await btn(p, /^Network/).click(); await wait(p, 1500); await p.getByPlaceholder(/^A topic/).first().fill('cryptocurrency'); await btn(p, 'Map this topic').click(); await wait(p, 45000) },
   matrix: async (p) => { await openMatrix(p) },

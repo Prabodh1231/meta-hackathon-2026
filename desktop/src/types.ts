@@ -118,7 +118,12 @@ export interface Folder {
   name: string
   similarity: number // percent a document must match to be filed here
   doc_count: number
+  color?: FolderColor | '' // how its folder is drawn in the Library; '' (or missing, from an older backend) for none
 }
+
+/** The colours a topic's folder can be given (FOLDER_COLORS in backend/app/library.py). */
+export const FOLDER_COLORS = ['rose', 'gold', 'violet', 'sky', 'slate'] as const
+export type FolderColor = (typeof FOLDER_COLORS)[number]
 
 /** Where a document's page numbers come from: the PDF's own page labels, numbers printed
  * in headers/footers, or just the PDF page index when neither was found. */
