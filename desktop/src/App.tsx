@@ -93,10 +93,10 @@ const SEARCH: Record<Exclude<Mode, 'home' | 'write'>, { scope: string; placehold
 
 const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mock' }
 
-/** "Muse · keyword + Muse search": the AI in use, and how the library is searched. */
+/** "Muse · hybrid search": the AI in use, and how the library is searched (keyword and local models, ranked by the AI). */
 function modelLine(h: Health): string {
   const ai = PROVIDER_NAMES[h.provider] ?? h.provider
-  return h.provider === 'mock' ? `${ai} · keyword search` : `${ai} · keyword + Muse search`
+  return `${ai} · hybrid search`
 }
 
 // Whether the writing tools are open beside the draft; Settings can override it at launch.

@@ -524,7 +524,7 @@ The gear in the top bar opens Settings. Changes apply as you make them and are k
 
 **Search**
 
-- **Now:** keyword (BM25) search on this computer finds the matching passages, and the AI model — Muse Ember, Meta's efficient model, through Meta's Model API, or the offline mock — expands the search and puts the best first. (Writing and checking use Muse Spark.) No search model is downloaded or run.
+- **Now:** keyword (BM25) search and a small search model, bge-small, on this computer find the matching passages (it uses your graphics card when there is one, and shows how much of your library it has read), a second small model reranks them, and the AI model — Muse Ember, Meta's efficient model, through Meta's Model API, or the offline mock — expands the search and puts the best first. (Writing and checking use Muse Spark.) The two search models are open models, not Meta's: they download once on first start, run on this computer and never send your papers' text anywhere. Until they have loaded, search uses keywords and Muse alone.
 
 **AI model**
 

@@ -28,12 +28,13 @@ def test_old_baseten_settings_are_ignored(tmp_path, monkeypatch):
                                    "BASETEN_API_KEY=bt-key\nRC_RERANKER=baseten\n", encoding="utf-8")
     s = Settings.from_env()
     assert isinstance(make_provider(s), MuseProvider)
-    assert not hasattr(s, "embedder") and not hasattr(s, "reranker") and not hasattr(s, "models_dir")
+    assert not hasattr(s, "embedder") and not hasattr(s, "models_dir")  # the old Baseten route stays gone
 
 
 def test_settings_show_how_search_works(tmp_path):
     settings = Settings(data_dir=tmp_path / "data")
     lib = Library(settings, provider=MockProvider())
     client = TestClient(create_app(lib.settings, lib))
-    assert client.get("/settings/search").json() == {"search": "keyword", "ranking": "mock", "model": None}
+    assert client.get("/settings/search").json() == {"search": "keyword", "ranking": "mock", "model": None,
+                                                          "vectors": {"model": None, "state": "off", "device": None, "chunks": 0, "embedded": 0}}
     assert client.put("/settings/search", json={"where": "local"}).status_code == 405  # nothing to set any more

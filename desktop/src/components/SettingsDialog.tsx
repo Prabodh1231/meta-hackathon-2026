@@ -232,7 +232,18 @@ function CoreKeySetting() {
   )
 }
 
-/** How the library is searched: keyword search here, ranking by the provider. */
+function searchLine(v: SearchSettings['vectors']): string {
+  if (v.state === 'ready') {
+    const where = v.device === 'cpu' ? 'CPU' : v.device === 'directml' ? 'GPU (DirectML)' : 'GPU (CUDA)'
+    const done = v.embedded < v.chunks ? `, reading your library ${Math.round((100 * v.embedded) / v.chunks)}% done` : ''
+    return `keyword (BM25) + bge-small on this computer's ${where}${done}`
+  }
+  if (v.state === 'loading') return 'keyword (BM25) on this computer; bge-small is loading'
+  if (v.state === 'failed') return "keyword (BM25) on this computer; bge-small couldn't load"
+  return 'keyword (BM25) on this computer'
+}
+
+/** How the library is searched: keyword and bge-small search here, ranking by the provider. */
 function SearchSection() {
   const [now, setNow] = useState<SearchSettings | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -256,13 +267,13 @@ function SearchSection() {
   return (
     <Setting title="Now" hint="Keyword search finds the passages that match a question or a sentence you cite; the provider then puts the best first.">
       <p className="setting-now">
-        Search: <b>keyword (BM25) on this computer</b>
+        Search: <b>{searchLine(now.vectors)}</b>
         <br />
         Ranking: <b>{ranking}</b>
       </p>
       <p className="muted">
-        No search model is downloaded or run. With Muse, your query and the best-matching passages
-        (trimmed) are sent to Meta's Model API to be ranked; the keyword search itself never leaves this computer.
+        Two small open search models (bge-small and a MiniLM reranker, not Meta's) run on this computer, on its GPU when it
+        has one, so your papers' text is never sent out to be searched. With Muse, your query and the best-matching passages (trimmed) are sent to Meta's Model API to be ranked.
       </p>
     </Setting>
   )

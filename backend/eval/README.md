@@ -68,6 +68,30 @@ candidates at once; that alone found a supported source for 7 of the 12 claims, 
 verdict after about 3 s. With both changes the marker turns green after about 4 s (median,
 10 of 12 claims) and every check is in after about 8 s.
 
+### Local models added back (18 Nov 2026)
+
+bge-small (embeddings) and `ms-marco-MiniLM-L-6-v2` (a cross-encoder) run on this computer again, on the
+GPU when there is one (measured on an RTX 4050 via DirectML: 358-407 chunks/s against 50-53 on the CPU, the same
+vectors to 5 decimals). The dense list joins the keyword lists in the rank fusion, the cross-encoder rescores the
+top 30, and Muse ranks the best 20. These numbers use the offline mock provider, so no Muse call is involved
+(R@1 / R@3 / R@10 / MRR):
+
+| Set | Configuration | R@1 | R@3 | R@10 | MRR |
+|---|---|---|---|---|---|
+| small (44) | keyword | 0.75 | 0.84 | 0.89 | 0.80 |
+| | keyword + dense | 0.75 | 0.86 | 0.98 | 0.82 |
+| | keyword + rerank | 0.82 | 0.89 | 0.91 | 0.85 |
+| | keyword + dense + rerank | 0.91 | 0.98 | 1.00 | 0.94 |
+| large (14,099 chunks, 70) | keyword | 0.51 | 0.64 | 0.71 | 0.59 |
+| | keyword + dense | 0.39 | 0.54 | 0.71 | 0.49 |
+| | keyword + rerank | 0.56 | 0.69 | 0.76 | 0.62 |
+| | keyword + dense + rerank | 0.56 | 0.71 | 0.81 | 0.64 |
+
+- Dense search on its own hurts at library scale (identifier R@1 0.88 to 0.54); the cross-encoder brings it back.
+- With Muse (`muse-ember-1.0`) ranking on the small set, R@1 was 1.00 with and without bge-small, so that set
+  cannot separate them. The large set has not been run with Muse.
+- The CUDA path was not run; DirectML and the CPU were.
+
 ## What the three configurations are
 
 - **keyword (BM25)** is the instant filter: SQLite FTS5/BM25 for the query alone, with

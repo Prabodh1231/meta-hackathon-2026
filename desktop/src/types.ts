@@ -439,7 +439,7 @@ export interface Health {
   ok: boolean
   api?: number // backend API version; missing from backends older than the version check
   provider: string
-  search: string // how search works: "keyword+muse" (keyword search, ranked by the provider)
+  search: string // how search works: "keyword+muse" (keyword + bge-small search, reranked locally and ranked by the provider)
 }
 
 export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
@@ -512,6 +512,13 @@ export interface SearchSettings {
   search: string // "keyword"
   ranking: string // the provider that ranks the best matches: "muse" or "mock"
   model: string | null // the Muse model, when Muse does the ranking
+  vectors: {
+    model: string | null // the on-device search model (bge-small), once it has loaded
+    state: 'off' | 'loading' | 'ready' | 'failed'
+    device: 'cuda' | 'directml' | 'cpu' | null // what it runs on: the GPU when the computer has one
+    chunks: number
+    embedded: number // chunks the model has covered so far (new libraries are covered in the background)
+  }
 }
 
 /** The language model in use. The API key is never sent back, only whether there is one. */

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from .backup import backup_in_background
 from .export_docx import export_docx
 from .jobs import IngestJobs
+from .embeddings import FastReranker, LoadingEmbedder, LoadingReranker, make_embedder
 from .library import INGEST_WORKERS, Library
 from .highlights import MAX_NOTE, MAX_TEXT, Highlights
 from .matrix import DETAIL_FIELDS, Matrices, default_columns
@@ -235,7 +236,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 23
+API_VERSION = 24
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -308,7 +309,13 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         exit_with_parent(settings.parent_pid)
     if library is None:
         backup_in_background(settings.db_path)  # before the library opens: a copy from before any migration
-    lib = library or Library(settings)
+    embedder = reranker = None
+    if library is None and settings.reranker:
+        reranker = LoadingReranker(lambda: FastReranker(settings.data_dir / "models"))
+    if library is None and settings.search_model == "bge-small":
+        # Loads in the background (first launch downloads the model); search is keyword-only until it is ready.
+        embedder = LoadingEmbedder(lambda: make_embedder(settings.data_dir / "models"))
+    lib = library or Library(settings, embedder=embedder, reranker=reranker)
     app = FastAPI(title="Groundwork")
     app.state.library = lib
     jobs = IngestJobs(lib, INGEST_WORKERS)
@@ -344,8 +351,9 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.get("/health")
     def health():
-        # Search is keyword search plus the provider, so there is no search model to wait for.
-        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name, "search": "keyword+muse"}
+        # Search never waits for the model: until bge-small has loaded it is keyword search plus the provider.
+        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name, "search": "keyword+muse",
+                "vectors": lib.vector_status()}
 
     @app.post("/ingest/path")
     def ingest_path(body: IngestPathIn):

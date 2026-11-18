@@ -1,7 +1,7 @@
 """Removed: this compared local embedding models the app no longer runs.
 
-Search is keyword search plus Muse ranking through the provider layer, and every
-model the app calls is a Meta model. Retrieval is measured by eval_retrieval.py.
+Search is keyword search, bge-small and a local reranker plus Muse ranking, and
+retrieval is measured by eval_retrieval.py (local models are in app/embeddings.py).
 """
 
 # The benchmark implementation was removed with the models it compared.

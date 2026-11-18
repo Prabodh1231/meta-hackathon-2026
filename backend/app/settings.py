@@ -27,6 +27,8 @@ class Settings:
     muse_search_model: str = "muse-ember-1.0"  # expands and ranks searches; empty uses muse_model
     muse_reasoning_effort: str = "low"  # minimal | low | medium | high | xhigh
     contact_email: str = ""  # sent to OpenAlex, Semantic Scholar and Crossref when finding cited papers (polite pool)
+    search_model: str = ""  # "bge-small" adds dense search on this computer (GPU when there is one); "" is keyword only
+    reranker: str = ""  # "ms-marco" adds a local cross-encoder over the fused candidates; "" is none
     core_api_key: str = ""  # CORE (core.ac.uk) is searched for free copies only with the user's own key
 
     @property
@@ -56,6 +58,8 @@ class Settings:
             muse_reasoning_effort=env("MUSE_REASONING_EFFORT", cls.muse_reasoning_effort),
             contact_email=env("RC_CONTACT_EMAIL"),
             core_api_key=env("CORE_API_KEY"),
+            reranker="" if env("RC_RERANKER", "ms-marco").lower() in ("off", "none", "0") else "ms-marco",
+            search_model="" if env("RC_SEARCH_MODEL", "bge-small").lower() in ("off", "none", "0") else "bge-small",
         )
 
 
