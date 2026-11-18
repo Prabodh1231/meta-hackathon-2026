@@ -289,3 +289,35 @@ def test_reading_marks_and_search_inside_papers(lib, tmp_path):
     assert "\x02Kenya\x03" in hit["snippet"] and "\x02money\x03" in hit["snippet"]
     assert lib.find_passages("kenya coral") == []
     assert lib.find_passages('"') == [] and lib.find_passages("") == []
+
+
+def test_a_topic_keeps_the_colour_it_is_given(lib, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    paper = add(lib, tmp_path, "a.txt", PAPER)
+    blockchain = make(lib, "Blockchain")
+    crypto = make(lib, "Crypto")
+    assert {f["color"] for f in lib.list_folders()} == {""}  # none until the reader picks one
+
+    filed = names(lib.get_document(paper["id"]))
+    refiled = []
+    apply_scores = lib._apply_scores
+    lib._apply_scores = lambda *a, **k: (refiled.append(1), apply_scores(*a, **k))[1]
+    folders = lib.update_folder(blockchain, color="gold")
+    assert refiled == [] and names(lib.get_document(paper["id"])) == filed  # a colour re-files nothing
+    lib._apply_scores = apply_scores
+    assert next(f for f in folders if f["id"] == blockchain)["color"] == "gold"
+    lib.update_folder(blockchain, name="Blockchains")  # renaming leaves the colour alone
+    assert next(f for f in lib.list_folders() if f["id"] == blockchain)["color"] == "gold"
+    lib.update_folder(crypto, color="sky")
+    lib.merge_folders(crypto, blockchain)  # the topic kept keeps its own colour
+    assert [(f["name"], f["color"]) for f in lib.list_folders()] == [("Blockchains", "gold")]
+    with pytest.raises(ValueError):
+        lib.update_folder(blockchain, color="#ff0000")
+
+    client = TestClient(create_app(lib.settings, lib))
+    assert client.patch(f"/folders/{blockchain}", json={"color": "teal"}).status_code in (400, 422)
+    [f] = client.patch(f"/folders/{blockchain}", json={"color": ""}).json()
+    assert f["color"] == ""

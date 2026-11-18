@@ -6,6 +6,7 @@ import { ReaderWindow } from './components/ReaderDialog'
 import { applyTheme, cachedTheme } from './theme'
 import './styles.css'
 import './design.css'
+import './libraryFolders.css'
 
 applyTheme(cachedTheme())
 

@@ -170,6 +170,7 @@ class FolderIn(BaseModel):
 class FolderPatch(BaseModel):
     name: str | None = Field(None, min_length=1)
     similarity: int | None = Field(None, ge=0, le=100)
+    color: str | None = None  # one of FOLDER_COLORS, or "" for none
 
 
 class DocFolderIn(BaseModel):
@@ -234,7 +235,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 22
+API_VERSION = 23
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -485,7 +486,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.patch("/folders/{folder_id}")
     def update_folder(folder_id: int, body: FolderPatch):
-        return lib.update_folder(folder_id, body.name, body.similarity)
+        return lib.update_folder(folder_id, body.name, body.similarity, body.color)
 
     @app.post("/folders/{folder_id}/merge")
     def merge_folders(folder_id: int, body: FolderMergeIn):

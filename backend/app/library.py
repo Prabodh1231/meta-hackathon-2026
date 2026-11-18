@@ -71,6 +71,8 @@ SOURCE_MATCH = 0.5  # closely matches the source
 SOURCE_COPIED = 0.85  # copied nearly word for word
 INDEX_LOOKUP_WORKERS = 4  # papers looked up in OpenAlex at once; it asks for a polite pace
 REMOVAL_REASONS = ("removed", "duplicate")
+# The colours a topic's folder can be given in the Library; the app draws each from its own palette.
+FOLDER_COLORS = ("rose", "gold", "violet", "sky", "slate")
 
 # Preferences set in the Settings window, stored in the library so they follow it. Each is either
 # a tuple of the allowed values (the first is the default), or (range of whole numbers, default),
@@ -1626,7 +1628,7 @@ class Library:
     def list_folders(self) -> list[dict]:
         with self.lock:
             rows = self.conn.execute(
-                "SELECT f.id, f.name, f.similarity, COUNT(df.doc_id) AS doc_count FROM folders f "
+                "SELECT f.id, f.name, f.similarity, f.color, COUNT(df.doc_id) AS doc_count FROM folders f "
                 "LEFT JOIN doc_folders df ON df.folder_id = f.id AND df.state != 'rejected' "
                 "GROUP BY f.id ORDER BY f.name COLLATE NOCASE"
             ).fetchall()
@@ -1638,6 +1640,12 @@ class Library:
         if not name:
             raise ValueError("A topic needs a name")
         return name
+
+    @staticmethod
+    def _color(value: str) -> str:
+        if value not in FOLDER_COLORS and value != "":
+            raise ValueError(f"A topic's colour is one of {', '.join(FOLDER_COLORS)}, or none")
+        return value
 
     @staticmethod
     def _similarity(value: int) -> int:
@@ -1660,15 +1668,18 @@ class Library:
             self._apply_scores()
         return self.list_folders()
 
-    def update_folder(self, folder_id: int, name: str | None = None, similarity: int | None = None) -> list[dict]:
-        """Rename a folder and/or move its similarity threshold. A new name is a new subject, so
-        its documents are scored again; a new threshold only re-files from the scores kept."""
+    def update_folder(self, folder_id: int, name: str | None = None, similarity: int | None = None,
+                      color: str | None = None) -> list[dict]:
+        """Rename a folder, move its similarity threshold and/or set its colour. A new name is a new
+        subject, so its documents are scored again; a new threshold only re-files from the scores
+        kept. A colour changes nothing but how the folder is drawn."""
         with self.lock:
             row = self.conn.execute("SELECT name FROM folders WHERE id = ?", (folder_id,)).fetchone()
         if not row:
             raise LookupError(f"Folder {folder_id} not found")
         name = self._folder_name(name) if name is not None else None
         similarity = self._similarity(similarity) if similarity is not None else None
+        color = self._color(color) if color is not None else None
         retitled = name is not None and name.lower() != row["name"].lower()
         with self.lock, self.conn:
             if name is not None:
@@ -1678,8 +1689,12 @@ class Library:
                 self.conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))
             if similarity is not None:
                 self.conn.execute("UPDATE folders SET similarity = ? WHERE id = ?", (similarity, folder_id))
+            if color is not None:
+                self.conn.execute("UPDATE folders SET color = ? WHERE id = ?", (color, folder_id))
             if retitled:
                 self.conn.execute("DELETE FROM folder_scores WHERE folder_id = ?", (folder_id,))
+        if name is None and similarity is None:
+            return self.list_folders()  # only the colour: nothing to re-file
         self._score_folder(folder_id)  # scores the documents that have none yet
         with self.lock, self.conn:
             self._apply_scores()

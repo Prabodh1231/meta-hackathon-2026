@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Library · topics as folders</title>
+<style>
+/* Mock only. The Library opening on its topics drawn as folders, the way a desktop shows a directory:
+   click selects, double-click opens. Eight ideas borrowed from asset managers and reference managers
+   (Nov 17) each sit behind a switch in the top strip. Real titles from 09-library-data.js; which papers
+   the draft cites, and the paper covers, are made up for the mock. Glacier + ember palette. */
+:root {
+  --bg: #eef1f4; --panel: #fbfcfd; --text: #18222c; --muted: #54616e; --border: #d5dce3; --line: rgb(24 34 44 / .09);
+  --accent: #33485c; --accent-text: #fff; --hover: rgba(51, 72, 92, .08); --rail: #e3e8ed; --sel: rgba(242, 119, 58, .16); --ring: #f2773a;
+  --ice: #8fa9bd; --ember: #f2773a; --ember-ink: #ad4c17; --tab: #7d98ad; --body1: #a9c0d1; --body2: #8fa9bd; --sheet: #fbfcfd; --ink: #0f1820;
+  --ok: #23703f; --ok-bg: #dff3e6; --warn: #8a5f00; --warn-bg: #fbefcf; --bad: #c2412d; --bad-bg: #fbe3df;
+  --page: #fff; --page-ink: #26323d; --page-line: rgb(38 50 61 / .16);
+  --doc-font: Charter, "Bitstream Charter", Georgia, serif;
+  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --shadow: 0 1px 2px rgb(24 34 44 / .06), 0 8px 24px -12px rgb(24 34 44 / .2); --pop: 0 12px 40px -8px rgb(24 34 44 / .35);
+}
+[data-theme="dark"] {
+  --bg: #0d1116; --panel: #151b22; --text: #e6ebf0; --muted: #8d9aa8; --border: #26303b; --line: rgb(230 235 240 / .08);
+  --accent: #ff9a5c; --accent-text: #2e1202; --hover: rgba(255, 255, 255, .06); --rail: #0f141a; --sel: rgba(255, 154, 92, .14); --ring: #ff9a5c;
+  --ice: #5f7b92; --ember-ink: #ff9a5c; --tab: #3f566a; --body1: #5b7890; --body2: #48627a; --sheet: #c9d5df; --ink: #eef3f7;
+  --ok: #56d08a; --ok-bg: #12261a; --warn: #e3b341; --warn-bg: #2b2111; --bad: #ff8a78; --bad-bg: #2d1614;
+  --page: #e9eef2; --page-ink: #1d2730; --page-line: rgb(29 39 48 / .2);
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -12px rgb(0 0 0 / .6); --pop: 0 16px 48px -8px rgb(0 0 0 / .8);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--bg); color: var(--text); font: 13.5px/1.45 var(--ui); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+kbd { font: 600 10.5px/1 Consolas, monospace; padding: 3px 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
+.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+.concept { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 8px 14px; background: #111a23; color: #d3dce5; font-size: 12.5px; }
+.concept b { color: #fff; } .concept a { color: #ffb98e; } .concept .sp { flex: 1; }
+.concept .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.concept .chips button, .concept .seg button { padding: 3px 9px; border: 1px solid #3a4856; border-radius: 7px; color: #c9d4de; }
+.concept .chips button[aria-pressed="true"] { background: #ff9a5c; border-color: #ff9a5c; color: #2e1202; font-weight: 600; }
+.concept .chips button.old[aria-pressed="true"] { background: #8fa9bd; border-color: #8fa9bd; color: #111a23; }
+.concept .seg { display: flex; } .concept .seg button { border-radius: 0; } .concept .seg button:first-child { border-radius: 7px 0 0 7px; } .concept .seg button:last-child { border-radius: 0 7px 7px 0; border-left: 0; }
+.concept .seg button[aria-pressed="true"] { background: #e6ebf0; color: #111a23; font-weight: 600; }
+
+.app { display: grid; grid-template-columns: 68px minmax(0, 1fr); grid-template-rows: 48px minmax(0, 1fr); min-height: 0; }
+.bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: #23703f; color: #fff; font: 700 15px var(--doc-font); }
+.bar .name { font: 600 14px var(--doc-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search { flex: 1; max-width: 460px; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted); }
+.search:focus-within { border-color: var(--accent); }
+.search .scope { font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--sel); color: var(--ember-ink); }
+.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; color: var(--text); }
+.rail { background: var(--rail); border-right: 1px solid var(--border); padding: 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+.rail button { display: grid; justify-items: center; gap: 3px; padding: 8px 0; border-radius: 9px; font-size: 11px; color: var(--muted); }
+.rail button.on { background: var(--hover); color: var(--text); box-shadow: inset 3px 0 0 var(--ember); }
+
+.lib { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; background: var(--panel); }
+.mid { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0; }
+.lib-head { display: flex; align-items: center; gap: 12px; padding: 14px 22px 10px; }
+.crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; font: 600 20px/1.1 var(--doc-font); }
+.crumbs button { color: var(--muted); font: inherit; } .crumbs button:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
+.crumbs .sep { color: var(--muted); font-weight: 400; } .crumbs .here { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); flex: none; }
+.up:hover { border-color: var(--accent); color: var(--accent); }
+.muted { color: var(--muted); font-size: 12.5px; } .sp { flex: 1; }
+.primary { height: 34px; padding: 0 14px; border-radius: 7px; background: var(--accent); color: var(--accent-text); font-weight: 600; white-space: nowrap; }
+.ghost { height: 30px; padding: 0 11px; border: 1px solid var(--border); border-radius: 7px; font-size: 12.5px; white-space: nowrap; }
+.ghost:hover { border-color: var(--accent); }
+.tools { display: flex; align-items: center; gap: 10px; padding: 0 22px 12px; border-bottom: 1px solid var(--border); min-height: 41px; }
+.seg2 { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex: none; }
+.seg2 button { height: 28px; padding: 0 10px; font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.seg2 button + button { border-left: 1px solid var(--border); }
+.seg2 button[aria-pressed="true"] { background: var(--sel); color: var(--text); font-weight: 600; }
+.zoom { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.zoom input { width: 110px; accent-color: var(--ring); }
+.scroll { overflow: auto; padding: 16px 22px 28px; outline: 0; }
+.lbl { margin: 4px 0 10px; font: 700 10.5px/1 var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.lbl span { letter-spacing: 0; text-transform: none; font-weight: 400; font-size: 12px; }
+section + .lbl, .grid + .lbl, .recent + .lbl, .views + .lbl { margin-top: 22px; }
+
+/* 1 · The topic list that stays on the left */
+.side { width: 214px; border-right: 1px solid var(--border); background: var(--bg); overflow: auto; padding: 10px 8px 18px; }
+.side .lbl { padding: 12px 10px 0; margin-bottom: 6px; }
+.side button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px 5px 10px; border-radius: 7px; text-align: left; font-size: 13px; }
+.side button:hover { background: var(--hover); }
+.side button.on { background: var(--sel); font-weight: 600; box-shadow: inset 3px 0 0 var(--ring); }
+.side button.drop { outline: 2px dashed var(--ring); outline-offset: -2px; background: var(--sel); }
+.side .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side .ct { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mini { position: relative; flex: none; width: 16px; height: 11px; margin-top: 3px; border-radius: 2px; background: var(--c, var(--body2)); }
+.mini::before { content: ""; position: absolute; left: 0; top: -3px; width: 8px; height: 4px; border-radius: 2px 2px 0 0; background: inherit; }
+.mini.smart { --c: #4f9a78; } .mini.all { --c: var(--muted); }
+
+/* 7 · Recently opened */
+.recent { display: flex; gap: 8px; overflow: hidden; }
+.recent button { flex: 0 1 220px; min-width: 0; display: flex; align-items: center; gap: 9px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 9px; text-align: left; }
+.recent button:hover { border-color: var(--accent); }
+.recent b { display: block; font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent small { color: var(--muted); font-size: 11.5px; } .recent span { min-width: 0; }
+.doc-ic { flex: none; width: 13px; height: 16px; border-radius: 2px; background: var(--page); box-shadow: 0 0 0 1px var(--border); }
+
+/* Ready-made views drawn flat, when smart folders are switched off */
+.views { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+.view { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; text-align: left; }
+.view:hover { background: var(--hover); } .view.sel { background: var(--sel); border-color: var(--ring); }
+.view b { display: block; font-weight: 600; font-size: 13px; } .view small { color: var(--muted); font-size: 12px; }
+.view .n { margin-left: auto; font: 600 15px var(--ui); font-variant-numeric: tabular-nums; }
+
+/* Folders. --fw is the tile's width, set by the size slider (2). */
+.grid { --fw: 190px; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--fw), 1fr)); gap: 6px 8px; }
+.fold { position: relative; display: grid; justify-items: center; align-content: start; gap: 5px; padding: 12px 8px 10px; border: 1px solid transparent; border-radius: 10px; text-align: center; user-select: none; }
+.fold:hover { background: var(--hover); }
+.fold.sel { background: var(--sel); border-color: var(--ring); }
+.fold .nm { max-width: 100%; font-weight: 600; font-size: 13px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fold .ct { color: var(--muted); font-size: 12px; }
+.fold.new { color: var(--muted); border: 1px dashed var(--border); } .fold.new:hover { color: var(--accent); border-color: var(--accent); }
+.fi { position: relative; width: calc(var(--fw) - 28px); height: calc((var(--fw) - 28px) * .6); margin-top: 6px; }
+.fi .tab { position: absolute; left: 0; top: -6%; width: 42%; height: 16%; border-radius: 5px 7px 0 0; background: var(--tab); }
+.fi .bk { position: absolute; inset: 0; border-radius: 3px 7px 7px 7px; background: var(--tab); }
+.fi .sheet { position: absolute; left: 7%; right: 7%; height: 60%; border-radius: 3px; background: var(--sheet); opacity: .9; }
+.fi .front { position: absolute; left: 0; right: 0; bottom: 0; height: 80%; border-radius: 5px 5px 7px 7px; background: linear-gradient(180deg, var(--body1), var(--body2)); box-shadow: 0 -1px 0 rgb(255 255 255 / .18) inset; overflow: hidden; }
+.fi .front p { margin: 0; padding: 0 9px; font: 11px/1.35 var(--ui); text-align: left; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fi .front p:first-child { padding-top: 8px; } .fi .front p + p { opacity: .72; }
+/* 3 · A smart folder: filled by a rule, so it gets its own colour and a mark */
+.fold.smart { --tab: #2f6a52; --body1: #62b08c; --body2: #4f9a78; }
+[data-theme="dark"] .fold.smart { --tab: #245240; --body1: #4f9a78; --body2: #3c7d60; }
+.fold.smart .fi .front::after { content: "⚙"; position: absolute; right: 7px; bottom: 3px; font-size: 13px; color: var(--ink); opacity: .7; }
+/* 6 · How much of the folder the open draft uses */
+.badge { position: absolute; top: 6px; right: 8px; z-index: 1; padding: 1px 7px; border-radius: 99px; background: var(--ok-bg); color: var(--ok); font: 700 10.5px/1.6 var(--ui); }
+.pill { display: inline-block; font: 700 10px/1.6 var(--ui); border-radius: 99px; padding: 0 6px; margin-left: 6px; color: var(--ok); background: var(--ok-bg); }
+
+/* Folders and papers as rows */
+table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+th { position: sticky; top: -16px; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--border); text-align: left; font: 600 11.5px/1 var(--ui); color: var(--muted); padding: 9px 8px; }
+td { height: 34px; padding: 0 8px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; user-select: none; }
+tr:hover td { background: var(--hover); } tr.sel td { background: var(--sel); }
+tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--ring); }
+.c-a { width: 150px; } .c-y { width: 56px; } .c-v { width: 180px; } .c-also { width: 250px; } .c-n { width: 90px; } .c-w { width: 230px; }
+td.c-a, td.c-y, td.c-v, td.c-n, td.c-w { color: var(--muted); }
+.ttl { font-weight: 500; } td .mini { display: inline-block; margin-right: 10px; vertical-align: -1px; }
+.kind { font: 700 9.5px/1.5 var(--ui); letter-spacing: .04em; padding: 0 5px; border-radius: 4px; color: var(--bad); background: var(--bad-bg); margin-right: 8px; }
+.chip { display: inline-block; max-width: 110px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; font-size: 11.5px; padding: 1px 7px; margin-right: 4px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted); white-space: nowrap; }
+button.chip:hover { border-color: var(--accent); color: var(--accent); }
+.more { font-size: 11.5px; color: var(--muted); }
+.empty { padding: 60px 20px; text-align: center; color: var(--muted); }
+
+/* 2 · Papers as cards with their first page as the cover */
+.cards { --fw: 190px; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--fw), 1fr)); gap: 8px; }
+.card { display: grid; gap: 6px; align-content: start; padding: 10px; border: 1px solid transparent; border-radius: 10px; text-align: left; user-select: none; }
+.card:hover { background: var(--hover); } .card.sel { background: var(--sel); border-color: var(--ring); }
+.cover { position: relative; aspect-ratio: 1 / 1.3; padding: 9% 9% 0; border-radius: 4px; background: var(--page); color: var(--page-ink); box-shadow: var(--shadow); overflow: hidden; }
+.cover b { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; font: 600 clamp(8px, calc(var(--fw) / 17), 13px)/1.25 var(--doc-font); }
+.cover i { display: block; margin: 5% 0 7%; font: normal clamp(7px, calc(var(--fw) / 22), 10px)/1.2 var(--ui); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cover::after { content: ""; display: block; height: 100%; background: repeating-linear-gradient(180deg, var(--page-line) 0 2px, transparent 2px 7px); }
+.cover .pill { position: absolute; right: 6px; bottom: 6px; margin: 0; }
+.card .t { font-weight: 600; font-size: 12.5px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card .m { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Summary of the selected folder */
+.pane { width: 300px; border-left: 1px solid var(--border); overflow: auto; padding: 18px 18px 24px; }
+.pane h3 { margin: 0 0 2px; font: 600 18px/1.25 var(--doc-font); }
+.pane h4 { margin: 18px 0 6px; font: 700 10.5px/1 var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.pane p, .pane li { font-size: 12.5px; margin: 0 0 5px; } .pane ul { margin: 0; padding-left: 16px; }
+.pane .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.bars { display: flex; align-items: flex-end; gap: 2px; height: 44px; margin-top: 4px; } .bars i { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; background: var(--ice); }
+.yrs { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.use { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--hover); margin: 4px 0 6px; } .use i { background: var(--ok); } .use i + i { background: var(--ice); }
+
+/* 5 · Peek, 8 · the colour menu, and the toast */
+.peek { position: fixed; z-index: 70; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); max-height: 76vh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); box-shadow: var(--pop); }
+.peek header { padding: 16px 20px 10px; } .peek h3 { margin: 0; font: 600 19px/1.25 var(--doc-font); }
+.peek .list { overflow: auto; padding: 0 20px 6px; } .peek .list p { margin: 0; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.peek .list small { display: block; color: var(--muted); font-size: 12px; } .peek .sum { font: 14px/1.55 var(--doc-font); white-space: pre-line; padding: 4px 0 10px; }
+.peek footer { display: flex; gap: 14px; padding: 10px 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+.shade { position: fixed; inset: 0; z-index: 69; background: rgb(0 0 0 / .35); }
+.menu { position: fixed; z-index: 75; min-width: 196px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: var(--pop); font-size: 13px; }
+.menu > button { display: flex; width: 100%; gap: 8px; padding: 6px 10px; border-radius: 6px; text-align: left; } .menu > button:hover { background: var(--hover); }
+.menu .hd { padding: 6px 10px 4px; font: 700 10.5px/1 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.menu .sw { display: flex; gap: 7px; padding: 4px 10px 8px; } .menu .sw button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; }
+.menu .sw button:hover, .menu .sw button.on { border-color: var(--text); }
+.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+.toast { position: fixed; z-index: 80; left: 50%; bottom: 40px; transform: translateX(-50%); padding: 9px 16px; border-radius: 10px; background: #18222c; color: #e6ebf0; font-size: 13px; box-shadow: var(--pop); }
+</style></head>
+<body>
+<div class="concept">
+  <b>Library · topics as folders</b><span>Click selects, double-click or Enter opens, Backspace goes back.</span><a href="index.html">all concepts</a>
+  <span class="sp"></span>
+  <div class="chips" id="extras"></div>
+  <div class="seg" id="theme"><button data-t="light">Light</button><button data-t="dark">Dark</button></div>
+</div>
+<div class="app">
+  <header class="bar">
+    <div class="logo">G</div><div class="name">Mobile money and financial inclusion</div>
+    <label class="search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="scope">Library</span><input id="q" placeholder="Search topics and papers…" autocomplete="off" spellcheck="false"><kbd>Ctrl K</kbd></label>
+  </header>
+  <nav class="rail">
+    <button><svg class="ic" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1Z"/></svg>Home</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16Z"/></svg>Write</button>
+    <button class="on"><svg class="ic" viewBox="0 0 24 24"><path d="M4 4h4v16H4zM9.5 4h4v16h-4zM15 6l3.5-1 3 14-3.5 1z"/></svg>Library</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.3"/><circle cx="18" cy="6" r="2.3"/><circle cx="12" cy="18" r="2.3"/><path d="m8 8 3 8M16.6 8l-3.4 8"/></svg>Network</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/></svg>Matrix</button>
+  </nav>
+  <section class="lib">
+    <nav class="side" id="side" aria-label="Topics" hidden></nav>
+    <div class="mid">
+      <header class="lib-head" id="head"></header>
+      <div class="tools" id="tools"></div>
+      <div class="scroll" id="scroll" tabindex="0"></div>
+    </div>
+    <aside class="pane" id="pane" hidden></aside>
+  </section>
+</div>
+<script src="09-library-data.js"></script>
+<script>
+const docs = LIB.docs
+const byId = new Map(docs.map((d) => [String(d.id), d]))
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const surname = (a) => a.trim().split(/\s+/).pop()
+const who = (d) => (!d.a.length ? '' : d.a.length === 1 ? surname(d.a[0]) : d.a.length === 2 ? `${surname(d.a[0])} & ${surname(d.a[1])}` : `${surname(d.a[0])} et al.`)
+const plural = (n, w = 'paper') => `${n} ${w}${n === 1 ? '' : 's'}`
+
+// Made up for the mock: which papers the open draft cites, and which are ticked for drafting.
+const cited = new Set(docs.filter((d) => d.id % 11 === 0).map((d) => d.id))
+const drafting = new Set(docs.filter((d) => d.id % 4 === 0).map((d) => d.id))
+
+const ALL = { kind: 'all', name: 'All sources', rule: 'Every paper, newest first', test: () => true }
+const SMART = [
+  { name: 'Cited in this draft', rule: 'Papers the open draft cites', test: (d) => cited.has(d.id) },
+  { name: 'Drafting from', rule: 'Papers ticked for Muse to write from', test: (d) => drafting.has(d.id) },
+  { name: 'Needs attention', rule: 'Missing a year or authors', test: (d) => !d.y || !d.a.length || d.a.some((a) => a.length < 4) },
+  { name: 'Unfiled', rule: 'In no topic yet', test: (d) => !d.f.length },
+  { name: 'Added this month', rule: 'Added since 1 November', test: (d) => d.ad >= '2026-11-01' },
+  { name: 'Since 2020, well cited', rule: 'A saved view: 2020 or later, 50+ citations', test: (d) => d.y >= 2020 && d.c >= 50 },
+].map((s) => ({ ...s, kind: 'smart' }))
+const TOPICS = LIB.folders.map((f) => ({ kind: 'topic', name: f.name, test: (d) => d.f.includes(f.name) }))
+const item = (name) => [ALL, ...SMART, ...TOPICS].find((i) => i.name === name)
+const of = (it) => docs.filter(it.test)
+
+// 8 · Folder colours. Two are set so the idea shows before anyone right-clicks.
+const COLOURS = { rose: ['#8e4558', '#d58a9c', '#c46a7e'], gold: ['#8a6a1f', '#dab860', '#c79a3a'], violet: ['#51478f', '#9b90dc', '#7a6cc4'], sky: ['#2c648c', '#74b0dc', '#4a90c2'], slate: ['#3d4651', '#8894a1', '#66727f'] }
+const colour = { Cryptocurrency: 'gold', 'Financial Literacy': 'violet' }
+const tint = (name) => (on.colours && colour[name] ? `--tab:${COLOURS[colour[name]][0]};--body1:${COLOURS[colour[name]][1]};--body2:${COLOURS[colour[name]][2]};--c:${COLOURS[colour[name]][2]}` : '')
+
+// Each idea on its own switch, so it can be accepted or dropped by itself. The first eight are the new ones.
+const EXTRAS = [
+  ['panes', '1 Topic list on the left'], ['zoom', '2 Grid / list and size'], ['smart', '3 Smart folders'], ['drag', '4 Drag to file'],
+  ['peek', '5 Space to peek'], ['badge', '6 Draft badge'], ['recent', '7 Recently opened'], ['colours', '8 Folder colours'],
+  ['titles', 'Titles on folders', 1], ['pane', 'Summary on click', 1], ['also', '“Also in” labels', 1],
+]
+const on = Object.fromEntries(EXTRAS.map(([k]) => [k, true]))
+let open = null // null: the folders; else the item whose papers show
+let sel = null // the selected folder, by name
+let picked = new Set() // selected papers inside a folder, by id
+let sort = 'size'
+let folderView = 'grid' // grid | list
+let paperView = 'list' // list | cards
+let size = 60 // the slider, 0-100
+let q = ''
+const RECENT = [['doc', 168], ['folder', 'Cryptocurrency'], ['doc', 165], ['folder', 'Financial Inclusion'], ['doc', 138]]
+
+const $ = (id) => document.getElementById(id)
+const fw = () => Math.round(104 + size * 1.3)
+function toast(text) {
+  document.querySelector('.toast')?.remove()
+  const t = Object.assign(document.createElement('div'), { className: 'toast', textContent: text })
+  document.body.append(t)
+  setTimeout(() => t.remove(), 2800)
+}
+function closeFloat() { document.querySelectorAll('.peek, .shade, .menu').forEach((e) => e.remove()) }
+
+function shownTopics() {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean)
+  const hit = (s) => words.every((w) => s.toLowerCase().includes(w))
+  const list = TOPICS.map((t) => ({ ...t, docs: of(t) })).filter((t) => hit(t.name) || (words.length && t.docs.some((d) => hit(d.t))))
+  return list.sort(sort === 'size' ? (a, b) => b.docs.length - a.docs.length || a.name.localeCompare(b.name) : (a, b) => a.name.localeCompare(b.name))
+}
+const citedIn = (list) => list.filter((d) => cited.has(d.id)).length
+
+function tile(it, list) {
+  const sheets = Math.min(3, list.length ? 1 + Math.floor(Math.log2(list.length) / 2.2) : 0) // fuller folders show more paper
+  const titles = on.titles && fw() >= 168 ? list.slice(0, 3).map((d) => `<p>${esc(d.t)}</p>`).join('') : ''
+  const n = citedIn(list)
+  return `<button class="fold${it.kind === 'smart' ? ' smart' : ''}${sel === it.name ? ' sel' : ''}" data-name="${esc(it.name)}" style="${it.kind === 'topic' ? tint(it.name) : ''}" title="${esc(it.rule ?? it.name)}">
+    ${on.badge && n && it.name !== 'Cited in this draft' ? `<span class="badge" title="${n} of these are cited in the open draft">${n} cited</span>` : ''}
+    <span class="fi"><span class="tab"></span><span class="bk"></span>${Array.from({ length: sheets }, (_, i) => `<span class="sheet" style="top:${6 + i * 7}%;transform:rotate(${[-2, 1.5, -0.6][i]}deg)"></span>`).join('')}<span class="front">${titles}</span></span>
+    <span class="nm">${esc(it.name)}</span><span class="ct">${plural(list.length)}</span></button>`
+}
+function folderRow(it, list) {
+  const years = list.map((d) => d.y).filter(Boolean)
+  const n = citedIn(list)
+  return `<tr class="${sel === it.name ? 'sel' : ''}" data-name="${esc(it.name)}"><td><span class="mini${it.kind === 'smart' ? ' smart' : ''}" style="${it.kind === 'topic' ? tint(it.name) : ''}"></span><span class="ttl">${esc(it.name)}</span>${on.badge && n && it.name !== 'Cited in this draft' ? `<span class="pill">${n} cited</span>` : ''}</td>
+    <td class="c-w">${esc(it.rule ?? (list[0] ? `Newest: ${list[0].t}` : ''))}</td><td class="c-n">${plural(list.length)}</td><td class="c-n">${years.length ? `${Math.min(...years)}–${Math.max(...years)}` : ''}</td></tr>`
+}
+
+function renderSide() {
+  $('side').hidden = !on.panes
+  if (!on.panes) return
+  const row = (it, cls) => `<button class="${open?.name === it.name ? 'on' : ''}" data-name="${esc(it.name)}" data-kind="${it.kind}"><span class="mini ${cls}" style="${it.kind === 'topic' ? tint(it.name) : ''}"></span><span class="nm">${esc(it.name)}</span><span class="ct">${of(it).length}</span></button>`
+  $('side').innerHTML = `<button class="${open ? '' : 'on'}" data-root="1"><svg class="ic" style="width:16px;height:16px" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg><span class="nm">All folders</span></button>
+    ${row(ALL, 'all')}${on.smart ? `<div class="lbl">Smart folders</div>${SMART.map((s) => row(s, 'smart')).join('')}` : ''}
+    <div class="lbl">Topics</div>${shownTopics().map((t) => row(t, '')).join('')}`
+}
+
+function renderHead() {
+  const n = open ? of(open).length : 0
+  $('head').innerHTML = open
+    ? `<button class="up" id="up" title="Back to the folders (Backspace)"><svg class="ic" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></button>
+       <div class="crumbs"><button id="root">Library</button><span class="sep">›</span><span class="here">${esc(open.name)}</span></div>
+       <span class="muted">${plural(n)}${on.badge && open.name !== 'Cited in this draft' && citedIn(of(open)) ? ` · ${citedIn(of(open))} cited in this draft` : ''}</span><span class="sp"></span>
+       <button class="ghost">Use for drafting</button><button class="primary">+ Add sources</button>`
+    : `<div class="crumbs"><span class="here">Library</span></div><span class="muted">${docs.length} sources · ${TOPICS.length} topics</span><span class="sp"></span><button class="primary">+ Add sources</button>`
+  $('up')?.addEventListener('click', goUp)
+  $('root')?.addEventListener('click', goUp)
+}
+
+function renderTools() {
+  const view = open ? paperView : folderView
+  const second = open ? ['cards', 'Covers'] : ['grid', 'Folders']
+  const zoom = on.zoom
+    ? `<div class="seg2" id="view"><button data-v="${open ? 'list' : 'grid'}">${open ? 'Rows' : 'Folders'}</button><button data-v="${open ? 'cards' : 'list'}">${open ? 'Covers' : 'Rows'}</button></div>
+       ${view !== 'list' ? `<label class="zoom" title="Size"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg><input type="range" id="zoom" min="0" max="100" value="${size}" aria-label="Size"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></label>` : ''}` : ''
+  $('tools').innerHTML = open
+    ? `${zoom}<span class="muted">${on.drag && on.panes ? 'Drag papers onto a topic on the left to file them there too.' : 'Double-click a paper to read it.'}</span><span class="sp"></span><span class="muted">${on.peek ? 'Space: quick look' : ''}</span>`
+    : `<div class="seg2" id="sort"><button data-s="size">Largest first</button><button data-s="name">A–Z</button></div>${zoom}
+       <span class="sp"></span><span class="muted">${q ? `${shownTopics().length} of ${TOPICS.length} topics match “${esc(q)}”` : on.peek ? 'Space: peek inside' : ''}</span>`
+  document.querySelectorAll('#sort button').forEach((b) => {
+    b.setAttribute('aria-pressed', b.dataset.s === sort)
+    b.onclick = () => ((sort = b.dataset.s), render())
+  })
+  document.querySelectorAll('#view button').forEach((b) => {
+    b.setAttribute('aria-pressed', b.dataset.v === view)
+    b.onclick = () => ((open ? (paperView = b.dataset.v) : (folderView = b.dataset.v)), renderTools(), renderMain())
+  })
+  $('zoom')?.addEventListener('input', (e) => { // only the content redraws, so the slider keeps the pointer
+    const had = fw() >= 168
+    size = +e.target.value
+    document.querySelectorAll('.grid, .cards').forEach((g) => g.style.setProperty('--fw', fw() + 'px'))
+    if (had !== fw() >= 168 && !open) renderMain()
+  })
+}
+
+function renderFolders() {
+  const topics = shownTopics()
+  const smart = SMART.map((s) => [s, of(s)])
+  const rec = on.recent && !q ? `<div class="lbl">Recently opened</div><div class="recent">${RECENT.map(([kind, key]) => kind === 'doc'
+    ? `<button data-doc="${key}"><span class="doc-ic"></span><span><b>${esc(byId.get(String(key)).t)}</b><small>${esc(who(byId.get(String(key))))} ${byId.get(String(key)).y ?? ''}</small></span></button>`
+    : `<button data-go="${esc(key)}"><span class="mini" style="${tint(key)}"></span><span><b>${esc(key)}</b><small>${plural(of(item(key)).length)}</small></span></button>`).join('')}</div>` : ''
+  let top = ''
+  if (!q && on.smart) top = folderView === 'grid'
+    ? `<div class="lbl">Smart folders <span>filled by a rule, so they keep themselves up to date</span></div><div class="grid" style="--fw:${fw()}px">${tile(ALL, docs)}${smart.map(([s, l]) => tile(s, l)).join('')}</div>` : ''
+  else if (!q) top = `<div class="lbl">Views</div><div class="views">${[[ALL, docs], ...smart.slice(2, 5)].map(([v, l]) =>
+    `<button class="view${sel === v.name ? ' sel' : ''}" data-name="${esc(v.name)}"><span><b>${esc(v.name)}</b><small>${esc(v.rule)}</small></span><span class="n">${l.length}</span></button>`).join('')}</div>`
+  const body = folderView === 'grid'
+    ? `<div class="grid" id="grid" style="--fw:${fw()}px">${topics.map((t) => tile(t, t.docs)).join('')}${q ? '' : `<button class="fold new" id="new"><span class="fi" style="display:grid;place-items:center;font-size:30px">+</span><span class="nm">New topic</span><span class="ct">Muse files matching papers</span></button>`}</div>`
+    : `<table><thead><tr><th>Name</th><th class="c-w">What's in it</th><th class="c-n">Papers</th><th class="c-n">Years</th></tr></thead><tbody>${!q && on.smart ? folderRow(ALL, docs) + smart.map(([s, l]) => folderRow(s, l)).join('') : ''}${topics.map((t) => folderRow(t, t.docs)).join('')}</tbody></table>`
+  $('scroll').innerHTML = `${rec}${top}<div class="lbl">Topics <span>${q ? '' : 'a paper can be in more than one'}</span></div>${body}
+    ${topics.length ? '' : `<div class="empty">No topic or paper title matches “${esc(q)}”.</div>`}`
+  $('new')?.addEventListener('click', () => toast('Asks for a name, then files the papers that match it'))
+}
+
+function renderPapers() {
+  const rows = of(open).filter((d) => !q || `${d.t} ${d.a.join(' ')} ${d.v}`.toLowerCase().includes(q.toLowerCase()))
+  const drag = on.drag ? ' draggable="true"' : ''
+  const mark = (d) => (on.badge && cited.has(d.id) ? '<span class="pill">cited</span>' : '')
+  if (!rows.length) return ($('scroll').innerHTML = `<div class="empty">${q ? `No paper in this folder matches “${esc(q)}”.` : 'Nothing here yet.'}</div>`)
+  $('scroll').innerHTML = paperView === 'cards'
+    ? `<div class="cards" style="--fw:${fw()}px">${rows.map((d) => `<button class="card${picked.has(d.id) ? ' sel' : ''}" data-id="${d.id}"${drag}>
+        <span class="cover"><b>${esc(d.t)}</b><i>${esc(d.a.slice(0, 3).join(', '))}</i>${mark(d)}</span><span class="t">${esc(d.t)}</span><span class="m">${esc(who(d))} ${d.y ?? ''}</span></button>`).join('')}</div>`
+    : `<table><thead><tr><th>Title</th><th class="c-a">Authors</th><th class="c-y">Year</th><th class="c-v">Journal</th>${on.also ? '<th class="c-also">Also in</th>' : ''}</tr></thead><tbody>${rows.map((d) => {
+        const others = d.f.filter((f) => f !== open.name)
+        const also = on.also ? `<td class="c-also">${others.slice(0, 2).map((f) => `<button class="chip" data-go="${esc(f)}" title="Open ${esc(f)}">${esc(f)}</button>`).join('')}${others.length > 2 ? `<span class="more">+${others.length - 2}</span>` : ''}</td>` : ''
+        return `<tr class="${picked.has(d.id) ? 'sel' : ''}" data-id="${d.id}"${drag}><td><span class="kind">PDF</span><span class="ttl">${esc(d.t)}</span>${mark(d)}</td><td class="c-a">${esc(who(d))}</td><td class="c-y">${d.y ?? ''}</td><td class="c-v">${esc(d.v ?? '')}</td>${also}</tr>`
+      }).join('')}</tbody></table>`
+}
+const renderMain = () => (open ? renderPapers() : renderFolders())
+
+function renderPane() {
+  const it = !open && on.pane && sel ? item(sel) : null
+  $('pane').hidden = !!open || !on.pane // its place is kept while the folders show, so the grid doesn't move under a double-click
+  if (!it) return ($('pane').innerHTML = '<p class="muted" style="margin-top:40px;text-align:center">Click a folder to see what is in it.<br>Double-click to open it.</p>')
+  const list = of(it)
+  const years = list.map((d) => d.y).filter(Boolean)
+  const lo = Math.min(...years), hi = Math.max(...years), span = Math.max(1, hi - lo + 1)
+  const bins = Array.from({ length: Math.min(span, 16) }, () => 0)
+  years.forEach((y) => bins[Math.min(bins.length - 1, Math.floor(((y - lo) / span) * bins.length))]++)
+  const top = Object.entries(list.flatMap((d) => d.a.slice(0, 1).map(surname)).reduce((m, a) => ((m[a] = (m[a] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]).slice(0, 4)
+  const near = it.kind === 'all' ? [] : TOPICS.filter((t) => t.name !== it.name).map((t) => [t.name, list.filter(t.test).length]).filter((x) => x[1]).sort((a, b) => b[1] - a[1]).slice(0, 4)
+  const c = citedIn(list), dr = list.filter((d) => drafting.has(d.id) && !cited.has(d.id)).length
+  $('pane').innerHTML = `<h3>${esc(it.name)}</h3><p class="muted">${plural(list.length)}${years.length ? ` · ${lo}–${hi}` : ''}${it.rule ? `<br>${esc(it.rule)}` : ''}</p>
+    <div class="acts"><button class="primary" id="openSel">Open</button><button class="ghost">Use for drafting</button><button class="ghost">Map it</button></div>
+    ${on.badge && list.length ? `<h4>In the open draft</h4><div class="use"><i style="width:${(c / list.length) * 100}%"></i><i style="width:${(dr / list.length) * 100}%"></i></div><p>${c} cited · ${dr} more ticked for drafting</p>` : ''}
+    ${years.length ? `<h4>By year</h4><div class="bars">${bins.map((n) => `<i style="height:${(n / Math.max(...bins)) * 100}%"></i>`).join('')}</div><div class="yrs"><span>${lo}</span><span>${hi}</span></div>` : ''}
+    <h4>Newest in it</h4><ul>${list.slice(0, 4).map((d) => `<li>${esc(d.t.length > 70 ? d.t.slice(0, 68) + '…' : d.t)}</li>`).join('')}</ul>
+    ${top.length ? `<h4>Most-seen first authors</h4><p>${top.map(([a, n]) => `${esc(a)}${n > 1 ? ` (${n})` : ''}`).join(', ')}</p>` : ''}
+    ${near.length ? `<h4>Shares papers with</h4><p>${near.map(([n, k]) => `<button class="chip" data-go="${esc(n)}">${esc(n)}</button><span class="more">${k}</span> `).join('')}</p>` : ''}`
+  $('openSel').onclick = () => openItem(it.name)
+}
+
+function render() {
+  closeFloat(); renderSide(); renderHead(); renderTools(); renderMain(); renderPane()
+  $('q').placeholder = open ? `Search in ${open.name}…` : 'Search topics and papers…'
+}
+
+function select(name) { // marks the tile in place: redrawing between the two clicks of a double-click loses the second
+  sel = name
+  document.querySelectorAll('#scroll [data-name]').forEach((t) => t.classList.toggle('sel', t.dataset.name === name))
+  renderPane()
+}
+function pick(id, add) {
+  if (!add) picked = new Set([id])
+  else picked.has(id) ? picked.delete(id) : picked.add(id)
+  document.querySelectorAll('#scroll [data-id]').forEach((r) => r.classList.toggle('sel', picked.has(+r.dataset.id)))
+}
+function openItem(name) {
+  const it = item(name)
+  if (!it) return
+  open = it; sel = name; picked = new Set(); q = $('q').value = ''
+  render(); $('scroll').scrollTop = 0; $('scroll').focus()
+  document.querySelector('#side .on')?.scrollIntoView({ block: 'nearest' })
+}
+function goUp() {
+  if (!open) return
+  open = null; q = $('q').value = ''
+  render()
+  document.querySelector('#scroll .sel')?.scrollIntoView({ block: 'center' })
+  $('scroll').focus()
+}
+
+// 5 · Space: look inside a folder, or at a paper, without opening it
+function peekFolder(name) {
+  const it = item(name), list = of(it)
+  float(`<header><h3>${esc(it.name)}</h3><span class="muted">${plural(list.length)}${it.rule ? ` · ${esc(it.rule)}` : ''}</span></header>
+    <div class="list">${list.slice(0, 40).map((d) => `<p>${esc(d.t)}<small>${esc(who(d))} ${d.y ?? ''}${d.v ? ` · ${esc(d.v)}` : ''}</small></p>`).join('')}${list.length > 40 ? `<p class="muted">and ${list.length - 40} more</p>` : ''}</div>
+    <footer><span><kbd>Enter</kbd> open</span><span><kbd>Space</kbd> close</span><span><kbd>← →</kbd> next folder</span></footer>`)
+}
+function peekDoc(id) {
+  const d = byId.get(String(id))
+  float(`<header><h3>${esc(d.t)}</h3><span class="muted">${esc(d.a.join(', '))}${d.y ? ` · ${d.y}` : ''}${d.v ? ` · ${esc(d.v)}` : ''}</span></header>
+    <div class="list"><div class="sum">${esc(d.s)}</div><p>${d.f.map((f) => `<span class="chip">${esc(f)}</span>`).join('')}</p></div>
+    <footer><span><kbd>Enter</kbd> read it</span><span><kbd>Space</kbd> close</span></footer>`)
+}
+function float(html) {
+  closeFloat()
+  const shade = Object.assign(document.createElement('div'), { className: 'shade', onclick: closeFloat })
+  const box = Object.assign(document.createElement('div'), { className: 'peek', innerHTML: html })
+  document.body.append(shade, box)
+}
+
+// 8 · Right-click a topic folder: a colour, and the things a folder menu would hold
+function menu(name, x, y) {
+  closeFloat()
+  const m = Object.assign(document.createElement('div'), { className: 'menu' })
+  m.innerHTML = `<button data-act="open">Open</button><button data-act="peek">Peek inside</button><hr><div class="hd">Colour</div>
+    <div class="sw">${Object.entries(COLOURS).map(([k, c]) => `<button data-colour="${k}" class="${colour[name] === k ? 'on' : ''}" style="background:${c[2]}" title="${k}"></button>`).join('')}<button data-colour="" title="No colour" style="background:var(--body2)"></button></div>
+    <hr><button data-act="say">Rename…</button><button data-act="say">Merge into another topic…</button>`
+  m.style.left = Math.min(x, innerWidth - 210) + 'px'; m.style.top = Math.min(y, innerHeight - 250) + 'px'
+  m.onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return
+    if ('colour' in b.dataset) { b.dataset.colour ? (colour[name] = b.dataset.colour) : delete colour[name]; return render() }
+    closeFloat()
+    if (b.dataset.act === 'open') openItem(name)
+    else if (b.dataset.act === 'peek') peekFolder(name)
+    else toast('As in the Library today')
+  }
+  document.body.append(m)
+}
+function onMenu(e) {
+  const t = e.target.closest('[data-name]')
+  if (!t || !on.colours || item(t.dataset.name)?.kind !== 'topic') return
+  e.preventDefault(); if (!open) select(t.dataset.name); menu(t.dataset.name, e.clientX, e.clientY)
+}
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.menu')) document.querySelector('.menu')?.remove() })
+
+// Click selects, double-click opens: the same as a paper in the list, and as a folder on the desktop.
+$('scroll').addEventListener('click', (e) => {
+  const go = e.target.closest('[data-go]'); if (go) return openItem(go.dataset.go)
+  const doc = e.target.closest('[data-doc]'); if (doc) return on.peek ? peekDoc(doc.dataset.doc) : toast('Opens the paper in the reader')
+  const tile = e.target.closest('[data-name]'); if (tile) return select(tile.dataset.name)
+  const row = e.target.closest('[data-id]'); if (row) pick(+row.dataset.id, e.ctrlKey || e.metaKey)
+})
+$('scroll').addEventListener('dblclick', (e) => {
+  const tile = e.target.closest('[data-name]'); if (tile) return openItem(tile.dataset.name)
+  if (e.target.closest('[data-id]')) toast('Opens the paper in the reader, as today')
+})
+$('scroll').addEventListener('contextmenu', onMenu)
+$('pane').addEventListener('click', (e) => { const go = e.target.closest('[data-go]'); if (go) openItem(go.dataset.go) })
+
+// 1 · In the list on the left a single click goes there, as in a file manager's tree. 4 · It is also where papers are dropped.
+$('side').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  b.dataset.root ? goUp() : openItem(b.dataset.name)
+})
+$('side').addEventListener('contextmenu', onMenu)
+$('scroll').addEventListener('dragstart', (e) => {
+  const row = e.target.closest('[data-id]'); if (!row || !on.drag) return
+  const id = +row.dataset.id
+  if (!picked.has(id)) pick(id, false)
+  e.dataTransfer.setData('text/plain', [...picked].join(','))
+  e.dataTransfer.effectAllowed = 'copy'
+})
+const target = (e) => { const b = e.target.closest('button[data-kind="topic"]'); return on.drag && b && b.dataset.name !== open?.name ? b : null }
+$('side').addEventListener('dragover', (e) => { const b = target(e); if (b) { e.preventDefault(); b.classList.add('drop') } })
+$('side').addEventListener('dragleave', (e) => e.target.closest('button')?.classList.remove('drop'))
+$('side').addEventListener('drop', (e) => {
+  const b = target(e); if (!b) return
+  e.preventDefault()
+  const moved = e.dataTransfer.getData('text/plain').split(',').map((id) => byId.get(id)).filter((d) => d && !d.f.includes(b.dataset.name))
+  moved.forEach((d) => d.f.push(b.dataset.name))
+  render()
+  toast(moved.length ? `Added ${plural(moved.length)} to ${b.dataset.name}. ${moved.length === 1 ? 'It stays' : 'They stay'} in ${open.name} too.` : `Already in ${b.dataset.name}`)
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.target === $('q')) { if (e.key === 'Escape') { q = $('q').value = ''; render() } return }
+  if (e.target.matches?.('input')) return
+  const floating = document.querySelector('.peek')
+  if (e.key === 'Escape') return closeFloat()
+  if (e.key === ' ' && on.peek) {
+    e.preventDefault()
+    if (floating) return closeFloat()
+    if (open) return picked.size ? peekDoc([...picked].pop()) : null
+    return sel ? peekFolder(sel) : null
+  }
+  if (e.key === 'Enter' && floating) { closeFloat(); return open ? toast('Opens the paper in the reader, as today') : openItem(sel) }
+  if ((e.key === 'Backspace' || (e.altKey && e.key === 'ArrowLeft')) && open) { e.preventDefault(); return goUp() }
+  if (open) return
+  const tiles = [...document.querySelectorAll('#scroll [data-name]')]
+  const i = tiles.findIndex((t) => t.dataset.name === sel)
+  if (e.key === 'Enter' && i >= 0) return openItem(sel)
+  if (!e.key.startsWith('Arrow')) return
+  e.preventDefault()
+  let j = i
+  if (i < 0) j = 0
+  else if (e.key === 'ArrowRight') j = i + 1
+  else if (e.key === 'ArrowLeft') j = i - 1
+  else { // the tile in the next or previous row that sits closest under or over this one
+    const r = tiles[i].getBoundingClientRect()
+    const down = e.key === 'ArrowDown'
+    const rows = tiles.map((t, k) => [k, t.getBoundingClientRect()]).filter(([, b]) => (down ? b.top > r.top + 4 : b.top < r.top - 4))
+    if (rows.length) {
+      const edge = down ? Math.min(...rows.map(([, b]) => b.top)) : Math.max(...rows.map(([, b]) => b.top))
+      j = rows.filter(([, b]) => Math.abs(b.top - edge) < 4).sort((a, b) => Math.abs(a[1].left - r.left) - Math.abs(b[1].left - r.left))[0][0]
+    }
+  }
+  select(tiles[Math.max(0, Math.min(tiles.length - 1, j))].dataset.name)
+  document.querySelector('#scroll .sel')?.scrollIntoView({ block: 'nearest' })
+  if (floating) peekFolder(sel)
+})
+$('q').addEventListener('input', (e) => { q = e.target.value.trim(); renderSide(); renderTools(); renderMain() })
+
+$('extras').innerHTML = EXTRAS.map(([k, label, old]) => `<button data-k="${k}" class="${old ? 'old' : ''}" aria-pressed="true">${label}</button>`).join('')
+$('extras').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  on[b.dataset.k] = !on[b.dataset.k]; b.setAttribute('aria-pressed', on[b.dataset.k])
+  if (!on.zoom) { folderView = 'grid'; paperView = 'list' }
+  render()
+})
+function theme(t) {
+  document.documentElement.dataset.theme = t
+  document.querySelectorAll('#theme button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.t === t))
+}
+$('theme').addEventListener('click', (e) => e.target.dataset.t && theme(e.target.dataset.t))
+theme('dark')
+render()
+</script>
+</body></html>
