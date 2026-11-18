@@ -20,6 +20,7 @@ import numpy as np
 from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
 from .citations import VERDICT_STATUS, locate_quote
 from .citegraph import build_graph, focus, keyword_links, match_all, missing_works
+from .embeddings import DIM, from_blob, to_blob
 from .refparse import Reference, match_reference, norm, parse_references
 from .ingest import ParsedDocument, chunk_page, clean_page_label, is_supported, parse_file, parse_url
 from .providers import LLMProvider, Passage, make_provider
@@ -143,9 +144,12 @@ USER_SETTINGS_DEFAULTS = {k: _setting_default(v) for k, v in USER_SETTINGS.items
 
 class Library:
     def __init__(self, settings: Settings, provider: LLMProvider | None = None,
-                 open_access: openaccess.OpenAccess | None = None):
+                 open_access: openaccess.OpenAccess | None = None, embedder=None, reranker=None):
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         self.settings = settings
+        self.embedder = embedder  # bge-small (embeddings.py), or None for keyword search alone
+        self.reranker = reranker  # a cross-encoder (embeddings.py) that orders the fused candidates, or None
+        self._vectors: tuple | None = None  # see _dense
         self.conn = db.connect(settings.db_path)
         self.lock = threading.RLock()
         self.provider = provider or make_provider(settings)
@@ -153,9 +157,9 @@ class Library:
         self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
         self._answers_from = self.provider  # whose answers those are
         self._graph_cache: tuple | None = None  # see _network
-        # Search is keyword search plus the provider, and folders, highlights and
-        # duplication use word statistics. No search model is loaded here, so the
-        # library lists at once.
+        # Search is keyword search, bge-small and a local reranker, plus the provider; folders,
+        # highlights and duplication use word statistics. The models load in the background, so
+        # the library lists at once.
         self.open_access = open_access or openaccess.OpenAccess(
             settings.contact_email, core_key=settings.core_api_key,
             cache_path=settings.data_dir / openaccess.CACHE_FILE)
@@ -165,6 +169,82 @@ class Library:
         self._fix_page_labels()
         self._backfill_file_dates()
         self._repair_moved_sources()
+        if self.embedder is not None:
+            threading.Thread(target=self._backfill_vectors, name="backfill-vectors", daemon=True).start()
+
+    # ---------- search vectors (bge-small) ----------
+
+    def _embed_texts(self, texts: list[str]) -> list[bytes | None]:
+        """Vectors for chunk texts, as blobs; None for each when there is no search model or it
+        fails, so a file is never lost for want of one (the backfill catches up later)."""
+        if self.embedder is None or not texts:
+            return [None] * len(texts)
+        try:
+            return [to_blob(v) for v in self.embedder.embed(texts)]
+        except Exception:
+            log.exception("Embedding failed; the chunks are stored for keyword search only")
+            return [None] * len(texts)
+
+    def _backfill_vectors(self, batch: int = 256) -> None:
+        """Embed chunks that have no vector yet (a library from before dense search, files added
+        while the model was down). Runs in the background; searches use what exists meanwhile.
+        A stored vector of another size came from another model and is replaced."""
+        try:
+            self.embedder.embed(["warm up"])  # waits for the model to load; raises if it can't
+            with self.lock, self.conn:
+                self.conn.execute("UPDATE chunks SET embedding = NULL WHERE embedding IS NOT NULL AND length(embedding) != ?",
+                                  (DIM * 4,))
+            while True:
+                with self.lock:
+                    rows = self.conn.execute(
+                        "SELECT id, text FROM chunks WHERE embedding IS NULL LIMIT ?", (batch,)).fetchall()
+                if not rows:
+                    return
+                blobs = self._embed_texts([r["text"] for r in rows])
+                if any(b is None for b in blobs):
+                    return
+                with self.lock, self.conn:
+                    self.conn.executemany("UPDATE chunks SET embedding = ? WHERE id = ?",
+                                          [(b, r["id"]) for b, r in zip(blobs, rows)])
+        except Exception:
+            log.exception("Embedding the library stopped; search uses the vectors it has")
+
+    def vector_status(self) -> dict:
+        """How much of the library the search model has covered, for Settings."""
+        with self.lock:
+            total, done = self.conn.execute(
+                "SELECT count(*), count(embedding) FROM chunks").fetchone()
+        state = getattr(self.embedder, "state", "ready") if self.embedder is not None else "off"
+        return {"model": getattr(self.embedder, "id", None) if state == "ready" else None, "state": state,
+                "device": self.embedder.device if state == "ready" else None, "chunks": total, "embedded": done}
+
+    def _dense(self, query: str, n: int, doc_ids: list[int] | None) -> list[int]:
+        """Chunk ids nearest the query by bge-small, best first. Empty when there is no model yet
+        (still loading or failed) or no vectors, so search quietly falls back to keywords."""
+        if self.embedder is None or getattr(self.embedder, "state", "ready") != "ready":
+            return []
+        with self.lock:
+            sig = tuple(self.conn.execute(
+                "SELECT count(*), coalesce(max(id), 0), coalesce(sum(id), 0) FROM chunks WHERE embedding IS NOT NULL").fetchone())
+            if self._vectors is None or self._vectors[0] != sig:
+                rows = self.conn.execute("SELECT id, doc_id, embedding FROM chunks WHERE embedding IS NOT NULL").fetchall()
+                rows = [r for r in rows if len(r["embedding"]) == DIM * 4]
+                self._vectors = (sig,
+                                 np.array([r["id"] for r in rows], dtype=np.int64),
+                                 np.array([r["doc_id"] for r in rows], dtype=np.int64),
+                                 np.vstack([from_blob(r["embedding"]) for r in rows]) if rows else np.zeros((0, DIM), np.float32))
+            _, ids, docs, mat = self._vectors
+        if not len(ids):
+            return []
+        try:
+            scores = mat @ self.embedder.embed_query(query)
+        except Exception:
+            log.exception("Embedding the query failed; searching by keywords alone")
+            return []
+        if doc_ids:
+            scores = np.where(np.isin(docs, doc_ids), scores, -np.inf)
+        top = np.argsort(-scores)[:n]
+        return [int(ids[i]) for i in top if np.isfinite(scores[i])]
 
     def _repair_moved_sources(self, legacy: Path | None = None) -> int:
         """Papers the app downloaded into its own data folder are stored by full path, so when
@@ -352,6 +432,7 @@ class Library:
             summary_job = pool.submit(self.provider.summarize, hint, full_text)
             tags_job = None if own_keywords else pool.submit(self.provider.tag_document, hint, full_text)
             folders_job = pool.submit(file_early)
+            vectors_job = pool.submit(self._embed_texts, [c[3] for c in chunks])  # beside the model calls
             try:
                 meta.update({k: v for k, v in meta_job.result().items() if v})
             except Exception:
@@ -376,6 +457,7 @@ class Library:
             except Exception:
                 log.exception("Early folder scoring failed for %s; filing it the usual way", source)
                 judged = None
+            blobs = vectors_job.result()  # None per chunk when there is no search model; backfilled later
         meta.update({k: v for k, v in parsed.metadata.items() if v})  # file metadata wins when present
         title = meta["title"] or Path(source).stem
         if "metadata" in missing and not meta["title"]:
@@ -434,13 +516,13 @@ class Library:
                 "INSERT INTO pages (doc_id, page, text, label) VALUES (?, ?, ?, ?)",
                 [(doc_id, i, t, lbl) for i, (t, lbl) in enumerate(zip(parsed.pages, labels), start=1)],
             )
-            # No embedding is stored: keyword search indexes the text itself (chunks_fts is
-            # kept in sync by triggers), and the old vector column stays in the table unused.
+            # Keyword search indexes the text itself (chunks_fts is kept in sync by triggers); the
+            # bge-small vector rides along for the dense half of search (NULL until backfilled).
             self.conn.executemany(
-                "INSERT INTO chunks (id, doc_id, page, start, end, text) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO chunks (id, doc_id, page, start, end, text, embedding) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (cid, doc_id, pg, s, e, t)
-                    for cid, (pg, s, e, t) in zip(self._allocate_ids("chunks", len(chunks)), chunks)
+                    (cid, doc_id, pg, s, e, t, blob)
+                    for cid, (pg, s, e, t), blob in zip(self._allocate_ids("chunks", len(chunks)), chunks, blobs)
                 ],
             )
         if on_stage:
@@ -1416,10 +1498,32 @@ class Library:
         pool = max(k, 30)
         wide = max(pool, 40)
         rankings = [[cid for cid, _ in self._keyword(q, wide, doc_ids)] for q in queries]
+        dense = self._dense(query, wide, doc_ids)  # bge-small's list for the query joins the keyword ones
+        if dense:
+            rankings.append(dense)
         ranked = reciprocal_rank_fusion(*rankings)[:pool] if rankings else []
         if rerank and ranked:
+            ranked = self._rerank_locally(query, ranked)  # the provider then ranks the best of these
             ranked = self._rank_with_provider(query, ranked[:RANK_POOL]) + ranked[RANK_POOL:]
         return [h for h in (self._hit(cid, score) for cid, score in ranked[:k]) if h]
+
+    def _rerank_locally(self, query: str, ranked: list[tuple[int, float]]) -> list[tuple[int, float]]:
+        """The cross-encoder's order for the fused candidates, on this computer. The fused order is
+        kept when there is no reranker yet (still loading, or failed) or it errors."""
+        if self.reranker is None or getattr(self.reranker, "state", "ready") != "ready":
+            return ranked
+        with self.lock:
+            texts = {r["id"]: r["text"] for r in self.conn.execute(
+                f"SELECT id, text FROM chunks WHERE id IN ({','.join('?' * len(ranked))})", [cid for cid, _ in ranked])}
+        ids = [cid for cid, _ in ranked if cid in texts]
+        try:
+            scores = self.reranker.rerank(query, [texts[c] for c in ids])
+            if len(scores) != len(ids) or not all(np.isfinite(scores)):
+                return ranked
+        except Exception:
+            log.exception("Local reranking failed; keeping the fused order")
+            return ranked
+        return sorted(zip(ids, scores), key=lambda kv: -kv[1])
 
     def _same_provider(self) -> None:
         """Forget the kept search answers when the provider has changed (Settings → AI model):
@@ -2292,9 +2396,11 @@ class Library:
 
     def search_settings(self) -> dict:
         """How search works, for the Settings window: keyword search on this computer, with
-        the provider expanding the query and ranking the best matches. No other model runs."""
+        the provider expanding the query and ranking the best matches, plus bge-small on this
+        computer (on its GPU when it has one) once that has loaded."""
         return {
             "search": "keyword",
+            "vectors": self.vector_status(),
             "ranking": self.provider.name,
             # The model that expands and ranks searches (the main one if the key can't use it).
             "model": getattr(self.provider, "search_model", self.settings.muse_model) if self.provider.name == "muse" else None,

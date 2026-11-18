@@ -16,7 +16,8 @@ def test_the_library_lists_and_searches_without_a_search_model(tmp_path):
     assert h["search"] == "keyword+muse" and "embedder" not in h and "reranker" not in h
     for path in ("/documents", "/folders", "/drafts", "/settings"):
         assert client.get(path).status_code == 200, path
-    assert client.get("/settings/search").json() == {"search": "keyword", "ranking": "mock", "model": None}
+    assert client.get("/settings/search").json() == {"search": "keyword", "ranking": "mock", "model": None,
+                                                          "vectors": {"model": None, "state": "off", "device": None, "chunks": 0, "embedded": 0}}
 
     assert lib.search("coral bleaching") == []
     note = tmp_path / "note.txt"

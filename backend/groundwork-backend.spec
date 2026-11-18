@@ -2,15 +2,15 @@
 # a folder (not one file, which unpacks itself on every start) that the installer ships beside the app.
 #
 # torch and sentence-transformers are excluded in case they're installed in the venv; the app
-# calls only Meta models, through the provider layer, and searches by keyword.
+# search vectors come from bge-small through fastembed (ONNX), which needs none of them.
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-hidden = collect_submodules("app") + collect_submodules("uvicorn")
+hidden = collect_submodules("app") + collect_submodules("uvicorn") + collect_submodules("fastembed")
 datas = []
 # Packages that read files of their own at run time: Word and PowerPoint templates and the
 # web-page extractor's settings and word lists.
-for pkg in ("docx", "pptx", "trafilatura", "justext", "htmldate", "courlan"):
+for pkg in ("docx", "pptx", "trafilatura", "justext", "htmldate", "courlan", "fastembed"):
     datas += collect_data_files(pkg)
 
 a = Analysis(

@@ -1,6 +1,6 @@
 """Removed: the installer no longer ships local search models.
 
-Search is keyword search on this computer plus Muse through Meta's Model API, so
+bge-small and the reranker (app/embeddings.py) download themselves on first start, so
 there is nothing to fetch. This stub is left only because the editing process cannot
 remove a file.
 """
