@@ -119,7 +119,7 @@ Your files stay where they are. The library keeps its own index in `~/.groundwor
 
 ## 2. Organize the library
 
-![The library: views and topics, one line per paper, and the selected paper's details](images/library.png)
+![The library's folders: smart folders above the topics, and the selected topic summed up on the right](images/library.png)
 
 The library opens on its **folders**, the way a desktop shows a directory: your [topics](#topics), largest first, with the [smart folders](#smart-folders) above them. Open a folder and its papers show one line each, as in a mail app or a file explorer.
 
