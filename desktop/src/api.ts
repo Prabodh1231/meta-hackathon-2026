@@ -10,6 +10,7 @@ import type {
   DocxConversion,
   DocxImport,
   DocxStyle,
+  FoundWorks,
   DraftSummary,
   DraftResult,
   DraftVersion,
@@ -64,7 +65,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 24
+export const API_VERSION = 25
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -159,6 +160,8 @@ export const api = {
   enrich: (docIds?: number[], refresh = false) =>
     request<EnrichResult>('POST', '/library/enrich', { doc_ids: docIds ?? null, refresh }),
   citingWorks: (docId: number, sort: 'cited' | 'recent') => request<CitingWorks>('GET', `/documents/${docId}/citing?sort=${sort}`),
+  /** What a typed DOI or title names, as OpenAlex knows it, before it's added. */
+  findWork: (text: string) => request<FoundWorks>('GET', `/works/find?q=${encodeURIComponent(text)}`),
   /** Find a free copy of any work and add it to the library. */
   fetchWork: (w: { title: string; doi: string; year: number | null; first_author: string }) =>
     request<FetchResult>('POST', '/library/fetch-work', w),

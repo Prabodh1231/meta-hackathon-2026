@@ -105,7 +105,7 @@ Open **Library** in the rail and click **+ Add sources**:
 
 - **Files…** picks one or more files.
 - **Folder…** adds every readable document in a folder and its subfolders.
-- **Paste a link or path…** takes a web page address, or a file or folder path on this computer.
+- **Paste a link, DOI, title or path…** takes a web page address, a file or folder path on this computer, or a paper you don't have yet, by its DOI (`10.1257/aer.104.1.183`, `doi:…` or a `doi.org` link) or its title. A DOI or title is looked up in OpenAlex: when the title you typed matches a paper exactly, it's added straight away; when it only comes close, you're shown the match (**Is this the one?**) with **Add it**, and **Not it?** for the next two. Adding finds a free, legal copy and imports it. If there's no free copy, it says so, with **Publisher's page** to read it there; if the paper is already in your library, **Show it** takes you to it. A bare file name with an extension (`notes.pdf`) counts as a path, not a title.
 
 You can also drop files anywhere on the window. A single Word file opens the [import dialog](#bring-in-a-word-file); anything else goes to the library.
 

@@ -6,6 +6,7 @@ never worked around. And what the indexes know about a library paper: the publis
 its abstract, its reference list, how often it is cited and by which works."""
 
 import dataclasses
+import difflib
 import logging
 import json
 import re
@@ -246,6 +247,19 @@ def _crossref_date(item: dict) -> str:
     return ""
 
 
+# A DOI as people paste it: bare, "doi:10.…", or a doi.org link.
+DOI_TYPED = re.compile(r"^\s*(?:https?://(?:dx\.)?doi\.org/|doi:\s*)?(10\.\d{4,9}/\S+?)[\s.]*$", re.I)
+FIND_LIMIT = 5  # works a typed title is matched against
+FIND_FALLBACK_LIMIT = 25  # when no title has every word typed: titles with any of them
+FIND_FALLBACK_CLOSENESS = 0.6  # ...kept only this close to what was typed (a typo scores ~0.95, an unrelated title ~0.5)
+
+
+def typed_doi(text: str) -> str:
+    """The DOI in what was typed, lower case, or '' when it isn't one."""
+    m = DOI_TYPED.match(text or "")
+    return m.group(1).lower() if m else ""
+
+
 def _doi(value: str | None) -> str:
     return re.sub(r"^https?://(dx\.)?doi\.org/", "", value or "", flags=re.I).lower()
 
@@ -472,6 +486,35 @@ class OpenAccess:
             return 0, []
         body = res.json()
         return (body.get("meta") or {}).get("count") or 0, [listed_work(w) for w in body.get("results") or []]
+
+    def find(self, text: str) -> list[dict]:
+        """The works a typed DOI or title names, closest first, each listed as listed_work with
+        `exact`: the DOI itself, or the same title once case and punctuation are set aside. A title
+        is searched in OpenAlex's titles only and the hits ranked by how close they are, since
+        people type titles from memory; fetch() alone would want it almost exactly right."""
+        doi = typed_doi(text)
+        if doi:
+            w = self._openalex_work(Reference(raw=doi, doi=doi))
+            return [{**listed_work(w), "exact": True}] if w else []
+        wanted = norm(text)
+        if not wanted:
+            return []
+
+        def titles(query: str, limit: int) -> list[dict]:
+            res = self._get(f"{OPENALEX}/works", self._params(
+                select=LIST_FIELDS + ",abstract_inverted_index", filter=f"title.search:{query}", **{"per-page": str(limit)}))
+            return [w for w in (listed_work(x) for x in (res.json().get("results") or [])) if w["title"].strip()] if res else []
+
+        closeness = lambda w: difflib.SequenceMatcher(None, wanted, norm(w["title"])).ratio()
+        works = titles(wanted, FIND_LIMIT)
+        if not works:
+            # Every word must be in the title, so one misspelt word finds nothing: then any of them,
+            # more hits, and the closeness ranking below picks the paper out. Any one shared word
+            # brings in titles about something else entirely, so only close ones are kept.
+            words = [w for w in wanted.split() if len(w) > 2]
+            if len(words) > 1:
+                works = [w for w in titles(" OR ".join(words), FIND_FALLBACK_LIMIT) if closeness(w) >= FIND_FALLBACK_CLOSENESS]
+        return [{**w, "exact": norm(w["title"]) == wanted} for w in sorted(works, key=closeness, reverse=True)]
 
     def search(self, query: str, limit: int = 15) -> list[dict]:
         """Works matching a free-text query (title, abstract and full text), most relevant first."""

@@ -839,6 +839,27 @@ class Library:
             return {"status": "in_library", "doc_id": m.doc_id}
         return self._download_and_add(ref)
 
+    def find_work(self, text: str) -> dict:
+        """What a DOI or title typed into Add sources names, as OpenAlex knows it: the closest match
+        first and up to two others, each with the library paper it already is, if any. Adding one is
+        then fetch_work with its DOI, which finds the copy precisely."""
+        text = " ".join((text or "").split())[:500]
+        if not text:
+            raise ValueError("Type a DOI or a paper's title")
+        kind = "doi" if openaccess.typed_doi(text) else "title"
+        try:
+            works = self.open_access.find(text)[:3]
+        except (httpx.HTTPError, ValueError) as exc:  # ValueError: a reply that isn't JSON
+            raise ValueError(f"Couldn't reach OpenAlex: {exc}") from exc
+        with self.lock:
+            docs = self._docs_brief()
+        for w in works:
+            first = w["authors"][0].split()[-1] if w["authors"] else ""
+            m = match_reference(Reference(raw=w["title"], year=w["year"], doi=w["doi"], title=w["title"], first_author=first), docs)
+            w["in_library"] = m.doc_id if m else None
+            w["first_author"] = first
+        return {"kind": kind, "query": text, "works": works}
+
     def fetch_work(self, title: str, doi: str = "", year: int | None = None, first_author: str = "") -> dict:
         """Find a free copy of any work (one citing a library paper, say) and add it to the library."""
         ref = Reference(raw=title, year=year, doi=openaccess._doi(doi), title=title, first_author=first_author)

@@ -483,6 +483,14 @@ export interface IndexWork {
   abstract: string
 }
 
+/** A work a typed DOI or title names (GET /works/find), closest first. */
+export type FoundWork = IndexWork & { exact: boolean; in_library: number | null; first_author: string }
+export interface FoundWorks {
+  kind: 'doi' | 'title'
+  query: string
+  works: FoundWork[] // the closest and up to two others
+}
+
 export interface CitingWorks {
   doc_id: number
   title: string
