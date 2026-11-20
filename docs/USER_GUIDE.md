@@ -201,6 +201,7 @@ A topic is a subject, not a place on disk, so one paper can sit in several. Clic
 - Inside a topic, **Also in** beside each paper names up to two of its other topics (and **+N** for more); click one to open that topic.
 - Add papers to a topic with **Add to topic**, or drag them: while you drag papers, a shelf of your topics appears along the bottom of the library, and dropping on one adds them to it. They stay in the topics they were already in. Take a paper out with the × on its topic chip in its details. Your own changes survive re-filing.
 - **⋯ → Re-file papers into topics** scores every paper against your topics again.
+- **Surprise me**, on a topic's right-click menu or under its summary beside the folders (and on **All sources**), opens a paper from it you haven't read yet, at random, in the reader: PDFs first, any paper when the topic has none. A message says which, and how many unread there were. When you've read everything in it, it picks from all of it and says so. **Surprise me** in Ctrl K does the same for your whole library. Papers added before the app kept reading marks count as read.
 
 ### Pick the sources to draft from
 

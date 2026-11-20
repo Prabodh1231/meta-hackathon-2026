@@ -18,7 +18,7 @@ function yearBars(years: number[]) {
 
 /** What is in the selected folder, beside the front page. Its column is always there, empty until a
  * folder is selected, so selecting one never moves the folders under the pointer. */
-export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, onMap, onOpenKey }: {
+export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, onMap, onOpenKey, onSurprise }: {
   item: FrontItem | undefined
   topics: FrontItem[] // every topic, to say which share papers with this one
   cited: Set<number>
@@ -27,6 +27,7 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
   onDraft: (docs: Doc[]) => void
   onMap: (name: string) => void
   onOpenKey: (key: string) => void
+  onSurprise?: () => void // open a random unread paper from it
 }) {
   if (!item) {
     return (
@@ -40,6 +41,8 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
     )
   }
   const docs = item.docs
+  const surprising = !!onSurprise && (item.kind === 'topic' || item.view === 'all') && docs.some((d) => d.kind !== 'text')
+  const unread = docs.filter((d) => d.unread && d.kind !== 'text').length
   const years = docs.map((d) => d.year).filter((y): y is number => !!y && y > 0)
   const bars = years.length ? yearBars(years) : null
   const nCited = docs.filter((d) => cited.has(d.id)).length
@@ -67,6 +70,7 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
       <h3>{item.name}</h3>
       <p className="muted">
         {item.countText ?? plural(item.count, 'paper')}
+        {surprising && unread > 0 && ` · ${unread} unread`}
         {bars && ` · ${bars.lo === bars.hi ? bars.lo : `${bars.lo}–${bars.hi}`}`}
         {item.rule && (
           <>
@@ -86,6 +90,14 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
           <button onClick={() => onMap(item.name)} title="Search the citation network for this topic">Map it</button>
         )}
       </div>
+
+      {surprising && (
+        <p className="lf-surprise">
+          <button className="link" onClick={onSurprise} title="Open a paper from it you haven't read yet, at random">
+            Surprise me{unread > 0 ? ': an unread paper' : ''}
+          </button>
+        </p>
+      )}
 
       {docs.length > 0 && (
         <>

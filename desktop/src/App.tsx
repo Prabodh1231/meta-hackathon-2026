@@ -275,6 +275,7 @@ export default function App() {
   }, [])
 
   const openLibrary = useCallback(() => setMode('library'), [])
+  const [surprise, setSurprise] = useState(0) // bumped by Ctrl K's Surprise me
   const [libFocus, setLibFocus] = useState<{ id: number; n: number } | null>(null)
   const [libTopic, setLibTopic] = useState<{ id: number; n: number } | null>(null) // a topic to open in the library
   const [libView, setLibView] = useState<{ id: string; n: number } | null>(null) // a saved view to open there (from Home)
@@ -1233,6 +1234,7 @@ export default function App() {
     { group: 'DO', name: 'Show drafts', hint: 'switch, import or delete', run: () => setDraftsOpen(true) },
     { group: 'DO', name: 'Import a Word file', hint: '.docx · Ctrl+O', run: pickWord },
     { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: findDuplicateFiles },
+    { group: 'DO', name: 'Surprise me', hint: 'a random unread paper', run: () => (setMode('library'), setSurprise((n) => n + 1)) },
     { group: 'DO', name: "Most-cited papers you don't have", hint: 'what your papers cite most, by topic', run: findMissing },
     { group: 'DO', name: 'Load sample library', hint: 'six files on sleep and coral reefs, and a demo draft', run: trySamples },
     ...(demo ? [{ group: 'DO', name: 'Open demo draft', hint: 'with its checklist', run: openDemoDraft }] : []),
@@ -1819,6 +1821,7 @@ export default function App() {
             focus={libFocus}
             focusTopic={libTopic}
             focusView={libView}
+            surprise={surprise}
             jobs={jobs}
             onAddPaths={addToLibrary}
             onCancelJob={cancelJob}
