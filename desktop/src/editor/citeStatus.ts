@@ -36,8 +36,9 @@ export const CITATION_RANK: Record<CitationStatus, number> = {
 export const isFlagged = (s: CitationStatus) => s !== 'verified' && s !== 'pending'
 
 /** The draft's citations counted one way everywhere (status bar, Check's badge and summary).
- * Needs attention: chips that aren't fully supported, and every marker that has finished searching
- * (each waits for the writer to confirm a source). Checking: chips and markers not done yet. */
+ * Needs attention: chips that aren't fully supported or cite a retracted paper, and every marker
+ * that has finished searching (each waits for the writer to confirm a source). Checking: chips and
+ * markers not done yet. */
 export interface Tally {
   supported: number
   attention: number
@@ -47,10 +48,16 @@ export interface Tally {
   total: number
 }
 
-export function tally(chips: { status: CitationStatus }[], marks: { state: CiteMarkState }[]): Tally {
+export function tally(
+  chips: { status: CitationStatus; docId?: number }[],
+  marks: { state: CiteMarkState }[],
+  retracted?: { has: (docId: number) => boolean },
+): Tally {
   const t: Tally = { supported: 0, attention: 0, toConfirm: 0, checking: 0, total: chips.length + marks.length }
   for (const c of chips) {
-    if (c.status === 'verified') t.supported++
+    // A supported quote from a retracted paper is still a problem: the paper was withdrawn.
+    if (c.docId != null && retracted?.has(c.docId)) t.attention++
+    else if (c.status === 'verified') t.supported++
     else if (c.status === 'pending') t.checking++
     else t.attention++
   }
@@ -63,5 +70,8 @@ export function tally(chips: { status: CitationStatus }[], marks: { state: CiteM
   }
   return t
 }
+
+/** Check's word for a citation of a retracted paper, ahead of any verdict on its quote. */
+export const RETRACTED_WORD = 'Cites a retracted paper'
 
 export const needWord = (n: number) => (n === 1 ? 'needs attention' : 'need attention')

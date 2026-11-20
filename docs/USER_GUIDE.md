@@ -148,6 +148,7 @@ A folder's papers show one line each, newest first. **Rows** or **Covers** (at t
 - **Sort and columns:** click a column header to sort by it, and again to reverse; the library opens sorted the same way next time. Right-click the header row to choose columns: Authors, Year, Journal, Added, Cited by, Topics.
 - **Unread and starred:** a paper you add is **unread** (bold, with a blue edge) until you open it; right-click to mark it read or unread yourself. Click the ☆ beside a title to star a paper you want to find again.
 - **Copy a citation:** **Copy citation** copies the selected papers' references as APA, MLA, IEEE or BibTeX, or saves them as a `.bib` file.
+- **Export a reading list:** **Export reading list…** in the selection bar, or on a topic's right-click menu, saves the papers as an annotated reading list in Word. Each paper gets its reference in your citation style (Settings), Muse's summary (marked as Muse's), and your highlights with their page numbers, each with your note under it. Order it **By author** or **By year** (oldest first); your own reading notes come last, under **Your notes**. It's made from what the library already holds, so nothing is sent to Muse.
 - **Correct its details:** **Edit details** fixes the title, authors, year, journal, DOI or link. Reference lists are built from these, and your corrections are kept if the file is added again.
 - **Read the whole PDF:** **Open PDF** in its details opens it in the app's reader, in a window of its own, where you can highlight passages and add notes (see [Highlights and notes](#highlights-and-notes)). It opens maximized; resize it, snap it to half the screen or move it to another monitor to keep it beside your draft, and it remembers that. The next paper you open replaces it in the same window. **Open in PDF viewer** at the top opens the file in Chromium's viewer instead, for thumbnails and print. The reader has its own page counter, zoom and search (see [Highlights and notes](#highlights-and-notes)). **Show in folder** finds the file on disk.
 - **Remove:** select papers and press Delete, or choose **Remove**. They leave the list at once and a message offers **Undo** for a few seconds; closing the app in that time doesn't cancel the removal. The files on disk aren't touched, and afterwards you can still bring a paper back from **Removed**.
@@ -162,6 +163,8 @@ The green folders with a ⚙ above your topics are filled by a rule, so they kee
 - **Needs attention:** papers marked **Retracted**, papers with no year or author in their record (**Needs metadata**), and papers Muse still owes a summary.
 - **Unread** and **Starred**.
 - **Unfiled** (in no topic) and **Removed**.
+- **File missing** (amber): papers whose file isn't where you added it from, because it was moved, renamed or deleted. Their text, citations and highlights are still in the library, so searching and citing them works; only opening the file doesn't. A paper's details say where it was, with **Locate file…** to point it at the file's new place (it keeps its citations, highlights and topics) and **Remove from library**. If the file you pick isn't the same one (its contents differ, say a revised version), you're asked first, since quotes and highlights were placed on the old one. Web pages are never missing.
+- **Never used:** papers you've never opened, never cited (in a draft, a review matrix or a saved finding), never highlighted and haven't ticked for drafting: candidates to read, or to remove. Papers added before the app kept reading marks count as opened, so they don't show here.
 - Every [saved view](#filters-and-saved-views) you make.
 
 ### Filters and saved views
@@ -197,14 +200,17 @@ The list comes from the papers' reference lists and the words in their titles, k
 
 A topic is a subject, not a place on disk, so one paper can sit in several. Click the **New topic** folder at the end of your topics, type a subject (say, *Digital finance*) and pick how closely a paper must match it (50% by default). Every paper that matches is filed in.
 
-- Open a topic to change its threshold with the slider, rename it or delete it. Papers stay in the library when a topic is deleted.
+Muse files papers by the topic's name. To be more precise, fill in **What belongs here** with a sentence or two in your own words, for example *Empirical papers on mobile money in East Africa, not policy reports*. Muse reads the whole rule, including what it leaves out. It's optional: a topic without one is filed by its name, as before.
+
+- Open a topic to change its threshold with the slider, rename it or delete it, and to add or **Edit** what belongs there (under its name). Changing the rule files the topic's papers again, as renaming does; papers you added or took out by hand stay as you left them. The rule also shows in the panel beside the folders when the topic is selected. Papers stay in the library when a topic is deleted.
 - Inside a topic, **Also in** beside each paper names up to two of its other topics (and **+N** for more); click one to open that topic.
 - Add papers to a topic with **Add to topic**, or drag them: while you drag papers, a shelf of your topics appears along the bottom of the library, and dropping on one adds them to it. They stay in the topics they were already in. Take a paper out with the × on its topic chip in its details. Your own changes survive re-filing.
 - **⋯ → Re-file papers into topics** scores every paper against your topics again.
+- **What's new**, in the panel beside the folders or in an open topic's bar, lists recent works that cite the topic's papers and aren't in your library, as OpenAlex knows them: the ones citing more of the topic first, then the newest, up to ten. Each says how many of the topic's papers it cites (point at it to see which). **Get a free copy** finds a free, legal copy and adds it to your library and to the topic; **Get free copies of all** does the whole list, three at a time. When there's no free copy, **Publisher's page** opens the work at its publisher. It only asks OpenAlex when you press it (one request per 50 papers, for a topic's 100 most-cited papers at most), and keeps the answer for a few hours; **Check again** asks afresh. Works citing a paper that hasn't been looked up in the index can't be found: a note says how many, and **Look them up** does it.
 
 ### Pick the sources to draft from
 
-Muse drafts (Compose, Cite my sources) and searches for citations in your whole library, unless you narrow it: select papers and choose **Use for drafting**. Those papers get a green dot, and the **Drafting from** folder lists them; **Use for drafting** on a folder's summary ticks all of its papers. The bar above the list says **Drafting from: whole library** or **Drafting from: N of M**, and **Use whole library** clears the choice. A paper's details say the same, and whether that paper is included. A red **Retracted** pill or an amber **Needs metadata** flag (no year or author in its record) warns you before you rely on a source; both also show in Network, Sources and the reference list.
+Muse drafts (Compose, Cite my sources) and searches for citations in your whole library, unless you narrow it: select papers and choose **Use for drafting**. Those papers get a green dot, and the **Drafting from** folder lists them; **Use for drafting** on a folder's summary ticks all of its papers. The bar above the list says **Drafting from: whole library** or **Drafting from: N of M**, and **Use whole library** clears the choice. A paper's details say the same, and whether that paper is included. A red **Retracted** pill (OpenAlex lists the paper as retracted, or its title or keywords say so) or an amber **Needs metadata** flag (no year or author in its record) warns you before you rely on a source; both also show in Network, Sources and the reference list, and a retracted paper's citations are flagged in the draft (see [Back up each claim](#4-back-up-each-claim)).
 
 ### Timeline
 
@@ -325,9 +331,11 @@ Click a marker to open **Check** with what was found. **Use this source** turns 
 
 Citations carry the same symbols and words: ✓ Supported, ◐ Partly supported, ✕ Not supported, and … Checking… while one is being checked. Blue ones, with the ✓ in a square, were written from a review matrix.
 
-**Check** counts them all one way, the way the status bar and Check's badge do: a citation **needs attention** when it's partly or not supported, and so does every marker whose search has finished (it found a source for you to confirm, or found nothing); one is **checking** while its check or search is still running. The summary at the top says how many need attention out of how many, with a bar (green supported, red flagged, amber a source found and waiting for you to confirm it, grey checking) and the legend. Then:
+A citation of a **retracted** paper is red with a ⚠ and the word *retracted*, whatever its quote's check found. Pointing at it says the source has been retracted and who says so: OpenAlex, or the paper's own title or keywords. The app asks OpenAlex when it looks a paper up (see Settings), so a paper retracted after you cited it is flagged the next time it's looked up. A lookup that fails never clears the flag. You can still cite a retracted paper, for instance to write about the retraction; the warning just makes sure it isn't by accident.
 
-- **Needs your attention:** markers waiting for you, then citations that aren't fully supported, each with the reason Muse gave. **‹ ›** step through them in the draft.
+**Check** counts them all one way, the way the status bar and Check's badge do: a citation **needs attention** when it's partly or not supported or cites a retracted paper, and so does every marker whose search has finished (it found a source for you to confirm, or found nothing); one is **checking** while its check or search is still running. The summary at the top says how many need attention out of how many, with a bar (green supported, red flagged, amber a source found and waiting for you to confirm it, grey checking) and the legend. Then:
+
+- **Needs your attention:** citations of retracted papers first (**Cites a retracted paper**), then markers waiting for you, then citations that aren't fully supported, each with the reason Muse gave. **‹ ›** step through them in the draft.
 - **Still checking:** markers still searching (each says **Finding a source…** or **Waiting its turn**; three are checked at a time) and citations being checked.
 - **Supported:** folded away; click to see them.
 
@@ -371,7 +379,7 @@ While Check is open, matching passages are underlined in the draft: red for an u
 
 ## 6. Export
 
-**Export** in the top bar saves the draft as a Word file. Citations are written in your citation style with a reference list at the end. A citation that didn't pass the check gets a Word comment saying why, and a `cite` marker you haven't confirmed is left out of the text with a comment on its sentence.
+**Export** in the top bar saves the draft as a Word file. Citations are written in your citation style with a reference list at the end. A citation that didn't pass the check gets a Word comment saying why, every citation of a retracted paper gets one saying it was retracted, and a `cite` marker you haven't confirmed is left out of the text with a comment on its sentence.
 
 ## The citation network
 

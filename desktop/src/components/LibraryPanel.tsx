@@ -2,7 +2,7 @@ import { Ribbons } from './Ribbons'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MuseTag } from './MuseTag'
 import { api } from '../api'
-import type { Doc, Folder, FolderColor, IngestJob, PassageHit, RefStyle, RemovedDoc } from '../types'
+import type { Doc, DocxStyle, Folder, FolderColor, IngestJob, PassageHit, RefStyle, RemovedDoc } from '../types'
 import {
   type TimeField, type TimeWindow, buildAxis, docSpan, fmtDay, fmtPublished, gotAt, inWindow, posLabel, removedSince,
 } from '../timeline'
@@ -26,6 +26,7 @@ import { FolderSummary } from './FolderSummary'
 import { FolderPeek } from './FolderPeek'
 import { FolderMenu } from './FolderMenu'
 import { AddByWork, typedKind } from './AddByWork'
+import { ReadingListDialog } from './ReadingListDialog'
 import { DropShelf, draggedIds } from './DropShelf'
 import { PaperCovers, coversPerRow } from './PaperCovers'
 import { type Recent, noteRecent, readRecent } from '../recentlyOpened'
@@ -55,6 +56,8 @@ interface Props {
   cited: number[] // documents the draft cites
   /** Where a new folder's similarity starts (Settings). */
   folderSimilarity: number
+  /** The Settings citation style, for a reading list. */
+  citationStyle?: DocxStyle
   /** Show a PDF in the app's reader, at a page, with `find` marked there. */
   onOpenPdf: (doc: Doc, page?: number, find?: string) => void
   /** Background imports, newest first, with each file's progress. */
@@ -65,6 +68,8 @@ interface Props {
   onDismissJob: (id: number) => void
   /** Show a topic in the citation network (its name searched there). */
   onMapTopic?: (name: string) => void
+  /** List recent works citing a topic's papers. */
+  onWhatsNew?: (folderId: number) => void
   /** What the app bar's search box says it searches: the folders, or the open folder. */
   onSearchHint?: (placeholder: string) => void
 }
@@ -694,7 +699,53 @@ function EditDetails({ doc: d, run, onDone }: { doc: Doc; run: Run; onDone: () =
 }
 
 /** Everything about one source, and what can be done with it. */
-function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle, onUseWholeLibrary, onClose, onCited, onCiting, onRetry, onOpen, onStar, onCopyCitation, onRemove, docById, onShowDoc, run }: {
+/** A paper whose file isn't where it was added from: say so, and offer to find it (the paper keeps
+ * its id, so its citations, highlights and topics stay) or to remove it. A file whose contents
+ * differ from the one added is a different version, so using it is asked about first. */
+function LocateFile({ doc: d, run, onRemove, onLocated }: { doc: Doc; run: Run; onRemove: () => void; onLocated: () => void }) {
+  const [differs, setDiffers] = useState<string | null>(null) // the picked file, waiting for a yes
+  const locate = async (path: string, force: boolean) => {
+    let status = ''
+    await run('Locating the file…', async () => {
+      status = (await api.locateFile(d.id, path, force)).status
+    })
+    setDiffers(status === 'differs' ? path : null)
+    if (status === 'located') onLocated()
+  }
+  const pick = async () => {
+    const [path] = (await window.rc?.pickFiles()) ?? []
+    if (path) await locate(path, false)
+  }
+  if (differs) {
+    return (
+      <div className="lib-detail-missing" role="alertdialog" aria-labelledby={`differs-${d.id}`}>
+        <b id={`differs-${d.id}`}>Use a different version?</b>
+        <span>
+          This isn't the same file as the one you added: its contents differ, perhaps a revised version. Quotes and highlights were
+          placed on the old one and may not line up.
+        </span>
+        <div className="lib-detail-missing-acts">
+          <button className="primary" onClick={() => { setDiffers(null); pick() }}>Pick another file</button>
+          <button onClick={() => locate(differs, true)}>Use it anyway</button>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="lib-detail-missing">
+      <span>
+        <b>The file isn't where it was.</b> It was at <code>{d.source}</code>. Its text, citations and highlights are still in your
+        library.
+      </span>
+      <div className="lib-detail-missing-acts">
+        {window.rc?.pickFiles && <button onClick={pick}>Locate file…</button>}
+        <button className="link danger-link" onClick={onRemove}>Remove from library</button>
+      </div>
+    </div>
+  )
+}
+
+function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle, onUseWholeLibrary, onClose, onCited, onCiting, onRetry, onOpen, onStar, onCopyCitation, onRemove, onLocated, docById, onShowDoc, run }: {
   doc: Doc
   /** Every paper in the library, to name the related ones; a click on one goes to it. */
   docById: Map<number, Doc>
@@ -710,6 +761,7 @@ function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle
   onStar: () => void
   onCopyCitation: (under: HTMLElement) => void
   onRemove: () => void
+  onLocated: () => void // its missing file was found
   onToggle: () => void
   onClose: () => void
   onCited: () => void
@@ -724,7 +776,8 @@ function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle
     onEditTaken()
   }, [edit]) // eslint-disable-line react-hooks/exhaustive-deps
   const isFile = !/^https?:\/\//i.test(d.source)
-  const openLabel = !isFile ? 'Open page' : d.kind === 'pdf' ? 'Open PDF' : window.rc?.openFile ? 'Open file' : ''
+  // A file that isn't there can't be opened: Locate file… comes first (see LocateFile).
+  const openLabel = !isFile ? 'Open page' : d.file_missing ? '' : d.kind === 'pdf' ? 'Open PDF' : window.rc?.openFile ? 'Open file' : ''
   const terms = [...new Set([...d.keywords, ...d.tags].map((t) => t.toLowerCase()))]
   const volume = d.volume ? `vol. ${d.volume}${d.issue ? `(${d.issue})` : ''}` : d.issue ? `no. ${d.issue}` : ''
   const facts = [d.year, d.venue, volume, d.page_range ? `pp. ${d.page_range}` : ''].filter(Boolean).join(' · ')
@@ -762,6 +815,7 @@ function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle
               You removed this file once: {removalText(d.previously_removed).replace(/^Removed/, 'removed')} You added it again on {fmtDay(d.added_at)}.
             </p>
           )}
+          {d.file_missing && <LocateFile doc={d} run={run} onRemove={onRemove} onLocated={onLocated} />}
           {d.missing.length > 0 && (
             <div className="lb-owed lib-detail-owed">
               <span>Muse couldn't write its {owedText(d.missing)} when it was added. It's searchable and citable meanwhile.</span>
@@ -988,7 +1042,7 @@ const SIZE_KEY = 'gw.library.size'
 const RECENT_SHOWN = 5
 /** The smart folders made from ready-made views, in the order they show; each shows only when it has
  * something in it, except All sources and Drafting from. */
-const SMART_VIEWS: View[] = ['all', 'recent', 'drafting', 'cited', 'needs', 'unread', 'starred', 'none', 'removed']
+const SMART_VIEWS: View[] = ['all', 'recent', 'drafting', 'cited', 'needs', 'unread', 'starred', 'none', 'missing', 'unused', 'removed']
 const VIEW_RULE: Record<View, string> = {
   all: 'Every paper in the library',
   recent: `Added in the last ${RECENT_DAYS} days`,
@@ -998,6 +1052,8 @@ const VIEW_RULE: Record<View, string> = {
   unread: 'Not opened yet',
   starred: 'Papers you starred',
   none: 'In no topic yet',
+  missing: "The file isn't where it was added from",
+  unused: 'Never opened, cited in a draft, highlighted or ticked for drafting',
   removed: 'Taken out of the library; open one to restore it',
 }
 /** A folder's key on the front page, for a view or a topic. */
@@ -1013,7 +1069,7 @@ const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? 
  * every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs: allDocs, folders, query, onQuery, selected: drafting, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
-  folderSimilarity, onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onSearchHint,
+  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS) // the chips above the list
@@ -1047,6 +1103,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   const [size, setSizeState] = useState<number>(() => load<number>(SIZE_KEY, 60, (v) => typeof v === 'number' && v >= 0 && v <= 100))
   const [peekKey, setPeekKey] = useState<string | null>(null) // Space on a folder: its papers listed over the folders
   const [folderMenu, setFolderMenu] = useState<{ key: string; x: number; y: number } | null>(null)
+  const [readingList, setReadingList] = useState<{ docs: Doc[]; title: string } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null) // the folder whose name is being edited in place
   const [dragging, setDragging] = useState<number | null>(null) // papers being dragged: the shelf of topics shows
   const [recent, setRecent] = useState<Recent[]>(readRecent)
@@ -1273,6 +1330,9 @@ export const LibraryPanel = memo(function LibraryPanel({
         : v === 'unread' ? d.unread
         : v === 'starred' ? d.starred
         : v === 'none' ? d.folders.length === 0
+        : v === 'missing' ? d.file_missing
+        // Papers from before reading marks existed count as opened, so they never show here.
+        : v === 'unused' ? d.unread && !d.cited_in_drafts && d.highlights === 0 && !drafting.has(d.id)
         : v === 'removed' ? false
         : d.folders.some((f) => f.id === v),
     [recentSince, drafting, citedSet],
@@ -2129,9 +2189,9 @@ export const LibraryPanel = memo(function LibraryPanel({
                 <NewFolderForm
                   initial={folderSimilarity}
                   onCancel={() => setCreating(false)}
-                  onCreate={(name, similarity) => {
+                  onCreate={(name, similarity, description) => {
                     setCreating(false)
-                    run('Creating topic…', () => api.createFolder(name, similarity))
+                    run('Creating topic…', () => api.createFolder(name, similarity, description))
                   }}
                 />
               )}
@@ -2144,6 +2204,7 @@ export const LibraryPanel = memo(function LibraryPanel({
               onOpen={() => selKey && openKey(selKey)}
               onDraft={toggleDrafting}
               onMap={(name) => onMapTopic?.(name)}
+              onWhatsNew={onWhatsNew}
               onOpenKey={openKey}
             />
           </div>
@@ -2156,13 +2217,13 @@ export const LibraryPanel = memo(function LibraryPanel({
                 <NewFolderForm
                   initial={folderSimilarity}
                   onCancel={() => setCreating(false)}
-                  onCreate={(name, similarity) => {
+                  onCreate={(name, similarity, description) => {
                     setCreating(false)
-                    run('Creating topic…', () => api.createFolder(name, similarity))
+                    run('Creating topic…', () => api.createFolder(name, similarity, description))
                   }}
                 />
               )}
-              {openFolder && <FolderBar folder={openFolder} run={run} />}
+              {openFolder && <FolderBar folder={openFolder} run={run} onWhatsNew={onWhatsNew} />}
 
               {showingRemoved && (
                 <div className="lib-tools">
@@ -2242,6 +2303,12 @@ export const LibraryPanel = memo(function LibraryPanel({
                     {allDrafting ? 'Stop drafting from' : 'Use for drafting'}
                   </button>
                   <button aria-haspopup="menu" onClick={(e) => setMenu({ kind: 'cite', ...under(e.currentTarget) })}>Copy citation ▾</button>
+                  <button
+                    onClick={() => setReadingList({ docs: chosen, title: openFolder ? `${openFolder.name} reading list` : 'Reading list' })}
+                    title="A Word file of these papers' references, Muse's summaries and your highlights and notes"
+                  >
+                    Export reading list…
+                  </button>
                   <button className="danger-text" onClick={() => remove(chosen)} title="Remove from the library (Delete). The files stay on disk.">Remove</button>
                 </div>
               )}
@@ -2420,6 +2487,7 @@ export const LibraryPanel = memo(function LibraryPanel({
               onStar={() => mark([current], { starred: !current.starred })}
               onCopyCitation={(el) => setMenu({ kind: 'cite', ...under(el) })}
               onRemove={() => remove([current])}
+              onLocated={() => say('Found it. Its citations and highlights are kept.')}
               docById={docById}
               onShowDoc={goTo}
               run={run}
@@ -2504,6 +2572,19 @@ export const LibraryPanel = memo(function LibraryPanel({
             if (id !== undefined) requestAnimationFrame(() => setMenu({ kind: 'merge', x, y, folderId: id }))
           }}
           onDelete={() => menuItem.saved && deleteView(menuItem.saved)}
+          onReadingList={() => setReadingList({ docs: menuItem.docs, title: `${menuItem.name} reading list` })}
+        />
+      )}
+      {readingList && (
+        <ReadingListDialog
+          docIds={readingList.docs.map((d) => d.id)}
+          papers={readingList.docs.filter((d) => d.kind !== 'text').length}
+          notes={readingList.docs.filter((d) => d.kind === 'text').length}
+          defaultTitle={readingList.title}
+          style={citationStyle}
+          onClose={() => setReadingList(null)}
+          onSaved={(name) => say(`Saved the reading list as ${name}.`)}
+          onError={onError}
         />
       )}
       {dragging !== null && <DropShelf topics={topicItems} openKey={opened} count={dragging} onDrop={dropOnTopic} />}

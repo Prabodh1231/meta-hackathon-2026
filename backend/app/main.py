@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .backup import backup_in_background
-from .export_docx import export_docx
+from .export_docx import export_docx, export_reading_list
 from .jobs import IngestJobs
 from .embeddings import FastReranker, LoadingEmbedder, LoadingReranker, make_embedder
 from .library import INGEST_WORKERS, Library
@@ -166,12 +166,14 @@ class TopicPatch(BaseModel):
 class FolderIn(BaseModel):
     name: str = Field(min_length=1)
     similarity: int = Field(50, ge=0, le=100)  # percent a document must match to be filed here
+    description: str = ""  # what belongs here, in the user's words
 
 
 class FolderPatch(BaseModel):
     name: str | None = Field(None, min_length=1)
     similarity: int | None = Field(None, ge=0, le=100)
     color: str | None = None  # one of FOLDER_COLORS, or "" for none
+    description: str | None = None  # "" clears it
 
 
 class DocFolderIn(BaseModel):
@@ -228,6 +230,18 @@ class ReferencesIn(BaseModel):
     style: str = "apa"
 
 
+class LocateIn(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+    force: bool = False  # use it even though its contents differ from the file added
+
+
+class ReadingListIn(BaseModel):
+    doc_ids: list[int] = Field(min_length=1, max_length=2000)
+    style: str = "apa"
+    title: str = Field("", max_length=200)
+    order: str = "author"  # or "year", oldest first
+
+
 class ExportIn(BaseModel):
     content: dict  # the editor's document JSON
     style: str = "apa"
@@ -236,7 +250,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 25
+API_VERSION = 30
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -285,6 +299,7 @@ class WorkIn(BaseModel):
     doi: str = Field("", max_length=300)
     year: int | None = None
     first_author: str = Field("", max_length=200)
+    folder_id: int | None = None  # file a downloaded copy in this topic too
 
 
 class WorksInfoIn(BaseModel):
@@ -423,6 +438,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         """Search inside the papers: the best passage of each paper that has every word of `q`."""
         return lib.find_passages(q, max(1, min(limit, 50)))
 
+    @app.post("/documents/{doc_id}/locate")
+    def locate_file(doc_id: int, body: LocateIn):
+        """Point a document whose file moved at its new place, keeping its id, citations and highlights."""
+        return lib.locate_file(doc_id, body.path, body.force)
+
     @app.get("/library/removed")
     def list_removed():
         return lib.list_removed()
@@ -449,7 +469,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/library/fetch-work")
     def fetch_work(body: WorkIn):
         """Find a free copy of any work and add it to the library."""
-        return lib.fetch_work(body.title, body.doi, body.year, body.first_author)
+        return lib.fetch_work(body.title, body.doi, body.year, body.first_author, body.folder_id)
 
     @app.get("/works/find")
     def find_work(q: str):
@@ -491,7 +511,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.post("/folders")
     def create_folder(body: FolderIn):
-        return lib.create_folder(body.name, body.similarity)
+        return lib.create_folder(body.name, body.similarity, body.description)
 
     @app.post("/folders/classify")
     def classify_all():
@@ -499,7 +519,12 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.patch("/folders/{folder_id}")
     def update_folder(folder_id: int, body: FolderPatch):
-        return lib.update_folder(folder_id, body.name, body.similarity, body.color)
+        return lib.update_folder(folder_id, body.name, body.similarity, body.color, body.description)
+
+    @app.get("/folders/{folder_id}/new-arrivals")
+    def topic_new_arrivals(folder_id: int, refresh: bool = False):
+        """Recent works outside the library that cite the topic's papers."""
+        return lib.topic_new_arrivals(folder_id, refresh)
 
     @app.post("/folders/{folder_id}/merge")
     def merge_folders(folder_id: int, body: FolderMergeIn):
@@ -768,6 +793,12 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def export_matrix(mid: int, format: str = "xlsx", style: str = "apa"):
         data, media, ext = matrices.export(mid, format, style)
         return Response(data, media_type=media, headers={"Content-Disposition": f'attachment; filename="matrix.{ext}"'})
+
+    @app.post("/export/reading-list")
+    def export_reading(body: ReadingListIn):
+        """A Word file of the papers' references, Muse's summaries and the reader's highlights and notes."""
+        data = export_reading_list(lib, highlights, body.doc_ids, body.style, body.title, body.order)
+        return Response(data, media_type=DOCX_MIME, headers={"Content-Disposition": 'attachment; filename="reading-list.docx"'})
 
     @app.post("/export/docx")
     def export(body: ExportIn):

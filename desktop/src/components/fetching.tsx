@@ -22,7 +22,7 @@ export type FetchState = FetchResult | 'working'
  *  in it), or any work by its title and DOI (one citing a library paper, say). */
 export type FetchTarget =
   | { key: string; docId: number; idx: number }
-  | { key: string; work: { title: string; doi: string; year: number | null; first_author: string } }
+  | { key: string; work: { title: string; doi: string; year: number | null; first_author: string; folder_id?: number } }
 
 /** Results per key, and fetching one work or a queue of them (a few at a time, stoppable). */
 export function useFetcher(onChanged: () => Promise<void>) {
@@ -65,11 +65,13 @@ export function fetchReason(state: FetchState | null): string {
 }
 
 /** A work's fetch status and what can be done next: fetch it, open it, read it online, search for it. */
-export function FetchActions({ state, searchable, searchFor, disabled, onFetch, onOpenPaper }: {
+export function FetchActions({ state, searchable, searchFor, disabled, fetchLabel = 'Find free copy', doi = '', onFetch, onOpenPaper }: {
   state: FetchState | null
   searchable: boolean
   searchFor: string // what to search Google Scholar for
   disabled: boolean
+  fetchLabel?: string
+  doi?: string // when known, a work with no free copy links to its publisher's page (doi.org)
   onFetch: () => void
   onOpenPaper: (docId: number) => void
 }) {
@@ -90,11 +92,14 @@ export function FetchActions({ state, searchable, searchFor, disabled, onFetch, 
         {res?.status === 'link' && res.url && (
           <a className="link" href={res.url} target="_blank" rel="noreferrer">Read online</a>
         )}
+        {res?.status === 'no_free_copy' && doi && (
+          <a className="link" href={`https://doi.org/${doi}`} target="_blank" rel="noreferrer">Publisher's page ↗</a>
+        )}
         {(res?.status === 'no_free_copy' || res?.status === 'not_found' || (!state && !searchable)) && (
           <a className="link" href={scholar} target="_blank" rel="noreferrer">Search Google Scholar</a>
         )}
         {!state && searchable && (
-          <button onClick={onFetch} disabled={disabled}>Find free copy</button>
+          <button onClick={onFetch} disabled={disabled}>{fetchLabel}</button>
         )}
         {res?.status === 'failed' && (
           <button onClick={onFetch} disabled={disabled}>Try again</button>
