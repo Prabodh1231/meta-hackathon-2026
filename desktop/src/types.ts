@@ -47,6 +47,10 @@ export interface Doc {
   starred: boolean
   /** Passages the reader highlighted in it. */
   highlights: number
+  /** Its file isn't where it was added from (never for a web page). */
+  file_missing: boolean
+  /** Cited in a saved draft, a review matrix or a saved finding. */
+  cited_in_drafts: boolean
   /** This same file was removed once before it was added again. */
   previously_removed: {
     id: number

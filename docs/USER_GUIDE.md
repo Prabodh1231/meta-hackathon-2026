@@ -163,6 +163,8 @@ The green folders with a ⚙ above your topics are filled by a rule, so they kee
 - **Needs attention:** papers marked **Retracted**, papers with no year or author in their record (**Needs metadata**), and papers Muse still owes a summary.
 - **Unread** and **Starred**.
 - **Unfiled** (in no topic) and **Removed**.
+- **File missing** (amber): papers whose file isn't where you added it from, because it was moved, renamed or deleted. Their text, citations and highlights are still in the library, so searching and citing them works; only opening the file doesn't. A paper's details say where it was, with **Locate file…** to point it at the file's new place (it keeps its citations, highlights and topics) and **Remove from library**. If the file you pick isn't the same one (its contents differ, say a revised version), you're asked first, since quotes and highlights were placed on the old one. Web pages are never missing.
+- **Never used:** papers you've never opened, never cited (in a draft, a review matrix or a saved finding), never highlighted and haven't ticked for drafting: candidates to read, or to remove. Papers added before the app kept reading marks count as opened, so they don't show here.
 - Every [saved view](#filters-and-saved-views) you make.
 
 ### Filters and saved views
