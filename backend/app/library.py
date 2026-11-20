@@ -157,6 +157,7 @@ class Library:
         self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
         self._answers_from = self.provider  # whose answers those are
         self._graph_cache: tuple | None = None  # see _network
+        self._used_cache: tuple | None = None  # see _used_elsewhere
         # Search is keyword search, bge-small and a local reranker, plus the provider; folders,
         # highlights and duplication use word statistics. The models load in the background, so
         # the library lists at once.
@@ -902,6 +903,7 @@ class Library:
         ):
             folders[r["doc_id"]].append({k: r[k] for k in ("id", "name", "state", "score")})
         removals = self._removals_by_file()
+        used = self._used_elsewhere()
         marked = {r["doc_id"]: r["n"] for r in self.conn.execute(
             f"SELECT doc_id, COUNT(*) AS n FROM highlights WHERE doc_id {scope} GROUP BY doc_id", ids)}
         numbered = [r["id"] for r in rows if r["page_numbering"] != "index"]
@@ -929,8 +931,73 @@ class Library:
             d["published_checked"] = bool(d["published_checked"])
             d["unread"], d["starred"] = bool(d["unread"]), bool(d["starred"])
             d["highlights"] = marked.get(d["id"], 0)  # passages the reader highlighted in it
+            # The file isn't where it was added from: one existence check, no reading or hashing.
+            # A web page has no file to lose.
+            d["file_missing"] = d["kind"] != "web" and not re.match(r"^https?://", d["source"], re.I) \
+                and not os.path.isfile(d["source"])
+            d["cited_in_drafts"] = d["id"] in used  # cited in a saved draft, a review matrix or a saved finding
             out.append(d)
         return out
+
+    def _used_elsewhere(self) -> set[int]:
+        """Documents the user's work cites: a citation in any saved draft (cite markers not yet
+        confirmed don't count), a row of a review matrix, or a paper in a saved finding. Kept until a
+        draft, a matrix or a finding changes, so listing the library doesn't re-read every draft.
+        Call under the lock."""
+        key = tuple(tuple(r) for r in self.conn.execute(
+            "SELECT (SELECT COUNT(*) FROM drafts), (SELECT MAX(updated_at) FROM drafts), "
+            "(SELECT COUNT(*) FROM matrix_rows), (SELECT COUNT(*) FROM matrix_findings), (SELECT MAX(id) FROM matrix_findings)"))
+        if self._used_cache and self._used_cache[0] == key:
+            return self._used_cache[1]
+        used: set[int] = set()
+
+        def walk(node) -> None:
+            if isinstance(node, dict):
+                if node.get("type") == "citation" and isinstance((node.get("attrs") or {}).get("docId"), int):
+                    used.add(node["attrs"]["docId"])
+                for child in node.get("content") or []:
+                    walk(child)
+
+        for r in self.conn.execute("SELECT content FROM drafts"):
+            try:
+                walk(json.loads(r["content"] or "{}"))
+            except ValueError:
+                pass  # an old draft saved as plain text cites nothing
+        used.update(r["doc_id"] for r in self.conn.execute("SELECT DISTINCT doc_id FROM matrix_rows"))
+        for r in self.conn.execute("SELECT sentences, snapshot FROM matrix_findings"):
+            used.update(int(i) for i in re.findall(r'"(?:doc_id|docId)":\s*(\d+)', r["sentences"] + r["snapshot"]))
+        self._used_cache = (key, used)
+        return used
+
+    def locate_file(self, doc_id: int, path: str, force: bool = False) -> dict:
+        """Point a document at its file's new place. It keeps its id, so its citations, highlights,
+        topics and text stay as they are; the file isn't read again. The file must be of the same
+        type. When its contents differ from the file added (a revised version, say), quotes and
+        highlights may not line up, so that needs `force`: without it the answer is
+        {"status": "differs"} and nothing changes."""
+        with self.lock:
+            row = self.conn.execute("SELECT id, source, kind, sha256 FROM documents WHERE id = ?", (doc_id,)).fetchone()
+            if not row:
+                raise LookupError(f"Document {doc_id} not found")
+        if row["kind"] == "web" or re.match(r"^https?://", row["source"], re.I):
+            raise ValueError("A web page has no file to locate")
+        new = Path(path)
+        if not new.is_file():
+            raise ValueError(f"There's no file at {path}")
+        if new.suffix.lower() != Path(row["source"]).suffix.lower():
+            raise ValueError(f"Pick a {Path(row['source']).suffix.lower() or 'file'} file: this paper was added from one")
+        source = str(new.resolve())
+        with self.lock:
+            other = self.conn.execute("SELECT id, title FROM documents WHERE source = ? AND id != ?", (source, doc_id)).fetchone()
+        if other:
+            raise ValueError(f"That file is already in your library as “{other['title']}”")
+        sha = self._file_info(source)["sha256"] or ""
+        if row["sha256"] and sha != row["sha256"] and not force:
+            return {"status": "differs", "doc_id": doc_id}
+        with self.lock, self.conn:
+            self.conn.execute("UPDATE documents SET source = ?, file_date = ?, sha256 = ? WHERE id = ?",
+                              (source, file_date(source), sha or row["sha256"], doc_id))
+        return {"status": "located", "doc_id": doc_id, "document": self.get_document(doc_id)}
 
     def _removals_by_file(self) -> dict[str, list[dict]]:
         """Removal log entries keyed by source path and by file hash. Call under the lock."""

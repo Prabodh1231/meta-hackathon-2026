@@ -64,7 +64,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 24
+export const API_VERSION = 25
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -154,6 +154,10 @@ export const api = {
   removed: () => request<RemovedDoc[]>('GET', '/library/removed'),
   /** Add a removed source back from its file, under its old id and added date. */
   restoreRemoved: (id: number) => request<Doc>('POST', `/library/removed/${id}/restore`),
+  /** Point a paper whose file moved at its new place. 'differs' (nothing changed): the file's contents
+   *  aren't the ones added; `force` uses it anyway. */
+  locateFile: (docId: number, path: string, force = false) =>
+    request<{ status: 'located' | 'differs'; doc_id: number; document?: Doc }>('POST', `/documents/${docId}/locate`, { path, force }),
   forgetRemoved: (id: number) => request<{ ok: boolean }>('DELETE', `/library/removed/${id}`),
   /** Look papers up in OpenAlex and Crossref (all not yet looked up, or `docIds`; `refresh` asks again). */
   enrich: (docIds?: number[], refresh = false) =>

@@ -228,6 +228,11 @@ class ReferencesIn(BaseModel):
     style: str = "apa"
 
 
+class LocateIn(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+    force: bool = False  # use it even though its contents differ from the file added
+
+
 class ExportIn(BaseModel):
     content: dict  # the editor's document JSON
     style: str = "apa"
@@ -236,7 +241,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 24
+API_VERSION = 25
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -422,6 +427,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def find_passages(q: str, limit: int = 12):
         """Search inside the papers: the best passage of each paper that has every word of `q`."""
         return lib.find_passages(q, max(1, min(limit, 50)))
+
+    @app.post("/documents/{doc_id}/locate")
+    def locate_file(doc_id: int, body: LocateIn):
+        """Point a document whose file moved at its new place, keeping its id, citations and highlights."""
+        return lib.locate_file(doc_id, body.path, body.force)
 
     @app.get("/library/removed")
     def list_removed():

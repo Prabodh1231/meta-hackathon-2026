@@ -24,7 +24,7 @@ export type Run = (label: string, fn: () => Promise<unknown>) => Promise<void>
 
 /** The ready-made views: every source, the last two weeks' additions, what Muse drafts from, what the
  * open draft cites, records that need fixing, unread, starred, sources in no topic, and the removal log. */
-export type View = 'all' | 'recent' | 'drafting' | 'cited' | 'needs' | 'unread' | 'starred' | 'none' | 'removed'
+export type View = 'all' | 'recent' | 'drafting' | 'cited' | 'needs' | 'unread' | 'starred' | 'none' | 'missing' | 'unused' | 'removed'
 export type Scope = View | number // a view, or one topic
 
 export function SimilaritySlider({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled?: boolean }) {
@@ -319,7 +319,7 @@ export function alikeTopics(docs: Doc[], folders: Folder[], kept: string[]) {
 
 export const VIEW_NAME: Record<View, string> = {
   all: 'All sources', recent: 'Recently added', drafting: 'Drafting from', cited: 'Cited in this draft', needs: 'Needs attention',
-  unread: 'Unread', starred: 'Starred', none: 'Unfiled', removed: 'Removed',
+  unread: 'Unread', starred: 'Starred', none: 'Unfiled', missing: 'File missing', unused: 'Never used', removed: 'Removed',
 }
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
