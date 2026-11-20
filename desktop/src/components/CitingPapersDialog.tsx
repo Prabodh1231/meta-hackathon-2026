@@ -60,6 +60,9 @@ export function CitingPapersDialog({ docId, onOpenPaper, onChanged, onClose, onE
   const stateOf = (w: Work): FetchState | null =>
     fetcher.results[w.openalex_id] ?? (w.in_library != null ? { status: 'in_library', doc_id: w.in_library } : null)
   const target = (w: Work) => ({ key: w.openalex_id, work: { title: w.title, doi: w.doi, year: w.year, first_author: w.first_author } })
+  const searchable = (w: Work) => !!w.doi || w.title.trim().split(/\s+/).length >= 4
+  // The works shown that aren't in the library yet and haven't been tried: what "all" fetches.
+  const todo = works.filter((w) => !stateOf(w) && searchable(w))
   const open = (id: number) => { onOpenPaper(id); onClose() }
   const inLibrary = works.filter((w) => {
     const st = stateOf(w)
@@ -79,6 +82,18 @@ export function CitingPapersDialog({ docId, onOpenPaper, onChanged, onClose, onE
             <button className={sort === 'cited' ? 'active' : ''} onClick={() => setSort('cited')}>Most cited</button>
             <button className={sort === 'recent' ? 'active' : ''} onClick={() => setSort('recent')}>Newest</button>
           </div>
+          {fetcher.running ? (
+            <button onClick={fetcher.stop}>Stop</button>
+          ) : (
+            <button
+              className="primary"
+              onClick={() => fetcher.fetchAll(todo.map(target))}
+              disabled={loading || todo.length === 0}
+              title="Find a free, legal copy of each work listed that isn't in your library, three at a time"
+            >
+              Get free copies of all{todo.length ? ` (${todo.length})` : ''}
+            </button>
+          )}
           <button className="icon" onClick={onClose} aria-label="Close papers citing this">×</button>
         </header>
 
@@ -127,7 +142,7 @@ export function CitingPapersDialog({ docId, onOpenPaper, onChanged, onClose, onE
                 </div>
                 <FetchActions
                   state={st}
-                  searchable={!!w.doi || w.title.trim().split(/\s+/).length >= 4}
+                  searchable={searchable(w)}
                   searchFor={w.title}
                   disabled={false}
                   onFetch={() => fetcher.fetchOne(target(w))}
