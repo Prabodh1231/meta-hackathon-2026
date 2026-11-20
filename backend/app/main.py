@@ -250,7 +250,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 29
+API_VERSION = 30
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -470,6 +470,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def fetch_work(body: WorkIn):
         """Find a free copy of any work and add it to the library."""
         return lib.fetch_work(body.title, body.doi, body.year, body.first_author, body.folder_id)
+
+    @app.get("/works/find")
+    def find_work(q: str):
+        """What a typed DOI or title names, as OpenAlex knows it, before it's added."""
+        return lib.find_work(q)
 
     @app.post("/works/info")
     def works_info(body: WorksInfoIn):

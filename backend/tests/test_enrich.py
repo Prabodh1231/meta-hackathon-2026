@@ -27,6 +27,8 @@ class FakeIndex:
         self.citing_args: list[tuple] = []
         self.fetched: list[Reference] = []
         self.download: Path | None = None
+        self.found_args: list[str] = []
+        self.find_reply: list[dict] | Exception = []
         self.citing_any_args: list[list[str]] = []
         self.citing_any_reply: list[dict] | Exception = []
 
@@ -49,6 +51,12 @@ class FakeIndex:
             {"openalex_id": "W8", "doi": "10.1/inlib", "title": "x", "authors": [], "year": 2021, "venue": "",
              "cited_by_count": 3, "abstract": ""},
         ]
+
+    def find(self, text):
+        self.found_args.append(text)
+        if isinstance(self.find_reply, Exception):
+            raise self.find_reply
+        return [dict(w) for w in self.find_reply]
 
     def citing_any(self, ids):
         self.citing_any_args.append(list(ids))
@@ -359,6 +367,79 @@ def test_bibtex_and_ieee_carry_volume_issue_and_publisher():
     bib = format_references([d], "bibtex")[0]
     assert "volume = {74}" in bib and "number = {3}" in bib and "publisher = {Wiley}" in bib
     assert "J, vol. 74, no. 3, 2019, pp. 341–355." in format_references([d], "mla")[0]
+
+
+# ---------- adding by DOI or title ----------
+
+def test_a_doi_is_recognised_however_it_is_pasted():
+    from app.openaccess import typed_doi
+    for text in ("10.1257/aer.104.1.183", "doi:10.1257/AER.104.1.183", " https://doi.org/10.1257/aer.104.1.183. ",
+                 "http://dx.doi.org/10.1257/aer.104.1.183"):
+        assert typed_doi(text) == "10.1257/aer.104.1.183", text
+    for text in ("Risk sharing and transactions costs", "see 10.1257/aer.104.1.183", "https://example.org/10.1/x"):
+        assert typed_doi(text) == "", text
+
+
+def test_find_looks_a_doi_up_directly_and_ranks_title_matches_by_closeness():
+    seen = []
+    real = "10.1016/j.jdeveco.2019.06.001"  # a DOI's registrant has four to nine digits
+    oa = routed({f"api.openalex.org/works/doi:{real}": httpx.Response(
+        200, json={**OPENALEX_RECORD, "doi": f"https://doi.org/{real}", "referenced_works": []})}, seen)
+    [w] = oa.find(f"https://doi.org/{real.upper()}")
+    assert (w["title"], w["doi"], w["exact"], w["authors"]) == (TITLE, real, True, ["Ada Okafor", "Raj Raman"])
+
+    hits = [
+        {"id": "https://openalex.org/W5", "title": "Mobile money adoption in rural Kenya: a survey", "publication_year": 2020, "authorships": []},
+        {"id": "https://openalex.org/W1", "title": TITLE, "publication_year": 2019, "doi": f"https://doi.org/{DOI}", "authorships": []},
+        {"id": "https://openalex.org/W9", "title": "", "publication_year": 2021, "authorships": []},  # no title: never offered
+    ]
+    seen.clear()
+    oa = routed({"api.openalex.org/works": httpx.Response(200, json={"results": hits})}, seen)
+    found = oa.find("Mobile money and household savings in rural Kenya!")
+    assert [(w["openalex_id"], w["exact"]) for w in found] == [("W1", True), ("W5", False)]
+    assert seen[0].url.params["filter"] == "title.search:mobile money and household savings in rural kenya"
+    found = oa.find("mobile money household savings kenya")
+    assert found[0]["openalex_id"] == "W1" and found[0]["exact"] is False  # close, not exact: the UI asks first
+
+
+def test_find_work_marks_what_is_in_the_library_and_says_when_openalex_is_down(client, lib, index, tmp_path):
+    have = add(client, lib, tmp_path, "okafor", doi=DOI)
+    index.find_reply = [
+        {**listed(TITLE, DOI), "exact": False},
+        {**listed("Mobile money and the gender gap", "10.1/gap"), "exact": False},
+        {**listed("Agent networks in Uganda", "10.1/agents"), "exact": False},
+        {**listed("A fourth, further away", "10.1/far"), "exact": False},
+    ]
+    r = client.get("/works/find", params={"q": "  mobile   money savings kenya "}).json()
+    assert (r["kind"], r["query"]) == ("title", "mobile money savings kenya")
+    assert [w["in_library"] for w in r["works"]] == [have, None, None]  # the closest three
+    assert r["works"][1]["first_author"] == "Moyo"
+    assert client.get("/works/find", params={"q": "doi:10.1234/gap"}).json()["kind"] == "doi"
+    index.find_reply = httpx.ConnectError("offline")
+    res = client.get("/works/find", params={"q": "10.1234/gap"})
+    assert res.status_code == 400 and "Couldn't reach OpenAlex" in res.json()["detail"]
+    assert client.get("/works/find", params={"q": "   "}).status_code == 400
+
+
+def listed(title, doi):
+    return {"openalex_id": "W" + doi[-3:], "doi": doi, "title": title, "authors": ["Bea Moyo"], "year": 2022,
+            "venue": "J Dev Econ", "cited_by_count": 3, "abstract": ""}
+
+
+def test_find_still_finds_a_title_with_a_misspelt_word():
+    seen = []
+    hits = [{"id": "https://openalex.org/W3", "title": "Transfer entropy", "publication_year": 2011, "authorships": []},
+            {"id": "https://openalex.org/W1", "title": "Urban Transfer Entropy across Scales", "publication_year": 2015, "authorships": []},
+            {"id": "https://openalex.org/W4", "title": "Scale invariance in urban form", "publication_year": 2009, "authorships": []}]  # one word shared
+
+    def page(req):
+        all_words = " OR " not in req.url.params["filter"]
+        return httpx.Response(200, json={"results": [] if all_words else hits})
+
+    oa = routed({"api.openalex.org/works": page}, seen)
+    found = oa.find("urban transfer entropy accross scale")
+    assert [w["openalex_id"] for w in found] == ["W1", "W3"] and not found[0]["exact"]
+    assert seen[1].url.params["filter"] == "title.search:urban OR transfer OR entropy OR accross OR scale"
 
 
 # ---------- what's new in a topic ----------

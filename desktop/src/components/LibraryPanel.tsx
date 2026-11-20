@@ -25,6 +25,7 @@ import { type FrontLayout, type FrontSort, type RecentShown, LibraryFront, SizeS
 import { FolderSummary } from './FolderSummary'
 import { FolderPeek } from './FolderPeek'
 import { FolderMenu } from './FolderMenu'
+import { AddByWork, typedKind } from './AddByWork'
 import { ReadingListDialog } from './ReadingListDialog'
 import { DropShelf, draggedIds } from './DropShelf'
 import { PaperCovers, coversPerRow } from './PaperCovers'
@@ -940,21 +941,26 @@ function DocDetails({ doc: d, on, scopeCount, cited, edit, onEditTaken, onToggle
 }
 
 
-/** One button for every way in: files, a folder on disk, or a pasted link or path. */
-function AddSources({ disabled, onFiles, onFolder, onLink }: {
+/** One button for every way in: files, a folder on disk, or what's pasted into its box: a web
+ * link, a path, or a paper's DOI or title, which is looked up and added in the box (AddByWork). */
+function AddSources({ disabled, onFiles, onFolder, onLink, onAdded, onShow }: {
   disabled: boolean
   onFiles: () => void
   onFolder: () => void
   onLink: (value: string) => void
+  onAdded: (docId: number) => Promise<void>
+  onShow: (docId: number) => void
 }) {
   const [open, setOpen] = useState(false)
   const [pasting, setPasting] = useState(false)
   const [value, setValue] = useState('')
+  const [finding, setFinding] = useState<string | null>(null) // a DOI or title being looked up
   const ref = useRef<HTMLDivElement>(null)
   const close = useCallback(() => {
     setOpen(false)
     setPasting(false)
     setValue('')
+    setFinding(null)
   }, [])
   useDismiss(open, close, ref)
   const pick = (fn: () => void) => () => {
@@ -994,24 +1000,29 @@ function AddSources({ disabled, onFiles, onFolder, onLink }: {
               onSubmit={(e) => {
                 e.preventDefault()
                 const v = value.trim().replace(/^"(.*)"$/, '$1')
-                if (v) pick(() => onLink(v))()
+                if (!v) return
+                const kind = typedKind(v)
+                // A DOI or title stays in the box: what it found, and what happened, is said here.
+                if (kind === 'doi' || kind === 'title') setFinding(v)
+                else pick(() => onLink(v))()
               }}
             >
               <input
                 autoFocus
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
-                placeholder="https://… or a file path"
-                aria-label="Web link or file path"
+                placeholder="A link, DOI, paper title, or file path"
+                aria-label="Web link, DOI, paper title, or file path"
               />
               <button className="primary" disabled={!value.trim()}>Add</button>
             </form>
           ) : (
             <button role="menuitem" onClick={() => setPasting(true)}>
-              <b>Paste a link or path…</b>
-              <span>A web page, or a file or folder on this computer</span>
+              <b>Paste a link, DOI, title or path…</b>
+              <span>A web page; a paper by its DOI or title, with a free copy found for you; or a file or folder on this computer</span>
             </button>
           )}
+          {finding && <AddByWork key={finding} text={finding} onAdded={onAdded} onShow={(id) => pick(() => onShow(id))()} />}
           <p className="muted add-hint">You can also drop files anywhere on the window.</p>
         </div>
       )}
@@ -2018,7 +2029,17 @@ export const LibraryPanel = memo(function LibraryPanel({
             </div>
           </>
         )}
-        <AddSources disabled={!!busy} onFiles={addFiles} onFolder={addDiskFolder} onLink={addLink} />
+        <AddSources
+          disabled={!!busy}
+          onFiles={addFiles}
+          onFolder={addDiskFolder}
+          onLink={addLink}
+          onAdded={async (id) => {
+            await onChanged()
+            showDoc(id)
+          }}
+          onShow={showDoc}
+        />
         {docs.length > 0 && (
           <div className="lib-more" ref={moreRef}>
             <button className="ghost lib-icon-btn" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More library actions" title="More" onClick={() => setMoreOpen((o) => !o)}>
