@@ -148,6 +148,32 @@ def _setting_ok(key: str, spec: tuple, value) -> bool:
 USER_SETTINGS_DEFAULTS = {k: _setting_default(v) for k, v in USER_SETTINGS.items()}
 
 
+# Where a topic's rule turns to what it leaves out ("…, not policy reports").
+_EXCLUDING = re.compile(r"\b(?:but\s+not|not|except(?:\s+for)?|excluding|other\s+than|apart\s+from)\b", re.I)
+MAX_RULE_CHARS = 300  # a sentence or two
+
+
+def rule_words(rule: str) -> str:
+    """The part of a topic's rule that says what belongs: everything before "not", "except",
+    "excluding" or "other than". Word statistics can't read a negation, so "not policy reports"
+    would pull policy reports in; Muse reads the whole rule."""
+    return _EXCLUDING.split(rule, maxsplit=1)[0].strip(" ,;:-–—")
+
+
+# A word in the title, tags or keywords that says the paper was withdrawn: the only sign before
+# OpenAlex was asked, and still the one for papers OpenAlex doesn't know.
+_RETRACTED_WORDS = re.compile(r"\bretract(ed|ion)?\b", re.I)
+
+
+def is_retracted(doc: dict) -> bool:
+    """Whether to warn that a paper was retracted: OpenAlex says so, or its own title, tags or
+    keywords do. The one rule; the UI and the Word export both read the result (`retracted`)."""
+    if doc.get("index_retracted"):
+        return True
+    words = " ".join([doc.get("title") or "", *(doc.get("tags") or []), *(doc.get("keywords") or [])])
+    return bool(_RETRACTED_WORDS.search(words))
+
+
 class Library:
     def __init__(self, settings: Settings, provider: LLMProvider | None = None,
                  open_access: openaccess.OpenAccess | None = None, embedder=None, reranker=None):
@@ -1002,6 +1028,8 @@ class Library:
             d["published_checked"] = bool(d["published_checked"])
             d["unread"], d["starred"] = bool(d["unread"]), bool(d["starred"])
             d["highlights"] = marked.get(d["id"], 0)  # passages the reader highlighted in it
+            d["index_retracted"] = bool(d["index_retracted"])
+            d["retracted"] = is_retracted(d)
             out.append(d)
         return out
 
@@ -1238,6 +1266,8 @@ class Library:
         if r["doi"] and rec.title and not unread and not openaccess.titles_agree(r["title"], rec.title):
             return {**updates, "enriched": "mismatch", "index_title": rec.title}
         updates.update(enriched="found", openalex_id=rec.openalex_id, cited_by_count=rec.cited_by_count)
+        if rec.retracted is not None:  # None: OpenAlex didn't have it, so it couldn't say
+            updates["index_retracted"] = int(rec.retracted)
 
         def take(key: str, value, only_if_empty: bool = False) -> None:
             if value in (None, "", []) or key in edited or (only_if_empty and r.get(key)):
@@ -1805,7 +1835,7 @@ class Library:
     def list_folders(self) -> list[dict]:
         with self.lock:
             rows = self.conn.execute(
-                "SELECT f.id, f.name, f.similarity, f.color, COUNT(df.doc_id) AS doc_count FROM folders f "
+                "SELECT f.id, f.name, f.similarity, f.color, f.description, COUNT(df.doc_id) AS doc_count FROM folders f "
                 "LEFT JOIN doc_folders df ON df.folder_id = f.id AND df.state != 'rejected' "
                 "GROUP BY f.id ORDER BY f.name COLLATE NOCASE"
             ).fetchall()
@@ -1819,6 +1849,13 @@ class Library:
         return name
 
     @staticmethod
+    def _description(value: str) -> str:
+        value = " ".join(str(value).split())
+        if len(value) > MAX_RULE_CHARS:
+            raise ValueError(f"Say what belongs in a topic in {MAX_RULE_CHARS} characters or fewer")
+        return value
+
+    @staticmethod
     def _color(value: str) -> str:
         if value not in FOLDER_COLORS and value != "":
             raise ValueError(f"A topic's colour is one of {', '.join(FOLDER_COLORS)}, or none")
@@ -1830,15 +1867,17 @@ class Library:
             raise ValueError("Similarity must be a whole number from 0 to 100")
         return value
 
-    def create_folder(self, name: str, similarity: int = 50) -> list[dict]:
-        """A folder the user defines by subject. Every document is scored against it and the
-        ones at or above `similarity` percent are filed in."""
+    def create_folder(self, name: str, similarity: int = 50, description: str = "") -> list[dict]:
+        """A folder the user defines by subject, and optionally by a rule in their own words
+        (`description`). Every document is scored against it and the ones at or above
+        `similarity` percent are filed in."""
         name, similarity = self._folder_name(name), self._similarity(similarity)
+        description = self._description(description)
         with self.lock, self.conn:
             if self.conn.execute("SELECT 1 FROM folders WHERE name = ?", (name,)).fetchone():
                 raise ValueError(f"A topic called {name!r} already exists")
             folder_id = self.conn.execute(
-                "INSERT INTO folders (name, similarity) VALUES (?, ?)", (name, similarity)
+                "INSERT INTO folders (name, similarity, description) VALUES (?, ?, ?)", (name, similarity, description)
             ).lastrowid
         self._score_folder(folder_id)
         with self.lock, self.conn:
@@ -1846,18 +1885,22 @@ class Library:
         return self.list_folders()
 
     def update_folder(self, folder_id: int, name: str | None = None, similarity: int | None = None,
-                      color: str | None = None) -> list[dict]:
-        """Rename a folder, move its similarity threshold and/or set its colour. A new name is a new
-        subject, so its documents are scored again; a new threshold only re-files from the scores
-        kept. A colour changes nothing but how the folder is drawn."""
+                      color: str | None = None, description: str | None = None) -> list[dict]:
+        """Rename a folder, change what belongs in it, move its similarity threshold and/or set its
+        colour. A new name or rule is a new subject, so its documents are scored again; a new
+        threshold only re-files from the scores kept. Either way only papers filed automatically
+        move: what the user added or removed by hand stays. A colour changes nothing but how the
+        folder is drawn."""
         with self.lock:
-            row = self.conn.execute("SELECT name FROM folders WHERE id = ?", (folder_id,)).fetchone()
+            row = self.conn.execute("SELECT name, description FROM folders WHERE id = ?", (folder_id,)).fetchone()
         if not row:
             raise LookupError(f"Folder {folder_id} not found")
         name = self._folder_name(name) if name is not None else None
         similarity = self._similarity(similarity) if similarity is not None else None
         color = self._color(color) if color is not None else None
-        retitled = name is not None and name.lower() != row["name"].lower()
+        description = self._description(description) if description is not None else None
+        retitled = (name is not None and name.lower() != row["name"].lower()) or (
+            description is not None and description != row["description"])
         with self.lock, self.conn:
             if name is not None:
                 clash = self.conn.execute("SELECT id FROM folders WHERE name = ?", (name,)).fetchone()
@@ -1868,10 +1911,12 @@ class Library:
                 self.conn.execute("UPDATE folders SET similarity = ? WHERE id = ?", (similarity, folder_id))
             if color is not None:
                 self.conn.execute("UPDATE folders SET color = ? WHERE id = ?", (color, folder_id))
+            if description is not None:
+                self.conn.execute("UPDATE folders SET description = ? WHERE id = ?", (description, folder_id))
             if retitled:
                 self.conn.execute("DELETE FROM folder_scores WHERE folder_id = ?", (folder_id,))
-        if name is None and similarity is None:
-            return self.list_folders()  # only the colour: nothing to re-file
+        if not retitled and similarity is None:
+            return self.list_folders()  # only the colour, or the same name or rule: nothing to re-file
         self._score_folder(folder_id)  # scores the documents that have none yet
         with self.lock, self.conn:
             self._apply_scores()
@@ -1894,11 +1939,22 @@ class Library:
             for r in rows
         ]
 
+    @staticmethod
+    def _folder_queries(names: list[str], rules: dict[str, str]) -> list[str]:
+        """What word statistics match each folder by: its name, counted twice so it still weighs
+        most, and the part of its rule that says what belongs (see rule_words)."""
+        return [f"{n} {n} {rule_words(rules.get(n, ''))}".strip() for n in names]
+
+    def _folder_rules(self) -> dict[str, str]:
+        """Each folder's rule by folder name, for the folders that have one. Call under the lock."""
+        return {r["name"]: r["description"] for r in self.conn.execute(
+            "SELECT name, description FROM folders WHERE description != ''")}
+
     def _folder_word_scores(self, names: list[str]) -> tuple[np.ndarray, np.ndarray]:
-        """Each stored document's TF-IDF cosine to each folder name: (document ids, (docs, folders)).
-        Call under the lock."""
+        """Each stored document's TF-IDF cosine to each folder (its name and rule): (document ids,
+        (docs, folders)). Call under the lock."""
         doc_ids, texts = self._folder_doc_texts()
-        scores, _ = tfidf_cosines(texts, names)
+        scores, _ = tfidf_cosines(texts, self._folder_queries(names, self._folder_rules()))
         return np.array(doc_ids, dtype=np.int64), scores
 
     def _relative_fit(self, names: list[str]) -> dict[int, np.ndarray]:
@@ -1921,7 +1977,8 @@ class Library:
         doc_ids, texts = self._folder_doc_texts()
         if len(doc_ids) < MIN_DOCS_FOR_RELATIVE:
             return None
-        cosine, mine = tfidf_cosines(texts, names, candidate=f"{title} {title} {title} {summary} {text}")
+        cosine, mine = tfidf_cosines(texts, self._folder_queries(names, self._folder_rules()),
+                                     candidate=f"{title} {title} {title} {summary} {text}")
         if mine is None or not np.any(cosine):
             return mine if mine is not None and not np.any(cosine) else None
         spread = cosine.std(axis=0)
@@ -1943,8 +2000,10 @@ class Library:
             doc = self.get_document(doc_id)
             pages = [r["text"] for r in self.conn.execute(
                 "SELECT text FROM pages WHERE doc_id = ? ORDER BY page LIMIT 4", (doc_id,))]
+            rules = self._folder_rules()
         text = self._folder_text(doc["keywords"], [j["code"] for j in doc["jel_codes"]], pages)
-        return self.provider.score_folders(doc["title"], doc["summary"], text, names)  # network call: no lock
+        return self.provider.score_folders(doc["title"], doc["summary"], text, names,
+                                           {n: rules[n] for n in names if n in rules})  # network call: no lock
 
     def _judge_folders(self, title: str, summary: str, text: str):
         """Score a paper that isn't stored yet against every folder: the word-statistics
@@ -1956,8 +2015,10 @@ class Library:
                 return None
             names = [f["name"] for f in folders]
             z = self._new_paper_fit(title, summary, text, names)
+            rules = self._folder_rules()
         ask = [i for i in range(len(names)) if z is None or z[i] >= 0]
-        verdict = self.provider.score_folders(title, summary, text, [names[i] for i in ask]) if ask else {}
+        asked = [names[i] for i in ask]
+        verdict = self.provider.score_folders(title, summary, text, asked, {n: rules[n] for n in asked if n in rules}) if ask else {}
         return folders, names, z, ask, verdict
 
     def _save_scores(self, doc_id: int, folders: list, names: list[str], z: np.ndarray | None,

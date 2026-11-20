@@ -46,20 +46,27 @@ export function SimilaritySlider({ value, onChange, disabled }: { value: number;
   )
 }
 
-/** A topic is defined by the subject the user types and how closely a paper must match it. */
+/** The longest rule a topic takes (MAX_RULE_CHARS in backend/app/library.py): a sentence or two. */
+const MAX_RULE = 300
+const RULE_HELP = 'In your own words, what this topic takes in and leaves out. Muse files papers by it.'
+const RULE_EXAMPLE = 'Empirical papers on mobile money in East Africa, not policy reports'
+
+/** A topic is defined by the subject the user types, optionally what belongs in it in their own
+ * words, and how closely a paper must match. */
 export function NewFolderForm({ initial, onCreate, onCancel }: {
   initial: number
-  onCreate: (name: string, similarity: number) => void
+  onCreate: (name: string, similarity: number, description: string) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
+  const [rule, setRule] = useState('')
   const [similarity, setSimilarity] = useState(initial)
   return (
     <form
       className="newfolder"
       onSubmit={(e) => {
         e.preventDefault()
-        if (name.trim()) onCreate(name.trim(), similarity)
+        if (name.trim()) onCreate(name.trim(), similarity, rule.trim())
       }}
     >
       <div className="newfolder-title">New topic</div>
@@ -71,6 +78,20 @@ export function NewFolderForm({ initial, onCreate, onCancel }: {
         placeholder="Subject, e.g. Digital finance"
         aria-label="Topic name"
       />
+      <label className="folder-rule-field">
+        <span>
+          What belongs here <span className="muted">· optional</span>
+        </span>
+        <textarea
+          value={rule}
+          rows={2}
+          maxLength={MAX_RULE}
+          onChange={(e) => setRule(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+          placeholder={RULE_EXAMPLE}
+        />
+        <span className="muted">{RULE_HELP}</span>
+      </label>
       <SimilaritySlider value={similarity} onChange={setSimilarity} />
       <p className="muted">
         Every paper that matches this subject at {similarity}% or more is filed here, and a paper can be in several topics. Lower it to take in looser matches, raise it to be stricter.
@@ -93,6 +114,7 @@ export function FolderBar({ folder, run, onWhatsNew }: { folder: Folder; run: Ru
   const [value, setValue] = useState(folder.similarity)
   const [renaming, setRenaming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [ruling, setRuling] = useState(false) // editing what belongs here
   const pending = useRef<number | undefined>(undefined)
   const latest = useRef({ folder, run, value })
   latest.current = { folder, run, value }
@@ -114,6 +136,7 @@ export function FolderBar({ folder, run, onWhatsNew }: { folder: Folder; run: Ru
   useEffect(() => {
     setRenaming(false)
     setDeleting(false)
+    setRuling(false)
   }, [folder.id])
   useEffect(
     () => () => {
@@ -169,9 +192,67 @@ export function FolderBar({ folder, run, onWhatsNew }: { folder: Folder; run: Ru
           </>
         )}
       </div>
+      {ruling ? (
+        <RuleEditor
+          initial={folder.description ?? ''}
+          onCancel={() => setRuling(false)}
+          onSave={(description) => {
+            setRuling(false)
+            if (description !== (folder.description ?? '')) run('Re-filing…', () => api.updateFolder(folder.id, { description }))
+          }}
+        />
+      ) : folder.description ? (
+        <p className="folder-rule">
+          {folder.description}{' '}
+          <button className="link" onClick={() => setRuling(true)}>Edit</button>
+        </p>
+      ) : (
+        <p className="folder-rule-none">
+          <button className="link" onClick={() => setRuling(true)}>+ Say what belongs here</button>{' '}
+          <span className="muted">Muse files by the name alone until you do.</span>
+        </p>
+      )}
       <SimilaritySlider value={value} onChange={change} />
       <span className="muted">Papers matching {value}% or more are filed here. What you add or remove by hand is kept.</span>
     </div>
+  )
+}
+
+/** Editing an open topic's rule. Saving files its papers again; what was placed by hand stays. */
+function RuleEditor({ initial, onSave, onCancel }: { initial: string; onSave: (rule: string) => void; onCancel: () => void }) {
+  const [rule, setRule] = useState(initial)
+  return (
+    <form
+      className="folder-rule-field"
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSave(rule.trim())
+      }}
+    >
+      <span>What belongs here</span>
+      <textarea
+        autoFocus
+        value={rule}
+        rows={2}
+        maxLength={MAX_RULE}
+        onChange={(e) => setRule(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onCancel()
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            onSave(rule.trim())
+          }
+        }}
+        placeholder={RULE_EXAMPLE}
+      />
+      <span className="muted">{RULE_HELP} Saving files this topic's papers again; papers you added or removed by hand stay as they are.</span>
+      <div className="newfolder-actions">
+        <button className="primary">Save</button>
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }
 

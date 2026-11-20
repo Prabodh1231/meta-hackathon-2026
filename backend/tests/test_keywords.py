@@ -33,7 +33,7 @@ class Spy(MockProvider):
         self.tag_calls += 1
         return ["model tag"]
 
-    def score_folders(self, title, summary, text, folders):
+    def score_folders(self, title, summary, text, folders, rules=None):
         self.scored_text.append(text)
         return {f: 80 for f in folders}
 

@@ -157,6 +157,7 @@ button.lib-crumb:hover:not(:disabled) { background: none; color: var(--accent); 
 .lf-summary h3 { margin: 0 0 2px; font: 600 18px/1.25 var(--doc-font); overflow-wrap: anywhere; }
 .lf-summary h4 { margin: 18px 0 6px; font: 700 10.5px/1 system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .lf-summary p, .lf-summary li { margin: 0 0 5px; font-size: 12.5px; }
+.lf-summary .lf-topic-rule { margin: 4px 0 8px; font: italic 13px/1.45 var(--doc-font); color: var(--muted); overflow-wrap: anywhere; }
 .lf-summary ul { margin: 0; padding-left: 16px; }
 .lf-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .lf-acts button { height: 30px; font-size: 12.5px; }

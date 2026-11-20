@@ -7,10 +7,12 @@ import { Extension, type Editor, type JSONContent } from '@tiptap/core'
 import { EditorState } from '@tiptap/pm/state'
 import { CitationNode } from '../editor/citation'
 import { CiteMarkNode, stateOf, stateSoFar, unfinished, type CiteMarkAttrs } from '../editor/citeMark'
+import { RetractedCites, setRetractedDocs } from '../editor/retracted'
 import { ReviewMarks, findInBlock, setReviewMarks, textBlocks, type ReviewRange } from '../editor/reviewMarks'
 import { MUSE_META, MuseMark, insertMuse } from '../editor/museMark'
 import { FormatToolbar } from './FormatToolbar'
 import { ChipCard } from './ChipCard'
+import type { RetractedWhy } from './TrustBadges'
 import { api } from '../api'
 import type { Citation, DraftSentence, Suggestion } from '../types'
 
@@ -298,10 +300,12 @@ interface Props {
   /** The toolbar's Ask Muse button: ask about the selection in Compose's chat. */
   onAsk: () => void
   onError: (msg: string) => void
+  /** Library papers that were retracted, and who says so: their chips carry a warning (still citable). */
+  retracted?: Map<number, RetractedWhy>
 }
 
 export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function WritingEditor(
-  { draftId, banner, spellcheck = true, onCitationClick, onCiteMarkClick, onCiteMarks, getScope, onAsk, onError, onStats, onSaveState },
+  { draftId, banner, spellcheck = true, onCitationClick, onCiteMarkClick, onCiteMarks, getScope, onAsk, onError, onStats, onSaveState, retracted },
   ref,
 ) {
   const saveTimer = useRef<number | undefined>(undefined)
@@ -373,6 +377,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       CitationNode,
       CiteMarkNode,
       ReviewMarks,
+      RetractedCites,
       MuseMark,
       // Tables come in from a review matrix (cells that cite their quotes); edited as text.
       TableKit.configure({ table: { resizable: false } }),
@@ -766,13 +771,20 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     [editor],
   )
 
+  // Ids, not the map itself, decide when to redraw: the library list is rebuilt on every refresh.
+  const retractedKey = [...(retracted?.keys() ?? [])].sort((a, b) => a - b).join(',')
+  useEffect(() => {
+    if (editor) setRetractedDocs(editor, new Set(retracted?.keys() ?? []))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, retractedKey])
+
   return (
     <>
       <FormatToolbar editor={editor} onCite={() => citeRef.current()} onAsk={onAsk} />
       <div className="editor-wrap">
         {banner}
         <EditorContent editor={editor} />
-        <ChipCard editor={editor} />
+        <ChipCard editor={editor} retracted={retracted} />
       </div>
     </>
   )

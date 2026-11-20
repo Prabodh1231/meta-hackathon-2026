@@ -184,3 +184,16 @@ def test_empty_draft_exports(setup):
     client, _ = setup
     d = export(client, {"type": "doc", "content": []}, "apa")
     assert [p.text for p in d.paragraphs] == []
+
+
+def test_every_citation_of_a_retracted_source_gets_a_comment(setup):
+    client, ids = setup
+    lib = client.app.state.library
+    with lib.conn:
+        lib.conn.execute("UPDATE documents SET index_retracted = 1 WHERE id = ?", (ids["chen"],))
+    d = export(client, draft(ids), "apa")
+    notes = [c.text for c in d.comments]
+    # Chen is cited twice (both supported) and Okafor once: a comment on each of Chen's, none on Okafor's.
+    assert len(notes) == 2 and all("has been retracted" in n for n in notes)
+    # Still cited as usual: the warning never takes a citation out.
+    assert "(Chen & Martinez, 2021, p. 342)" in d.paragraphs[1].text

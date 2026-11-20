@@ -34,7 +34,7 @@ MIN_TITLE_WORDS = 4  # shorter parsed titles ("Introduction", a journal name) fi
 TITLE_MATCH = 0.88  # how close an index's title must be to the reference's own
 # What a library paper's lookup asks OpenAlex for, in one request.
 RECORD_FIELDS = ("id,doi,title,publication_year,publication_date,authorships,primary_location,biblio,"
-                 "abstract_inverted_index,cited_by_count,referenced_works")
+                 "abstract_inverted_index,cited_by_count,referenced_works,is_retracted")
 LIST_FIELDS = "id,doi,title,publication_year,authorships,primary_location,cited_by_count"
 # Where a free copy can be read, for fetch().
 OA_FIELDS = "doi,title,publication_year,publication_date,open_access,best_oa_location,locations"
@@ -148,6 +148,9 @@ class Record:
     abstract: str = ""
     openalex_id: str = ""  # "W2741809807"
     cited_by_count: int | None = None  # citations worldwide, as OpenAlex counts them
+    # OpenAlex's retraction flag; None when OpenAlex didn't have the work (Crossref alone found it),
+    # so a lookup that couldn't tell never clears a flag set before.
+    retracted: bool | None = None
     references: list[Reference] = field(default_factory=list)  # its reference list, in order
 
 
@@ -526,6 +529,7 @@ class OpenAccess:
             publisher=cr.get("publisher") or "",
             abstract=_abstract(w.get("abstract_inverted_index")) or _jats(cr.get("abstract")),
             openalex_id=_short_id(w.get("id")), cited_by_count=w.get("cited_by_count"),
+            retracted=bool(w["is_retracted"]) if w.get("is_retracted") is not None else None,
         )
         ids = [_short_id(u) for u in w.get("referenced_works") or []]
         if ids:

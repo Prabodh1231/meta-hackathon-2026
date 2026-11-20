@@ -39,6 +39,9 @@ export interface Doc {
   /** '' not looked up yet, 'not_found', 'mismatch' (the DOI on the paper is another work's: see index_title). */
   enriched: '' | 'found' | 'not_found' | 'mismatch'
   index_title: string
+  /** Warn that it was retracted: OpenAlex says so (index_retracted), or its title or keywords do. */
+  retracted: boolean
+  index_retracted: boolean
   /** Not opened since it was added (or marked unread), as a mail app shows new mail. */
   unread: boolean
   starred: boolean
@@ -117,6 +120,8 @@ export interface Folder {
   id: number
   name: string
   similarity: number // percent a document must match to be filed here
+  /** What belongs here, in the user's words; '' (or missing, from an older backend) when it's filed by its name alone. */
+  description?: string
   doc_count: number
   color?: FolderColor | '' // how its folder is drawn in the Library; '' (or missing, from an older backend) for none
 }

@@ -468,3 +468,41 @@ def test_citing_any_asks_in_batches_and_says_which_papers_each_cites():
     assert seen[0].url.params["per-page"] == "200" and "referenced_works" in seen[0].url.params["select"]
     # Each batch's reply adds what it cites from that batch; a work found twice is listed once.
     assert (w["openalex_id"], w["published"], w["cites"]) == ("W900", "2026-03-01", ["W0", "W5", "W50"])
+
+# ---------- retractions ----------
+
+def test_the_lookup_asks_openalex_whether_the_paper_was_retracted():
+    seen = []
+    oa = routed({f"api.openalex.org/works/doi:{DOI}": httpx.Response(
+        200, json={**OPENALEX_RECORD, "referenced_works": [], "is_retracted": True})}, seen)
+    assert oa.record(DOI, TITLE, 2019).retracted is True
+    assert "is_retracted" in seen[0].url.params["select"].split(",")
+    oa = routed({f"api.openalex.org/works/doi:{DOI}": httpx.Response(
+        200, json={**OPENALEX_RECORD, "referenced_works": [], "is_retracted": False})})
+    assert oa.record(DOI, TITLE, 2019).retracted is False
+    # Crossref alone knew the paper: OpenAlex couldn't say either way.
+    oa = routed({f"api.crossref.org/works/{DOI}": httpx.Response(200, json={"message": {"title": [TITLE]}})})
+    assert oa.record(DOI, TITLE, 2019).retracted is None
+
+
+def test_a_retraction_flag_is_kept_until_openalex_itself_says_otherwise(client, lib, index, tmp_path):
+    doc_id = add(client, lib, tmp_path, "okafor", doi=DOI)
+    assert (doc(client, doc_id)["retracted"], doc(client, doc_id)["index_retracted"]) == (False, False)
+    index.records[DOI] = record(retracted=True)
+    client.post("/library/enrich", json={})
+    assert (doc(client, doc_id)["retracted"], doc(client, doc_id)["index_retracted"]) == (True, True)
+    # Neither an outage, nor a paper the indexes no longer find, nor a record without OpenAlex's say clears it.
+    for later in (httpx.ConnectError("offline"), None, record(retracted=None)):
+        index.records[DOI] = later
+        client.post("/library/enrich", json={"refresh": True})
+        assert doc(client, doc_id)["retracted"] is True, later
+    index.records[DOI] = record(retracted=False)
+    client.post("/library/enrich", json={"refresh": True})
+    assert doc(client, doc_id)["retracted"] is False
+
+
+def test_a_title_that_says_retracted_still_counts(client, lib, index, tmp_path):
+    doc_id = add(client, lib, tmp_path, "notice")
+    client.patch(f"/documents/{doc_id}", json={"title": "Retracted: Mobile money and household savings in Kenya"})
+    d = doc(client, doc_id)
+    assert (d["retracted"], d["index_retracted"]) == (True, False)
