@@ -317,6 +317,9 @@ _ADDED_COLUMNS = [
     # the user opens it (or marks it read); documents from before the marks existed count as read.
     ("documents", "unread", "INTEGER NOT NULL DEFAULT 0"),
     ("documents", "starred", "INTEGER NOT NULL DEFAULT 0"),
+    # 1 when OpenAlex says the paper was retracted. Set only by a lookup that found the paper in
+    # OpenAlex, so a failed or empty lookup never clears it (Library.is_retracted decides).
+    ("documents", "index_retracted", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

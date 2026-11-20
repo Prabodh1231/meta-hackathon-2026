@@ -29,6 +29,9 @@ FLAGS = {
     "quote_not_found": "Citation check: the quoted passage was not found in the source.",
     "pending": "Citation check: not verified yet.",
 }
+# Said on every citation of a retracted paper, whatever its quote check found: the passage can be
+# in the paper and the paper still withdrawn. Citing it stays allowed (a writer may mean to).
+RETRACTED_FLAG = "Citation check: this source has been retracted. Check why before relying on it."
 _END_PUNCT = re.compile(r"([.!?]+)(\s*)$")
 # What an unconfirmed cite marker's search had found, for its comment.
 MARK_STATE = {
@@ -242,6 +245,8 @@ class _Writer:
                 cites, suffix = item[1], item[2]
                 run = last_run = para.add_run(self._in_text(cites))
                 for c in cites:
+                    if c.doc is not None and c.doc.get("retracted"):
+                        self.doc.add_comment(run, text=RETRACTED_FLAG, author=COMMENT_AUTHOR, initials="GW")
                     if c.status in FLAGS and (self.flag_pending or c.status != "pending"):
                         flag = FLAGS[c.status]
                         if c.matrix:

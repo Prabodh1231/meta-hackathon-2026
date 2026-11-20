@@ -206,7 +206,7 @@ Muse files papers by the topic's name. To be more precise, fill in **What belong
 
 ### Pick the sources to draft from
 
-Muse drafts (Compose, Cite my sources) and searches for citations in your whole library, unless you narrow it: select papers and choose **Use for drafting**. Those papers get a green dot, and the **Drafting from** folder lists them; **Use for drafting** on a folder's summary ticks all of its papers. The bar above the list says **Drafting from: whole library** or **Drafting from: N of M**, and **Use whole library** clears the choice. A paper's details say the same, and whether that paper is included. A red **Retracted** pill or an amber **Needs metadata** flag (no year or author in its record) warns you before you rely on a source; both also show in Network, Sources and the reference list.
+Muse drafts (Compose, Cite my sources) and searches for citations in your whole library, unless you narrow it: select papers and choose **Use for drafting**. Those papers get a green dot, and the **Drafting from** folder lists them; **Use for drafting** on a folder's summary ticks all of its papers. The bar above the list says **Drafting from: whole library** or **Drafting from: N of M**, and **Use whole library** clears the choice. A paper's details say the same, and whether that paper is included. A red **Retracted** pill (OpenAlex lists the paper as retracted, or its title or keywords say so) or an amber **Needs metadata** flag (no year or author in its record) warns you before you rely on a source; both also show in Network, Sources and the reference list, and a retracted paper's citations are flagged in the draft (see [Back up each claim](#4-back-up-each-claim)).
 
 ### Timeline
 
@@ -327,9 +327,11 @@ Click a marker to open **Check** with what was found. **Use this source** turns 
 
 Citations carry the same symbols and words: ✓ Supported, ◐ Partly supported, ✕ Not supported, and … Checking… while one is being checked. Blue ones, with the ✓ in a square, were written from a review matrix.
 
-**Check** counts them all one way, the way the status bar and Check's badge do: a citation **needs attention** when it's partly or not supported, and so does every marker whose search has finished (it found a source for you to confirm, or found nothing); one is **checking** while its check or search is still running. The summary at the top says how many need attention out of how many, with a bar (green supported, red flagged, amber a source found and waiting for you to confirm it, grey checking) and the legend. Then:
+A citation of a **retracted** paper is red with a ⚠ and the word *retracted*, whatever its quote's check found. Pointing at it says the source has been retracted and who says so: OpenAlex, or the paper's own title or keywords. The app asks OpenAlex when it looks a paper up (see Settings), so a paper retracted after you cited it is flagged the next time it's looked up. A lookup that fails never clears the flag. You can still cite a retracted paper, for instance to write about the retraction; the warning just makes sure it isn't by accident.
 
-- **Needs your attention:** markers waiting for you, then citations that aren't fully supported, each with the reason Muse gave. **‹ ›** step through them in the draft.
+**Check** counts them all one way, the way the status bar and Check's badge do: a citation **needs attention** when it's partly or not supported or cites a retracted paper, and so does every marker whose search has finished (it found a source for you to confirm, or found nothing); one is **checking** while its check or search is still running. The summary at the top says how many need attention out of how many, with a bar (green supported, red flagged, amber a source found and waiting for you to confirm it, grey checking) and the legend. Then:
+
+- **Needs your attention:** citations of retracted papers first (**Cites a retracted paper**), then markers waiting for you, then citations that aren't fully supported, each with the reason Muse gave. **‹ ›** step through them in the draft.
 - **Still checking:** markers still searching (each says **Finding a source…** or **Waiting its turn**; three are checked at a time) and citations being checked.
 - **Supported:** folded away; click to see them.
 
@@ -373,7 +375,7 @@ While Check is open, matching passages are underlined in the draft: red for an u
 
 ## 6. Export
 
-**Export** in the top bar saves the draft as a Word file. Citations are written in your citation style with a reference list at the end. A citation that didn't pass the check gets a Word comment saying why, and a `cite` marker you haven't confirmed is left out of the text with a comment on its sentence.
+**Export** in the top bar saves the draft as a Word file. Citations are written in your citation style with a reference list at the end. A citation that didn't pass the check gets a Word comment saying why, every citation of a retracted paper gets one saying it was retracted, and a `cite` marker you haven't confirmed is left out of the text with a comment on its sentence.
 
 ## The citation network
 

@@ -4,7 +4,7 @@ import type { Citation } from '../types'
 import { StatusBadge } from './StatusBadge'
 import { WaitStatus } from './WaitStatus'
 import { useCheckingMarkers, type ChipAttrs } from './WritingEditor'
-import { CITATION_WORD, MARK_WORD, isFlagged } from '../editor/citeStatus'
+import { CITATION_WORD, MARK_WORD, RETRACTED_WORD, isFlagged } from '../editor/citeStatus'
 
 interface Props {
   /** The draft's cite markers, in document order. */
@@ -18,6 +18,8 @@ interface Props {
   onOpenSource: (c: Citation) => void
   /** The draft's citation chips, in document order. */
   chips: ChipAttrs[]
+  /** Library papers that were retracted: their citations are listed first. */
+  retracted?: { has: (docId: number) => boolean }
   /** Open a chip's quote on its page, as clicking it in the draft does. */
   onOpenChip: (chip: ChipAttrs) => void
   /** Select a chip or marker in the draft and scroll to it, leaving this panel open. */
@@ -26,8 +28,9 @@ interface Props {
   onCheckChip: (chip: ChipAttrs) => void
 }
 
-function ChipRow({ c, current, onOpen, onShow, onCheck, onPick }: { c: ChipAttrs; current: boolean; onOpen: (c: ChipAttrs) => void; onShow: (cid: string) => void; onCheck: (c: ChipAttrs) => void; onPick: (cid: string) => void }) {
-  const flagged = isFlagged(c.status)
+function ChipRow({ c, current, retracted = false, onOpen, onShow, onCheck, onPick }: { c: ChipAttrs; current: boolean; retracted?: boolean; onOpen: (c: ChipAttrs) => void; onShow: (cid: string) => void; onCheck: (c: ChipAttrs) => void; onPick: (cid: string) => void }) {
+  const flagged = isFlagged(c.status) || retracted
+  const why = isFlagged(c.status) && c.reason
   return (
     <li>
       <button
@@ -38,12 +41,13 @@ function ChipRow({ c, current, onOpen, onShow, onCheck, onPick }: { c: ChipAttrs
         }}
         title="Show this citation's quote on its page"
         // A short name; the reason, when flagged, is read as the description.
-        aria-label={`${c.label}, ${CITATION_WORD[c.status]}${c.claim ? `: ${c.claim.length > 90 ? c.claim.slice(0, 90) + '…' : c.claim}` : ''}`}
-        aria-describedby={flagged && c.reason ? `cite-why-${c.cid}` : undefined}
+        aria-label={`${c.label}, ${retracted ? `${RETRACTED_WORD}, ` : ''}${CITATION_WORD[c.status]}${c.claim ? `: ${c.claim.length > 90 ? c.claim.slice(0, 90) + '…' : c.claim}` : ''}`}
+        aria-describedby={why ? `cite-why-${c.cid}` : undefined}
       >
-        <span className={`cite cite-${c.status}${c.finding != null ? ' cite-matrix' : ''}`} aria-hidden="true">{c.label}</span>
+        <span className={`cite cite-${c.status}${c.finding != null ? ' cite-matrix' : ''}${retracted ? ' cite-retracted' : ''}`} aria-hidden="true">{c.label}</span>
+        {retracted && <span className="cite-list-retracted" aria-hidden="true">{RETRACTED_WORD}</span>}
         <span className="cite-list-claim" aria-hidden="true">{c.claim || 'No sentence recorded'}</span>
-        {flagged && c.reason && <span className="cite-list-reason" id={`cite-why-${c.cid}`}>{c.reason}</span>}
+        {why && <span className="cite-list-reason" id={`cite-why-${c.cid}`}>{c.reason}</span>}
       </button>
       <div className="cite-list-actions">
         <button className="link" onClick={() => onOpen(c)}>
@@ -88,7 +92,7 @@ const HEADLINE: Record<CiteMarkState, string> = {
 /** Check's citations: what needs the writer first (flagged citations, and markers waiting to be
  * confirmed), then what's still being checked; supported ones fold away. ‹ › step through the
  * ones that need attention in the draft. A marker opens what its search found, to confirm a source. */
-export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource, onOpenChip, onShowChip, onCheckChip }: Props) {
+export function CitePanel({ marks, chips, retracted, focus, onFocus, onConfirm, onRecheck, onRemove, onOpenSource, onOpenChip, onShowChip, onCheckChip }: Props) {
   const mark = focus ? marks.find((m) => m.cid === focus) : undefined
   const checking = useCheckingMarkers()
   const [current, setCurrent] = useState<string | null>(null)
@@ -102,10 +106,14 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
   if (!mark) {
     const waiting = marks.filter((m) => m.state !== 'searching')
     const looking = marks.filter((m) => m.state === 'searching')
-    const flagged = chips.filter((c) => isFlagged(c.status))
-    const pending = chips.filter((c) => c.status === 'pending')
-    const supported = chips.filter((c) => c.status === 'verified')
-    const attention = [...waiting.map((m) => m.cid), ...flagged.map((c) => c.cid)]
+    // Citations of retracted papers come first, whatever their quote's check found: a withdrawn
+    // paper is a bigger problem than a weak quote. Each is listed once, not again under its verdict.
+    const isOut = (c: ChipAttrs) => !!retracted?.has(c.docId)
+    const withdrawn = chips.filter(isOut)
+    const flagged = chips.filter((c) => !isOut(c) && isFlagged(c.status))
+    const pending = chips.filter((c) => !isOut(c) && c.status === 'pending')
+    const supported = chips.filter((c) => !isOut(c) && c.status === 'verified')
+    const attention = [...withdrawn.map((c) => c.cid), ...waiting.map((m) => m.cid), ...flagged.map((c) => c.cid)]
     const at = attention.indexOf(current ?? '')
     const step = (by: 1 | -1) => {
       if (!attention.length) return
@@ -114,7 +122,7 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
       onShowChip(next)
     }
     const row = (c: ChipAttrs) => (
-      <ChipRow key={c.cid} c={c} current={c.cid === current} onOpen={onOpenChip} onShow={onShowChip} onCheck={onCheckChip} onPick={setCurrent} />
+      <ChipRow key={c.cid} c={c} current={c.cid === current} retracted={isOut(c)} onOpen={onOpenChip} onShow={onShowChip} onCheck={onCheckChip} onPick={setCurrent} />
     )
 
     if (!chips.length && !marks.length) {
@@ -148,6 +156,7 @@ export function CitePanel({ marks, chips, focus, onFocus, onConfirm, onRecheck, 
                 <button className="icon" onClick={() => step(1)} aria-label="Next one that needs attention" title="Next">›</button>
               </div>
             </div>
+            {withdrawn.length > 0 && <ul className="cite-list-rows">{withdrawn.map(row)}</ul>}
             {waiting.length > 0 && (
               <ul className="cite-queue">
                 {waiting.map((m) => <MarkRow key={m.cid} m={m} checking={false} onFocus={onFocus} />)}
