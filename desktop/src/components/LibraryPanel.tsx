@@ -2108,9 +2108,9 @@ export const LibraryPanel = memo(function LibraryPanel({
                 <NewFolderForm
                   initial={folderSimilarity}
                   onCancel={() => setCreating(false)}
-                  onCreate={(name, similarity) => {
+                  onCreate={(name, similarity, description) => {
                     setCreating(false)
-                    run('Creating topic…', () => api.createFolder(name, similarity))
+                    run('Creating topic…', () => api.createFolder(name, similarity, description))
                   }}
                 />
               )}
@@ -2135,9 +2135,9 @@ export const LibraryPanel = memo(function LibraryPanel({
                 <NewFolderForm
                   initial={folderSimilarity}
                   onCancel={() => setCreating(false)}
-                  onCreate={(name, similarity) => {
+                  onCreate={(name, similarity, description) => {
                     setCreating(false)
-                    run('Creating topic…', () => api.createFolder(name, similarity))
+                    run('Creating topic…', () => api.createFolder(name, similarity, description))
                   }}
                 />
               )}

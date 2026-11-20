@@ -64,7 +64,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 25
+export const API_VERSION = 26
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -175,8 +175,9 @@ export const api = {
 
   folders: () => request<Folder[]>('GET', '/folders'),
   classifyFolders: () => request<Folder[]>('POST', '/folders/classify'),
-  createFolder: (name: string, similarity: number) => request<Folder[]>('POST', '/folders', { name, similarity }),
-  updateFolder: (id: number, patch: { name?: string; similarity?: number; color?: FolderColor | '' }) =>
+  createFolder: (name: string, similarity: number, description = '') =>
+    request<Folder[]>('POST', '/folders', { name, similarity, description }),
+  updateFolder: (id: number, patch: { name?: string; similarity?: number; color?: FolderColor | ''; description?: string }) =>
     request<Folder[]>('PATCH', `/folders/${id}`, patch),
   deleteFolder: (id: number) => request<Folder[]>('DELETE', `/folders/${id}`),
   /** Fold one topic into another: its papers move over and it is deleted. */
