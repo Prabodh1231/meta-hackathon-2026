@@ -166,12 +166,14 @@ class TopicPatch(BaseModel):
 class FolderIn(BaseModel):
     name: str = Field(min_length=1)
     similarity: int = Field(50, ge=0, le=100)  # percent a document must match to be filed here
+    description: str = ""  # what belongs here, in the user's words
 
 
 class FolderPatch(BaseModel):
     name: str | None = Field(None, min_length=1)
     similarity: int | None = Field(None, ge=0, le=100)
     color: str | None = None  # one of FOLDER_COLORS, or "" for none
+    description: str | None = None  # "" clears it
 
 
 class DocFolderIn(BaseModel):
@@ -236,7 +238,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 24
+API_VERSION = 25
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -486,7 +488,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.post("/folders")
     def create_folder(body: FolderIn):
-        return lib.create_folder(body.name, body.similarity)
+        return lib.create_folder(body.name, body.similarity, body.description)
 
     @app.post("/folders/classify")
     def classify_all():
@@ -494,7 +496,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.patch("/folders/{folder_id}")
     def update_folder(folder_id: int, body: FolderPatch):
-        return lib.update_folder(folder_id, body.name, body.similarity, body.color)
+        return lib.update_folder(folder_id, body.name, body.similarity, body.color, body.description)
 
     @app.post("/folders/{folder_id}/merge")
     def merge_folders(folder_id: int, body: FolderMergeIn):

@@ -49,7 +49,9 @@ FOLDER_FIT_SYSTEM = (
     "rate from 0 to 100 how well this document belongs in it, judging by what the document "
     "is about and never by its file name or type. 0 = unrelated, 50 = the subject is a "
     "meaningful part of the document, 100 = the subject is what the document is mainly about. "
-    "Return every folder exactly once, with its name copied as given."
+    "Some folders also say, in the user's own words, what belongs there: follow that rule, "
+    "including anything it leaves out (a document it excludes scores low however close its "
+    "subject). Return every folder exactly once, with its name copied as given."
 )
 FOLDER_FIT_SCHEMA = {
     "type": "object",

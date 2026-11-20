@@ -75,6 +75,7 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
           </>
         )}
       </p>
+      {item.folder?.description && <p className="lf-topic-rule" title="What belongs here, in your words">“{item.folder.description}”</p>}
       <div className="lf-acts">
         <button className="primary" onClick={onOpen}>Open</button>
         {canDraft && (

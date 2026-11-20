@@ -197,7 +197,9 @@ The list comes from the papers' reference lists and the words in their titles, k
 
 A topic is a subject, not a place on disk, so one paper can sit in several. Click the **New topic** folder at the end of your topics, type a subject (say, *Digital finance*) and pick how closely a paper must match it (50% by default). Every paper that matches is filed in.
 
-- Open a topic to change its threshold with the slider, rename it or delete it. Papers stay in the library when a topic is deleted.
+Muse files papers by the topic's name. To be more precise, fill in **What belongs here** with a sentence or two in your own words, for example *Empirical papers on mobile money in East Africa, not policy reports*. Muse reads the whole rule, including what it leaves out. It's optional: a topic without one is filed by its name, as before.
+
+- Open a topic to change its threshold with the slider, rename it or delete it, and to add or **Edit** what belongs there (under its name). Changing the rule files the topic's papers again, as renaming does; papers you added or took out by hand stay as you left them. The rule also shows in the panel beside the folders when the topic is selected. Papers stay in the library when a topic is deleted.
 - Inside a topic, **Also in** beside each paper names up to two of its other topics (and **+N** for more); click one to open that topic.
 - Add papers to a topic with **Add to topic**, or drag them: while you drag papers, a shelf of your topics appears along the bottom of the library, and dropping on one adds them to it. They stay in the topics they were already in. Take a paper out with the × on its topic chip in its details. Your own changes survive re-filing.
 - **⋯ → Re-file papers into topics** scores every paper against your topics again.

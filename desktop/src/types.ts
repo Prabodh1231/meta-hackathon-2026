@@ -117,6 +117,8 @@ export interface Folder {
   id: number
   name: string
   similarity: number // percent a document must match to be filed here
+  /** What belongs here, in the user's words; '' (or missing, from an older backend) when it's filed by its name alone. */
+  description?: string
   doc_count: number
   color?: FolderColor | '' // how its folder is drawn in the Library; '' (or missing, from an older backend) for none
 }
