@@ -184,3 +184,70 @@ def test_empty_draft_exports(setup):
     client, _ = setup
     d = export(client, {"type": "doc", "content": []}, "apa")
     assert [p.text for p in d.paragraphs] == []
+
+
+# ---------- reading list ----------
+
+def reading_list(client, ids, **kw):
+    res = client.post("/export/reading-list", json={"doc_ids": ids, **kw})
+    assert res.status_code == 200, res.text
+    return docx.Document(io.BytesIO(res.content))
+
+
+def test_reading_list_gives_each_paper_its_reference_summary_and_highlights(setup):
+    client, ids = setup
+    lib = client.app.state.library
+    with lib.conn:
+        lib.conn.execute("UPDATE documents SET summary = 'Spindles after a cue predict recall.' WHERE id = ?", (ids["chen"],))
+        lib.conn.execute("UPDATE documents SET summary = '' WHERE id = ?", (ids["okafor"],))
+    client.post(f"/documents/{ids['chen']}/highlights", json={"page": 2, "text": CHEN_Q, "note": "Key for chapter 2"})
+    client.post(f"/documents/{ids['chen']}/highlights", json={"page": 1, "text": "Introduction to sleep and memory research"})
+    d = reading_list(client, [ids["okafor"], ids["chen"]], title="Sleep  reading list")
+    text = [p.text for p in d.paragraphs]
+    assert text[0] == "Sleep reading list" and d.core_properties.title == "Sleep reading list"
+    assert text[1].startswith("1 paper and 1 note · by author · APA 7 · ")
+    chen = next(i for i, t in enumerate(text) if t.startswith("Chen, A., & Martinez, B."))
+    assert text[chen + 1:chen + 7] == [
+        "Summary (by Muse)", "Spindles after a cue predict recall.", "Your highlights",
+        "“Introduction to sleep and memory research” (p. 341)",  # the page printed on the paper, in page order
+        f"“{CHEN_Q}” (p. 342)", "Note: Key for chapter 2"]
+    assert len(d.comments) == 0
+
+
+def test_reading_list_orders_by_author_or_by_year_oldest_first_with_notes_last(setup, tmp_path):
+    client, ids = setup
+    abbott = tmp_path / "abbott.pdf"
+    d = fitz.open()
+    d.new_page().insert_textbox(fitz.Rect(72, 100, 520, 700), "Slow oscillations in older adults and overnight recall.", fontsize=10)
+    d.save(abbott)
+    doc = client.post("/ingest/path", json={"path": str(abbott)}).json()["results"][0]["document"]
+    client.patch(f"/documents/{doc['id']}", json={"authors": ["Ada Abbott"], "year": 2023, "title": "Slow oscillations in older adults"})
+    every = [ids["okafor"], ids["chen"], doc["id"]]
+    refs = lambda d: [p.text for p in d.paragraphs if p.text.startswith(("Abbott", "Chen", "Okafor", "[")) or p.text == "Your notes"]
+    by_author = refs(reading_list(client, every))
+    assert [t.split(",")[0] for t in by_author] == ["Abbott", "Chen", "Your notes", "Okafor"]
+    by_year = refs(reading_list(client, every, order="year", style="ieee"))
+    assert [t[:6] for t in by_year] == ["[1] A.", "[2] A.", "Your n", "[3] D."]  # Chen 2021, Abbott 2023, then the note
+    assert "Chen" in by_year[0] and "Abbott" in by_year[1]
+
+
+def test_reading_list_refuses_bad_requests(setup):
+    client, ids = setup
+    assert client.post("/export/reading-list", json={"doc_ids": [ids["chen"]], "style": "bibtex"}).status_code == 400
+    assert client.post("/export/reading-list", json={"doc_ids": [ids["chen"]], "order": "title"}).status_code == 400
+    assert client.post("/export/reading-list", json={"doc_ids": []}).status_code == 422
+    assert client.post("/export/reading-list", json={"doc_ids": [999]}).status_code == 404
+
+
+def test_a_summary_written_in_markdown_keeps_its_emphasis_not_its_asterisks(setup):
+    client, ids = setup
+    lib = client.app.state.library
+    with lib.conn:
+        lib.conn.execute("UPDATE documents SET summary = ? WHERE id = ?",
+                         ("**Question:** Do spindles gate *recall*?\n\n**Finding:** Yes.", ids["chen"]))
+    d = reading_list(client, [ids["chen"]])
+    at = next(i for i, p in enumerate(d.paragraphs) if p.text == "Summary (by Muse)")
+    q, f = d.paragraphs[at + 1], d.paragraphs[at + 2]
+    assert (q.text, f.text) == ("Question: Do spindles gate recall?", "Finding: Yes.")
+    assert [(r.text, bool(r.bold), bool(r.italic)) for r in q.runs] == [
+        ("Question:", True, False), (" Do spindles gate ", False, False), ("recall", False, True), ("?", False, False)]

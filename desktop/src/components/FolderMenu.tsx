@@ -7,7 +7,7 @@ const COLOR_NAME: Record<FolderColor, string> = { rose: 'Rose', gold: 'Gold', vi
 
 /** Right-click on a folder of the front page. A topic can be given a colour, renamed or merged into
  * another; a saved view renamed or deleted; every folder opened or peeked into. */
-export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRename, onMerge, onDelete }: {
+export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRename, onMerge, onDelete, onReadingList }: {
   item: FrontItem
   x: number
   y: number
@@ -18,6 +18,7 @@ export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRen
   onRename: () => void
   onMerge: (x: number, y: number) => void
   onDelete: () => void // a saved view
+  onReadingList?: () => void // a topic's papers as a Word reading list
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
@@ -109,6 +110,11 @@ export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRen
           }}
         >
           <span className="lib-pop-label">Merge into another topic…</span>
+        </button>
+      )}
+      {item.kind === 'topic' && onReadingList && item.docs.length > 0 && (
+        <button role="menuitem" onClick={act(onReadingList)}>
+          <span className="lib-pop-label">Export reading list…</span>
         </button>
       )}
       {item.saved && (

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .backup import backup_in_background
-from .export_docx import export_docx
+from .export_docx import export_docx, export_reading_list
 from .jobs import IngestJobs
 from .embeddings import FastReranker, LoadingEmbedder, LoadingReranker, make_embedder
 from .library import INGEST_WORKERS, Library
@@ -228,6 +228,13 @@ class ReferencesIn(BaseModel):
     style: str = "apa"
 
 
+class ReadingListIn(BaseModel):
+    doc_ids: list[int] = Field(min_length=1, max_length=2000)
+    style: str = "apa"
+    title: str = Field("", max_length=200)
+    order: str = "author"  # or "year", oldest first
+
+
 class ExportIn(BaseModel):
     content: dict  # the editor's document JSON
     style: str = "apa"
@@ -236,7 +243,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 24
+API_VERSION = 25
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -763,6 +770,12 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def export_matrix(mid: int, format: str = "xlsx", style: str = "apa"):
         data, media, ext = matrices.export(mid, format, style)
         return Response(data, media_type=media, headers={"Content-Disposition": f'attachment; filename="matrix.{ext}"'})
+
+    @app.post("/export/reading-list")
+    def export_reading(body: ReadingListIn):
+        """A Word file of the papers' references, Muse's summaries and the reader's highlights and notes."""
+        data = export_reading_list(lib, highlights, body.doc_ids, body.style, body.title, body.order)
+        return Response(data, media_type=DOCX_MIME, headers={"Content-Disposition": 'attachment; filename="reading-list.docx"'})
 
     @app.post("/export/docx")
     def export(body: ExportIn):

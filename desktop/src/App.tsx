@@ -1828,6 +1828,7 @@ export default function App() {
             onCitingPapers={setCitingFor}
             onFindMissing={findMissing}
             folderSimilarity={settings.folder_similarity}
+            citationStyle={settings.citation_style}
             onOpenPdf={openPdf}
             cited={citedIds}
             onMapTopic={mapTopic}
