@@ -12,6 +12,7 @@ its sentence, saying what the search found.
 import io
 import re
 from dataclasses import dataclass
+from datetime import date
 
 import docx
 from docx.enum.section import WD_ORIENT
@@ -29,6 +30,9 @@ FLAGS = {
     "quote_not_found": "Citation check: the quoted passage was not found in the source.",
     "pending": "Citation check: not verified yet.",
 }
+# Said on every citation of a retracted paper, whatever its quote check found: the passage can be
+# in the paper and the paper still withdrawn. Citing it stays allowed (a writer may mean to).
+RETRACTED_FLAG = "Citation check: this source has been retracted. Check why before relying on it."
 _END_PUNCT = re.compile(r"([.!?]+)(\s*)$")
 # What an unconfirmed cite marker's search had found, for its comment.
 MARK_STATE = {
@@ -242,6 +246,8 @@ class _Writer:
                 cites, suffix = item[1], item[2]
                 run = last_run = para.add_run(self._in_text(cites))
                 for c in cites:
+                    if c.doc is not None and c.doc.get("retracted"):
+                        self.doc.add_comment(run, text=RETRACTED_FLAG, author=COMMENT_AUTHOR, initials="GW")
                     if c.status in FLAGS and (self.flag_pending or c.status != "pending"):
                         flag = FLAGS[c.status]
                         if c.matrix:
@@ -300,6 +306,112 @@ def _styled_run(para, text: str, marks: list[dict]):
             if size := _points(attrs.get("fontSize")):
                 run.font.size = Pt(size)
     return run
+
+
+READING_ORDERS = ("author", "year")
+STYLE_NAME = {"apa": "APA 7", "mla": "MLA 9", "ieee": "IEEE"}
+
+
+def _reading_key(order: str):
+    """By first author's surname (then year, title), or by year, oldest first (then author)."""
+    def key(d: dict):
+        last = _split_name(d["authors"][0])[0].lower() if d.get("authors") else (d.get("title") or "").lower()
+        year = d.get("year") or 9999  # undated last
+        title = (d.get("title") or "").lower()
+        return (year, last, title) if order == "year" else (last, year, title)
+    return key
+
+
+def export_reading_list(library, highlights, doc_ids: list[int], style: str, title: str = "",
+                        order: str = "author") -> bytes:
+    """An annotated reading list: for each paper its reference in `style`, the summary Muse wrote
+    when it was added, and the reader's highlights and notes with their pages. The user's own
+    reading notes come last, apart from the papers. Built from what is stored; no model calls."""
+    style, order = style.lower(), order.lower()
+    if style not in DOCX_STYLES:
+        raise ValueError(f"A reading list is written in {', '.join(DOCX_STYLES)}; got {style!r}")
+    if order not in READING_ORDERS:
+        raise ValueError(f"A reading list is ordered by {' or '.join(READING_ORDERS)}; got {order!r}")
+    ids = list(dict.fromkeys(doc_ids))
+    if not ids:
+        raise ValueError("Choose at least one paper for the reading list")
+    docs = [library.get_document(i) for i in ids]  # LookupError for one that's gone
+    key = _reading_key(order)
+    papers = sorted((d for d in docs if d.get("kind") != "text"), key=key)
+    notes = sorted((d for d in docs if d.get("kind") == "text"), key=key)
+
+    out = docx.Document()
+    title = " ".join(title.split()) or "Reading list"
+    out.core_properties.title = title
+    out.core_properties.author = ""
+    out.add_paragraph(style="Title").add_run(title)
+    counts = [f"{len(papers)} paper{'s' if len(papers) != 1 else ''}"] + (
+        [f"{len(notes)} note{'s' if len(notes) != 1 else ''}"] if notes else [])
+    made = date.today()
+    sub = out.add_paragraph(" · ".join([" and ".join(counts), f"by {order}", STYLE_NAME[style],
+                                        f"{made.day} {made.strftime('%B %Y')}"]))
+    sub.runs[0].font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+
+    def entry(d: dict, n: int) -> None:
+        # One paper at a time: format_references sorts APA and MLA lists itself, and this order is the reader's.
+        ref = format_references([d], style)[0]
+        if style == "ieee":
+            ref = re.sub(r"^\[1\]", f"[{n}]", ref)
+        p = out.add_paragraph(ref)
+        p.paragraph_format.space_before = Pt(12)
+        p.paragraph_format.left_indent = Inches(0.5)
+        p.paragraph_format.first_line_indent = Inches(-0.5)
+        if d.get("summary") and d.get("kind") != "text":
+            _label(out, "Summary (by Muse)")
+            _markdown(out, d["summary"])
+        marks = highlights.for_document(d["id"])
+        if marks:
+            _label(out, "Your highlights")
+        for h in marks:
+            q = out.add_paragraph()
+            q.paragraph_format.left_indent = Inches(0.25)
+            q.add_run(f"“{h['text']}”")
+            where = _pp(_locator(d, h["page"], h.get("page_label")))
+            if where:
+                q.add_run(f" ({where})").font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+            if h.get("note"):
+                note = out.add_paragraph()
+                note.paragraph_format.left_indent = Inches(0.5)
+                note.add_run(f"Note: {h['note']}").italic = True
+
+    for n, d in enumerate(papers, 1):
+        entry(d, n)
+    if notes:
+        out.add_paragraph(style="Heading 1").add_run("Your notes")
+        for n, d in enumerate(notes, len(papers) + 1):
+            entry(d, n)
+    buf = io.BytesIO()
+    out.save(buf)
+    return buf.getvalue()
+
+
+_EMPHASIS = re.compile(r"(\*\*[^*\n]+\*\*|\*[^*\n]+\*)")
+
+
+def _markdown(out, text: str) -> None:
+    """A summary as Muse wrote it: paragraphs split by blank lines, **bold** and *italic* kept as
+    such rather than printed with their asterisks (some summaries are written that way)."""
+    for block in re.split(r"\n\s*\n", text.strip()):
+        para = out.add_paragraph()
+        for part in _EMPHASIS.split(" ".join(block.split())):
+            if part.startswith("**") and part.endswith("**") and len(part) > 4:
+                para.add_run(part[2:-2]).bold = True
+            elif part.startswith("*") and part.endswith("*") and len(part) > 2:
+                para.add_run(part[1:-1]).italic = True
+            elif part:
+                para.add_run(part)
+
+
+def _label(out, text: str) -> None:
+    run = out.add_paragraph().add_run(text)
+    run.font.size = Pt(9)
+    run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+    run.bold = True
 
 
 _GENERIC_FONTS = {"serif", "sans-serif", "monospace", "system-ui", "cursive", "fantasy"}

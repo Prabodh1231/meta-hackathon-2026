@@ -13,15 +13,17 @@ class FakeMuse(MockProvider):
 
     def __init__(self):
         self.asked = []  # one list of folder names per call
+        self.rules = []  # the folders' rules each call was given
         self.summaries = []  # the summary each call was given
         self.fail = False
         self.fail_next = 0  # fail this many calls, then answer again
 
-    def score_folders(self, title, summary, text, folders):
+    def score_folders(self, title, summary, text, folders, rules=None):
         if self.fail or self.fail_next:
             self.fail_next = max(0, self.fail_next - 1)
             raise RuntimeError("Muse is down")
         self.asked.append(list(folders))
+        self.rules.append(dict(rules or {}))
         self.summaries.append(summary)
         found = {k: int(v) for k, v in re.findall(r"fit_(\w+)=(\d+)", text)}
         generic = re.search(r"(?<![\w])fit=(\d+)", text)  # one folder in play: the score is for it
@@ -321,3 +323,89 @@ def test_a_topic_keeps_the_colour_it_is_given(lib, tmp_path):
     assert client.patch(f"/folders/{blockchain}", json={"color": "teal"}).status_code in (400, 422)
     [f] = client.patch(f"/folders/{blockchain}", json={"color": ""}).json()
     assert f["color"] == ""
+
+
+# ---------- a rule in the user's own words ----------
+
+def test_a_topic_keeps_what_belongs_in_it(lib):
+    fid = make(lib, "Blockchain")
+    assert lib.list_folders()[0]["description"] == ""  # topics filed by name alone keep working
+    lib.update_folder(fid, description="  Empirical papers on   ledgers, not policy reports ")
+    assert lib.list_folders()[0]["description"] == "Empirical papers on ledgers, not policy reports"
+    lib.create_folder("Mobile money", description="Field studies in East Africa")
+    assert {f["name"]: f["description"] for f in lib.list_folders()}["Mobile money"] == "Field studies in East Africa"
+    with pytest.raises(ValueError):
+        lib.update_folder(fid, description="x" * 301)
+
+
+def test_the_rule_reaches_the_model_with_the_name(lib, tmp_path):
+    add(lib, tmp_path, "a.txt", PAPER)
+    lib.create_folder("Blockchain", description="Ledger engineering, not cryptocurrency prices")
+    lib.create_folder("Digital Finance")
+    lib.classify_all()  # asked about both at once: the rule goes with its own topic only
+    assert lib.provider.asked[-1] == ["Blockchain", "Digital Finance"]
+    assert lib.provider.rules[-1] == {"Blockchain": "Ledger engineering, not cryptocurrency prices"}
+
+
+def test_changing_the_rule_scores_the_topic_again_and_leaves_hand_placements(lib, tmp_path):
+    a = add(lib, tmp_path, "a.txt", PAPER)  # blockchain 80
+    b = add(lib, tmp_path, "b.txt", "Another paper. fit_blockchain=90")
+    c = add(lib, tmp_path, "c.txt", "A third paper. fit_blockchain=10")
+    fid = make(lib, "Blockchain")
+    lib.set_folder_membership(b["id"], fid, False)  # the user took it out
+    lib.set_folder_membership(c["id"], fid, True)  # and put this one in
+    asked = len(lib.provider.asked)
+    lib.update_folder(fid, description="Only ledger engineering")
+    assert len(lib.provider.asked) == asked + 3  # every paper judged again, with the rule
+    assert all(r == {"Blockchain": "Only ledger engineering"} for r in lib.provider.rules[asked:])
+    assert (names(lib.get_document(a["id"])), names(lib.get_document(b["id"])), names(lib.get_document(c["id"]))) == (
+        ["Blockchain"], [], ["Blockchain"])
+    asked = len(lib.provider.asked)
+    lib.update_folder(fid, description="Only ledger engineering")  # the same words: nothing to redo
+    lib.update_folder(fid, color="sky")
+    assert len(lib.provider.asked) == asked
+
+
+def test_word_statistics_read_what_the_rule_takes_in_and_not_what_it_leaves_out(lib, tmp_path):
+    from app.library import rule_words
+    assert rule_words("Empirical papers on mobile money in East Africa, not policy reports") == \
+        "Empirical papers on mobile money in East Africa"
+    assert rule_words("Ledgers except for central bank notes") == "Ledgers"
+    assert rule_words("Anything other than surveys") == "Anything"
+    assert rule_words("Notes on knots") == "Notes on knots"  # "not" only as a word of its own
+    ledger = add(lib, tmp_path, "l.txt", "Distributed ledger consensus protocols. fit=90")
+    policy = add(lib, tmp_path, "p.txt", "Central bank policy report on regulation. fit=90")
+    add(lib, tmp_path, "s.txt", "Sleep and memory consolidation. fit=90")
+    lib.create_folder("Crypto", description="Distributed ledger consensus, not central bank policy reports")
+    doc_ids, scores = lib._folder_word_scores(["Crypto"])
+    by_id = {int(d): float(s) for d, s in zip(doc_ids, scores[:, 0])}
+    assert by_id[ledger["id"]] > 0 and by_id[policy["id"]] == 0.0
+
+
+def test_the_prompt_lists_each_folder_with_its_rule():
+    from app.providers.base import LLMProvider
+
+    class Seen(LLMProvider):
+        def chat(self, messages, **kw):
+            self.messages = messages
+            return '{"scores": [{"folder": "Mobile money", "score": 70}, {"folder": "Ledgers", "score": 10}]}'
+
+        def transcribe_image(self, data, mime):
+            return ""
+
+    p = Seen()
+    out = p.score_folders("T", "", "text", ["Mobile money", "Ledgers"], {"Mobile money": "East Africa, not policy reports"})
+    assert out == {"Mobile money": 70, "Ledgers": 10}
+    system, user = p.messages[0]["content"], p.messages[1]["content"]
+    assert '{"folder": "Mobile money", "what belongs here": "East Africa, not policy reports"}' in user
+    assert '{"folder": "Ledgers"}' in user and "leaves out" in system
+
+
+def test_the_api_takes_and_returns_the_rule(lib):
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+    client = TestClient(create_app(lib.settings, lib))
+    [f] = client.post("/folders", json={"name": "Ledgers", "description": "Consensus protocols"}).json()
+    assert f["description"] == "Consensus protocols"
+    [f] = client.patch(f"/folders/{f['id']}", json={"description": ""}).json()
+    assert f["description"] == ""
