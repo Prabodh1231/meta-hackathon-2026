@@ -39,6 +39,9 @@ export interface Doc {
   /** '' not looked up yet, 'not_found', 'mismatch' (the DOI on the paper is another work's: see index_title). */
   enriched: '' | 'found' | 'not_found' | 'mismatch'
   index_title: string
+  /** Warn that it was retracted: OpenAlex says so (index_retracted), or its title or keywords do. */
+  retracted: boolean
+  index_retracted: boolean
   /** Not opened since it was added (or marked unread), as a mail app shows new mail. */
   unread: boolean
   starred: boolean

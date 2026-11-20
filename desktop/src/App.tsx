@@ -6,6 +6,7 @@ import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
 import { CitePanel } from './components/CitePanel'
 import { CheckSummary } from './components/CheckSummary'
+import { LibraryTrust, retractedWhy, type RetractedWhy } from './components/TrustBadges'
 import { SourcesPanel } from './components/SourcesPanel'
 import { CITATION_WORD, needWord, tally } from './editor/citeStatus'
 import type { CiteMarkAttrs } from './editor/citeMark'
@@ -1168,8 +1169,18 @@ export default function App() {
     setCiteFocus(focus)
   }
 
+  // Retracted library papers and who says so: their citations are flagged in the draft and in Check.
+  const retracted = useMemo(() => {
+    const out = new Map<number, RetractedWhy>()
+    for (const d of docs) {
+      const why = retractedWhy(d)
+      if (why) out.set(d.id, why)
+    }
+    return out
+  }, [docs])
+  const docsById = useMemo(() => new Map(docs.map((d) => [d.id, d])), [docs])
   // The draft's citations, counted one way for the status bar, Check's badge and its summary.
-  const cites = useMemo(() => tally(stats.chips, citeMarks), [stats.chips, citeMarks])
+  const cites = useMemo(() => tally(stats.chips, citeMarks, retracted), [stats.chips, citeMarks, retracted])
   const focusedMark = citeFocus ? citeMarks.find((m) => m.cid === citeFocus) ?? null : null
 
   // Citations that were checking when the writer left Write, and finished while they were away.
@@ -1576,6 +1587,7 @@ export default function App() {
               onAsk={askAboutSelection}
               spellcheck={settings.spellcheck}
               onError={onError}
+              retracted={retracted}
             />
           </main>
 
@@ -1741,6 +1753,7 @@ export default function App() {
                 )}
                 <CitePanel
                   marks={citeMarks}
+                  retracted={retracted}
                   focus={citeFocus}
                   onFocus={(cid) => {
                     setCiteFocus(cid)
@@ -1865,15 +1878,17 @@ export default function App() {
         {mode === 'network' && (
           <div className="view network-view">
             <Suspense fallback={<p className="network-note">Loading the network…</p>}>
-              <NetworkView
-                query={netQuery}
-                ticked={selected}
-                librarySize={docs.length}
-                onOpenPaper={showPaper}
-                onCitedPapers={setCitedFor}
-                onFindMissing={setMissingQuery}
-                onError={onError}
-              />
+              <LibraryTrust.Provider value={docsById}>
+                <NetworkView
+                  query={netQuery}
+                  ticked={selected}
+                  librarySize={docs.length}
+                  onOpenPaper={showPaper}
+                  onCitedPapers={setCitedFor}
+                  onFindMissing={setMissingQuery}
+                  onError={onError}
+                />
+              </LibraryTrust.Provider>
             </Suspense>
           </div>
         )}
