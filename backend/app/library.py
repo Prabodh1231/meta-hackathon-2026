@@ -9,6 +9,7 @@ import os
 import queue
 import re
 import threading
+import time
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -71,6 +72,11 @@ MAX_AUTO_VERSIONS = 40
 SOURCE_MATCH = 0.5  # closely matches the source
 SOURCE_COPIED = 0.85  # copied nearly word for word
 INDEX_LOOKUP_WORKERS = 4  # papers looked up in OpenAlex at once; it asks for a polite pace
+# "What's new" for a topic: the papers asked about (two requests of IDS_PER_REQUEST), the works shown,
+# and how long an answer is kept, so opening the list again doesn't ask OpenAlex again.
+NEW_ARRIVALS_PAPERS = 100
+NEW_ARRIVALS_SHOWN = 10
+NEW_ARRIVALS_MAX_AGE = 6 * 3600
 REMOVAL_REASONS = ("removed", "duplicate")
 # The colours a topic's folder can be given in the Library; the app draws each from its own palette.
 FOLDER_COLORS = ("rose", "gold", "violet", "sky", "slate")
@@ -142,6 +148,32 @@ def _setting_ok(key: str, spec: tuple, value) -> bool:
 USER_SETTINGS_DEFAULTS = {k: _setting_default(v) for k, v in USER_SETTINGS.items()}
 
 
+# Where a topic's rule turns to what it leaves out ("…, not policy reports").
+_EXCLUDING = re.compile(r"\b(?:but\s+not|not|except(?:\s+for)?|excluding|other\s+than|apart\s+from)\b", re.I)
+MAX_RULE_CHARS = 300  # a sentence or two
+
+
+def rule_words(rule: str) -> str:
+    """The part of a topic's rule that says what belongs: everything before "not", "except",
+    "excluding" or "other than". Word statistics can't read a negation, so "not policy reports"
+    would pull policy reports in; Muse reads the whole rule."""
+    return _EXCLUDING.split(rule, maxsplit=1)[0].strip(" ,;:-–—")
+
+
+# A word in the title, tags or keywords that says the paper was withdrawn: the only sign before
+# OpenAlex was asked, and still the one for papers OpenAlex doesn't know.
+_RETRACTED_WORDS = re.compile(r"\bretract(ed|ion)?\b", re.I)
+
+
+def is_retracted(doc: dict) -> bool:
+    """Whether to warn that a paper was retracted: OpenAlex says so, or its own title, tags or
+    keywords do. The one rule; the UI and the Word export both read the result (`retracted`)."""
+    if doc.get("index_retracted"):
+        return True
+    words = " ".join([doc.get("title") or "", *(doc.get("tags") or []), *(doc.get("keywords") or [])])
+    return bool(_RETRACTED_WORDS.search(words))
+
+
 class Library:
     def __init__(self, settings: Settings, provider: LLMProvider | None = None,
                  open_access: openaccess.OpenAccess | None = None, embedder=None, reranker=None):
@@ -157,6 +189,8 @@ class Library:
         self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
         self._answers_from = self.provider  # whose answers those are
         self._graph_cache: tuple | None = None  # see _network
+        self._used_cache: tuple | None = None  # see _used_elsewhere
+        self._new_arrivals: dict[int, tuple] = {}  # folder id -> (papers asked about, when, works); see topic_new_arrivals
         # Search is keyword search, bge-small and a local reranker, plus the provider; folders,
         # highlights and duplication use word statistics. The models load in the background, so
         # the library lists at once.
@@ -839,15 +873,102 @@ class Library:
             return {"status": "in_library", "doc_id": m.doc_id}
         return self._download_and_add(ref)
 
-    def fetch_work(self, title: str, doi: str = "", year: int | None = None, first_author: str = "") -> dict:
-        """Find a free copy of any work (one citing a library paper, say) and add it to the library."""
+    def find_work(self, text: str) -> dict:
+        """What a DOI or title typed into Add sources names, as OpenAlex knows it: the closest match
+        first and up to two others, each with the library paper it already is, if any. Adding one is
+        then fetch_work with its DOI, which finds the copy precisely."""
+        text = " ".join((text or "").split())[:500]
+        if not text:
+            raise ValueError("Type a DOI or a paper's title")
+        kind = "doi" if openaccess.typed_doi(text) else "title"
+        try:
+            works = self.open_access.find(text)[:3]
+        except (httpx.HTTPError, ValueError) as exc:  # ValueError: a reply that isn't JSON
+            raise ValueError(f"Couldn't reach OpenAlex: {exc}") from exc
+        with self.lock:
+            docs = self._docs_brief()
+        for w in works:
+            first = w["authors"][0].split()[-1] if w["authors"] else ""
+            m = match_reference(Reference(raw=w["title"], year=w["year"], doi=w["doi"], title=w["title"], first_author=first), docs)
+            w["in_library"] = m.doc_id if m else None
+            w["first_author"] = first
+        return {"kind": kind, "query": text, "works": works}
+
+    def fetch_work(self, title: str, doi: str = "", year: int | None = None, first_author: str = "",
+                   folder_id: int | None = None) -> dict:
+        """Find a free copy of any work (one citing a library paper, say) and add it to the library,
+        and to topic `folder_id` when given: filed as if by hand, so re-filing leaves it there."""
         ref = Reference(raw=title, year=year, doi=openaccess._doi(doi), title=title, first_author=first_author)
         with self.lock:
             docs = self._docs_brief()
+            if folder_id is not None and not self.conn.execute("SELECT 1 FROM folders WHERE id = ?", (folder_id,)).fetchone():
+                raise LookupError(f"Folder {folder_id} not found")
         m = match_reference(ref, docs)
         if m:
             return {"status": "in_library", "doc_id": m.doc_id}
-        return self._download_and_add(ref)
+        out = self._download_and_add(ref)
+        if folder_id is not None and out.get("doc_id"):
+            try:
+                out["document"] = self.set_folder_membership(out["doc_id"], folder_id, True)
+            except LookupError:
+                pass  # the topic was deleted while the copy downloaded: it stays in the library
+        return out
+
+    def topic_new_arrivals(self, folder_id: int, refresh: bool = False) -> dict:
+        """Works outside the library that cite a topic's papers, as OpenAlex knows them: the ones
+        citing more of the topic first, then the newest. One request per IDS_PER_REQUEST papers,
+        for the NEW_ARRIVALS_PAPERS most cited, and the answer is kept for NEW_ARRIVALS_MAX_AGE
+        unless `refresh`. Also says which papers haven't been looked up in OpenAlex yet, since
+        works citing those can't be found."""
+        with self.lock:
+            folder = self.conn.execute("SELECT id, name FROM folders WHERE id = ?", (folder_id,)).fetchone()
+            if not folder:
+                raise LookupError(f"Folder {folder_id} not found")
+            rows = [dict(r) for r in self.conn.execute(
+                "SELECT d.id, d.title, d.openalex_id, d.enriched, d.cited_by_count FROM documents d "
+                "JOIN doc_folders df ON df.doc_id = d.id AND df.folder_id = ? AND df.state != 'rejected'", (folder_id,))]
+            brief = self._docs_brief()
+            library_ids = {r["openalex_id"] for r in self.conn.execute(
+                "SELECT openalex_id FROM documents WHERE openalex_id != ''")}
+        known = sorted((r for r in rows if r["openalex_id"]), key=lambda r: (-(r["cited_by_count"] or 0), r["id"]))
+        asked = known[:NEW_ARRIVALS_PAPERS]
+        out = {
+            "folder_id": folder_id, "name": folder["name"], "papers": len(rows), "asked": len(asked),
+            "known": len(known), "capped": len(known) > len(asked),
+            "not_looked_up": [r["id"] for r in rows if not r["openalex_id"] and r["enriched"] == ""],
+            "not_in_index": sum(1 for r in rows if not r["openalex_id"] and r["enriched"] in ("not_found", "mismatch")),
+            "works": [], "checked_at": None,
+        }
+        if not asked:
+            return out
+        key = tuple(r["openalex_id"] for r in asked)
+        now = time.time()
+        with self.lock:
+            kept = self._new_arrivals.get(folder_id)
+        if not refresh and kept and kept[0] == key and now - kept[1] < NEW_ARRIVALS_MAX_AGE:
+            works, checked = kept[2], kept[1]
+        else:
+            try:
+                works = self.open_access.citing_any(list(key))
+            except (httpx.HTTPError, ValueError) as exc:  # ValueError: a reply that isn't JSON
+                raise ValueError(f"Couldn't reach OpenAlex: {exc}") from exc
+            checked = now
+            with self.lock:
+                self._new_arrivals[folder_id] = (key, now, works)
+        titles = {r["openalex_id"]: r["title"] for r in asked}
+        fresh = []
+        for w in works:
+            if w["openalex_id"] in library_ids or not w["title"].strip():
+                continue  # in the library; or a record with no title, which there'd be no finding a copy of
+            first = w["authors"][0].split()[-1] if w["authors"] else ""
+            if match_reference(Reference(raw=w["title"], year=w["year"], doi=w["doi"], title=w["title"], first_author=first), brief):
+                continue  # already in the library under another record
+            fresh.append({**w, "first_author": first, "cites_titles": [titles[i] for i in w["cites"] if i in titles]})
+        # The works citing most of the topic first; among those, the newest.
+        fresh.sort(key=lambda w: (len(w["cites_titles"]), w.get("published") or str(w.get("year") or "")), reverse=True)
+        out.update(works=fresh[:NEW_ARRIVALS_SHOWN], found=len(fresh),
+                   checked_at=datetime.fromtimestamp(checked, timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+        return out
 
     def _docs_brief(self) -> list[dict]:
         """Every document as reference matching needs it. Call under the lock."""
@@ -902,6 +1023,7 @@ class Library:
         ):
             folders[r["doc_id"]].append({k: r[k] for k in ("id", "name", "state", "score")})
         removals = self._removals_by_file()
+        used = self._used_elsewhere()
         marked = {r["doc_id"]: r["n"] for r in self.conn.execute(
             f"SELECT doc_id, COUNT(*) AS n FROM highlights WHERE doc_id {scope} GROUP BY doc_id", ids)}
         numbered = [r["id"] for r in rows if r["page_numbering"] != "index"]
@@ -929,8 +1051,75 @@ class Library:
             d["published_checked"] = bool(d["published_checked"])
             d["unread"], d["starred"] = bool(d["unread"]), bool(d["starred"])
             d["highlights"] = marked.get(d["id"], 0)  # passages the reader highlighted in it
+            # The file isn't where it was added from: one existence check, no reading or hashing.
+            # A web page has no file to lose.
+            d["file_missing"] = d["kind"] != "web" and not re.match(r"^https?://", d["source"], re.I) \
+                and not os.path.isfile(d["source"])
+            d["cited_in_drafts"] = d["id"] in used  # cited in a saved draft, a review matrix or a saved finding
+            d["index_retracted"] = bool(d["index_retracted"])
+            d["retracted"] = is_retracted(d)
             out.append(d)
         return out
+
+    def _used_elsewhere(self) -> set[int]:
+        """Documents the user's work cites: a citation in any saved draft (cite markers not yet
+        confirmed don't count), a row of a review matrix, or a paper in a saved finding. Kept until a
+        draft, a matrix or a finding changes, so listing the library doesn't re-read every draft.
+        Call under the lock."""
+        key = tuple(tuple(r) for r in self.conn.execute(
+            "SELECT (SELECT COUNT(*) FROM drafts), (SELECT MAX(updated_at) FROM drafts), "
+            "(SELECT COUNT(*) FROM matrix_rows), (SELECT COUNT(*) FROM matrix_findings), (SELECT MAX(id) FROM matrix_findings)"))
+        if self._used_cache and self._used_cache[0] == key:
+            return self._used_cache[1]
+        used: set[int] = set()
+
+        def walk(node) -> None:
+            if isinstance(node, dict):
+                if node.get("type") == "citation" and isinstance((node.get("attrs") or {}).get("docId"), int):
+                    used.add(node["attrs"]["docId"])
+                for child in node.get("content") or []:
+                    walk(child)
+
+        for r in self.conn.execute("SELECT content FROM drafts"):
+            try:
+                walk(json.loads(r["content"] or "{}"))
+            except ValueError:
+                pass  # an old draft saved as plain text cites nothing
+        used.update(r["doc_id"] for r in self.conn.execute("SELECT DISTINCT doc_id FROM matrix_rows"))
+        for r in self.conn.execute("SELECT sentences, snapshot FROM matrix_findings"):
+            used.update(int(i) for i in re.findall(r'"(?:doc_id|docId)":\s*(\d+)', r["sentences"] + r["snapshot"]))
+        self._used_cache = (key, used)
+        return used
+
+    def locate_file(self, doc_id: int, path: str, force: bool = False) -> dict:
+        """Point a document at its file's new place. It keeps its id, so its citations, highlights,
+        topics and text stay as they are; the file isn't read again. The file must be of the same
+        type. When its contents differ from the file added (a revised version, say), quotes and
+        highlights may not line up, so that needs `force`: without it the answer is
+        {"status": "differs"} and nothing changes."""
+        with self.lock:
+            row = self.conn.execute("SELECT id, source, kind, sha256 FROM documents WHERE id = ?", (doc_id,)).fetchone()
+            if not row:
+                raise LookupError(f"Document {doc_id} not found")
+        if row["kind"] == "web" or re.match(r"^https?://", row["source"], re.I):
+            raise ValueError("A web page has no file to locate")
+        new = Path(path)
+        if not new.is_file():
+            raise ValueError(f"There's no file at {path}")
+        if new.suffix.lower() != Path(row["source"]).suffix.lower():
+            raise ValueError(f"Pick a {Path(row['source']).suffix.lower() or 'file'} file: this paper was added from one")
+        source = str(new.resolve())
+        with self.lock:
+            other = self.conn.execute("SELECT id, title FROM documents WHERE source = ? AND id != ?", (source, doc_id)).fetchone()
+        if other:
+            raise ValueError(f"That file is already in your library as “{other['title']}”")
+        sha = self._file_info(source)["sha256"] or ""
+        if row["sha256"] and sha != row["sha256"] and not force:
+            return {"status": "differs", "doc_id": doc_id}
+        with self.lock, self.conn:
+            self.conn.execute("UPDATE documents SET source = ?, file_date = ?, sha256 = ? WHERE id = ?",
+                              (source, file_date(source), sha or row["sha256"], doc_id))
+        return {"status": "located", "doc_id": doc_id, "document": self.get_document(doc_id)}
 
     def _removals_by_file(self) -> dict[str, list[dict]]:
         """Removal log entries keyed by source path and by file hash. Call under the lock."""
@@ -1016,27 +1205,206 @@ class Library:
             row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
             if not row:
                 raise LookupError(f"Document {doc_id} not found")
-        # The file's hash, to recognise it if it's added again. Documents from before hashes were
-        # kept use the duplicate finder's cache when the file is already in the Recycle Bin.
-        sha = row["sha256"] or self._file_info(row["source"])["sha256"] or ""
+        sha = self._removal_hash(row)
         with self.lock, self.conn:
-            if not sha:
+            self._remove_row(row, sha, reason, duplicate_of, trashed)
+
+    def _removal_hash(self, row) -> str:
+        """The file's hash, to recognise it if it's added again. Documents from before hashes were
+        kept use the duplicate finder's cache when the file is already in the Recycle Bin. Not inside
+        a transaction: hashing a file may write the hash cache."""
+        sha = row["sha256"] or self._file_info(row["source"])["sha256"] or ""
+        if not sha:
+            with self.lock:
                 cached = self.conn.execute("SELECT sha256 FROM file_hashes WHERE path = ?", (row["source"],)).fetchone()
-                sha = cached["sha256"] if cached else ""
-            edited = {k: (json.loads(row[k]) if k == "authors" else row[k]) for k in json.loads(row["edited_fields"])}
-            folders = [r["name"] for r in self.conn.execute(
-                "SELECT f.name FROM doc_folders df JOIN folders f ON f.id = df.folder_id "
-                "WHERE df.doc_id = ? AND df.state = 'user' ORDER BY f.name COLLATE NOCASE", (doc_id,))]
-            kept = self.conn.execute("SELECT title FROM documents WHERE id = ?", (duplicate_of,)).fetchone() if duplicate_of else None
-            self.conn.execute(
-                "INSERT OR REPLACE INTO removed_documents (id, source, kind, title, authors, year, venue, doi, url, published, "
-                "sha256, file_date, edited_fields, folders, added_at, reason, duplicate_of, duplicate_of_title, file_trashed) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (doc_id, row["source"], row["kind"], row["title"], row["authors"], row["year"], row["venue"], row["doi"],
-                 row["url"], row["published"], sha, row["file_date"], json.dumps(edited), json.dumps(folders),
-                 row["added_at"], reason, duplicate_of if kept else None, kept["title"] if kept else "", int(trashed)),
-            )
-            self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+            sha = cached["sha256"] if cached else ""
+        return sha
+
+    def _remove_row(self, row, sha: str, reason: str, duplicate_of: int | None, trashed: bool) -> None:
+        """Log what the document was and delete it. Inside the caller's transaction, under the lock."""
+        doc_id = row["id"]
+        edited = {k: (json.loads(row[k]) if k == "authors" else row[k]) for k in json.loads(row["edited_fields"])}
+        folders = [r["name"] for r in self.conn.execute(
+            "SELECT f.name FROM doc_folders df JOIN folders f ON f.id = df.folder_id "
+            "WHERE df.doc_id = ? AND df.state = 'user' ORDER BY f.name COLLATE NOCASE", (doc_id,))]
+        kept = self.conn.execute("SELECT title FROM documents WHERE id = ?", (duplicate_of,)).fetchone() if duplicate_of else None
+        self.conn.execute(
+            "INSERT OR REPLACE INTO removed_documents (id, source, kind, title, authors, year, venue, doi, url, published, "
+            "sha256, file_date, edited_fields, folders, added_at, reason, duplicate_of, duplicate_of_title, file_trashed) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (doc_id, row["source"], row["kind"], row["title"], row["authors"], row["year"], row["venue"], row["doi"],
+             row["url"], row["published"], sha, row["file_date"], json.dumps(edited), json.dumps(folders),
+             row["added_at"], reason, duplicate_of if kept else None, kept["title"] if kept else "", int(trashed)),
+        )
+        self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+
+    # ---------- swapping a version for another ----------
+
+    MOVED_REASON = "Moved from the other version: this quote wasn't found in the version kept. Check it."
+
+    def merge_into(self, other_id: int, kept_id: int, dry_run: bool = False) -> dict:
+        """Keep one copy of a paper and move everything from another copy of it (a preprint, say)
+        to it: every citation of the other in every draft, its review-matrix rows, saved findings,
+        highlights and notes, the topics it was put in by hand and its star. Then the other is
+        removed through the removal log, as a duplicate of the kept one.
+
+        Each moved citation's quote is found again in the kept paper. One that isn't found keeps
+        its quote but is marked as needing a check (quote_not_found, MOVED_REASON), never pointed
+        at another passage; a matrix cell likewise becomes unverified, and a highlight keeps its
+        text and note without a place. A version of each draft is saved first, so History can undo
+        it. Everything is written in one transaction. `dry_run` only counts what would move."""
+        if other_id == kept_id:
+            raise ValueError("Pick two different papers")
+        with self.lock:
+            other, kept = self.get_document(other_id), self.get_document(kept_id)  # LookupError if gone
+            plan = self._merge_plan(other, kept)
+            report = {**plan["report"], "kept_id": kept_id, "kept_title": kept["title"],
+                      "other_id": other_id, "other_title": other["title"], "done": False}
+            if dry_run:
+                return report
+            row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (other_id,)).fetchone()
+            sha = self._removal_hash(row)  # may write the hash cache: before the transaction
+            with self.conn:  # one transaction: all of it, or none of it
+                for d in plan["drafts"]:
+                    self._insert_version(d["id"], f"Before moving citations to “{kept['title'][:60]}”",
+                                         d["title"], d["old"])
+                    self.conn.execute("UPDATE drafts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                      (d["new"], d["id"]))
+                for mid in plan["matrix_dropped"]:
+                    self.conn.execute("DELETE FROM matrix_cells WHERE matrix_id = ? AND doc_id = ?", (mid, other_id))
+                    self.conn.execute("DELETE FROM matrix_rows WHERE matrix_id = ? AND doc_id = ?", (mid, other_id))
+                for mid in plan["matrix_moved"]:
+                    self.conn.execute("UPDATE matrix_rows SET doc_id = ? WHERE matrix_id = ? AND doc_id = ?", (kept_id, mid, other_id))
+                for c in plan["cells"]:
+                    self.conn.execute(
+                        'UPDATE matrix_cells SET doc_id = ?, status = ?, chunk_id = ?, page = ?, start = ?, "end" = ?, label = ? '
+                        "WHERE matrix_id = ? AND doc_id = ? AND col = ?",
+                        (kept_id, c["status"], c["chunk_id"], c["page"], c["start"], c["end"], c["label"],
+                         c["matrix_id"], other_id, c["col"]))
+                for fid, sentences, snapshot in plan["findings"]:
+                    self.conn.execute("UPDATE matrix_findings SET sentences = ?, snapshot = ? WHERE id = ?", (sentences, snapshot, fid))
+                for h in plan["highlights"]:
+                    self.conn.execute('UPDATE highlights SET doc_id = ?, page = ?, start = ?, "end" = ? WHERE id = ?',
+                                      (kept_id, h["page"], h["start"], h["end"], h["id"]))
+                for folder_id in plan["topics"]:
+                    self.conn.execute(
+                        "INSERT INTO doc_folders (doc_id, folder_id, state) VALUES (?, ?, 'user') "
+                        "ON CONFLICT(doc_id, folder_id) DO UPDATE SET state = 'user'", (kept_id, folder_id))
+                if plan["report"]["starred"]:
+                    self.conn.execute("UPDATE documents SET starred = 1 WHERE id = ?", (kept_id,))
+                self._remove_row(row, sha, "duplicate", kept_id, False)
+        return {**report, "done": True}
+
+    def _merge_plan(self, other: dict, kept: dict) -> dict:
+        """What merge_into would change, worked out without changing anything. Call under the lock."""
+        o, k = other["id"], kept["id"]
+        cache: dict = {}
+        report = {"citations": 0, "citations_to_check": 0, "drafts": 0, "highlights": 0, "highlights_unplaced": 0,
+                  "topics": 0, "matrix_rows": 0, "matrix_rows_dropped": 0, "cells_to_check": 0, "findings": 0,
+                  "starred": bool(other["starred"] and not kept["starred"])}
+
+        def found(page, quote):
+            return self.resolve_citation(k, page or 1, quote, _cache=cache) if quote and quote.strip() else None
+
+        def chip(attrs: dict) -> None:
+            report["citations"] += 1
+            loc = found(attrs.get("page"), attrs.get("quote") or "")
+            attrs["docId"] = k
+            if loc:
+                attrs.update(chunkId=loc["chunk_id"], page=loc["page"], start=loc["start"], end=loc["end"], label=loc["label"])
+            elif attrs.get("quote"):
+                report["citations_to_check"] += 1
+                attrs.update(chunkId=None, start=None, end=None, status="quote_not_found", reason=self.MOVED_REASON,
+                             label=short_label(kept))
+            else:  # written from a review matrix: it cites the paper as a whole
+                attrs["label"] = short_label(kept)
+
+        def walk(node) -> bool:
+            changed = False
+            if isinstance(node, dict):
+                attrs = node.get("attrs") or {}
+                if node.get("type") == "citation" and attrs.get("docId") == o:
+                    chip(attrs)
+                    changed = True
+                for r in attrs.get("results") or [] if node.get("type") == "citeMark" else []:
+                    if isinstance(r, dict) and r.get("docId") == o:  # a marker's suggestion, not yet confirmed
+                        loc = found(r.get("page"), r.get("quote") or "")
+                        r["docId"] = k
+                        if loc:
+                            r.update(chunkId=loc["chunk_id"], page=loc["page"], start=loc["start"], end=loc["end"], label=loc["label"])
+                        changed = True
+                for child in node.get("content") or []:
+                    changed = walk(child) or changed
+            return changed
+
+        drafts = []
+        for r in self.conn.execute("SELECT id, title, content FROM drafts ORDER BY id").fetchall():
+            try:
+                doc = json.loads(r["content"] or "{}")
+            except ValueError:
+                continue
+            if walk(doc):
+                drafts.append({"id": r["id"], "title": r["title"], "old": r["content"], "new": json.dumps(doc)})
+        report["drafts"] = len(drafts)
+
+        in_kept = {r["matrix_id"] for r in self.conn.execute("SELECT matrix_id FROM matrix_rows WHERE doc_id = ?", (k,))}
+        mine = [r["matrix_id"] for r in self.conn.execute("SELECT matrix_id FROM matrix_rows WHERE doc_id = ?", (o,))]
+        moved, dropped = [m for m in mine if m not in in_kept], [m for m in mine if m in in_kept]
+        report["matrix_rows"], report["matrix_rows_dropped"] = len(moved), len(dropped)
+        cells = []
+        for c in self.conn.execute(
+            f'SELECT matrix_id, col, status, quote, chunk_id, page, start, "end", label FROM matrix_cells '
+            f"WHERE doc_id = ? AND matrix_id IN ({','.join('?' * len(moved)) or 'NULL'})", (o, *moved)).fetchall():
+            c = dict(c)
+            loc = found(c["page"], c["quote"])
+            if loc:
+                c.update(chunk_id=loc["chunk_id"], page=loc["page"], start=loc["start"], end=loc["end"], label=loc["label"])
+            elif c["quote"].strip():
+                report["cells_to_check"] += 1
+                c.update(status="unverified", chunk_id=None, start=None, end=None)
+            cells.append(c)
+
+        def repoint(value):
+            if isinstance(value, dict):
+                return {key: (k if key in ("doc_id", "docId") and v == o else repoint(v)) for key, v in value.items()}
+            if isinstance(value, list):
+                return [repoint(v) for v in value]
+            return value
+
+        findings = []
+        for r in self.conn.execute("SELECT id, sentences, snapshot FROM matrix_findings").fetchall():
+            s, snap = repoint(json.loads(r["sentences"])), repoint(json.loads(r["snapshot"]))
+            if json.dumps(s) != json.dumps(json.loads(r["sentences"])) or json.dumps(snap) != json.dumps(json.loads(r["snapshot"])):
+                findings.append((r["id"], json.dumps(s), json.dumps(snap)))
+        report["findings"] = len(findings)
+
+        highlights = []
+        for h in self.conn.execute('SELECT id, page, text FROM highlights WHERE doc_id = ? ORDER BY id', (o,)).fetchall():
+            loc = found(h["page"], h["text"])
+            report["highlights"] += 1
+            if not loc:
+                report["highlights_unplaced"] += 1
+            highlights.append({"id": h["id"], "page": loc["page"] if loc else h["page"],
+                               "start": loc["start"] if loc else None, "end": loc["end"] if loc else None})
+
+        kept_topics = {r["folder_id"] for r in self.conn.execute(
+            "SELECT folder_id FROM doc_folders WHERE doc_id = ? AND state = 'user'", (k,))}
+        topics = [r["folder_id"] for r in self.conn.execute(
+            "SELECT folder_id FROM doc_folders WHERE doc_id = ? AND state = 'user'", (o,)) if r["folder_id"] not in kept_topics]
+        report["topics"] = len(topics)
+        return {"report": report, "drafts": drafts, "matrix_moved": moved, "matrix_dropped": dropped, "cells": cells,
+                "findings": findings, "highlights": highlights, "topics": topics}
+
+    def _insert_version(self, draft_id: int, label: str, title: str, content: str) -> None:
+        """A milestone of a draft, written inside the caller's transaction (see _add_version)."""
+        text = draft_review.plain_text(content)
+        latest = self.conn.execute(
+            "SELECT text FROM draft_versions WHERE draft_id = ? ORDER BY id DESC LIMIT 1", (draft_id,)).fetchone()
+        change = draft_review.change_pct(latest["text"], text) if latest else 100
+        self.conn.execute(
+            "INSERT INTO draft_versions (draft_id, kind, label, title, content, text, words, change) "
+            "VALUES (?, 'milestone', ?, ?, ?, ?, ?, ?)",
+            (draft_id, label[:120], title, content, text, draft_review.word_count(text), change))
 
     # ---------- removal log ----------
 
@@ -1165,6 +1533,8 @@ class Library:
         if r["doi"] and rec.title and not unread and not openaccess.titles_agree(r["title"], rec.title):
             return {**updates, "enriched": "mismatch", "index_title": rec.title}
         updates.update(enriched="found", openalex_id=rec.openalex_id, cited_by_count=rec.cited_by_count)
+        if rec.retracted is not None:  # None: OpenAlex didn't have it, so it couldn't say
+            updates["index_retracted"] = int(rec.retracted)
 
         def take(key: str, value, only_if_empty: bool = False) -> None:
             if value in (None, "", []) or key in edited or (only_if_empty and r.get(key)):
@@ -1732,7 +2102,7 @@ class Library:
     def list_folders(self) -> list[dict]:
         with self.lock:
             rows = self.conn.execute(
-                "SELECT f.id, f.name, f.similarity, f.color, COUNT(df.doc_id) AS doc_count FROM folders f "
+                "SELECT f.id, f.name, f.similarity, f.color, f.description, COUNT(df.doc_id) AS doc_count FROM folders f "
                 "LEFT JOIN doc_folders df ON df.folder_id = f.id AND df.state != 'rejected' "
                 "GROUP BY f.id ORDER BY f.name COLLATE NOCASE"
             ).fetchall()
@@ -1746,6 +2116,13 @@ class Library:
         return name
 
     @staticmethod
+    def _description(value: str) -> str:
+        value = " ".join(str(value).split())
+        if len(value) > MAX_RULE_CHARS:
+            raise ValueError(f"Say what belongs in a topic in {MAX_RULE_CHARS} characters or fewer")
+        return value
+
+    @staticmethod
     def _color(value: str) -> str:
         if value not in FOLDER_COLORS and value != "":
             raise ValueError(f"A topic's colour is one of {', '.join(FOLDER_COLORS)}, or none")
@@ -1757,15 +2134,17 @@ class Library:
             raise ValueError("Similarity must be a whole number from 0 to 100")
         return value
 
-    def create_folder(self, name: str, similarity: int = 50) -> list[dict]:
-        """A folder the user defines by subject. Every document is scored against it and the
-        ones at or above `similarity` percent are filed in."""
+    def create_folder(self, name: str, similarity: int = 50, description: str = "") -> list[dict]:
+        """A folder the user defines by subject, and optionally by a rule in their own words
+        (`description`). Every document is scored against it and the ones at or above
+        `similarity` percent are filed in."""
         name, similarity = self._folder_name(name), self._similarity(similarity)
+        description = self._description(description)
         with self.lock, self.conn:
             if self.conn.execute("SELECT 1 FROM folders WHERE name = ?", (name,)).fetchone():
                 raise ValueError(f"A topic called {name!r} already exists")
             folder_id = self.conn.execute(
-                "INSERT INTO folders (name, similarity) VALUES (?, ?)", (name, similarity)
+                "INSERT INTO folders (name, similarity, description) VALUES (?, ?, ?)", (name, similarity, description)
             ).lastrowid
         self._score_folder(folder_id)
         with self.lock, self.conn:
@@ -1773,18 +2152,22 @@ class Library:
         return self.list_folders()
 
     def update_folder(self, folder_id: int, name: str | None = None, similarity: int | None = None,
-                      color: str | None = None) -> list[dict]:
-        """Rename a folder, move its similarity threshold and/or set its colour. A new name is a new
-        subject, so its documents are scored again; a new threshold only re-files from the scores
-        kept. A colour changes nothing but how the folder is drawn."""
+                      color: str | None = None, description: str | None = None) -> list[dict]:
+        """Rename a folder, change what belongs in it, move its similarity threshold and/or set its
+        colour. A new name or rule is a new subject, so its documents are scored again; a new
+        threshold only re-files from the scores kept. Either way only papers filed automatically
+        move: what the user added or removed by hand stays. A colour changes nothing but how the
+        folder is drawn."""
         with self.lock:
-            row = self.conn.execute("SELECT name FROM folders WHERE id = ?", (folder_id,)).fetchone()
+            row = self.conn.execute("SELECT name, description FROM folders WHERE id = ?", (folder_id,)).fetchone()
         if not row:
             raise LookupError(f"Folder {folder_id} not found")
         name = self._folder_name(name) if name is not None else None
         similarity = self._similarity(similarity) if similarity is not None else None
         color = self._color(color) if color is not None else None
-        retitled = name is not None and name.lower() != row["name"].lower()
+        description = self._description(description) if description is not None else None
+        retitled = (name is not None and name.lower() != row["name"].lower()) or (
+            description is not None and description != row["description"])
         with self.lock, self.conn:
             if name is not None:
                 clash = self.conn.execute("SELECT id FROM folders WHERE name = ?", (name,)).fetchone()
@@ -1795,10 +2178,12 @@ class Library:
                 self.conn.execute("UPDATE folders SET similarity = ? WHERE id = ?", (similarity, folder_id))
             if color is not None:
                 self.conn.execute("UPDATE folders SET color = ? WHERE id = ?", (color, folder_id))
+            if description is not None:
+                self.conn.execute("UPDATE folders SET description = ? WHERE id = ?", (description, folder_id))
             if retitled:
                 self.conn.execute("DELETE FROM folder_scores WHERE folder_id = ?", (folder_id,))
-        if name is None and similarity is None:
-            return self.list_folders()  # only the colour: nothing to re-file
+        if not retitled and similarity is None:
+            return self.list_folders()  # only the colour, or the same name or rule: nothing to re-file
         self._score_folder(folder_id)  # scores the documents that have none yet
         with self.lock, self.conn:
             self._apply_scores()
@@ -1821,11 +2206,22 @@ class Library:
             for r in rows
         ]
 
+    @staticmethod
+    def _folder_queries(names: list[str], rules: dict[str, str]) -> list[str]:
+        """What word statistics match each folder by: its name, counted twice so it still weighs
+        most, and the part of its rule that says what belongs (see rule_words)."""
+        return [f"{n} {n} {rule_words(rules.get(n, ''))}".strip() for n in names]
+
+    def _folder_rules(self) -> dict[str, str]:
+        """Each folder's rule by folder name, for the folders that have one. Call under the lock."""
+        return {r["name"]: r["description"] for r in self.conn.execute(
+            "SELECT name, description FROM folders WHERE description != ''")}
+
     def _folder_word_scores(self, names: list[str]) -> tuple[np.ndarray, np.ndarray]:
-        """Each stored document's TF-IDF cosine to each folder name: (document ids, (docs, folders)).
-        Call under the lock."""
+        """Each stored document's TF-IDF cosine to each folder (its name and rule): (document ids,
+        (docs, folders)). Call under the lock."""
         doc_ids, texts = self._folder_doc_texts()
-        scores, _ = tfidf_cosines(texts, names)
+        scores, _ = tfidf_cosines(texts, self._folder_queries(names, self._folder_rules()))
         return np.array(doc_ids, dtype=np.int64), scores
 
     def _relative_fit(self, names: list[str]) -> dict[int, np.ndarray]:
@@ -1848,7 +2244,8 @@ class Library:
         doc_ids, texts = self._folder_doc_texts()
         if len(doc_ids) < MIN_DOCS_FOR_RELATIVE:
             return None
-        cosine, mine = tfidf_cosines(texts, names, candidate=f"{title} {title} {title} {summary} {text}")
+        cosine, mine = tfidf_cosines(texts, self._folder_queries(names, self._folder_rules()),
+                                     candidate=f"{title} {title} {title} {summary} {text}")
         if mine is None or not np.any(cosine):
             return mine if mine is not None and not np.any(cosine) else None
         spread = cosine.std(axis=0)
@@ -1870,8 +2267,10 @@ class Library:
             doc = self.get_document(doc_id)
             pages = [r["text"] for r in self.conn.execute(
                 "SELECT text FROM pages WHERE doc_id = ? ORDER BY page LIMIT 4", (doc_id,))]
+            rules = self._folder_rules()
         text = self._folder_text(doc["keywords"], [j["code"] for j in doc["jel_codes"]], pages)
-        return self.provider.score_folders(doc["title"], doc["summary"], text, names)  # network call: no lock
+        return self.provider.score_folders(doc["title"], doc["summary"], text, names,
+                                           {n: rules[n] for n in names if n in rules})  # network call: no lock
 
     def _judge_folders(self, title: str, summary: str, text: str):
         """Score a paper that isn't stored yet against every folder: the word-statistics
@@ -1883,8 +2282,10 @@ class Library:
                 return None
             names = [f["name"] for f in folders]
             z = self._new_paper_fit(title, summary, text, names)
+            rules = self._folder_rules()
         ask = [i for i in range(len(names)) if z is None or z[i] >= 0]
-        verdict = self.provider.score_folders(title, summary, text, [names[i] for i in ask]) if ask else {}
+        asked = [names[i] for i in ask]
+        verdict = self.provider.score_folders(title, summary, text, asked, {n: rules[n] for n in asked if n in rules}) if ask else {}
         return folders, names, z, ask, verdict
 
     def _save_scores(self, doc_id: int, folders: list, names: list[str], z: np.ndarray | None,

@@ -6,6 +6,7 @@ import { AssistantPanel } from './components/AssistantPanel'
 import { CitationWire } from './components/CitationWire'
 import { CitePanel } from './components/CitePanel'
 import { CheckSummary } from './components/CheckSummary'
+import { LibraryTrust, retractedWhy, type RetractedWhy } from './components/TrustBadges'
 import { SourcesPanel } from './components/SourcesPanel'
 import { CITATION_WORD, needWord, tally } from './editor/citeStatus'
 import type { CiteMarkAttrs } from './editor/citeMark'
@@ -27,6 +28,7 @@ import { FindingView } from './components/FindingView'
 import { ProposalDialog } from './components/ProposalDialog'
 import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { CitingPapersDialog } from './components/CitingPapersDialog'
+import { TopicNewArrivalsDialog } from './components/TopicNewArrivalsDialog'
 import { ReaderDialog } from './components/ReaderDialog'
 import { HighlightsPanel } from './components/HighlightsPanel'
 import { ReviewPanel } from './components/ReviewPanel'
@@ -223,6 +225,7 @@ export default function App() {
   const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
   const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
   const [citingFor, setCitingFor] = useState<number | null>(null) // paper whose citing works are listed
+  const [newFor, setNewFor] = useState<number | null>(null) // topic whose new citing works are listed
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [askAttach, setAskAttach] = useState<{ text: string; n: number } | null>(null) // text sent to Compose's chat
   const [pdfView, setPdfView] = useState<{ doc: Doc; page: number; find?: string } | null>(null) // a PDF in the app's reader
@@ -1169,8 +1172,18 @@ export default function App() {
     setCiteFocus(focus)
   }
 
+  // Retracted library papers and who says so: their citations are flagged in the draft and in Check.
+  const retracted = useMemo(() => {
+    const out = new Map<number, RetractedWhy>()
+    for (const d of docs) {
+      const why = retractedWhy(d)
+      if (why) out.set(d.id, why)
+    }
+    return out
+  }, [docs])
+  const docsById = useMemo(() => new Map(docs.map((d) => [d.id, d])), [docs])
   // The draft's citations, counted one way for the status bar, Check's badge and its summary.
-  const cites = useMemo(() => tally(stats.chips, citeMarks), [stats.chips, citeMarks])
+  const cites = useMemo(() => tally(stats.chips, citeMarks, retracted), [stats.chips, citeMarks, retracted])
   const focusedMark = citeFocus ? citeMarks.find((m) => m.cid === citeFocus) ?? null : null
 
   // Citations that were checking when the writer left Write, and finished while they were away.
@@ -1578,6 +1591,7 @@ export default function App() {
               onAsk={askAboutSelection}
               spellcheck={settings.spellcheck}
               onError={onError}
+              retracted={retracted}
             />
           </main>
 
@@ -1743,6 +1757,7 @@ export default function App() {
                 )}
                 <CitePanel
                   marks={citeMarks}
+                  retracted={retracted}
                   focus={citeFocus}
                   onFocus={(cid) => {
                     setCiteFocus(cid)
@@ -1829,8 +1844,10 @@ export default function App() {
             onFindDuplicates={findDuplicateFiles}
             onCitedPapers={setCitedFor}
             onCitingPapers={setCitingFor}
+            onWhatsNew={setNewFor}
             onFindMissing={findMissing}
             folderSimilarity={settings.folder_similarity}
+            citationStyle={settings.citation_style}
             onOpenPdf={openPdf}
             cited={citedIds}
             onMapTopic={mapTopic}
@@ -1868,15 +1885,17 @@ export default function App() {
         {mode === 'network' && (
           <div className="view network-view">
             <Suspense fallback={<p className="network-note">Loading the network…</p>}>
-              <NetworkView
-                query={netQuery}
-                ticked={selected}
-                librarySize={docs.length}
-                onOpenPaper={showPaper}
-                onCitedPapers={setCitedFor}
-                onFindMissing={setMissingQuery}
-                onError={onError}
-              />
+              <LibraryTrust.Provider value={docsById}>
+                <NetworkView
+                  query={netQuery}
+                  ticked={selected}
+                  librarySize={docs.length}
+                  onOpenPaper={showPaper}
+                  onCitedPapers={setCitedFor}
+                  onFindMissing={setMissingQuery}
+                  onError={onError}
+                />
+              </LibraryTrust.Provider>
             </Suspense>
           </div>
         )}
@@ -1967,6 +1986,19 @@ export default function App() {
         <DuplicateFilesDialog
           getCited={() => editor.current?.citedDocIds() ?? []}
           onChanged={refresh}
+          onBeforeMerge={async () => {
+            await editor.current?.flush()
+          }}
+          onMerged={async (openCheck) => {
+            // The open draft's citations may have moved to the copy kept: show it as saved.
+            const d = await api.getDraft(draftId).catch(() => null)
+            if (d) editor.current?.setContent(d.content)
+            await refresh()
+            if (openCheck) {
+              setMode('write')
+              setTab('check')
+            }
+          }}
           onClose={() => setDupFilesOpen(false)}
           onError={onError}
         />
@@ -1978,6 +2010,16 @@ export default function App() {
           onOpenPaper={showPaper}
           onChanged={refresh}
           onClose={() => setCitedFor(null)}
+          onError={onError}
+        />
+      )}
+
+      {newFor != null && (
+        <TopicNewArrivalsDialog
+          folderId={newFor}
+          onOpenPaper={showPaper}
+          onChanged={refresh}
+          onClose={() => setNewFor(null)}
           onError={onError}
         />
       )}

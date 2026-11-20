@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import type { Editor } from '@tiptap/core'
 import { CITATION_WORD, isFlagged } from '../editor/citeStatus'
 import type { ChipAttrs } from './WritingEditor'
+import { RETRACTED_SAYS, type RetractedWhy } from './TrustBadges'
 
 /** Pointing at a citation in the draft shows what backs it: the verdict, the quote and its page,
- * and why Muse judged it so. Clicking still opens the quote on its page. */
-export function ChipCard({ editor }: { editor: Editor | null }) {
+ * and why Muse judged it so; first of all, when the paper was retracted. Clicking still opens the
+ * quote on its page. */
+export function ChipCard({ editor, retracted }: { editor: Editor | null; retracted?: Map<number, RetractedWhy> }) {
   const [card, setCard] = useState<{ a: ChipAttrs; x: number; y: number } | null>(null)
 
   useEffect(() => {
@@ -51,14 +53,16 @@ export function ChipCard({ editor }: { editor: Editor | null }) {
 
   if (!card) return null
   const { a } = card
+  const why = retracted?.get(a.docId)
   return (
-    <div className={`chip-card chip-card-${a.status}`} style={{ left: card.x, top: card.y }} role="tooltip">
+    <div className={`chip-card chip-card-${a.status}${why ? ' chip-card-retracted' : ''}`} style={{ left: card.x, top: card.y }} role="tooltip">
       <div className="chip-card-head">
-        <span className={`cite cite-${a.status}${a.finding != null ? ' cite-matrix' : ''}`} aria-hidden="true">
+        <span className={`cite cite-${a.status}${a.finding != null ? ' cite-matrix' : ''}${why ? ' cite-retracted' : ''}`} aria-hidden="true">
           {a.label}
         </span>
         <b className="chip-card-verdict">{CITATION_WORD[a.status]}</b>
       </div>
+      {why && <p className="chip-card-retraction">This source has been retracted. {RETRACTED_SAYS[why]}</p>}
       {a.quote ? (
         <blockquote>“{a.quote}”</blockquote>
       ) : (

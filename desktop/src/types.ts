@@ -39,11 +39,18 @@ export interface Doc {
   /** '' not looked up yet, 'not_found', 'mismatch' (the DOI on the paper is another work's: see index_title). */
   enriched: '' | 'found' | 'not_found' | 'mismatch'
   index_title: string
+  /** Warn that it was retracted: OpenAlex says so (index_retracted), or its title or keywords do. */
+  retracted: boolean
+  index_retracted: boolean
   /** Not opened since it was added (or marked unread), as a mail app shows new mail. */
   unread: boolean
   starred: boolean
   /** Passages the reader highlighted in it. */
   highlights: number
+  /** Its file isn't where it was added from (never for a web page). */
+  file_missing: boolean
+  /** Cited in a saved draft, a review matrix or a saved finding. */
+  cited_in_drafts: boolean
   /** This same file was removed once before it was added again. */
   previously_removed: {
     id: number
@@ -117,6 +124,8 @@ export interface Folder {
   id: number
   name: string
   similarity: number // percent a document must match to be filed here
+  /** What belongs here, in the user's words; '' (or missing, from an older backend) when it's filed by its name alone. */
+  description?: string
   doc_count: number
   color?: FolderColor | '' // how its folder is drawn in the Library; '' (or missing, from an older backend) for none
 }
@@ -426,6 +435,33 @@ export interface MissingWorks {
  *  no_free_copy: found, but paywalled · not_found: no index knows it · failed: an error */
 export type FetchStatus = 'in_library' | 'downloaded' | 'link' | 'no_free_copy' | 'not_found' | 'failed'
 
+/** What's new in a topic: recent works outside the library citing its papers (GET /folders/{id}/new-arrivals). */
+export interface NewArrivals {
+  folder_id: number
+  name: string
+  papers: number // in the topic
+  known: number // of those, known to OpenAlex
+  asked: number // of those, asked about (the most cited, up to a cap)
+  capped: boolean
+  not_looked_up: number[] // papers never looked up in the index
+  not_in_index: number // papers OpenAlex doesn't know
+  found?: number // new works found, of which `works` are the closest
+  checked_at: string | null // "YYYY-MM-DD HH:MM:SS", UTC
+  works: {
+    openalex_id: string
+    doi: string
+    title: string
+    authors: string[]
+    year: number | null
+    venue: string
+    cited_by_count: number | null
+    abstract: string
+    published: string
+    first_author: string
+    cites_titles: string[] // the topic's papers it cites
+  }[]
+}
+
 export interface FetchResult {
   status: FetchStatus
   doc_id?: number
@@ -444,6 +480,8 @@ export interface Health {
 
 export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
 export type DocxStyle = Exclude<RefStyle, 'bibtex'>
+/** How a reading list is ordered: by first author, or by year (oldest first). */
+export type ReadingOrder = 'author' | 'year'
 export type ThemePref = 'system' | 'light' | 'dark'
 
 /** Preferences from the Settings window, stored in the library database (USER_SETTINGS in
@@ -481,6 +519,14 @@ export interface IndexWork {
   venue: string
   cited_by_count: number | null
   abstract: string
+}
+
+/** A work a typed DOI or title names (GET /works/find), closest first. */
+export type FoundWork = IndexWork & { exact: boolean; in_library: number | null; first_author: string }
+export interface FoundWorks {
+  kind: 'doi' | 'title'
+  query: string
+  works: FoundWork[] // the closest and up to two others
 }
 
 export interface CitingWorks {
@@ -596,6 +642,26 @@ export interface DuplicateGroup {
   keep_reason: string
   recoverable: number // bytes freed by removing the others
   docs: DuplicateDoc[]
+}
+
+/** What keeping one copy of a paper and moving everything from the other did (or, on a dry run, would do). */
+export interface MergeReport {
+  citations: number
+  citations_to_check: number // their quote wasn't found in the copy kept: marked to check
+  drafts: number
+  highlights: number
+  highlights_unplaced: number // moved without a place on the page
+  topics: number
+  matrix_rows: number
+  matrix_rows_dropped: number // the kept copy was in that matrix already
+  cells_to_check: number
+  findings: number
+  starred: boolean
+  kept_id: number
+  kept_title: string
+  other_id: number
+  other_title: string
+  done: boolean
 }
 
 export interface FileDuplicateReport {

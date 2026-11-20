@@ -10,6 +10,9 @@ import type {
   DocxConversion,
   DocxImport,
   DocxStyle,
+  MergeReport,
+  FoundWorks,
+  ReadingOrder,
   DraftSummary,
   DraftResult,
   DraftVersion,
@@ -30,6 +33,7 @@ import type {
   MatrixPaper,
   MatrixSummary,
   Folder,
+  NewArrivals,
   Health,
   RemovedDoc,
   IngestJob,
@@ -64,7 +68,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 24
+export const API_VERSION = 31
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -154,16 +158,25 @@ export const api = {
   removed: () => request<RemovedDoc[]>('GET', '/library/removed'),
   /** Add a removed source back from its file, under its old id and added date. */
   restoreRemoved: (id: number) => request<Doc>('POST', `/library/removed/${id}/restore`),
+  /** Point a paper whose file moved at its new place. 'differs' (nothing changed): the file's contents
+   *  aren't the ones added; `force` uses it anyway. */
+  locateFile: (docId: number, path: string, force = false) =>
+    request<{ status: 'located' | 'differs'; doc_id: number; document?: Doc }>('POST', `/documents/${docId}/locate`, { path, force }),
   forgetRemoved: (id: number) => request<{ ok: boolean }>('DELETE', `/library/removed/${id}`),
   /** Look papers up in OpenAlex and Crossref (all not yet looked up, or `docIds`; `refresh` asks again). */
   enrich: (docIds?: number[], refresh = false) =>
     request<EnrichResult>('POST', '/library/enrich', { doc_ids: docIds ?? null, refresh }),
   citingWorks: (docId: number, sort: 'cited' | 'recent') => request<CitingWorks>('GET', `/documents/${docId}/citing?sort=${sort}`),
+  /** What a typed DOI or title names, as OpenAlex knows it, before it's added. */
+  findWork: (text: string) => request<FoundWorks>('GET', `/works/find?q=${encodeURIComponent(text)}`),
   /** Find a free copy of any work and add it to the library. */
-  fetchWork: (w: { title: string; doi: string; year: number | null; first_author: string }) =>
+  fetchWork: (w: { title: string; doi: string; year: number | null; first_author: string; folder_id?: number }) =>
     request<FetchResult>('POST', '/library/fetch-work', w),
   /** Citations worldwide and abstracts, by DOI. */
   worksInfo: (dois: string[]) => request<Record<string, IndexWork>>('POST', '/works/info', { dois }),
+  /** Keep `keptId` and move everything from `otherId` to it, then remove `otherId`; `dryRun` only says what would move. */
+  mergeInto: (otherId: number, keptId: number, dryRun = false) =>
+    request<MergeReport>('POST', `/documents/${otherId}/merge-into/${keptId}${dryRun ? '?dry_run=true' : ''}`),
   duplicateFiles: (cited: number[]) => request<FileDuplicateReport>('POST', '/library/duplicates', { cited }),
   page: (docId: number, page: number) => request<PageText>('GET', `/documents/${docId}/pages/${page}`),
 
@@ -175,10 +188,13 @@ export const api = {
 
   folders: () => request<Folder[]>('GET', '/folders'),
   classifyFolders: () => request<Folder[]>('POST', '/folders/classify'),
-  createFolder: (name: string, similarity: number) => request<Folder[]>('POST', '/folders', { name, similarity }),
-  updateFolder: (id: number, patch: { name?: string; similarity?: number; color?: FolderColor | '' }) =>
+  createFolder: (name: string, similarity: number, description = '') =>
+    request<Folder[]>('POST', '/folders', { name, similarity, description }),
+  updateFolder: (id: number, patch: { name?: string; similarity?: number; color?: FolderColor | ''; description?: string }) =>
     request<Folder[]>('PATCH', `/folders/${id}`, patch),
   deleteFolder: (id: number) => request<Folder[]>('DELETE', `/folders/${id}`),
+  /** Recent works outside the library that cite a topic's papers (`refresh` skips the answer kept from before). */
+  topicNewArrivals: (id: number, refresh = false) => request<NewArrivals>('GET', `/folders/${id}/new-arrivals${refresh ? '?refresh=true' : ''}`),
   /** Fold one topic into another: its papers move over and it is deleted. */
   mergeFolders: (id: number, intoId: number) => request<Folder[]>('POST', `/folders/${id}/merge`, { into_id: intoId }),
   classifyDocument: (docId: number) => request<Doc>('POST', `/documents/${docId}/classify`),
@@ -274,6 +290,9 @@ export const api = {
 
   exportDocx: async (content: unknown, style: DocxStyle, title: string) =>
     (await send('POST', '/export/docx', { content, style, title })).arrayBuffer(),
+  /** These papers as an annotated reading list in Word: references, Muse's summaries, highlights and notes. */
+  exportReadingList: async (docIds: number[], style: DocxStyle, title: string, order: ReadingOrder) =>
+    (await send('POST', '/export/reading-list', { doc_ids: docIds, style, title, order })).arrayBuffer(),
 
   drafts: () => request<DraftSummary[]>('GET', '/drafts'),
   createDraft: (title = 'Untitled', named = false) =>

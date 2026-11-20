@@ -18,7 +18,7 @@ function yearBars(years: number[]) {
 
 /** What is in the selected folder, beside the front page. Its column is always there, empty until a
  * folder is selected, so selecting one never moves the folders under the pointer. */
-export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, onMap, onOpenKey, onSurprise }: {
+export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, onMap, onOpenKey, onWhatsNew, onSurprise }: {
   item: FrontItem | undefined
   topics: FrontItem[] // every topic, to say which share papers with this one
   cited: Set<number>
@@ -28,6 +28,7 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
   onMap: (name: string) => void
   onOpenKey: (key: string) => void
   onSurprise?: () => void // open a random unread paper from it
+  onWhatsNew?: (folderId: number) => void
 }) {
   if (!item) {
     return (
@@ -79,6 +80,7 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
           </>
         )}
       </p>
+      {item.folder?.description && <p className="lf-topic-rule" title="What belongs here, in your words">“{item.folder.description}”</p>}
       <div className="lf-acts">
         <button className="primary" onClick={onOpen}>Open</button>
         {canDraft && (
@@ -88,6 +90,11 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
         )}
         {item.kind === 'topic' && (
           <button onClick={() => onMap(item.name)} title="Search the citation network for this topic">Map it</button>
+        )}
+        {item.folder && onWhatsNew && (
+          <button onClick={() => onWhatsNew(item.folder!.id)} title="Recent works that cite this topic's papers and aren't in your library">
+            What's new
+          </button>
         )}
       </div>
 

@@ -283,6 +283,9 @@ _ADDED_COLUMNS = [
     ("folders", "similarity", "INTEGER NOT NULL DEFAULT 50"),
     # The colour the reader gave the topic's folder in the Library (one of FOLDER_COLORS), or ''.
     ("folders", "color", "TEXT NOT NULL DEFAULT ''"),
+    # What belongs in the topic, in the user's words ("empirical papers on mobile money in East
+    # Africa, not policy reports"); '' for a topic filed by its name alone.
+    ("folders", "description", "TEXT NOT NULL DEFAULT ''"),
     ("documents", "keywords", "TEXT NOT NULL DEFAULT '[]'"),
     ("documents", "jel_codes", "TEXT NOT NULL DEFAULT '[]'"),
     ("documents", "refs_parsed", "INTEGER NOT NULL DEFAULT 0"),  # 1 once doc_refs holds its reference list
@@ -314,6 +317,9 @@ _ADDED_COLUMNS = [
     # the user opens it (or marks it read); documents from before the marks existed count as read.
     ("documents", "unread", "INTEGER NOT NULL DEFAULT 0"),
     ("documents", "starred", "INTEGER NOT NULL DEFAULT 0"),
+    # 1 when OpenAlex says the paper was retracted. Set only by a lookup that found the paper in
+    # OpenAlex, so a failed or empty lookup never clears it (Library.is_retracted decides).
+    ("documents", "index_retracted", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

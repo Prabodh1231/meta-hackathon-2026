@@ -27,6 +27,10 @@ class FakeIndex:
         self.citing_args: list[tuple] = []
         self.fetched: list[Reference] = []
         self.download: Path | None = None
+        self.found_args: list[str] = []
+        self.find_reply: list[dict] | Exception = []
+        self.citing_any_args: list[list[str]] = []
+        self.citing_any_reply: list[dict] | Exception = []
 
     def set_contact(self, _):
         pass
@@ -47,6 +51,18 @@ class FakeIndex:
             {"openalex_id": "W8", "doi": "10.1/inlib", "title": "x", "authors": [], "year": 2021, "venue": "",
              "cited_by_count": 3, "abstract": ""},
         ]
+
+    def find(self, text):
+        self.found_args.append(text)
+        if isinstance(self.find_reply, Exception):
+            raise self.find_reply
+        return [dict(w) for w in self.find_reply]
+
+    def citing_any(self, ids):
+        self.citing_any_args.append(list(ids))
+        if isinstance(self.citing_any_reply, Exception):
+            raise self.citing_any_reply
+        return [dict(w) for w in self.citing_any_reply]
 
     def works_by_doi(self, dois):
         return {d: {"cited_by_count": 7, "abstract": "An abstract."} for d in dois}
@@ -351,3 +367,223 @@ def test_bibtex_and_ieee_carry_volume_issue_and_publisher():
     bib = format_references([d], "bibtex")[0]
     assert "volume = {74}" in bib and "number = {3}" in bib and "publisher = {Wiley}" in bib
     assert "J, vol. 74, no. 3, 2019, pp. 341–355." in format_references([d], "mla")[0]
+
+
+# ---------- adding by DOI or title ----------
+
+def test_a_doi_is_recognised_however_it_is_pasted():
+    from app.openaccess import typed_doi
+    for text in ("10.1257/aer.104.1.183", "doi:10.1257/AER.104.1.183", " https://doi.org/10.1257/aer.104.1.183. ",
+                 "http://dx.doi.org/10.1257/aer.104.1.183"):
+        assert typed_doi(text) == "10.1257/aer.104.1.183", text
+    for text in ("Risk sharing and transactions costs", "see 10.1257/aer.104.1.183", "https://example.org/10.1/x"):
+        assert typed_doi(text) == "", text
+
+
+def test_find_looks_a_doi_up_directly_and_ranks_title_matches_by_closeness():
+    seen = []
+    real = "10.1016/j.jdeveco.2019.06.001"  # a DOI's registrant has four to nine digits
+    oa = routed({f"api.openalex.org/works/doi:{real}": httpx.Response(
+        200, json={**OPENALEX_RECORD, "doi": f"https://doi.org/{real}", "referenced_works": []})}, seen)
+    [w] = oa.find(f"https://doi.org/{real.upper()}")
+    assert (w["title"], w["doi"], w["exact"], w["authors"]) == (TITLE, real, True, ["Ada Okafor", "Raj Raman"])
+
+    hits = [
+        {"id": "https://openalex.org/W5", "title": "Mobile money adoption in rural Kenya: a survey", "publication_year": 2020, "authorships": []},
+        {"id": "https://openalex.org/W1", "title": TITLE, "publication_year": 2019, "doi": f"https://doi.org/{DOI}", "authorships": []},
+        {"id": "https://openalex.org/W9", "title": "", "publication_year": 2021, "authorships": []},  # no title: never offered
+    ]
+    seen.clear()
+    oa = routed({"api.openalex.org/works": httpx.Response(200, json={"results": hits})}, seen)
+    found = oa.find("Mobile money and household savings in rural Kenya!")
+    assert [(w["openalex_id"], w["exact"]) for w in found] == [("W1", True), ("W5", False)]
+    assert seen[0].url.params["filter"] == "title.search:mobile money and household savings in rural kenya"
+    found = oa.find("mobile money household savings kenya")
+    assert found[0]["openalex_id"] == "W1" and found[0]["exact"] is False  # close, not exact: the UI asks first
+
+
+def test_find_work_marks_what_is_in_the_library_and_says_when_openalex_is_down(client, lib, index, tmp_path):
+    have = add(client, lib, tmp_path, "okafor", doi=DOI)
+    index.find_reply = [
+        {**listed(TITLE, DOI), "exact": False},
+        {**listed("Mobile money and the gender gap", "10.1/gap"), "exact": False},
+        {**listed("Agent networks in Uganda", "10.1/agents"), "exact": False},
+        {**listed("A fourth, further away", "10.1/far"), "exact": False},
+    ]
+    r = client.get("/works/find", params={"q": "  mobile   money savings kenya "}).json()
+    assert (r["kind"], r["query"]) == ("title", "mobile money savings kenya")
+    assert [w["in_library"] for w in r["works"]] == [have, None, None]  # the closest three
+    assert r["works"][1]["first_author"] == "Moyo"
+    assert client.get("/works/find", params={"q": "doi:10.1234/gap"}).json()["kind"] == "doi"
+    index.find_reply = httpx.ConnectError("offline")
+    res = client.get("/works/find", params={"q": "10.1234/gap"})
+    assert res.status_code == 400 and "Couldn't reach OpenAlex" in res.json()["detail"]
+    assert client.get("/works/find", params={"q": "   "}).status_code == 400
+
+
+def listed(title, doi):
+    return {"openalex_id": "W" + doi[-3:], "doi": doi, "title": title, "authors": ["Bea Moyo"], "year": 2022,
+            "venue": "J Dev Econ", "cited_by_count": 3, "abstract": ""}
+
+
+def test_find_still_finds_a_title_with_a_misspelt_word():
+    seen = []
+    hits = [{"id": "https://openalex.org/W3", "title": "Transfer entropy", "publication_year": 2011, "authorships": []},
+            {"id": "https://openalex.org/W1", "title": "Urban Transfer Entropy across Scales", "publication_year": 2015, "authorships": []},
+            {"id": "https://openalex.org/W4", "title": "Scale invariance in urban form", "publication_year": 2009, "authorships": []}]  # one word shared
+
+    def page(req):
+        all_words = " OR " not in req.url.params["filter"]
+        return httpx.Response(200, json={"results": [] if all_words else hits})
+
+    oa = routed({"api.openalex.org/works": page}, seen)
+    found = oa.find("urban transfer entropy accross scale")
+    assert [w["openalex_id"] for w in found] == ["W1", "W3"] and not found[0]["exact"]
+    assert seen[1].url.params["filter"] == "title.search:urban OR transfer OR entropy OR accross OR scale"
+
+
+# ---------- what's new in a topic ----------
+
+def arrival(oid, title, year, cites, doi="", published=""):
+    return {"openalex_id": oid, "doi": doi, "title": title, "authors": ["Bea Moyo"], "year": year, "venue": "J Dev",
+            "cited_by_count": 1, "abstract": "", "published": published or f"{year}-01-01", "cites": cites}
+
+
+def topic_of(client, lib, tmp_path, looked_up=2):
+    """A topic of three papers: the first `looked_up` known to OpenAlex (W1 most cited, then W2), the rest not looked up."""
+    ids = [add(client, lib, tmp_path, f"p{i}", title=t, seed=10 + i) for i, t in enumerate([
+        "Mobile money and household savings in rural Kenya", "Agent networks for mobile payments in Uganda",
+        "Village savings groups and digital wallets in Malawi"])]
+    with lib.conn:
+        for i, (oid, n) in enumerate([("W1", 900), ("W2", 40)][:looked_up]):
+            lib.conn.execute("UPDATE documents SET openalex_id = ?, cited_by_count = ?, enriched = 'found' WHERE id = ?",
+                             (oid, n, ids[i]))
+    [f] = lib.create_folder("Mobile money")
+    for d in ids:
+        lib.set_folder_membership(d, f["id"], True)
+    return f["id"], ids
+
+
+def test_whats_new_ranks_works_citing_more_of_the_topic_first(client, lib, index, tmp_path):
+    fid, ids = topic_of(client, lib, tmp_path)
+    in_lib = add(client, lib, tmp_path, "inlib", title="Remittances over mobile money after the floods", doi="10.1/inlib", year=2025, seed=20)
+    with lib.conn:
+        lib.conn.execute("UPDATE documents SET openalex_id = 'W77' WHERE id = ?", (in_lib,))
+    lib.set_folder_membership(in_lib, fid, False)  # in the library, not in the topic
+    index.citing_any_reply = [
+        arrival("W10", "Gender and mobile money savings in Tanzania", 2026, ["W1"]),
+        arrival("W11", "Agent banking and household resilience in East Africa", 2024, ["W1", "W2"]),
+        arrival("W12", "Digital payments in informal markets of Nairobi", 2025, ["W1"]),
+        arrival("W13", "Remittances over mobile money after the floods", 2025, ["W2"], doi="10.1/inlib"),  # in the library by DOI
+        arrival("W77", "A record OpenAlex titles differently", 2025, ["W2"]),  # in the library by OpenAlex id
+        arrival("W78", "", 2026, ["W1", "W2"]),  # no title: nothing to show or search for
+    ]
+    r = client.get(f"/folders/{fid}/new-arrivals").json()
+    assert index.citing_any_args == [["W1", "W2"]]  # one request for the topic, most cited first
+    assert [w["openalex_id"] for w in r["works"]] == ["W11", "W10", "W12"]
+    assert r["works"][0]["cites_titles"] == ["Mobile money and household savings in rural Kenya",
+                                             "Agent networks for mobile payments in Uganda"]
+    assert (r["papers"], r["asked"], r["capped"], r["not_looked_up"], r["found"]) == (3, 2, False, [ids[2]], 3)
+    assert r["checked_at"]
+
+
+def test_whats_new_is_kept_until_asked_again_or_the_topic_changes(client, lib, index, tmp_path):
+    fid, ids = topic_of(client, lib, tmp_path)
+    index.citing_any_reply = [arrival("W10", "Gender and mobile money savings in Tanzania", 2026, ["W1"])]
+    first = client.get(f"/folders/{fid}/new-arrivals").json()
+    assert client.get(f"/folders/{fid}/new-arrivals").json() == first
+    assert len(index.citing_any_args) == 1
+    client.get(f"/folders/{fid}/new-arrivals", params={"refresh": True})
+    assert len(index.citing_any_args) == 2
+    with lib.conn:  # the third paper gets looked up: the topic's known papers changed
+        lib.conn.execute("UPDATE documents SET openalex_id = 'W3', enriched = 'found' WHERE id = ?", (ids[2],))
+    client.get(f"/folders/{fid}/new-arrivals")
+    assert index.citing_any_args[-1] == ["W1", "W2", "W3"]
+
+
+def test_whats_new_asks_about_the_most_cited_papers_of_a_large_topic(client, lib, index, tmp_path, monkeypatch):
+    monkeypatch.setattr("app.library.NEW_ARRIVALS_PAPERS", 1)
+    fid, _ = topic_of(client, lib, tmp_path)
+    r = client.get(f"/folders/{fid}/new-arrivals").json()
+    assert index.citing_any_args == [["W1"]] and (r["asked"], r["known"], r["capped"]) == (1, 2, True)
+
+
+def test_whats_new_when_nothing_is_looked_up_or_openalex_is_down(client, lib, index, tmp_path):
+    fid, ids = topic_of(client, lib, tmp_path, looked_up=0)
+    r = client.get(f"/folders/{fid}/new-arrivals").json()
+    assert (r["works"], r["asked"], sorted(r["not_looked_up"])) == ([], 0, sorted(ids))
+    assert index.citing_any_args == []  # nothing to ask about
+    with lib.conn:
+        lib.conn.execute("UPDATE documents SET openalex_id = 'W1', enriched = 'found' WHERE id = ?", (ids[0],))
+    index.citing_any_reply = httpx.ConnectError("offline")
+    res = client.get(f"/folders/{fid}/new-arrivals")
+    assert res.status_code == 400 and "Couldn't reach OpenAlex" in res.json()["detail"]
+    assert client.get("/folders/999/new-arrivals").status_code == 404
+
+
+def test_a_copy_fetched_for_a_topic_is_filed_in_it(client, lib, index, tmp_path):
+    fid, _ = topic_of(client, lib, tmp_path)
+    pdf = tmp_path / "dl.md"
+    pdf.write_text("Gender and mobile money savings in Tanzania\nBea Moyo\n\n" + prose(9), encoding="utf-8")
+    index.download = pdf
+    r = client.post("/library/fetch-work", json={"title": "Gender and mobile money savings in Tanzania", "doi": "10.1/gender",
+                                                 "year": 2026, "first_author": "Moyo", "folder_id": fid}).json()
+    assert r["status"] == "downloaded"
+    assert [(f["id"], f["state"]) for f in r["document"]["folders"] if f["id"] == fid] == [(fid, "user")]
+    assert client.post("/library/fetch-work", json={"title": "x y z w", "folder_id": 999}).status_code == 404
+
+
+def test_citing_any_asks_in_batches_and_says_which_papers_each_cites():
+    seen = []
+
+    def page(req):
+        batch = req.url.params["filter"].removeprefix("cites:").split("|")
+        works = [{"id": "https://openalex.org/W900", "title": "Shared", "publication_year": 2026, "publication_date": "2026-03-01",
+                  "authorships": [], "referenced_works": [f"https://openalex.org/{batch[0]}", "https://openalex.org/W5"]}]
+        return httpx.Response(200, json={"results": works})
+
+    oa = routed({"api.openalex.org/works": page}, seen)
+    ids = [f"W{i}" for i in range(60)]
+    [w] = oa.citing_any(ids)
+    assert len(seen) == 2 and seen[0].url.params["sort"] == "publication_date:desc"
+    assert seen[0].url.params["per-page"] == "200" and "referenced_works" in seen[0].url.params["select"]
+    # Each batch's reply adds what it cites from that batch; a work found twice is listed once.
+    assert (w["openalex_id"], w["published"], w["cites"]) == ("W900", "2026-03-01", ["W0", "W5", "W50"])
+
+# ---------- retractions ----------
+
+def test_the_lookup_asks_openalex_whether_the_paper_was_retracted():
+    seen = []
+    oa = routed({f"api.openalex.org/works/doi:{DOI}": httpx.Response(
+        200, json={**OPENALEX_RECORD, "referenced_works": [], "is_retracted": True})}, seen)
+    assert oa.record(DOI, TITLE, 2019).retracted is True
+    assert "is_retracted" in seen[0].url.params["select"].split(",")
+    oa = routed({f"api.openalex.org/works/doi:{DOI}": httpx.Response(
+        200, json={**OPENALEX_RECORD, "referenced_works": [], "is_retracted": False})})
+    assert oa.record(DOI, TITLE, 2019).retracted is False
+    # Crossref alone knew the paper: OpenAlex couldn't say either way.
+    oa = routed({f"api.crossref.org/works/{DOI}": httpx.Response(200, json={"message": {"title": [TITLE]}})})
+    assert oa.record(DOI, TITLE, 2019).retracted is None
+
+
+def test_a_retraction_flag_is_kept_until_openalex_itself_says_otherwise(client, lib, index, tmp_path):
+    doc_id = add(client, lib, tmp_path, "okafor", doi=DOI)
+    assert (doc(client, doc_id)["retracted"], doc(client, doc_id)["index_retracted"]) == (False, False)
+    index.records[DOI] = record(retracted=True)
+    client.post("/library/enrich", json={})
+    assert (doc(client, doc_id)["retracted"], doc(client, doc_id)["index_retracted"]) == (True, True)
+    # Neither an outage, nor a paper the indexes no longer find, nor a record without OpenAlex's say clears it.
+    for later in (httpx.ConnectError("offline"), None, record(retracted=None)):
+        index.records[DOI] = later
+        client.post("/library/enrich", json={"refresh": True})
+        assert doc(client, doc_id)["retracted"] is True, later
+    index.records[DOI] = record(retracted=False)
+    client.post("/library/enrich", json={"refresh": True})
+    assert doc(client, doc_id)["retracted"] is False
+
+
+def test_a_title_that_says_retracted_still_counts(client, lib, index, tmp_path):
+    doc_id = add(client, lib, tmp_path, "notice")
+    client.patch(f"/documents/{doc_id}", json={"title": "Retracted: Mobile money and household savings in Kenya"})
+    d = doc(client, doc_id)
+    assert (d["retracted"], d["index_retracted"]) == (True, False)

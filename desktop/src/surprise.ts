@@ -2,10 +2,10 @@ import type { Doc } from './types'
 
 /** Surprise me: a paper from `docs` the reader hasn't opened yet, at random. PDFs first, since they
  *  open in the app's reader; any other paper when there are no PDFs. The reader's own notes aren't
- *  papers to discover, so they're left out. When everything has been read, any of them, and
+ *  papers to discover, and a paper whose file is missing can't be opened, so both are left out. When everything has been read, any of them, and
  *  `allRead` says so. `unread` is how many unread papers there were to pick from. */
 export function pickSurprise(docs: Doc[], random = Math.random): { doc: Doc; allRead: boolean; unread: number } | null {
-  const papers = docs.filter((d) => d.kind !== 'text')
+  const papers = docs.filter((d) => d.kind !== 'text' && !d.file_missing) // a missing file can't be opened
   const pdfs = papers.filter((d) => d.kind === 'pdf')
   const pool = pdfs.length ? pdfs : papers
   if (!pool.length) return null
