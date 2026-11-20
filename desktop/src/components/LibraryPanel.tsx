@@ -49,8 +49,6 @@ interface Props {
   focus?: { id: number; n: number } | null
   /** A topic to open (from the palette); `n` changes per request. */
   focusTopic?: { id: number; n: number } | null
-  /** A saved view to open (from Home); `n` changes per request. */
-  focusView?: { id: string; n: number } | null
   toFront?: number // goes up each time Library is clicked in the sidebar: show the folders
   /** Ctrl K's Surprise me: open a random unread paper from the whole library. */
   surprise?: number
@@ -1078,7 +1076,7 @@ const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? 
  * every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs: allDocs, folders, query, onQuery, selected: drafting, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
-  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, focusView, surprise, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint, onFront, sideSlot, toFront,
+  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, surprise, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint, onFront, sideSlot, toFront,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS) // the chips above the list
@@ -1497,10 +1495,6 @@ export const LibraryPanel = memo(function LibraryPanel({
     setOpenRemoved(null)
     return true
   }
-  // Open a requested saved view (picked on Home).
-  useEffect(() => {
-    if (focusView && views.some((x) => x.id === focusView.id)) openKey(`s:${focusView.id}`)
-  }, [focusView?.n]) // eslint-disable-line react-hooks/exhaustive-deps
   // Library clicked in the sidebar: out of any folder or view, to the folders (the one left stays selected).
   useEffect(() => {
     if (toFront) {

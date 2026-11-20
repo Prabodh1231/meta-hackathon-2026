@@ -431,6 +431,22 @@ export interface MissingWorks {
   works: MissingWork[]
 }
 
+/** What Home lists as needing the writer (GET /home/todo). */
+export interface HomeTodo {
+  /** Drafts that cite something, most recently edited first, as last saved. */
+  drafts: {
+    id: number
+    title: string
+    updated_at: string
+    cited: number[] // library papers it cites, in order of first citation
+    /** Citations whose last check found them partly or not supported. */
+    flagged: { cid: string; doc_id: number; status: CitationStatus; label: string; claim: string }[]
+  }[]
+  /** Works two or more of the chosen draft's sources cite that the library lacks; cited_by counts those sources. */
+  missing: MissingWork[]
+  matrices: { id: number; name: string; papers: number; unverified: number; not_reported: number; gaps: { id: number; title: string }[] }[]
+}
+
 /** downloaded: added to the library · link: free to read online, no PDF to download ·
  *  no_free_copy: found, but paywalled · not_found: no index knows it · failed: an error */
 export type FetchStatus = 'in_library' | 'downloaded' | 'link' | 'no_free_copy' | 'not_found' | 'failed'

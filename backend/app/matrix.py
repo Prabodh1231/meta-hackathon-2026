@@ -216,6 +216,26 @@ class Matrices:
         return [{"id": r["id"], "name": r["name"], "columns": len(json.loads(r["columns"])), "papers": r["papers"],
                  "pending": r["pending"], "updated_at": r["updated_at"]} for r in rows]
 
+    def checks(self) -> list[dict]:
+        """What each matrix still asks of the reader: answers whose quote wasn't found in the paper,
+        cells the paper doesn't report, and the gaps found across its studies (each with the id of
+        its saved finding, so a gap can go into a draft)."""
+        with self.lib.lock:
+            rows = self.lib.conn.execute(
+                "SELECT m.id, m.name, m.gaps, m.updated_at, "
+                "(SELECT COUNT(*) FROM matrix_rows r WHERE r.matrix_id = m.id) AS papers, "
+                "(SELECT COUNT(*) FROM matrix_cells c WHERE c.matrix_id = m.id AND c.status = 'unverified') AS unverified, "
+                "(SELECT COUNT(*) FROM matrix_cells c WHERE c.matrix_id = m.id AND c.status = 'not_reported') AS not_reported "
+                "FROM matrices m ORDER BY m.updated_at DESC, m.id DESC").fetchall()
+        out = []
+        for r in rows:
+            gaps = json.loads(r["gaps"]) if r["gaps"] else []
+            if any("id" not in g for g in gaps):
+                gaps = self.get(r["id"])["gaps"] or []  # saves the older gaps as findings, giving them ids
+            out.append({"id": r["id"], "name": r["name"], "papers": r["papers"], "unverified": r["unverified"],
+                        "not_reported": r["not_reported"], "gaps": [{"id": g["id"], "title": g["title"]} for g in gaps]})
+        return out
+
     def get(self, mid: int) -> dict:
         from .library import short_label
 

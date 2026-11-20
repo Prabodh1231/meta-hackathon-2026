@@ -561,6 +561,15 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
             raise ValueError("ids must be paper ids separated by commas") from None
         return lib.citation_graph(q, doc_ids)
 
+    @app.get("/home/todo")
+    def home_todo(draft_id: int = 0):
+        """What Home lists as needing the writer: every citing draft's open citations, the works the
+        chosen draft's sources keep citing that the library lacks, and what each matrix still asks."""
+        drafts = lib.draft_citations()
+        chosen = next((d for d in drafts if d["id"] == draft_id), None)
+        return {"drafts": drafts, "missing": lib.missing_for(chosen["cited"]) if chosen else [],
+                "matrices": matrices.checks()}
+
     @app.get("/missing")
     def missing_works(q: str = "", limit: int = 100):
         """Works the papers about a topic cite that the library lacks, most cited first."""

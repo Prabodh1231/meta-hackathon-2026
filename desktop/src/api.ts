@@ -33,6 +33,7 @@ import type {
   MatrixPaper,
   MatrixSummary,
   Folder,
+  HomeTodo,
   NewArrivals,
   Health,
   RemovedDoc,
@@ -205,6 +206,8 @@ export const api = {
   /** The library papers closest to one paper, with why: citations, shared references, shared words. */
   related: (docId: number, limit = 5) => request<RelatedDoc[]>('GET', `/documents/${docId}/related?limit=${limit}`),
   citedWorks: (docId: number) => request<CitedWorks>('GET', `/documents/${docId}/cited`),
+  /** What Home lists as needing the writer; the works missing are for draft `draftId`'s sources. */
+  homeTodo: (draftId: number) => request<HomeTodo>('GET', `/home/todo?draft_id=${draftId}`),
   missingWorks: (q = '') => request<MissingWorks>('GET', `/missing${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   fetchCitedWork: (docId: number, idx: number) => request<FetchResult>('POST', `/documents/${docId}/cited/${idx}/fetch`),
 

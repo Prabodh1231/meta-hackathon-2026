@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Home · what needs you</title>
+<style>
+/* Mock only (Nov 21). Home as a to-do desk: one ranked list of what needs you, each row with the button
+   that does it. Every row comes from the real library (13-home-desk-data.js); the buttons only tick the
+   row off here. Each row type and each extra sits behind a switch in the dark top strip. Forest palette. */
+:root {
+  --bg: #f4f6f5; --panel: #fff; --text: #17201c; --muted: #56625c; --border: #dce2df; --line: rgb(23 32 28 / .09);
+  --accent: #1f5c46; --accent-text: #fff; --hover: rgba(31, 92, 70, .07); --rail: #eaeeec; --sel: rgba(31, 92, 70, .1);
+  --ember: #c98a3e; --ember-ink: #8a5714; --follow: #74837c;
+  --ok: #23703f; --ok-bg: #dff3e6; --warn: #8a5f00; --warn-bg: #fbefcf; --bad: #b5371f; --bad-bg: #fbe3df;
+  --pending: #97a39d; --pending-bg: #e7ece9; --matrix: #2f6db5; --matrix-bg: #e1ecf9;
+  --doc-font: Charter, "Bitstream Charter", Georgia, serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --shadow: 0 1px 2px rgb(23 32 28 / .06), 0 8px 24px -12px rgb(23 32 28 / .2);
+}
+[data-theme="dark"] {
+  --bg: #0d1210; --panel: #141b18; --text: #e5ebe8; --muted: #8e9d96; --border: #25302b; --line: rgb(229 235 232 / .08);
+  --accent: #62c29a; --accent-text: #062418; --hover: rgba(255, 255, 255, .07); --rail: #0f1513; --sel: rgba(98, 194, 154, .12);
+  --ember-ink: #e0ad66; --follow: #869a90;
+  --ok: #56d08a; --ok-bg: #12261a; --warn: #e3b341; --warn-bg: #2b2111; --bad: #ff8a78; --bad-bg: #2d1614;
+  --pending: #8e9d96; --pending-bg: #202a26; --matrix: #7fb2f0; --matrix-bg: #15233a;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -12px rgb(0 0 0 / .6);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--bg); color: var(--text); font: 13.5px/1.45 var(--ui); -webkit-font-smoothing: antialiased; }
+button, select { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+.concept { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 8px 14px; background: #0f1a15; color: #d3ddd8; font-size: 12.5px; }
+.concept b { color: #fff; } .concept .sp { flex: 1; }
+.concept .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.concept .chips button, .concept .seg button { padding: 3px 9px; border: 1px solid #34483f; border-radius: 7px; color: #c9d6cf; }
+.concept .chips button[aria-pressed="true"] { background: #62c29a; border-color: #62c29a; color: #062418; font-weight: 600; }
+.concept .seg { display: flex; } .concept .seg button { border-radius: 0; } .concept .seg button:first-child { border-radius: 7px 0 0 7px; } .concept .seg button:last-child { border-radius: 0 7px 7px 0; border-left: 0; }
+.concept .seg button[aria-pressed="true"] { background: #e5ebe8; color: #0f1a15; font-weight: 600; }
+.concept .lbl { color: #8fa39a; }
+
+.app { display: grid; grid-template-columns: 68px minmax(0, 1fr); grid-template-rows: 48px minmax(0, 1fr); min-height: 0; }
+.bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: #23703f; color: #fff; font: 700 15px var(--doc-font); }
+.bar .name { font: 600 14px var(--doc-font); }
+.search { flex: 1; max-width: 460px; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted); }
+.rail { background: var(--rail); border-right: 1px solid var(--border); padding: 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+.rail button { display: grid; justify-items: center; gap: 3px; padding: 8px 0; border-radius: 9px; font-size: 11px; color: var(--muted); }
+.rail button.on { background: var(--hover); color: var(--text); box-shadow: inset 3px 0 0 var(--ember); }
+
+main { overflow: auto; background: var(--panel); }
+.col { max-width: 860px; margin: 0 auto; padding: 30px 28px 60px; }
+.date { color: var(--muted); font-size: 12.5px; }
+.head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin: 4px 0 18px; }
+h1 { margin: 0; font: 300 34px/1.1 var(--display); letter-spacing: -.01em; }
+h1 b { font-weight: 600; }
+h1 .n { color: var(--follow); }
+.working { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
+.working select { max-width: 300px; padding: 5px 28px 5px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2356625c' fill='none' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center; appearance: none; color: var(--text); text-overflow: ellipsis; }
+
+.progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 18px; align-items: center; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 26px; background: var(--bg); }
+.progress .t { font: 600 15px/1.3 var(--doc-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progress .figs { display: flex; gap: 6px 16px; flex-wrap: wrap; color: var(--muted); font-size: 12.5px; }
+.progress .figs i { font-style: normal; font-weight: 600; color: var(--text); }
+.meter { grid-column: 1 / -1; display: flex; height: 6px; border-radius: 99px; overflow: hidden; background: var(--pending-bg); }
+.meter span { display: block; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 8px; font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+.btn.go { background: var(--accent); color: var(--accent-text); }
+.btn.go:hover { filter: brightness(1.08); }
+.btn.quiet { border: 1px solid var(--border); }
+.btn.quiet:hover { background: var(--hover); }
+
+h2 { margin: 26px 0 8px; font: 600 11.5px/1 var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 10px; }
+h2 small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.list { border-top: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 4px 12px; padding: 13px 4px 13px 2px; border-bottom: 1px solid var(--line); transition: opacity .25s, transform .25s; }
+.row.leaving { opacity: 0; transform: translateX(16px); }
+.kind { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; margin-top: 1px; }
+.kind .ic { width: 15px; height: 15px; }
+.k-cite { background: var(--warn-bg); color: var(--warn); }
+.k-bad { background: var(--bad-bg); color: var(--bad); }
+.k-miss { background: var(--pending-bg); color: var(--text); }
+.k-read { background: var(--ok-bg); color: var(--ok); }
+.k-mat { background: var(--matrix-bg); color: var(--matrix); }
+.k-idea { background: var(--sel); color: var(--accent); }
+.body { min-width: 0; }
+.what { display: block; text-align: left; font-weight: 600; font-size: 14px; line-height: 1.35; }
+.what em { font: italic 500 14px var(--doc-font); }
+.why { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.acts { display: flex; align-items: flex-start; gap: 6px; }
+.icon-btn { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
+.icon-btn:hover { background: var(--hover); color: var(--text); }
+.more { grid-column: 2 / -1; display: none; margin-top: 6px; }
+.row.open .more { display: block; }
+.toggle { color: var(--accent); font-size: 12.5px; margin-top: 4px; }
+.toggle:hover { text-decoration: underline; }
+.sub { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--bg); margin-bottom: 6px; }
+.sub q { font: 14px/1.45 var(--doc-font); quotes: "“" "”"; }
+.sub small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.tag { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 11.5px; font-weight: 600; margin-right: 6px; }
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
+.tag.bad { background: var(--bad-bg); color: var(--bad); }
+.linkish { color: var(--accent); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+.linkish:hover { text-decoration: underline; }
+
+.later { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
+.later summary { cursor: pointer; padding: 6px 0; }
+.later li { margin: 4px 0; }
+.later ul { margin: 4px 0 0; padding-left: 18px; }
+.later button { color: var(--accent); margin-left: 6px; }
+
+.caught { text-align: center; padding: 34px 10px 10px; }
+.caught .big { font: 300 26px var(--display); }
+.caught p { color: var(--muted); margin: 6px 0 16px; }
+.caught .pair { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+
+.elsewhere { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+.elsewhere .sp { flex: 1; }
+
+.guide { border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 22px; background: var(--bg); }
+.guide h3 { margin: 0 0 4px; font: 600 18px var(--doc-font); }
+.guide p { margin: 0 0 12px; color: var(--muted); }
+.guide ol { margin: 0; padding-left: 20px; } .guide li { margin: 5px 0; }
+
+.note { margin-top: 26px; padding: 10px 12px; border-left: 3px solid var(--ember); background: var(--bg); color: var(--muted); font-size: 12.5px; }
+@media (max-width: 700px) { .row { grid-template-columns: 30px minmax(0, 1fr); } .acts { grid-column: 2; } .working { margin-left: 0; } .app { grid-template-columns: 0 minmax(0,1fr); } .rail { display: none; } .col { padding: 22px 16px 40px; } }
+</style>
+</head>
+<body>
+<div class="concept" role="region" aria-label="Mock switches">
+  <b>Home · what needs you</b>
+  <span class="lbl">Rows:</span>
+  <span class="chips" id="rowChips"></span>
+  <span class="lbl">Extras:</span>
+  <span class="chips" id="extraChips"></span>
+  <span class="sp"></span>
+  <button id="reset" style="color:#c9d6cf;text-decoration:underline">Bring back ticked rows</button>
+  <span class="seg"><button data-theme-btn="light" aria-pressed="true">Light</button><button data-theme-btn="dark" aria-pressed="false">Dark</button></span>
+</div>
+<div class="app">
+  <div class="bar">
+    <span class="logo">G</span><span class="name">Groundwork</span>
+    <span class="search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search your library</span>
+  </div>
+  <nav class="rail" aria-label="Modes">
+    <button class="on"><svg class="ic" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z"/></svg>Home</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Write</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><path d="M5 4h4v16H5zM11 4h4v16h-4zM17 5l3 .8-3.6 14-3-.8z"/></svg>Library</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="17" r="3"/><path d="M8 8l3 7M16 8l-3 7M8.5 7h7"/></svg>Network</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 4v16"/></svg>Matrix</button>
+  </nav>
+  <main><div class="col" id="col"></div></main>
+</div>
+<script src="13-home-desk-data.js"></script>
+<script>
+const D = window.DESK
+const ROWS = [
+  ['cite', 'Citations to fix'], ['miss', 'Papers you’re missing'], ['read', 'Unread in your topics'],
+  ['other', 'Other drafts'], ['mat', 'Matrix answers to check'], ['retract', 'Retracted paper'], ['idea', 'Gaps to write about'],
+]
+const EXTRAS = [['progress', 'Progress strip'], ['working', 'Working on: picker'], ['later', 'Later / Not needed'], ['elsewhere', 'Links row'], ['newbie', 'As a new user']]
+const on = Object.fromEntries([...ROWS, ...EXTRAS].map(([k]) => [k, k !== 'newbie']))
+const state = { draft: D.drafts.slice().sort((a, b) => b.updated.localeCompare(a.updated))[0].id, done: new Set(), snoozed: new Set(), dropped: new Set(), open: new Set() }
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const plural = (n, w, ws) => `${n} ${n === 1 ? w : ws || w + 's'}`
+const ago = (when) => { const days = Math.round((Date.parse(D.asof) - Date.parse(when.slice(0, 10))) / 864e5); return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago` }
+const short = (t, n = 80) => (t.length > n ? t.slice(0, n).trim() + '…' : t)
+const dedupe = (xs) => { const seen = new Set(); return xs.filter((x) => { const k = x.title.toLowerCase().replace(/\W/g, ''); return seen.has(k) ? false : seen.add(k) }) }
+const titleCase = (t) => (t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t)
+const IC = {
+  cite: '<path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/>',
+  miss: '<path d="M6 3h9l4 4v14H6z"/><path d="M12 10v6M9 13h6"/>',
+  read: '<path d="M3 5h7a3 3 0 0 1 2 1 3 3 0 0 1 2-1h7v14h-7a2 2 0 0 0-2 1 2 2 0 0 0-2-1H3z"/>',
+  mat: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 4v16"/>',
+  warn: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17v.5"/>',
+  idea: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>',
+  later: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>',
+}
+const ic = (k) => `<svg class="ic" viewBox="0 0 24 24">${IC[k]}</svg>`
+const word = { weak: 'Partly supported', unsupported: 'Not supported', quote_not_found: 'Not supported' }
+
+function itemsFor(dr) {
+  const items = []
+  const topic = dr.topics.join(' and ')
+  // 1. This draft's citations a source doesn't fully back
+  if (on.cite && dr.open.length) {
+    const bad = dr.open.filter((o) => o.status !== 'weak').length
+    items.push({ id: `cite${dr.id}`, sec: 'draft', k: bad ? 'k-bad' : 'k-cite', i: 'cite',
+      what: `${plural(dr.open.length, 'citation')} in this draft ${dr.open.length === 1 ? 'is' : 'are'} only partly backed by ${dr.open.length === 1 ? 'its' : 'their'} source`,
+      why: 'The source says something close, but not quite what the sentence claims. Reword the sentence or pick a better passage.',
+      act: dr.open.length === 1 ? 'Check it' : 'Check them',
+      more: dr.open.map((o) => `<div class="sub"><div><span class="tag ${o.status === 'weak' ? 'warn' : 'bad'}">${word[o.status] || o.status}</span><q>${esc(short(o.claim, 150))}</q><small>${esc(o.label)}</small></div><button class="linkish">Open in Check ›</button></div>`).join('') })
+  }
+  // 2. Works this draft's sources keep citing that the library lacks
+  if (on.miss) for (const m of dedupe(dr.missing).slice(0, 2)) {
+    items.push({ id: `miss${dr.id}-${m.title.slice(0, 20)}`, sec: 'draft', k: 'k-miss', i: 'miss',
+      what: `Add <em>${esc(titleCase(short(m.title, 90)))}</em>${m.author ? ` (${esc(m.author)}${m.year ? ' ' + m.year : ''})` : ''}`,
+      why: `${m.by_draft_sources} of the ${dr.sources} sources this draft cites build on it, and ${m.cited_by} papers in your library cite it. It isn’t in your library.`,
+      act: 'Find a free copy',
+      more: `<div class="sub"><div>Cited by these sources of this draft:<small>${m.hit.map((h) => esc(short(h, 110))).join('<br>')}</small></div><button class="linkish">Show in Network ›</button></div>` })
+  }
+  // 3. Unread papers in the topics the draft draws on
+  if (on.read && dr.unread.length) {
+    const n = dr.unread.length
+    items.push({ id: `read${dr.id}`, sec: 'draft', k: 'k-read', i: 'read',
+      what: `${plural(n, 'unread paper')} in ${esc(topic)}`,
+      why: `The topics this draft’s sources come from. The newest arrived ${ago(dr.unread[0].added)}.`,
+      act: 'Read the newest',
+      more: dr.unread.map((u) => `<div class="sub"><div>${esc(short(u.title, 120))}<small>${u.year || ''} · added ${ago(u.added)}</small></div><button class="linkish">Open ›</button></div>`).join('') })
+  }
+  // 4. Other drafts with citations still open
+  const others = D.drafts.filter((x) => x.id !== dr.id && x.open.length)
+  if (on.other && others.length) {
+    const total = others.reduce((n, x) => n + x.open.length, 0)
+    items.push({ id: `other${dr.id}`, sec: 'lib', k: 'k-cite', i: 'cite',
+      what: `${plural(total, 'citation')} to check in ${plural(others.length, 'other draft')}`,
+      why: 'Partly supported citations left in drafts you aren’t working on right now.',
+      act: 'Show them',
+      more: others.map((x) => `<div class="sub"><div>${esc(short(x.title, 90))}<small>${plural(x.open.length, 'citation')} partly supported · edited ${ago(x.updated)}</small></div><button class="linkish">Open draft ›</button></div>`).join('') })
+  }
+  // 5. Matrix answers whose quote wasn't found in the paper
+  if (on.mat) {
+    const ms = D.matrices.filter((m) => m.unverified).sort((a, b) => b.unverified - a.unverified)
+    const rel = ms.find((m) => dr.topics.some((t) => t.toLowerCase().includes(m.name.toLowerCase()) || m.name.toLowerCase().includes(t.toLowerCase()))) || ms[0]
+    if (rel) items.push({ id: `mat-${rel.name}`, sec: 'lib', k: 'k-mat', i: 'mat',
+      what: `${plural(rel.unverified, 'answer')} in the ${esc(rel.name)} matrix quote${rel.unverified === 1 ? 's' : ''} text the paper doesn’t contain`,
+      why: `Muse wrote them, but the quoted words weren’t found in the paper. Confirm or correct each before you cite the matrix. ${rel.not_reported} more cells say the paper doesn’t report it.`,
+      act: 'Review them',
+      more: ms.filter((m) => m !== rel).map((m) => `<div class="sub"><div>${esc(m.name)} matrix<small>${plural(m.unverified, 'answer')} with a quote not found · ${m.rows} papers</small></div><button class="linkish">Open ›</button></div>`).join('') || '' })
+  }
+  // 6. A retracted paper in the library
+  if (on.retract && D.retracted.length) {
+    items.push({ id: 'retract', sec: 'lib', k: 'k-bad', i: 'warn',
+      what: `A paper in your library is retracted: <em>${esc(D.retracted[0].replace(/^RETRACTED:\s*/i, ''))}</em>`,
+      why: 'None of your drafts cite it. Groundwork will warn you if one tries to.',
+      act: 'Open it' })
+  }
+  // 7. A gap a matrix found, to write about
+  if (on.idea) {
+    const m = D.matrices.find((x) => dr.topics.some((t) => t.toLowerCase().includes(x.name.toLowerCase()))) || D.matrices[0]
+    if (m && m.gaps.length) items.push({ id: `idea-${m.name}`, sec: 'idea', k: 'k-idea', i: 'idea',
+      what: `Write about a gap: <em>${esc(m.gaps[1] || m.gaps[0])}</em>`,
+      why: `The ${esc(m.name)} matrix found it across ${m.rows} papers. Muse can draft a paragraph from the matrix, with citations.`,
+      act: 'Draft a paragraph',
+      more: m.gaps.map((g) => `<div class="sub"><div>${esc(g)}</div><button class="linkish">Draft ›</button></div>`).join('') })
+  }
+  return items
+}
+
+function rowHTML(it) {
+  return `<div class="row${state.open.has(it.id) ? ' open' : ''}" data-id="${it.id}">
+    <span class="kind ${it.k}">${ic(it.i)}</span>
+    <div class="body"><span class="what">${it.what}</span><div class="why">${it.why}</div>
+      ${it.more ? `<button class="toggle" data-toggle="${it.id}">${state.open.has(it.id) ? 'Hide' : 'Show'} details</button>` : ''}</div>
+    <div class="acts"><button class="btn go" data-do="${it.id}">${it.act}</button>
+      ${on.later ? `<button class="icon-btn" title="Later: hide until tomorrow" aria-label="Later" data-snooze="${it.id}">${ic('later')}</button><button class="icon-btn" title="Not needed: don’t show this again" aria-label="Not needed" data-drop="${it.id}">${ic('x')}</button>` : ''}</div>
+    ${it.more ? `<div class="more">${it.more}</div>` : ''}
+  </div>`
+}
+
+function render() {
+  const dr = D.drafts.find((x) => x.id === state.draft)
+  const all = itemsFor(dr)
+  const live = all.filter((it) => !state.done.has(it.id) && !state.snoozed.has(it.id) && !state.dropped.has(it.id))
+  const sec = (s) => live.filter((it) => it.sec === s)
+  const st = dr.status, total = Object.values(st).reduce((a, b) => a + b, 0), sup = st.verified || 0, part = st.weak || 0, bad = total - sup - part
+  const w = (n) => `${total ? (100 * n) / total : 0}%`
+  const date = new Date(D.asof + 'T12:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  let h = `<div class="date">${date}</div>`
+  h += `<div class="head"><h1>${live.length ? `<b>What needs you</b> <span class="n">· ${live.length}</span>` : '<b>All caught up</b>'}</h1>`
+  if (on.working) h += `<label class="working">Working on <select id="pick">${D.drafts.map((x) => `<option value="${x.id}"${x.id === dr.id ? ' selected' : ''}>${esc(short(x.title, 60))}</option>`).join('')}</select></label>`
+  h += `</div>`
+  if (on.newbie) h += `<div class="guide"><h3>Four steps to a cited draft</h3><p>Shown until you’ve done each once, then Home is only your to-do list. This is where today’s tagline and tool cards would go.</p><ol><li>Add your papers</li><li>Write a sentence and press Cite</li><li>Open Check and confirm what’s left</li><li>Export with a bibliography</li></ol></div>`
+  if (on.progress) h += `<div class="progress"><div><div class="t">${esc(dr.title)}</div><div class="figs"><span><i>${dr.words.toLocaleString()}</i> words</span><span><i>${sup} of ${total}</i> citations supported</span><span><i>${dr.sources}</i> sources</span><span>edited ${ago(dr.updated)}</span></div></div><button class="btn go">Continue writing ›</button><div class="meter" title="${sup} supported, ${part} partly, ${bad} not"><span style="width:${w(sup)};background:var(--ok)"></span><span style="width:${w(part)};background:var(--warn)"></span><span style="width:${w(bad)};background:var(--bad)"></span></div></div>`
+  if (sec('draft').length) h += `<h2>For this draft <small>what blocks it, first</small></h2><div class="list">${sec('draft').map(rowHTML).join('')}</div>`
+  if (sec('lib').length) h += `<h2>Across your library</h2><div class="list">${sec('lib').map(rowHTML).join('')}</div>`
+  if (sec('idea').length) h += `<h2>When you have time</h2><div class="list">${sec('idea').map(rowHTML).join('')}</div>`
+  if (!live.length) h += `<div class="caught"><div class="big">Nothing needs you right now.</div><p>Your citations are checked and nothing new has come in. New items show up here as they happen.</p><div class="pair"><button class="btn go">Continue writing ›</button><button class="btn quiet">Surprise me: an unread paper</button></div></div>`
+  const parked = [...all.filter((it) => state.done.has(it.id)).map((it) => [it, 'Done']), ...all.filter((it) => state.snoozed.has(it.id)).map((it) => [it, 'Later']), ...all.filter((it) => state.dropped.has(it.id)).map((it) => [it, 'Not needed'])]
+  if (parked.length) h += `<details class="later"><summary>${plural(parked.length, 'item')} ticked off or set aside today</summary><ul>${parked.map(([it, why]) => `<li>${why}: ${it.what.replace(/<[^>]+>/g, '')}<button data-undo="${it.id}">Undo</button></li>`).join('')}</ul></details>`
+  if (on.elsewhere) h += `<div class="elsewhere">${D.counts.docs} sources · ${D.counts.unread} unread · ${D.drafts.length} drafts with citations<span class="sp"></span><button class="btn quiet">Add sources</button><button class="btn quiet">Open the Library</button><button class="btn quiet">New draft</button></div>`
+  h += `<p class="note">Mock. Rows are worked out from your library as of 21 Nov (drafts, citation statuses, ${D.missing_total.total.toLocaleString()} works your papers cite that you don’t have, unread papers, matrix cells). Buttons only tick the row off here. Change “Working on” to see the list re-rank for another draft.</p>`
+  document.getElementById('col').innerHTML = h
+}
+
+function chips(el, list) {
+  el.innerHTML = list.map(([k, label]) => `<button data-chip="${k}" aria-pressed="${on[k]}">${label}</button>`).join('')
+}
+chips(document.getElementById('rowChips'), ROWS)
+chips(document.getElementById('extraChips'), EXTRAS)
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  const d = b.dataset
+  if (d.chip) { on[d.chip] = !on[d.chip]; b.setAttribute('aria-pressed', on[d.chip]); render() }
+  else if (d.themeBtn) { document.documentElement.dataset.theme = d.themeBtn; document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', x === b)) }
+  else if (d.toggle) { state.open.has(d.toggle) ? state.open.delete(d.toggle) : state.open.add(d.toggle); render() }
+  else if (d.do || d.snooze || d.drop) {
+    const id = d.do || d.snooze || d.drop
+    const row = b.closest('.row'); row.classList.add('leaving')
+    setTimeout(() => { (d.do ? state.done : d.snooze ? state.snoozed : state.dropped).add(id); render() }, 230)
+  }
+  else if (d.undo) { state.done.delete(d.undo); state.snoozed.delete(d.undo); state.dropped.delete(d.undo); render() }
+  else if (b.id === 'reset') { state.done.clear(); state.snoozed.clear(); state.dropped.clear(); render() }
+})
+document.addEventListener('change', (e) => { if (e.target.id === 'pick') { state.draft = +e.target.value; render() } })
+render()
+</script>
+</body>
+</html>

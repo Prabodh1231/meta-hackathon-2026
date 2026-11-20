@@ -16,7 +16,7 @@ import { DemoGuide } from './components/DemoGuide'
 import { DraftNameField, DraftsPanel } from './components/DraftsPanel'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { ExportControl } from './components/ExportControl'
-import { GettingStarted, gettingStartedSteps } from './components/GettingStarted'
+import { GettingStarted } from './components/GettingStarted'
 import { HomeView } from './components/HomeView'
 import { NoticeBar, type BarNotice } from './components/NoticeBar'
 import { HistoryPanel } from './components/HistoryPanel'
@@ -291,12 +291,7 @@ export default function App() {
   const [surprise, setSurprise] = useState(0) // bumped by Ctrl K's Surprise me
   const [libFocus, setLibFocus] = useState<{ id: number; n: number } | null>(null)
   const [libTopic, setLibTopic] = useState<{ id: number; n: number } | null>(null) // a topic to open in the library
-  const [libView, setLibView] = useState<{ id: string; n: number } | null>(null) // a saved view to open there (from Home)
   const [libHome, setLibHome] = useState(0) // Library clicked in the sidebar: back to its front page of folders
-  const openView = useCallback((id: string) => {
-    setLibView((v) => ({ id, n: (v?.n ?? 0) + 1 }))
-    setMode('library')
-  }, [])
   const openTopic = useCallback((id: number) => {
     setLibTopic((t) => ({ id, n: (t?.n ?? 0) + 1 }))
     setMode('library')
@@ -520,6 +515,12 @@ export default function App() {
     if (id === draftId) return
     await editor.current?.flush()
     setDraftId(id)
+  }
+
+  /** Open a draft in Write with Check showing, at one of its citations when `cid` is given. */
+  async function checkDraft(id: number, cid?: string) {
+    await switchDraft(id)
+    showCitations(cid ?? null)
   }
 
   async function newDraft() {
@@ -1291,13 +1292,13 @@ export default function App() {
     { group: 'DO', name: "Most-cited papers you don't have", hint: 'what your papers cite most, by topic', run: findMissing },
     { group: 'DO', name: 'Load sample library', hint: 'six files on sleep and coral reefs, and a demo draft', run: trySamples },
     ...(demo ? [{ group: 'DO', name: 'Open demo draft', hint: 'with its checklist', run: openDemoDraft }] : []),
-    { group: 'DO', name: 'Show getting started', hint: 'connect the AI, add sources, write, cite', run: () => (setMode('home'), showTheGuide()) },
+    { group: 'DO', name: 'Show getting started', hint: 'connect the AI, add sources, write, cite', run: () => (setMode('write'), showTheGuide()) },
     { group: 'DO', name: toolsOpen ? 'Close the writing tools' : 'Open the writing tools', hint: 'Ctrl+\\', run: () => (toolsOpen ? setToolsOpen(false) : revealTools()) },
     { group: 'DO', name: 'Focus mode', hint: 'only the page · Ctrl+Shift+F', run: toggleFocus },
     { group: 'DO', name: 'Settings', hint: 'appearance, writing, review, library, AI model', run: () => setShowSettings('appearance') },
   ]
 
-  // Getting started: above an empty draft in Write and as a section of Home, until it's hidden or done.
+  // Getting started: above an empty draft in Write, until it's hidden or done.
   const guide =
     health && !hideGuide && (docs.length === 0 || stats.words === 0)
       ? {
@@ -1328,40 +1329,6 @@ export default function App() {
       /* storage unavailable */
     }
   }
-  // The open draft's first lines, for its card on Home (read when Home is shown, not at every keystroke).
-  const excerpt = useMemo(
-    () => (mode === 'home' ? (editor.current?.getText() ?? '').replace(title, '').replace(/\s+/g, ' ').trim().slice(0, 300) : ''),
-    [mode, stats, draftId, title], // eslint-disable-line react-hooks/exhaustive-deps
-  )
-  const homeLinks = [
-    {
-      head: 'Write',
-      items: [
-        { label: 'New draft', keys: 'Ctrl N', run: () => void newDraft() },
-        { label: 'Import a Word file', keys: 'Ctrl O', run: pickWord },
-        { label: 'Ask Muse', keys: 'Ctrl J', run: askAboutSelection },
-        { label: 'Focus mode', keys: 'Ctrl Shift F', run: toggleFocus },
-      ],
-    },
-    {
-      head: 'Library',
-      items: [
-        { label: 'Add sources', run: openLibrary },
-        { label: 'Review matrix', run: () => setMode('matrix') },
-        { label: 'Citation network', run: () => setMode('network') },
-        { label: 'Find duplicate files', run: findDuplicateFiles },
-      ],
-    },
-    {
-      head: 'Help',
-      items: [
-        { label: 'Search everything', keys: 'Ctrl K', run: () => setPaletteOpen(true) },
-        { label: 'Show getting started', run: showTheGuide },
-        { label: 'Settings', run: () => setShowSettings('appearance') },
-        { label: 'AI model', run: () => setShowSettings('model') },
-      ],
-    },
-  ]
 
   const running = jobs.filter((j) => j.finished_at == null)
   const importingNow = running.length
@@ -1592,33 +1559,25 @@ export default function App() {
           <HomeView
             visible={mode === 'home'}
             docs={docs}
-            folders={folders}
             drafts={drafts}
             draftId={draftId}
-            docTitle={docTitle}
-            excerpt={excerpt}
-            words={stats.words}
-            cites={cites}
             chips={stats.chips}
-            demo={demo}
+            retracted={retracted}
             canTrySamples={!!window.rc?.copySamples}
-            guide={guide ? gettingStartedSteps(guide) : null}
-            onHideGuide={hideTheGuide}
+            onTrySamples={trySamples}
+            onAddSources={openLibrary}
             onWrite={() => {
               setMode('write')
               editor.current?.focus()
             }}
-            onCheck={() => showCitations()}
-            onAddSources={openLibrary}
-            onOpenDraft={switchDraft}
+            onCheckDraft={checkDraft}
             onOpenPaper={showPaper}
-            onOpenTopic={openTopic}
-            onOpenView={openView}
-            onGo={setMode}
-            onTrySamples={trySamples}
-            onOpenDemo={openDemoDraft}
-            onShowDrafts={() => setDraftsOpen(true)}
-            links={homeLinks}
+            onOpenMatrix={(id) => (setOpenMatrix({ id, at: Date.now() }), setMode('matrix'))}
+            onInsertGap={(id) => {
+              setMode('write')
+              void insertFinding(id)
+            }}
+            onLibraryChanged={refresh}
           />
         </div>
 
@@ -1895,7 +1854,6 @@ export default function App() {
             onError={onError}
             focus={libFocus}
             focusTopic={libTopic}
-            focusView={libView}
             toFront={libHome}
             surprise={surprise}
             jobs={jobs}
