@@ -63,13 +63,15 @@ class MockProvider(LLMProvider):
             "description": f"Documents that discuss {', '.join(words)}.",
         }
 
-    def score_folders(self, title: str, summary: str, text: str, folders: list[str]) -> dict[str, int]:
-        # Offline stand-in: how fully the words of a folder's name show up in the document,
-        # matching word stems so "finances" counts for "finance".
+    def score_folders(self, title: str, summary: str, text: str, folders: list[str],
+                      rules: dict[str, str] | None = None) -> dict[str, int]:
+        # Offline stand-in: how fully the words of a folder's name, and of what its rule takes in,
+        # show up in the document, matching word stems so "finances" counts for "finance".
+        from ..library import rule_words
         counts = Counter(re.findall(r"[a-z]+", f"{title} {summary} {text[:8000]}".lower()))
         scores = {}
         for name in folders:
-            words = re.findall(r"[a-z]{2,}", name.lower())
+            words = re.findall(r"[a-z]{2,}", f"{name} {rule_words((rules or {}).get(name, ''))}".lower())
             coverage = []
             for w in words:
                 stem = w if len(w) <= 3 else w[: max(4, len(w) - 2)]

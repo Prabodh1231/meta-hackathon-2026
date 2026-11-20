@@ -67,6 +67,8 @@ interface Props {
   onDismissJob: (id: number) => void
   /** Show a topic in the citation network (its name searched there). */
   onMapTopic?: (name: string) => void
+  /** List recent works citing a topic's papers. */
+  onWhatsNew?: (folderId: number) => void
   /** What the app bar's search box says it searches: the folders, or the open folder. */
   onSearchHint?: (placeholder: string) => void
 }
@@ -1005,7 +1007,7 @@ const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? 
  * every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs: allDocs, folders, query, onQuery, selected: drafting, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
-  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onSearchHint,
+  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS) // the chips above the list
@@ -2112,9 +2114,9 @@ export const LibraryPanel = memo(function LibraryPanel({
                 <NewFolderForm
                   initial={folderSimilarity}
                   onCancel={() => setCreating(false)}
-                  onCreate={(name, similarity) => {
+                  onCreate={(name, similarity, description) => {
                     setCreating(false)
-                    run('Creating topic…', () => api.createFolder(name, similarity))
+                    run('Creating topic…', () => api.createFolder(name, similarity, description))
                   }}
                 />
               )}
@@ -2127,6 +2129,7 @@ export const LibraryPanel = memo(function LibraryPanel({
               onOpen={() => selKey && openKey(selKey)}
               onDraft={toggleDrafting}
               onMap={(name) => onMapTopic?.(name)}
+              onWhatsNew={onWhatsNew}
               onOpenKey={openKey}
             />
           </div>
@@ -2139,13 +2142,13 @@ export const LibraryPanel = memo(function LibraryPanel({
                 <NewFolderForm
                   initial={folderSimilarity}
                   onCancel={() => setCreating(false)}
-                  onCreate={(name, similarity) => {
+                  onCreate={(name, similarity, description) => {
                     setCreating(false)
-                    run('Creating topic…', () => api.createFolder(name, similarity))
+                    run('Creating topic…', () => api.createFolder(name, similarity, description))
                   }}
                 />
               )}
-              {openFolder && <FolderBar folder={openFolder} run={run} />}
+              {openFolder && <FolderBar folder={openFolder} run={run} onWhatsNew={onWhatsNew} />}
 
               {showingRemoved && (
                 <div className="lib-tools">

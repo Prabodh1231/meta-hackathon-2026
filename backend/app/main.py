@@ -166,12 +166,14 @@ class TopicPatch(BaseModel):
 class FolderIn(BaseModel):
     name: str = Field(min_length=1)
     similarity: int = Field(50, ge=0, le=100)  # percent a document must match to be filed here
+    description: str = ""  # what belongs here, in the user's words
 
 
 class FolderPatch(BaseModel):
     name: str | None = Field(None, min_length=1)
     similarity: int | None = Field(None, ge=0, le=100)
     color: str | None = None  # one of FOLDER_COLORS, or "" for none
+    description: str | None = None  # "" clears it
 
 
 class DocFolderIn(BaseModel):
@@ -243,7 +245,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 25
+API_VERSION = 28
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -292,6 +294,7 @@ class WorkIn(BaseModel):
     doi: str = Field("", max_length=300)
     year: int | None = None
     first_author: str = Field("", max_length=200)
+    folder_id: int | None = None  # file a downloaded copy in this topic too
 
 
 class WorksInfoIn(BaseModel):
@@ -456,7 +459,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.post("/library/fetch-work")
     def fetch_work(body: WorkIn):
         """Find a free copy of any work and add it to the library."""
-        return lib.fetch_work(body.title, body.doi, body.year, body.first_author)
+        return lib.fetch_work(body.title, body.doi, body.year, body.first_author, body.folder_id)
 
     @app.post("/works/info")
     def works_info(body: WorksInfoIn):
@@ -493,7 +496,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.post("/folders")
     def create_folder(body: FolderIn):
-        return lib.create_folder(body.name, body.similarity)
+        return lib.create_folder(body.name, body.similarity, body.description)
 
     @app.post("/folders/classify")
     def classify_all():
@@ -501,7 +504,12 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     @app.patch("/folders/{folder_id}")
     def update_folder(folder_id: int, body: FolderPatch):
-        return lib.update_folder(folder_id, body.name, body.similarity, body.color)
+        return lib.update_folder(folder_id, body.name, body.similarity, body.color, body.description)
+
+    @app.get("/folders/{folder_id}/new-arrivals")
+    def topic_new_arrivals(folder_id: int, refresh: bool = False):
+        """Recent works outside the library that cite the topic's papers."""
+        return lib.topic_new_arrivals(folder_id, refresh)
 
     @app.post("/folders/{folder_id}/merge")
     def merge_folders(folder_id: int, body: FolderMergeIn):

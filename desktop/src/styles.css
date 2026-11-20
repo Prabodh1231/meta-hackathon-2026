@@ -464,6 +464,13 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .cite-matrix::before { width: 12px; height: 12px; line-height: 12px; border-radius: 2px; font-size: 9px; }
 .cite-matrix.cite-verified { border-color: var(--matrix); }
 .cite-matrix.cite-verified::before { background: var(--matrix); color: #fff; }
+/* A citation of a retracted paper: a warning sign and the word, whatever its quote's check found
+   (the card and Check still give that verdict). Still citable: a writer may cite a retraction on purpose. */
+.cite.cite-retracted { border-color: var(--bad); background: var(--bad-bg); border-style: solid; }
+.cite.cite-retracted::before { content: "⚠" / ""; color: var(--bad); width: auto; height: auto; background: none; font-size: 12px; }
+.cite.cite-retracted::after { content: "retracted" / ""; color: var(--bad); font-weight: 700; font-size: 11px; }
+.chip-card.chip-card-retracted { border-left-color: var(--bad); }
+.chip-card-retraction { margin: 0; padding: 6px 8px; border-radius: 6px; background: var(--bad-bg); color: var(--bad); font-weight: 600; line-height: 1.4; }
 
 /* Sidebar */
 .tab-body { flex: 1; overflow-y: auto; padding: 14px 16px 24px; }
@@ -800,6 +807,23 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .rl-field > span { font-weight: 600; }
 .rl-field input { padding: 6px 10px; }
 .rl-field .segmented { align-self: flex-start; }
+
+/* What's new in a topic */
+.na-note { display: flex; align-items: center; gap: 12px; margin: 0 20px 8px; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 12.5px; }
+.na-note span { flex: 1; }
+.na-scope { margin: 0 20px 8px; font-size: 12px; }
+.na-cites { display: inline-block; align-self: flex-start; margin-top: 4px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; color: var(--muted); background: var(--hover); }
+.na-cites.many { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 600; }
+.na-foot { padding: 8px 20px 14px; font-size: 12.5px; border-top: 1px solid var(--border); }
+
+/* A topic's rule, in the user's words: how Muse decides what belongs in it */
+.folder-rule-field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.folder-rule-field > span:first-child { font-weight: 600; }
+.folder-rule-field textarea { padding: 6px 10px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font: 13px/1.45 inherit; resize: vertical; }
+.folder-rule-field .muted { font-size: 12px; }
+.folder-rule { margin: 0; font: 14px/1.45 var(--doc-font); color: var(--text); }
+.folder-rule .link, .folder-rule-none .link { font: 12px system-ui, "Segoe UI", sans-serif; }
+.folder-rule-none { margin: 0; font-size: 12px; }
 .sim { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
 .sim input[type="range"] { flex: 1; min-width: 100px; max-width: 280px; accent-color: var(--accent); cursor: pointer; }
 .sim b { color: var(--accent); min-width: 38px; }
@@ -1297,6 +1321,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .cite-list-row.flagged:hover { background: var(--bad-bg); }
 .cite-list-claim { font: 13.5px/1.45 var(--doc-font); color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cite-list-reason { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.cite-list-retracted { align-self: flex-start; font-size: 11.5px; font-weight: 700; color: var(--bad); }
 .cite-list-actions { display: flex; gap: 14px; padding: 0 10px 6px; }
 .cite-list-actions .link { padding: 0; font-size: 12px; }
 .cite-focus-actions { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--border)); border-left: 3px solid var(--bad); border-radius: 10px; background: var(--bad-bg); }
