@@ -203,6 +203,7 @@ Muse files papers by the topic's name. To be more precise, fill in **What belong
 - Inside a topic, **Also in** beside each paper names up to two of its other topics (and **+N** for more); click one to open that topic.
 - Add papers to a topic with **Add to topic**, or drag them: while you drag papers, a shelf of your topics appears along the bottom of the library, and dropping on one adds them to it. They stay in the topics they were already in. Take a paper out with the × on its topic chip in its details. Your own changes survive re-filing.
 - **⋯ → Re-file papers into topics** scores every paper against your topics again.
+- **What's new**, in the panel beside the folders or in an open topic's bar, lists recent works that cite the topic's papers and aren't in your library, as OpenAlex knows them: the ones citing more of the topic first, then the newest, up to ten. Each says how many of the topic's papers it cites (point at it to see which). **Get a free copy** finds a free, legal copy and adds it to your library and to the topic; **Get free copies of all** does the whole list, three at a time. When there's no free copy, **Publisher's page** opens the work at its publisher. It only asks OpenAlex when you press it (one request per 50 papers, for a topic's 100 most-cited papers at most), and keeps the answer for a few hours; **Check again** asks afresh. Works citing a paper that hasn't been looked up in the index can't be found: a note says how many, and **Look them up** does it.
 
 ### Pick the sources to draft from
 

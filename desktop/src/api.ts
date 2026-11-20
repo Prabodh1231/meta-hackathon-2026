@@ -30,6 +30,7 @@ import type {
   MatrixPaper,
   MatrixSummary,
   Folder,
+  NewArrivals,
   Health,
   RemovedDoc,
   IngestJob,
@@ -64,7 +65,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 26
+export const API_VERSION = 27
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -160,7 +161,7 @@ export const api = {
     request<EnrichResult>('POST', '/library/enrich', { doc_ids: docIds ?? null, refresh }),
   citingWorks: (docId: number, sort: 'cited' | 'recent') => request<CitingWorks>('GET', `/documents/${docId}/citing?sort=${sort}`),
   /** Find a free copy of any work and add it to the library. */
-  fetchWork: (w: { title: string; doi: string; year: number | null; first_author: string }) =>
+  fetchWork: (w: { title: string; doi: string; year: number | null; first_author: string; folder_id?: number }) =>
     request<FetchResult>('POST', '/library/fetch-work', w),
   /** Citations worldwide and abstracts, by DOI. */
   worksInfo: (dois: string[]) => request<Record<string, IndexWork>>('POST', '/works/info', { dois }),
@@ -180,6 +181,8 @@ export const api = {
   updateFolder: (id: number, patch: { name?: string; similarity?: number; color?: FolderColor | ''; description?: string }) =>
     request<Folder[]>('PATCH', `/folders/${id}`, patch),
   deleteFolder: (id: number) => request<Folder[]>('DELETE', `/folders/${id}`),
+  /** Recent works outside the library that cite a topic's papers (`refresh` skips the answer kept from before). */
+  topicNewArrivals: (id: number, refresh = false) => request<NewArrivals>('GET', `/folders/${id}/new-arrivals${refresh ? '?refresh=true' : ''}`),
   /** Fold one topic into another: its papers move over and it is deleted. */
   mergeFolders: (id: number, intoId: number) => request<Folder[]>('POST', `/folders/${id}/merge`, { into_id: intoId }),
   classifyDocument: (docId: number) => request<Doc>('POST', `/documents/${docId}/classify`),
