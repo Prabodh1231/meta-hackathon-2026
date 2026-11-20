@@ -25,7 +25,7 @@ export interface Step {
 }
 
 /** Connecting the AI, then the three steps of using the app, with the button for each. The banner above
- * an empty draft and the Home page both show these, so they tick off together. */
+ * an empty draft shows these, and they tick themselves off. */
 export function gettingStartedSteps({ mock, sources, words, citations, onConnectModel, onAddSources, onTrySamples, onAsk, onOpenWord }: Omit<Props, 'onHide'>): Step[] {
   return [
     {

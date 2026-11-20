@@ -731,6 +731,18 @@ class Library:
             "total": len(works), "cited_twice": sum(1 for w in works if w["cited_by"] >= 2), "works": works[:limit],
         }
 
+    def missing_for(self, doc_ids: list[int], min_citers: int = 2, limit: int = 5) -> list[dict]:
+        """Works that at least `min_citers` of the given papers (a draft's sources, say) cite and the
+        library lacks, the most cited by them first: what those papers build on that isn't here."""
+        docs, refs, ref_matches, _ = self._network()
+        known = {d["id"] for d in docs}
+        citing = {int(i) for i in doc_ids} & known
+        if not citing:
+            return []
+        works = [w for w in missing_works(docs, refs, citing, ref_matches) if w["cited_by"] >= min_citers][:limit]
+        titles = {d["id"]: d["title"] for d in docs}
+        return [{**w, "citers": [{"id": i, "title": titles[i]} for i in w["citers"]]} for w in works]
+
     def citation_graph(self, query: str = "", doc_ids: list[int] | None = None) -> dict:
         """Who cites whom: among the papers about a topic, among `doc_ids` (the papers the user
         ticked), or across the whole library when neither is given."""
@@ -2826,6 +2838,27 @@ class Library:
                 "SELECT id, title, named, content, updated_at FROM drafts ORDER BY updated_at DESC, id DESC").fetchall()
         return [{"id": r["id"], "title": r["title"], "named": bool(r["named"]), "updated_at": r["updated_at"],
                  "words": draft_review.word_count(draft_review.plain_text(r["content"]))} for r in rows]
+
+    def draft_citations(self) -> list[dict]:
+        """Every draft that cites something, most recently edited first: the papers it cites and the
+        citations whose last check didn't find them supported (not supported, partly supported, or
+        the quote gone from the source). Read from the saved drafts, so the open one may be ahead."""
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT id, title, content, updated_at FROM drafts ORDER BY updated_at DESC, id DESC").fetchall()
+        out = []
+        for r in rows:
+            chips = [c for c in draft_review.citations(r["content"]) if c.get("docId")]
+            if not chips:
+                continue
+            out.append({
+                "id": r["id"], "title": r["title"], "updated_at": r["updated_at"],
+                "cited": list(dict.fromkeys(int(c["docId"]) for c in chips)),
+                "flagged": [{"cid": c.get("cid") or "", "doc_id": int(c["docId"]), "status": c.get("status") or "",
+                             "label": c.get("label") or "", "claim": c.get("claim") or ""}
+                            for c in chips if c.get("status") in ("weak", "unsupported", "quote_not_found")],
+            })
+        return out
 
     def create_draft(self, title: str = "Untitled", content: str = "", named: bool = False) -> dict:
         with self.lock, self.conn:

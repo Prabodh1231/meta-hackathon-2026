@@ -75,6 +75,21 @@ def blocks(content: str | dict | None) -> list[Block]:
     return out
 
 
+def citations(content: str | dict | None) -> list[dict]:
+    """Every citation chip's attributes, in the order they appear (tables and lists included)."""
+    out: list[dict] = []
+
+    def walk(nodes: list[dict]) -> None:
+        for node in nodes:
+            if node.get("type") == "citation":
+                out.append(node.get("attrs") or {})
+            elif node.get("content"):
+                walk(node["content"])
+
+    walk(parse(content).get("content") or [])
+    return out
+
+
 def plain_text(content: str | dict | None) -> str:
     return "\n\n".join(b.text for b in blocks(content))
 
