@@ -142,6 +142,20 @@ def _setting_ok(key: str, spec: tuple, value) -> bool:
 USER_SETTINGS_DEFAULTS = {k: _setting_default(v) for k, v in USER_SETTINGS.items()}
 
 
+
+# A word in the title, tags or keywords that says the paper was withdrawn: the only sign before
+# OpenAlex was asked, and still the one for papers OpenAlex doesn't know.
+_RETRACTED_WORDS = re.compile(r"\bretract(ed|ion)?\b", re.I)
+
+
+def is_retracted(doc: dict) -> bool:
+    """Whether to warn that a paper was retracted: OpenAlex says so, or its own title, tags or
+    keywords do. The one rule; the UI and the Word export both read the result (`retracted`)."""
+    if doc.get("index_retracted"):
+        return True
+    words = " ".join([doc.get("title") or "", *(doc.get("tags") or []), *(doc.get("keywords") or [])])
+    return bool(_RETRACTED_WORDS.search(words))
+
 class Library:
     def __init__(self, settings: Settings, provider: LLMProvider | None = None,
                  open_access: openaccess.OpenAccess | None = None, embedder=None, reranker=None):
@@ -929,6 +943,8 @@ class Library:
             d["published_checked"] = bool(d["published_checked"])
             d["unread"], d["starred"] = bool(d["unread"]), bool(d["starred"])
             d["highlights"] = marked.get(d["id"], 0)  # passages the reader highlighted in it
+            d["index_retracted"] = bool(d["index_retracted"])
+            d["retracted"] = is_retracted(d)
             out.append(d)
         return out
 
@@ -1165,6 +1181,8 @@ class Library:
         if r["doi"] and rec.title and not unread and not openaccess.titles_agree(r["title"], rec.title):
             return {**updates, "enriched": "mismatch", "index_title": rec.title}
         updates.update(enriched="found", openalex_id=rec.openalex_id, cited_by_count=rec.cited_by_count)
+        if rec.retracted is not None:  # None: OpenAlex didn't have it, so it couldn't say
+            updates["index_retracted"] = int(rec.retracted)
 
         def take(key: str, value, only_if_empty: bool = False) -> None:
             if value in (None, "", []) or key in edited or (only_if_empty and r.get(key)):
