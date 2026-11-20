@@ -792,6 +792,13 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .newfolder input:not([type="range"]) { padding: 6px 10px; background: var(--panel); }
 .newfolder p { margin: 0; }
 .newfolder-actions { display: flex; gap: 6px; }
+/* Keeping one version of a paper and moving everything to it (the duplicate finder) */
+.vm-pub { margin: 4px 0 10px; }
+.vm-confirm { display: flex; flex-direction: column; gap: 6px; }
+.vm-confirm ul { margin: 0; padding-left: 18px; line-height: 1.6; }
+.vm-confirm p { margin: 0; }
+.vm-report { margin: 0 20px 8px; }
+.vm-check { margin: 4px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 12.5px; }
 .sim { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
 .sim input[type="range"] { flex: 1; min-width: 100px; max-width: 280px; accent-color: var(--accent); cursor: pointer; }
 .sim b { color: var(--accent); min-width: 38px; }

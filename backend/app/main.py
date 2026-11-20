@@ -236,7 +236,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 24
+API_VERSION = 25
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -422,6 +422,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def find_passages(q: str, limit: int = 12):
         """Search inside the papers: the best passage of each paper that has every word of `q`."""
         return lib.find_passages(q, max(1, min(limit, 50)))
+
+    @app.post("/documents/{other_id}/merge-into/{kept_id}")
+    def merge_into(other_id: int, kept_id: int, dry_run: bool = False):
+        """Keep one copy of a paper and move everything from the other copy to it, then remove that one."""
+        return lib.merge_into(other_id, kept_id, dry_run)
 
     @app.get("/library/removed")
     def list_removed():

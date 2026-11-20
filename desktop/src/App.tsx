@@ -1964,6 +1964,19 @@ export default function App() {
         <DuplicateFilesDialog
           getCited={() => editor.current?.citedDocIds() ?? []}
           onChanged={refresh}
+          onBeforeMerge={async () => {
+            await editor.current?.flush()
+          }}
+          onMerged={async (openCheck) => {
+            // The open draft's citations may have moved to the copy kept: show it as saved.
+            const d = await api.getDraft(draftId).catch(() => null)
+            if (d) editor.current?.setContent(d.content)
+            await refresh()
+            if (openCheck) {
+              setMode('write')
+              setTab('check')
+            }
+          }}
           onClose={() => setDupFilesOpen(false)}
           onError={onError}
         />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { DuplicateDoc, DuplicateGroup, DuplicateKind, FileDuplicateReport } from '../types'
+import type { DuplicateDoc, DuplicateGroup, DuplicateKind, FileDuplicateReport, MergeReport } from '../types'
+import { VersionMerge, andList, movedText, publishedOf } from './VersionMerge'
 
 const KIND_ORDER: DuplicateKind[] = ['exact_file', 'same_text', 'likely_same', 'similar']
 const SHORT: Record<DuplicateKind, string> = {
@@ -31,6 +32,10 @@ function byline(d: DuplicateDoc): string {
 interface Props {
   getCited: () => number[] // documents the draft cites
   onChanged: () => Promise<void> // the library changed: reload it
+  /** Before moving one copy's citations to another: save the open draft. */
+  onBeforeMerge: () => Promise<void>
+  /** After: reload the open draft (its citations may have moved), and show Check. */
+  onMerged: (openCheck: boolean) => Promise<void>
   onClose: () => void
   onError: (msg: string) => void
 }
@@ -39,12 +44,13 @@ type Pending = { id: number; action: 'trash' | 'remove' }
 
 /** Finds duplicate files in the library and recommends cleanup. Nothing is removed unless the
  * user picks a file and confirms; files go to the Recycle Bin / Trash, never deleted outright. */
-export function DuplicateFilesDialog({ getCited, onChanged, onClose, onError }: Props) {
+export function DuplicateFilesDialog({ getCited, onChanged, onBeforeMerge, onMerged, onClose, onError }: Props) {
   const [report, setReport] = useState<FileDuplicateReport | null>(null)
   const [busy, setBusy] = useState<string | null>('Checking your library…')
   const [filter, setFilter] = useState<DuplicateKind | 'all'>('all')
   const [pending, setPending] = useState<Pending | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  const [merged, setMerged] = useState<MergeReport | null>(null)
   const canTrash = !!window.rc?.trashFile
 
   async function scan() {
@@ -88,6 +94,14 @@ export function DuplicateFilesDialog({ getCited, onChanged, onClose, onError }: 
     }
     await scan()
   }
+
+  const afterMerge = async (r: MergeReport) => {
+    setDone(null)
+    setMerged(r)
+    await onMerged(false).catch(() => {})
+    await scan()
+  }
+  const merge = { onBefore: onBeforeMerge, onDone: afterMerge, onError }
 
   const groups = report?.groups.filter((g) => filter === 'all' || g.kind === filter) ?? []
   const total = report?.groups.length ?? 0
@@ -141,6 +155,31 @@ export function DuplicateFilesDialog({ getCited, onChanged, onClose, onError }: 
             {done} <button className="link" onClick={() => setDone(null)}>Dismiss</button>
           </p>
         )}
+        {merged && (
+          <div className="vm-report" role="status">
+            <p className="df-done">
+              Moved {movedText(merged)} to “{merged.kept_title}”, and removed the other copy.{' '}
+              <button className="link" onClick={() => setMerged(null)}>Dismiss</button>
+            </p>
+            {merged.citations_to_check + merged.highlights_unplaced + merged.cells_to_check > 0 && (
+              <p className="vm-check">
+                {andList([
+                  merged.citations_to_check && `${merged.citations_to_check} citation${merged.citations_to_check === 1 ? '' : 's'}`,
+                  merged.cells_to_check && `${merged.cells_to_check} matrix cell${merged.cells_to_check === 1 ? '' : 's'}`,
+                  merged.highlights_unplaced && `${merged.highlights_unplaced} highlight${merged.highlights_unplaced === 1 ? '' : 's'}`,
+                ])}{' '}
+                {merged.citations_to_check + merged.highlights_unplaced + merged.cells_to_check === 1 ? 'needs a check: its' : 'need a check: their'}{' '}
+                passage wasn't found word for word in the copy kept.
+                {merged.citations_to_check > 0 && (
+                  <>
+                    {' '}
+                    <button className="link" onClick={() => onMerged(true).then(onClose)}>Open Check</button>
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+        )}
 
         {report && total > 0 && (
           <div className="lib-filters df-filters" role="group" aria-label="Show">
@@ -163,7 +202,7 @@ export function DuplicateFilesDialog({ getCited, onChanged, onClose, onError }: 
             </div>
           )}
           {groups.map((g, i) => (
-            <Group key={`${g.kind}-${g.docs.map((d) => d.id).join('-')}-${i}`} group={g} canTrash={canTrash} pending={pending} setPending={setPending} act={act} disabled={!!busy} />
+            <Group key={`${g.kind}-${g.docs.map((d) => d.id).join('-')}-${i}`} group={g} canTrash={canTrash} pending={pending} setPending={setPending} act={act} disabled={!!busy} merge={merge} />
           ))}
         </div>
       </div>
@@ -178,6 +217,7 @@ function Group({
   setPending,
   act,
   disabled,
+  merge,
 }: {
   group: DuplicateGroup
   canTrash: boolean
@@ -185,7 +225,12 @@ function Group({
   setPending: (p: Pending | null) => void
   act: (d: DuplicateDoc, action: Pending['action'], g: DuplicateGroup) => void
   disabled: boolean
+  merge: { onBefore: () => Promise<void>; onDone: (r: MergeReport) => Promise<void>; onError: (m: string) => void }
 }) {
+  // Two files of the same paper can become one, keeping everything: the published one, when one
+  // clearly is (a DOI or journal), or whichever the user picks when that isn't clear.
+  const pub = publishedOf(g)
+  const pair = g.kind === 'likely_same' && g.docs.length === 2
   return (
     <article className={`df-group df-${g.kind}`}>
       <div className="df-group-head">
@@ -203,6 +248,11 @@ function Group({
             <li key={r}>{r}</li>
           ))}
         </ul>
+      )}
+      {pub && (
+        <div className="df-actions vm-pub">
+          <VersionMerge group={g} keep={pub} disabled={disabled} {...merge} />
+        </div>
       )}
       <div className="df-docs">
         {g.docs.map((d) => {
@@ -275,6 +325,7 @@ function Group({
                 </div>
               ) : (
                 <div className="df-actions">
+                  {pair && !pub && <VersionMerge group={g} keep={d} disabled={disabled} {...merge} />}
                   {canTrash && d.exists && (
                     <button className={keep ? '' : 'ghost'} onClick={() => setPending({ id: d.id, action: 'trash' })} disabled={disabled}>
                       Move to Recycle Bin…
