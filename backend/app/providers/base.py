@@ -67,11 +67,14 @@ class LLMProvider(ABC):
         user = "\n\n---\n\n".join(s[:1500] for s in samples[:10])
         return self._json(prompts.TOPIC_SYSTEM, user, prompts.TOPIC_SCHEMA, max_tokens=200)
 
-    def score_folders(self, title: str, summary: str, text: str, folders: list[str]) -> dict[str, int]:
-        """How well a document fits each named folder, 0-100 (folder name -> score)."""
+    def score_folders(self, title: str, summary: str, text: str, folders: list[str],
+                      rules: dict[str, str] | None = None) -> dict[str, int]:
+        """How well a document fits each named folder, 0-100 (folder name -> score). `rules`: what
+        belongs in a folder, in the user's words, for the folders that have one."""
         # Filing can start before the summary is written; then it goes by the text alone.
         about = f"Title: {title}\n" + (f"Summary: {summary}\n" if summary else "")
-        user = f"Folders: {json.dumps(folders)}\n\n{about}\n{text[:6000]}"
+        listed = [{"folder": f, "what belongs here": rules[f]} if rules and rules.get(f) else {"folder": f} for f in folders]
+        user = f"Folders: {json.dumps(listed, ensure_ascii=False)}\n\n{about}\n{text[:6000]}"
         out = self._json(prompts.FOLDER_FIT_SYSTEM, user, prompts.FOLDER_FIT_SCHEMA, max_tokens=60 + 40 * len(folders))
         by_name = {f.lower(): f for f in folders}
         scores: dict[str, int] = {}

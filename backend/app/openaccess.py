@@ -6,6 +6,7 @@ never worked around. And what the indexes know about a library paper: the publis
 its abstract, its reference list, how often it is cited and by which works."""
 
 import dataclasses
+import difflib
 import logging
 import json
 import re
@@ -34,7 +35,7 @@ MIN_TITLE_WORDS = 4  # shorter parsed titles ("Introduction", a journal name) fi
 TITLE_MATCH = 0.88  # how close an index's title must be to the reference's own
 # What a library paper's lookup asks OpenAlex for, in one request.
 RECORD_FIELDS = ("id,doi,title,publication_year,publication_date,authorships,primary_location,biblio,"
-                 "abstract_inverted_index,cited_by_count,referenced_works")
+                 "abstract_inverted_index,cited_by_count,referenced_works,is_retracted")
 LIST_FIELDS = "id,doi,title,publication_year,authorships,primary_location,cited_by_count"
 # Where a free copy can be read, for fetch().
 OA_FIELDS = "doi,title,publication_year,publication_date,open_access,best_oa_location,locations"
@@ -43,6 +44,7 @@ LOOKUP_FIELDS = ",".join(dict.fromkeys(RECORD_FIELDS.split(",") + OA_FIELDS.spli
 LOOKUP_MAX_AGE_SECONDS = 600  # a looked-up work is reused this long (a fetched paper's record follows soon)
 LOOKUP_MEMO_SIZE = 256
 IDS_PER_REQUEST = 50  # OpenAlex takes up to this many ids in one filter
+CITING_ANY_PER_REQUEST = 200  # the newest citing works asked for per batch of cited ones (OpenAlex's page limit)
 CITED_BY_MAX_AGE_DAYS = 30  # a cached work's cited_by_count is fetched again when older than this
 CACHE_FILE = "openalex_cache.db"  # in the app data folder
 
@@ -147,6 +149,9 @@ class Record:
     abstract: str = ""
     openalex_id: str = ""  # "W2741809807"
     cited_by_count: int | None = None  # citations worldwide, as OpenAlex counts them
+    # OpenAlex's retraction flag; None when OpenAlex didn't have the work (Crossref alone found it),
+    # so a lookup that couldn't tell never clears a flag set before.
+    retracted: bool | None = None
     references: list[Reference] = field(default_factory=list)  # its reference list, in order
 
 
@@ -244,6 +249,19 @@ def _crossref_date(item: dict) -> str:
         if parts and parts[0]:
             return "-".join(f"{n:02d}" if i else str(n) for i, n in enumerate(parts[:3]))
     return ""
+
+
+# A DOI as people paste it: bare, "doi:10.…", or a doi.org link.
+DOI_TYPED = re.compile(r"^\s*(?:https?://(?:dx\.)?doi\.org/|doi:\s*)?(10\.\d{4,9}/\S+?)[\s.]*$", re.I)
+FIND_LIMIT = 5  # works a typed title is matched against
+FIND_FALLBACK_LIMIT = 25  # when no title has every word typed: titles with any of them
+FIND_FALLBACK_CLOSENESS = 0.6  # ...kept only this close to what was typed (a typo scores ~0.95, an unrelated title ~0.5)
+
+
+def typed_doi(text: str) -> str:
+    """The DOI in what was typed, lower case, or '' when it isn't one."""
+    m = DOI_TYPED.match(text or "")
+    return m.group(1).lower() if m else ""
 
 
 def _doi(value: str | None) -> str:
@@ -473,6 +491,52 @@ class OpenAccess:
         body = res.json()
         return (body.get("meta") or {}).get("count") or 0, [listed_work(w) for w in body.get("results") or []]
 
+    def find(self, text: str) -> list[dict]:
+        """The works a typed DOI or title names, closest first, each listed as listed_work with
+        `exact`: the DOI itself, or the same title once case and punctuation are set aside. A title
+        is searched in OpenAlex's titles only and the hits ranked by how close they are, since
+        people type titles from memory; fetch() alone would want it almost exactly right."""
+        doi = typed_doi(text)
+        if doi:
+            w = self._openalex_work(Reference(raw=doi, doi=doi))
+            return [{**listed_work(w), "exact": True}] if w else []
+        wanted = norm(text)
+        if not wanted:
+            return []
+
+        def titles(query: str, limit: int) -> list[dict]:
+            res = self._get(f"{OPENALEX}/works", self._params(
+                select=LIST_FIELDS + ",abstract_inverted_index", filter=f"title.search:{query}", **{"per-page": str(limit)}))
+            return [w for w in (listed_work(x) for x in (res.json().get("results") or [])) if w["title"].strip()] if res else []
+
+        closeness = lambda w: difflib.SequenceMatcher(None, wanted, norm(w["title"])).ratio()
+        works = titles(wanted, FIND_LIMIT)
+        if not works:
+            # Every word must be in the title, so one misspelt word finds nothing: then any of them,
+            # more hits, and the closeness ranking below picks the paper out. Any one shared word
+            # brings in titles about something else entirely, so only close ones are kept.
+            words = [w for w in wanted.split() if len(w) > 2]
+            if len(words) > 1:
+                works = [w for w in titles(" OR ".join(words), FIND_FALLBACK_LIMIT) if closeness(w) >= FIND_FALLBACK_CLOSENESS]
+        return [{**w, "exact": norm(w["title"]) == wanted} for w in sorted(works, key=closeness, reverse=True)]
+
+    def citing_any(self, openalex_ids: list[str], limit: int = CITING_ANY_PER_REQUEST) -> list[dict]:
+        """The newest works citing any of these works, IDS_PER_REQUEST of them to a request rather
+        than one request each. Each is listed as listed_work, with its publication date and
+        `cites`: which of the given works it cites."""
+        ids = list(dict.fromkeys(openalex_ids))
+        wanted, out = set(ids), {}
+        for i in range(0, len(ids), IDS_PER_REQUEST):
+            batch = ids[i:i + IDS_PER_REQUEST]
+            res = self._get(f"{OPENALEX}/works", self._params(
+                select=LIST_FIELDS + ",publication_date,referenced_works", filter="cites:" + "|".join(batch),
+                sort="publication_date:desc", **{"per-page": str(limit)}))
+            for w in (res.json().get("results") or []) if res else []:
+                item = out.setdefault(_short_id(w.get("id")), {**listed_work(w), "published": w.get("publication_date") or ""})
+                cited = {_short_id(u) for u in w.get("referenced_works") or []} & wanted
+                item["cites"] = sorted(set(item.get("cites", [])) | cited)
+        return list(out.values())
+
     def search(self, query: str, limit: int = 15) -> list[dict]:
         """Works matching a free-text query (title, abstract and full text), most relevant first."""
         res = self._get(f"{OPENALEX}/works", self._params(
@@ -508,6 +572,7 @@ class OpenAccess:
             publisher=cr.get("publisher") or "",
             abstract=_abstract(w.get("abstract_inverted_index")) or _jats(cr.get("abstract")),
             openalex_id=_short_id(w.get("id")), cited_by_count=w.get("cited_by_count"),
+            retracted=bool(w["is_retracted"]) if w.get("is_retracted") is not None else None,
         )
         ids = [_short_id(u) for u in w.get("referenced_works") or []]
         if ids:

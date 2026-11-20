@@ -36,7 +36,9 @@ export function FolderArt({ item }: { item: FrontItem }) {
   )
 }
 
-const colorClass = (item: FrontItem) => (item.kind === 'smart' ? ' smart' : item.folder?.color ? ` c-${item.folder.color}` : '')
+// File missing is the one smart folder in amber: it asks for something to be done.
+const colorClass = (item: FrontItem) =>
+  item.kind === 'smart' ? ` smart${item.view === 'missing' ? ' smart-warn' : ''}` : item.folder?.color ? ` c-${item.folder.color}` : ''
 
 /** The name as it shows, or a field to rename it in place. */
 function Name({ item, renaming, onRenamed }: { item: FrontItem; renaming: boolean; onRenamed: (key: string, name: string | null) => void }) {
