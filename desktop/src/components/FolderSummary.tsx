@@ -1,10 +1,9 @@
 import type { Doc } from '../types'
 import type { FrontItem } from './FolderTile'
-import { plural } from './libraryParts'
+import { authorsShort, plural } from './libraryParts'
 
 const surname = (a: string) => (a.includes(',') ? a.split(',')[0] : a.split(' ').pop() ?? a).trim()
-const short = (t: string) => (t.length > 72 ? t.slice(0, 70) + '…' : t)
-const MAX_BARS = 16
+const MAX_BARS = 12
 
 /** Papers by year as bars: one per year, or per span of years when they cover more than MAX_BARS. */
 function yearBars(years: number[]) {
@@ -18,12 +17,13 @@ function yearBars(years: number[]) {
 
 /** What is in the selected folder, beside the front page. Its column is always there, empty until a
  * folder is selected, so selecting one never moves the folders under the pointer. */
-export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, onMap, onOpenKey, onWhatsNew, onSurprise }: {
+export function FolderSummary({ item, topics, cited, drafting, onOpen, onClose, onDraft, onMap, onOpenKey, onWhatsNew, onSurprise }: {
   item: FrontItem | undefined
   topics: FrontItem[] // every topic, to say which share papers with this one
   cited: Set<number>
   drafting: Set<number>
   onOpen: () => void
+  onClose: () => void // let the folder go
   onDraft: (docs: Doc[]) => void
   onMap: (name: string) => void
   onOpenKey: (key: string) => void
@@ -68,18 +68,18 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
 
   return (
     <aside className="lf-summary" aria-label={`About ${item.name}`}>
-      <h3>{item.name}</h3>
-      <p className="muted">
+      <div className="lf-sum-head">
+        <h3>{item.name}</h3>
+        <button className="lf-sum-x" onClick={onClose} aria-label="Hide this panel" title="Hide this panel (the button beside More brings it back)">
+          ×
+        </button>
+      </div>
+      <p className="lf-sum-meta">
         {item.countText ?? plural(item.count, 'paper')}
         {surprising && unread > 0 && ` · ${unread} unread`}
         {bars && ` · ${bars.lo === bars.hi ? bars.lo : `${bars.lo}–${bars.hi}`}`}
-        {item.rule && (
-          <>
-            <br />
-            {item.rule}
-          </>
-        )}
       </p>
+      {item.rule && <p className="lf-sum-rule">{item.rule}</p>}
       {item.folder?.description && <p className="lf-topic-rule" title="What belongs here, in your words">“{item.folder.description}”</p>}
       <div className="lf-acts">
         <button className="primary" onClick={onOpen}>Open</button>
@@ -89,7 +89,7 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
           </button>
         )}
         {item.kind === 'topic' && (
-          <button onClick={() => onMap(item.name)} title="Search the citation network for this topic">Map it</button>
+          <button onClick={() => onMap(item.name)} title="Search the citation network for this topic">Map</button>
         )}
         {item.folder && onWhatsNew && (
           <button onClick={() => onWhatsNew(item.folder!.id)} title="Recent works that cite this topic's papers and aren't in your library">
@@ -98,65 +98,61 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
         )}
       </div>
 
-      {surprising && (
-        <p className="lf-surprise">
-          <button className="link" onClick={onSurprise} title="Open a paper from it you haven't read yet, at random">
-            Surprise me{unread > 0 ? ': an unread paper' : ''}
-          </button>
-        </p>
-      )}
-
       {docs.length > 0 && (
-        <>
-          <h4>In the open draft</h4>
-          <div className="lf-use" role="img" aria-label={`${nCited} cited, ${nTicked} more ticked for drafting, of ${docs.length}`}>
+        <section className="lf-sec lf-sec-use">
+          <div className="lf-use" role="img" aria-label={`In the open draft: ${nCited} cited, ${nTicked} more ticked for drafting, of ${docs.length}`}>
             <i className="cited" style={{ width: `${(nCited / docs.length) * 100}%` }} />
             <i className="ticked" style={{ width: `${(nTicked / docs.length) * 100}%` }} />
           </div>
-          <p>
-            {nCited} cited · {nTicked} more ticked for drafting
+          <p className="lf-use-text" title="How much of it the draft open in Write uses">
+            {nCited} cited · {nTicked} ticked for drafting
           </p>
-        </>
+          {surprising && (
+            <button className="link lf-surprise" onClick={onSurprise} title="Open a paper from it you haven't read yet, at random">
+              Surprise me{unread > 0 ? ': an unread paper' : ''}
+            </button>
+          )}
+        </section>
       )}
 
       {bars && (
-        <>
-          <h4>By year</h4>
+        <section className="lf-sec">
+          <h4>
+            By year <span>{bars.lo === bars.hi ? bars.lo : `${bars.lo}–${bars.hi}`}</span>
+          </h4>
           <div className="lf-bars" role="img" aria-label={`Papers from ${bars.lo} to ${bars.hi}`}>
             {bars.bins.map((n, i) => (
               <i key={i} style={{ height: `${(n / bars.top) * 100}%` }} />
             ))}
           </div>
-          <div className="lf-years">
-            <span>{bars.lo}</span>
-            <span>{bars.hi}</span>
-          </div>
-        </>
+        </section>
       )}
 
       {newest.length > 0 && (
-        <>
-          <h4>Newest in it</h4>
-          <ul>
+        <section className="lf-sec">
+          <h4>
+            Recent papers <span>{newest.length}</span>
+          </h4>
+          <ul className="lf-papers">
             {newest.map((d) => (
               <li key={d.id} title={d.title}>
-                {short(d.title)}
-                {d.year ? <span className="muted"> {d.year}</span> : null}
+                <b>{d.title}</b>
+                <small>{[authorsShort(d), d.year].filter(Boolean).join(' · ')}</small>
               </li>
             ))}
           </ul>
-        </>
+        </section>
       )}
 
       {authors.length > 0 && (
-        <>
+        <section className="lf-sec">
           <h4>Most frequent first authors</h4>
           <p>{authors.map(([a, n]) => `${a}${n > 1 ? ` (${n})` : ''}`).join(', ')}</p>
-        </>
+        </section>
       )}
 
       {shares.length > 0 && (
-        <>
+        <section className="lf-sec">
           <h4>Shares papers with</h4>
           <p className="lf-shares">
             {shares.map(([t, n]) => (
@@ -165,7 +161,7 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onDraft, 
               </button>
             ))}
           </p>
-        </>
+        </section>
       )}
     </aside>
   )

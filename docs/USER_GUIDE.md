@@ -30,7 +30,7 @@ The window has four parts:
 | Part | What it holds |
 |---|---|
 | **Top bar** | The draft's name (click it to rename), whether it's saved, its version (**v8 ▾** opens Versions) and how much changed since; **Drafts** beside it; one search box; Export; Focus mode; Settings. |
-| **Rail** (left) | The places in the app: **Home**, **Write**, **Library**, **Network** and **Matrix**. One fills the window at a time. The app opens on Home. |
+| **Sidebar** (left) | The places in the app: **Home**, **Write**, **Library**, **Network** and **Matrix**. One fills the window at a time. The app opens on Home. In the Library, its [smart views](#smart-folders) are listed under the places. **Collapse** at the foot shrinks the sidebar to icons, and the same button brings it back; the app remembers. A narrow window always shows the icons. On a short window the sidebar scrolls, and its foot fades while there is more below. |
 | **Main area** | The place you picked. In Write, the draft with the writing tools beside it. |
 | **Status bar** (bottom) | Live counts for the draft: words, citations (*12 supported · 1 needs attention · 1 checking*, in the same words as Check) and duplication. Click one to open Check. Outside Write they're marked **Draft**, since they're the open draft's numbers. |
 
@@ -99,7 +99,7 @@ Above the draft, a checklist walks through the app, and each step ticks itself o
 
 ## 1. Add your sources
 
-Open **Library** in the rail and click **+ Add sources**:
+Open **Library** in the sidebar and click **+ Add sources**:
 
 ![The Add sources menu](images/add-sources.png)
 
@@ -119,20 +119,20 @@ Your files stay where they are. The library keeps its own index in `~/.groundwor
 
 ## 2. Organize the library
 
-![The library's folders: smart folders above the topics, and the selected topic summed up on the right](images/library.png)
+![The library: smart views on the left, the topics as folders, and the selected topic summed up on the right](images/library.png)
 
-The library opens on its **folders**, the way a desktop shows a directory: your [topics](#topics), largest first, with the [smart folders](#smart-folders) above them. Open a folder and its papers show one line each, as in a mail app or a file explorer.
+The library opens on its **folders**, the way a desktop shows a directory: your [topics](#topics), with the [smart views](#smart-folders) in the sidebar on the left. Open a folder and its papers show one line each, as in a mail app or a file explorer.
 
 ### The folders
 
-- **Select a folder:** click it. The panel on the right sums it up: how many papers and which years, how much of it the open draft cites (green) and how much more is ticked for drafting (blue), papers by year, the newest titles, the most frequent first authors, and the topics it shares papers with (click one to open it). **Use for drafting** ticks all its papers for Muse, and **Map it** shows the topic in the [citation network](#the-citation-network).
-- **Open a folder:** double-click it, press **Enter**, or click **Open** in the panel. A trail at the top, **Library › Topic name**, leads back; so do the ‹ button, **Backspace** and **Alt ←**, which return you to the folders with the one you left still selected.
+- **Select a folder:** click it. The panel on the right sums it up: how many papers and which years, how much of it the open draft cites (green) and how much more is ticked for drafting (blue), papers by year, its most recent papers, the most frequent first authors, and the topics it shares papers with (click one to open it). **Use for drafting** ticks all its papers for Muse, **Map** shows the topic in the [citation network](#the-citation-network). **×** hides the panel and gives the folders the room; the panel button beside **⋯** at the top brings it back. The library remembers.
+- **Open a folder:** double-click it, press **Enter**, or click **Open** in the panel. A trail at the top, **Library › Topic name**, leads back; so do the ‹ button, **Backspace**, **Alt ←** and **Library** in the sidebar, which return you to the folders with the one you left still selected. Clicking **Library** from elsewhere in the app always opens it on the folders.
 - **Move between folders** with the arrow keys.
 - **Peek inside:** press **Space** on a folder to list its papers without opening it. The arrows step to the next folder, **Enter** opens it, **Space** or **Esc** closes the list.
 - **Right-click a topic** to open it, peek inside, give it a **colour** (five, or none), **rename** it in place, or **merge** it into another topic. The colour is kept with the topic in your library.
-- **N cited** on a folder counts the papers in it that the open draft cites.
-- **Recently opened**, at the top, holds the last few papers and folders you opened. Something removed or deleted since drops out of it.
-- **Largest first** or **A–Z** orders the topics. **Folders** or **Rows** shows them as tiles or as a table, and the slider beside it sizes the tiles. The library remembers these choices.
+- A **green dot** after a folder's count means the open draft cites papers in it; point at the dot for how many.
+- **Recently opened**, at the top, holds the last few papers and folders you opened, one chip each. Something removed or deleted since drops out of it. Click **Recently opened** to fold the row away; the library remembers.
+- At the top right, **A–Z** or **Largest first** orders the topics, the slider sizes the tiles, and the two buttons show them as **folders** or as **rows** (a table). The library remembers these choices. The status bar names the keys that work on the folders: **Space** to peek, **Enter** to open.
 - **Search** from the box at the top: on the folders, it finds topics by name and by the titles of the papers in them. **Search every paper instead** opens All sources with the same search, including the passages inside the papers.
 - When two topics hold the same papers, or nearly, a note above the folders offers to **merge** them into the larger one. **Keep both** dismisses it for that pair.
 
@@ -155,7 +155,7 @@ A folder's papers show one line each, newest first. **Rows** or **Covers** (at t
 
 ### Smart folders
 
-The green folders with a ⚙ above your topics are filled by a rule, so they keep themselves up to date. One shows only while it has something in it, except All sources and Drafting from:
+**Smart views**, listed in the sidebar under the places while the Library is open, are filled by a rule, so they keep themselves up to date. The number beside each is how many papers it holds. Click one to open it; it stays marked while you're in it. On the folders page **All sources** is marked, since that's the whole library. Right-click one (or press the menu key) to open it, peek inside, **Use for drafting** on all its papers, or rename and delete a saved view. When the sidebar is collapsed they show as icons; point at one for its name. A view shows only while it has something in it, except All sources and Drafting from:
 
 - **All sources**, and **Recently added** (the last 14 days).
 - **Drafting from:** the papers Muse drafts from (see below).
@@ -165,7 +165,7 @@ The green folders with a ⚙ above your topics are filled by a rule, so they kee
 - **Unfiled** (in no topic) and **Removed**.
 - **File missing** (amber): papers whose file isn't where you added it from, because it was moved, renamed or deleted. Their text, citations and highlights are still in the library, so searching and citing them works; only opening the file doesn't. A paper's details say where it was, with **Locate file…** to point it at the file's new place (it keeps its citations, highlights and topics) and **Remove from library**. If the file you pick isn't the same one (its contents differ, say a revised version), you're asked first, since quotes and highlights were placed on the old one. Web pages are never missing.
 - **Never used:** papers you've never opened, never cited (in a draft, a review matrix or a saved finding), never highlighted and haven't ticked for drafting: candidates to read, or to remove. Papers added before the app kept reading marks count as opened, so they don't show here.
-- Every [saved view](#filters-and-saved-views) you make.
+- Every [saved view](#filters-and-saved-views) you make, under **Saved views**.
 
 ### Filters and saved views
 
@@ -176,10 +176,10 @@ The row of chips above the list narrows whatever folder you are in:
 - **Has highlights** shows only the papers you have highlighted passages in. It appears once you have highlighted something.
 - A chip that is set is filled in and says what it is set to; its **×** clears it, and **Clear filters** clears them all. The chips work together with the search box and the Timeline.
 
-**Save as view** (at the right of the chips, once a chip or the search is set) keeps the search and the filters as a smart folder on the library's front page, with the folder you were in. A saved view stores the question, not the answer: its count and its papers are worked out each time, so "Last 5 years" moves on with the calendar and new papers join by themselves. The Timeline's range isn't saved.
+**Save as view** (at the right of the chips, once a chip or the search is set) keeps the search and the filters as a smart view in the sidebar, with the folder you were in. A saved view stores the question, not the answer: its count and its papers are worked out each time, so "Last 5 years" moves on with the calendar and new papers join by themselves. The Timeline's range isn't saved.
 
-- Open a saved view like any folder. Going back to the folders leaves it, and clears its search and filters.
-- While it's open, **Rename** and **Delete** sit beside its name above the list; right-clicking its folder offers the same. Deleting a view never touches your papers, and the message offers **Undo**.
+- Open a saved view from the sidebar. Going back to the folders leaves it, and clears its search and filters.
+- While it's open, **Rename** and **Delete** sit beside its name above the list; right-clicking it in the sidebar offers the same. Deleting a view never touches your papers, and the message offers **Undo**.
 - Saving under a name that is already used replaces that view.
 
 ### Quick look
@@ -237,7 +237,7 @@ Removing a source, yourself or from Find duplicate files, keeps a record of it u
 
 ## 3. Write a draft
 
-Click **Write** in the rail. The draft is saved as you type; the top bar says *Saving…* and then *Saved*.
+Click **Write** in the sidebar. The draft is saved as you type; the top bar says *Saving…* and then *Saved*.
 
 ### Drafts
 
@@ -386,7 +386,7 @@ While Check is open, matching passages are underlined in the draft: red for an u
 
 ## The citation network
 
-**Network** in the rail shows your papers as a graph. It starts by asking what to show, since laying out a whole library at once can keep the window busy for a long time:
+**Network** in the sidebar shows your papers as a graph. It starts by asking what to show, since laying out a whole library at once can keep the window busy for a long time:
 
 - **Map this topic:** type a topic there or in the search box at the top. You get the papers about it and the works they cite that you don't have.
 - **Map the papers you're drafting from:** the papers under **Drafting from** in the Library.
@@ -413,7 +413,7 @@ Esc returns to the draft.
 
 ## Review matrix
 
-**Matrix** in the rail builds a literature review matrix: one row per paper, one column per question (sample, setting, method, findings, limitations, or your own), the table systematic reviewers fill in by hand.
+**Matrix** in the sidebar builds a literature review matrix: one row per paper, one column per question (sample, setting, method, findings, limitations, or your own), the table systematic reviewers fill in by hand.
 
 ![A review matrix: one row per paper, each cell a short answer with the page its quote is on](images/matrix.png)
 

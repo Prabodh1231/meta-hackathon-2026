@@ -1,30 +1,31 @@
 :root {
-  /* Glacier + ember (Nov 16): cool grey surfaces, a slate accent, and ember kept for marks and artwork */
-  --bg: #eef1f4;
-  --panel: #fbfcfd;
-  --text: #18222c;
-  --muted: #54616e;
-  --border: #d5dce3;
-  --line: rgb(24 34 44 / 0.09); /* hairlines: page guides, section dividers */
-  --accent: #33485c;
+  /* Forest (Nov 20): neutral surfaces and a forest-green accent, as in the Library picture; --ember
+     (kept by name) is now an ochre for marks and artwork */
+  --bg: #f4f6f5;
+  --panel: #ffffff;
+  --text: #17201c;
+  --muted: #56625c;
+  --border: #dce2df;
+  --line: rgb(23 32 28 / 0.09); /* hairlines: page guides, section dividers */
+  --accent: #1f5c46;
   --accent-text: #ffffff;
-  --hover: rgba(51, 72, 92, 0.08);
+  --hover: rgba(31, 92, 70, 0.07);
   --lead: var(--text); /* the first sentence of a two-tone statement */
-  --follow: #738494; /* the rest of it: large text only (3.4:1 on the page) */
-  --ice: #8fa9bd;
-  --ember: #f2773a; /* marks things (underlines, the active tab, artwork); too pale to carry small text */
-  --ember-ink: #ad4c17; /* ember for words: 5.3:1 on the panel */
-  --peach: #ffd2ad;
-  --ban1: #111a23; /* dark banners and the notice bar */
-  --ban2: #33485c;
+  --follow: #74837c; /* the rest of it: large text only (4:1 on the page) */
+  --ice: #a5bbb0;
+  --ember: #c98a3e; /* marks things (underlines, the active tab, artwork); too pale to carry small text */
+  --ember-ink: #8a5714; /* ember for words: 6.1:1 on the panel */
+  --peach: #f3dcc0;
+  --ban1: #0f1a15; /* dark banners and the notice bar */
+  --ban2: #1f4a3a;
   --ok: #23703f; /* 5.9:1 on the panel, for text */
   --ok-bg: #dff3e6;
   --warn: #8a5f00; /* 5.6:1 on the panel, for text */
   --warn-bg: #fbefcf;
   --bad: #b5371f; /* 4.9:1 on its own tint */
   --bad-bg: #fbe3df;
-  --pending: #93a1ae;
-  --pending-bg: #e6ebf0;
+  --pending: #97a39d;
+  --pending-bg: #e7ece9;
   --matrix: #2f6db5; /* citations written from a review matrix */
   --matrix-bg: #e1ecf9;
   --mark: #ffe27a;
@@ -32,9 +33,9 @@
   --display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif; /* light, large headings */
   --ins: #d6f0dd;
   --del: #f9dcd6;
-  --rail: #e3e8ed;
-  --shadow: 0 1px 2px rgb(24 34 44 / 0.06), 0 8px 24px -12px rgb(24 34 44 / 0.2);
-  --lift: 0 2px 4px rgb(24 34 44 / 0.05), 0 22px 40px -22px rgb(24 34 44 / 0.4);
+  --rail: #eaeeec;
+  --shadow: 0 1px 2px rgb(23 32 28 / 0.06), 0 8px 24px -12px rgb(23 32 28 / 0.2);
+  --lift: 0 2px 4px rgb(23 32 28 / 0.05), 0 22px 40px -22px rgb(23 32 28 / 0.4);
   --panel-w: 400px;
   /* The draft's page, set in Settings (App puts data-page-width etc. on <html>) */
   --page-w: 760px;
@@ -51,35 +52,35 @@
 
 /* theme.ts sets data-theme from Settings (System follows the OS). */
 :root[data-theme="dark"] {
-  --bg: #0d1116;
-  --panel: #151b22;
-  --text: #e6ebf0;
-  --muted: #8d9aa8;
-  --border: #26303b;
-  --line: rgb(230 235 240 / 0.08);
-  --accent: #ff9a5c; /* ember is the accent in the dark */
-  --accent-text: #2e1202;
+  --bg: #0d1210;
+  --panel: #141b18;
+  --text: #e5ebe8;
+  --muted: #8e9d96;
+  --border: #25302b;
+  --line: rgb(229 235 232 / 0.08);
+  --accent: #62c29a; /* a lighter green carries the accent in the dark */
+  --accent-text: #062418;
   --hover: rgba(255, 255, 255, 0.07);
-  --follow: #8799ab;
-  --ice: #5f7b92;
-  --ember-ink: #ff9a5c;
-  --peach: #5a3520;
-  --ban1: #0a0e12;
-  --ban2: #2c4054;
+  --follow: #869a90;
+  --ice: #5a7a6c;
+  --ember-ink: #e0ad66;
+  --peach: #4d3a1f;
+  --ban1: #09100d;
+  --ban2: #24443a;
   --ok: #56d08a;
   --ok-bg: #12261a;
   --warn: #e3b341;
   --warn-bg: #2b2111;
   --bad: #ff8a78;
   --bad-bg: #2d1614;
-  --pending: #8d9aa8;
-  --pending-bg: #222b35;
+  --pending: #8e9d96;
+  --pending-bg: #202a26;
   --matrix: #7fb2f0;
   --matrix-bg: #15233a;
   --mark: #6b5a14;
   --ins: #183a24;
   --del: #45201b;
-  --rail: #0f141a;
+  --rail: #0f1513;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.6);
   --lift: 0 22px 40px -22px rgb(0 0 0 / 0.8);
   color-scheme: dark;
@@ -169,24 +170,61 @@ textarea { width: 100%; resize: vertical; }
 .search-all { flex: none; border: none; background: none; padding: 0; }
 @media (max-width: 900px) { .search-pill > span:not(.search-scope) { display: none; } .search-pill:not(.search-field) { width: auto; } }
 
-/* The rail: Write, Library, Network */
+/* The sidebar collapsed (and on a narrow window): one column of icon buttons, all one size and one
+   highlight, the places first, then whatever the open place adds (the Library's smart views). Each
+   name shows on hover; the button at the foot widens the sidebar again. */
 .rail {
-  display: flex; flex-direction: column; align-items: center; gap: 4px; width: 68px; padding: 10px 6px;
-  background: var(--rail); overflow-x: hidden; overflow-y: auto; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; width: 60px; min-height: 0; padding: 10px 8px;
+  background: var(--rail); overflow: hidden; border-right: 1px solid var(--border);
 }
-.rail-btn {
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px; padding: 7px 2px 6px;
-  border: none; border-radius: 10px; background: transparent; color: var(--muted); font-size: 11.5px; line-height: 1.15;
+/* The places and smart views scroll on a short window; Collapse stays put under them. No scrollbar,
+   since one would narrow every row when the Library adds its views (it still scrolls by wheel,
+   trackpad and keys); instead the foot fades while more is below. */
+.rail-scroll {
+  flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  overflow-x: hidden; overflow-y: auto; scrollbar-width: none;
 }
-.rail-btn:hover:not(:disabled) { color: var(--text); background: var(--hover); }
-.rail-btn.on { color: var(--accent); background: var(--panel); box-shadow: var(--shadow); }
-.rail-btn.on::before { content: ""; position: absolute; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--accent); }
-.rail .rail-btn.on::before { left: -6px; }
-.rail-badge {
-  position: absolute; top: 2px; right: 2px; min-width: 18px; padding: 1px 5px; border-radius: 999px; background: var(--accent);
-  color: var(--accent-text); font: 700 10.5px/1.4 system-ui, sans-serif; font-style: normal;
+.rail-scroll::-webkit-scrollbar { display: none; }
+.rail-scroll.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent);
 }
-@media (max-width: 720px) { .rail { width: 52px; } .rail-btn { width: 44px; } .rail-btn span { display: none; } }
+.rail-modes { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
+.rail-slot { flex: none; width: 100%; }
+.rail-slot:not(:empty) { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+.rail-btn, .rail .lib-side-item, .rail-toggle {
+  position: relative; flex: none; display: flex; align-items: center; justify-content: center; gap: 12px;
+  width: 44px; height: 40px; padding: 0; border: none; border-radius: 8px; background: transparent; color: var(--muted);
+}
+.rail-btn svg, .rail .lib-side-item svg, .rail-toggle svg { flex: none; width: 19px; height: 19px; color: inherit; }
+.rail-btn:hover:not(:disabled), .rail .lib-side-item:hover:not(:disabled), .rail-toggle:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.rail-btn.on, .rail-btn.on:hover:not(:disabled), .rail .lib-side-item.on, .rail .lib-side-item.on:hover:not(:disabled) {
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.rail .lib-side-item.on svg { color: inherit; }
+.rail .lib-side-item.warn:not(.on) svg { color: var(--warn); }
+/* The names: read out, and shown when the sidebar is wide */
+.rail-btn > span, .rail-toggle > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.rail-toggle { margin-top: 10px; }
+@media (max-width: 900px) { .rail-toggle { display: none; } }
+/* Wide (Nov 20): labelled rows, as in the Library picture */
+@media (min-width: 901px) {
+  .rail.wide { width: 248px; align-items: stretch; padding: 16px 12px 12px; background: var(--bg); }
+  .rail.wide .rail-scroll { align-items: stretch; gap: 2px; }
+  .rail.wide .rail-modes { align-items: stretch; gap: 2px; }
+  .rail.wide .rail-btn, .rail.wide .rail-toggle { justify-content: flex-start; width: 100%; padding: 0 12px; font-size: 14.5px; line-height: 1; }
+  .rail.wide .rail-btn { color: var(--text); }
+  .rail.wide .rail-btn > span, .rail.wide .rail-toggle > span { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+  .rail.wide .rail-btn svg { color: var(--muted); }
+  .rail.wide .rail-btn.on, .rail.wide .rail-btn.on:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font-weight: 600; }
+  .rail.wide .rail-btn.on svg { color: var(--text); }
+  .rail.wide .rail-slot:not(:empty) { margin-top: 14px; padding-top: 18px; }
+  .rail.wide .lib-side-item { color: var(--text); }
+  .rail.wide .lib-side-item svg { color: var(--muted); }
+  .rail.wide .lib-side-item.on, .rail.wide .lib-side-item.on:hover:not(:disabled) { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .rail.wide .lib-side-item.on svg { color: var(--accent); }
+  .rail.wide .lib-side-item.warn svg { color: var(--warn); }
+}
 
 
 /* The panel beside the draft: a row of tabs, then the open tab */
@@ -260,6 +298,9 @@ textarea { width: 100%; resize: vertical; }
 @media (prefers-reduced-motion: reduce) { .dot-busy, .cite-mark-searching { animation: none; } }
 .dot.live { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
 .dock .status { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock-keys { margin-right: 14px; color: var(--muted); white-space: nowrap; }
+.dock-keys kbd { font: inherit; color: var(--muted); }
+@media (max-width: 980px) { .dock-keys { display: none; } }
 .dock .status-mock { border: none; background: var(--warn-bg); color: var(--text); padding: 3px 10px; border-radius: 999px; font: inherit; cursor: pointer; }
 .dock .status-mock .dot { background: var(--warn); }
 .dock .status-mock:hover { filter: brightness(0.97); }
@@ -2023,14 +2064,14 @@ button.lib-use.on { font-weight: 600; }
 .lib-pop kbd { font: 11px Consolas, monospace; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
 .lib-pop hr { width: 100%; flex: none; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
 .lib-pop-head { flex: none; padding: 6px 10px 4px; font: 700 10.5px/1.2 system-ui, sans-serif; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lib-toast { position: absolute; z-index: 60; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: min(640px, calc(100% - 40px)); padding: 9px 10px 9px 16px; border-radius: 10px; background: #18222c; color: #e6ebf0; font-size: 13px; box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.4); }
-.lib-toast button { border: none; background: none; padding: 2px 6px; color: #ffb98e; font-weight: 600; white-space: nowrap; }
+.lib-toast { position: absolute; z-index: 60; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: min(640px, calc(100% - 40px)); padding: 9px 10px 9px 16px; border-radius: 10px; background: #17201c; color: #e5ebe8; font-size: 13px; box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.4); }
+.lib-toast button { border: none; background: none; padding: 2px 6px; color: #8fd6b4; font-weight: 600; white-space: nowrap; }
 .lib-toast button:hover:not(:disabled) { background: rgb(255 255 255 / 0.12); }
-.lib-toast .lib-toast-x { color: #9fb0c0; font-size: 16px; font-weight: 400; }
-:root[data-theme="dark"] .lib-toast { background: #e6ebf0; color: #18222c; }
-:root[data-theme="dark"] .lib-toast button { color: #ad4c17; }
+.lib-toast .lib-toast-x { color: #9fb3a9; font-size: 16px; font-weight: 400; }
+:root[data-theme="dark"] .lib-toast { background: #e5ebe8; color: #17201c; }
+:root[data-theme="dark"] .lib-toast button { color: #1f5c46; }
 :root[data-theme="dark"] .lib-toast button:hover:not(:disabled) { background: rgb(0 0 0 / 0.08); }
-:root[data-theme="dark"] .lib-toast .lib-toast-x { color: #54616e; }
+:root[data-theme="dark"] .lib-toast .lib-toast-x { color: #56625c; }
 
 /* Filter chips above the list, and saving them (with the search) as a view */
 .lib-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: none; min-height: 44px; padding: 7px 20px; border-bottom: 1px solid var(--border); }

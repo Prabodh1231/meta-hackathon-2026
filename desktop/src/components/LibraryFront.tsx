@@ -1,6 +1,7 @@
-import { type ReactNode, type RefObject, useCallback } from 'react'
+import { type ReactNode, type RefObject, useCallback, useState } from 'react'
 import type { Doc } from '../types'
 import { FolderRow, FolderTile, type FrontItem } from './FolderTile'
+import { Dropdown } from './Dropdown'
 import { authorsShort, plural } from './libraryParts'
 
 export type FrontLayout = 'grid' | 'list'
@@ -19,13 +20,22 @@ function tileAcross(tiles: HTMLElement[], from: HTMLElement, down: boolean): HTM
   return rows.filter(([, b]) => Math.abs(b.top - edge) < 4).sort((a, b) => Math.abs(a[1].left - r.left) - Math.abs(b[1].left - r.left))[0][0]
 }
 
-/** The Library's front page: its topics drawn as folders, with the smart folders above them. Click
- * selects a folder, double-click or Enter opens it, Space peeks inside, arrows move between them. */
+const RECENT_OPEN_KEY = 'gw.library.recentOpen'
+const readRecentOpen = () => {
+  try {
+    return localStorage.getItem(RECENT_OPEN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+/** The Library's front page: its topics drawn as folders (the smart folders are in the column on the
+ * left). Click selects a folder, double-click or Enter opens it, Space peeks inside, arrows move
+ * between them. */
 export function LibraryFront({
-  smart, topics, totalTopics, recent, query, selected, cited, layout, size, sort, renaming, notice, children, scrollRef,
-  onLayout, onSize, onSort, onSelect, onOpen, onPeek, onMenu, onRenamed, onNewTopic, onOpenDoc, onSearchAll,
+  topics, totalTopics, recent, query, selected, cited, layout, size, renaming, notice, children, scrollRef,
+  onSelect, onOpen, onPeek, onMenu, onRenamed, onNewTopic, onOpenDoc, onSearchAll,
 }: {
-  smart: FrontItem[]
   topics: FrontItem[]
   totalTopics: number
   recent: RecentShown[]
@@ -34,14 +44,10 @@ export function LibraryFront({
   cited: Map<string, number> // papers the open draft cites, by folder
   layout: FrontLayout
   size: number
-  sort: FrontSort
   renaming: string | null
   notice?: ReactNode // above the folders: two topics that hold the same papers
   children?: ReactNode // the New topic form, when open
   scrollRef: RefObject<HTMLDivElement | null>
-  onLayout: (l: FrontLayout) => void
-  onSize: (n: number) => void
-  onSort: (s: FrontSort) => void
   onSelect: (key: string) => void
   onOpen: (key: string) => void
   onPeek: (key: string) => void
@@ -51,6 +57,17 @@ export function LibraryFront({
   onOpenDoc: (d: Doc) => void
   onSearchAll: () => void
 }) {
+  const [recentOpen, setRecentOpen] = useState(readRecentOpen)
+  const toggleRecent = () => {
+    setRecentOpen((o) => {
+      try {
+        localStorage.setItem(RECENT_OPEN_KEY, o ? '0' : '1')
+      } catch {
+        /* kept for this visit only */
+      }
+      return !o
+    })
+  }
   const tiles = () => [...(scrollRef.current?.querySelectorAll<HTMLElement>('[data-key]') ?? [])]
   /** Select a folder and give it the keyboard, scrolling it into view. */
   const go = useCallback(
@@ -111,28 +128,6 @@ export function LibraryFront({
 
   return (
     <div className="lf-main">
-      <div className="lf-tools">
-        <div className="seg" role="group" aria-label="Order of the topics">
-          <button aria-pressed={sort === 'size'} onClick={() => onSort('size')}>Largest first</button>
-          <button aria-pressed={sort === 'name'} onClick={() => onSort('name')}>A–Z</button>
-        </div>
-        <div className="seg" role="group" aria-label="Show the folders as">
-          <button aria-pressed={layout === 'grid'} onClick={() => onLayout('grid')}>Folders</button>
-          <button aria-pressed={layout === 'list'} onClick={() => onLayout('list')}>Rows</button>
-        </div>
-        {layout === 'grid' && <SizeSlider size={size} onSize={onSize} />}
-        <span className="spacer" />
-        {searching ? (
-          <span className="muted">
-            {topics.length} of {plural(totalTopics, 'topic')} match “{query.trim()}”.{' '}
-            <button className="link" onClick={onSearchAll}>Search every paper instead</button>
-          </span>
-        ) : (
-          <span className="muted lf-keys">
-            <kbd>Space</kbd> peek inside · <kbd>Enter</kbd> open
-          </span>
-        )}
-      </div>
       <div
         className="lf-scroll"
         ref={scrollRef}
@@ -155,56 +150,57 @@ export function LibraryFront({
           onMenu(key, e.clientX, e.clientY)
         }}
       >
+        {searching && (
+          <p className="lf-found muted">
+            {topics.length} of {plural(totalTopics, 'topic')} match “{query.trim()}”.{' '}
+            <button className="link" onClick={onSearchAll}>Search every paper instead</button>
+          </p>
+        )}
         {notice}
         {children}
         {recent.length > 0 && !searching && (
-          <>
-            <div className="lf-label">Recently opened</div>
-            <div className="lf-recent">
-              {recent.map((r) =>
-                r.kind === 'doc' ? (
-                  <button key={`d${r.doc.id}`} onClick={() => onOpenDoc(r.doc)} title={`Open “${r.doc.title}”`}>
-                    <span className="lf-doc-ic" aria-hidden="true" />
-                    <span className="lf-recent-text">
-                      <b>{r.doc.title}</b>
-                      <small>{[authorsShort(r.doc), r.doc.year].filter(Boolean).join(' ')}</small>
-                    </span>
-                  </button>
-                ) : (
-                  <button
-                    key={r.item.key}
-                    className={r.item.kind === 'smart' ? 'smart' : r.item.folder?.color ? `c-${r.item.folder.color}` : ''}
-                    onClick={() => onOpen(r.item.key)}
-                    title={`Open ${r.item.name}`}
-                  >
-                    <span className="fold-mini" aria-hidden="true" />
-                    <span className="lf-recent-text">
-                      <b>{r.item.name}</b>
-                      <small>{r.item.countText ?? plural(r.item.count, 'paper')}</small>
-                    </span>
-                  </button>
-                ),
-              )}
-            </div>
-          </>
+          <div className={`lf-recent${recentOpen ? '' : ' shut'}`}>
+            <button className="lf-recent-toggle" aria-expanded={recentOpen} onClick={toggleRecent}>
+              <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+                <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Recently opened
+            </button>
+            {recentOpen && (
+              <div className="lf-recent-row">
+                {recent.map((r) =>
+                  r.kind === 'doc' ? (
+                    <button
+                      key={`d${r.doc.id}`}
+                      className="lf-chip-doc"
+                      onClick={() => onOpenDoc(r.doc)}
+                      title={`Open “${r.doc.title}”${authorsShort(r.doc) ? `, ${[authorsShort(r.doc), r.doc.year].filter(Boolean).join(' ')}` : ''}`}
+                    >
+                      <span className="lf-doc-ic" aria-hidden="true" />
+                      <span className="lf-recent-name">{r.doc.title}</span>
+                    </button>
+                  ) : (
+                    <button
+                      key={r.item.key}
+                      className={r.item.kind === 'smart' ? 'smart' : r.item.folder?.color ? `c-${r.item.folder.color}` : ''}
+                      onClick={() => onOpen(r.item.key)}
+                      title={`Open ${r.item.name}: ${r.item.countText ?? plural(r.item.count, 'paper')}`}
+                    >
+                      <span className="lf-sq" aria-hidden="true" />
+                      <span className="lf-recent-name">{r.item.name}</span>
+                    </button>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
         )}
-        {smart.length > 0 && (
-          <>
-            <div className="lf-label">
-              Smart folders <span>filled by a rule, so they keep themselves up to date</span>
-            </div>
-            {layout === 'grid' ? <div className="lf-grid">{smart.map(tile)}</div> : table(smart, 'Smart folders')}
-          </>
-        )}
-        <div className="lf-label">
-          Topics <span>{searching ? '' : 'a paper can be in more than one'}</span>
-        </div>
         {layout === 'grid' ? (
-          <div className="lf-grid">
+          <div className="lf-grid" aria-label="Topics">
             {topics.map(tile)}
             {!searching && (
               <button type="button" className="fold fold-new" onClick={(e) => (e.stopPropagation(), onNewTopic())} title="Make a topic for a subject you choose">
-                <span className="fold-art fold-plus" aria-hidden="true">+</span>
+                <span className="fold-plus" aria-hidden="true">+</span>
                 <span className="fold-name">New topic</span>
                 <span className="fold-count">Muse files the papers that match</span>
               </button>
@@ -220,9 +216,9 @@ export function LibraryFront({
             )}
           </>
         )}
-        {searching && topics.length === 0 && smart.length === 0 && (
+        {searching && topics.length === 0 && (
           <div className="lib-empty">
-            <div className="lib-empty-title">No folder matches</div>
+            <div className="lib-empty-title">No topic matches</div>
             <p>No topic's name, and no title of a paper in one, has all of these words.</p>
           </div>
         )}
@@ -233,6 +229,41 @@ export function LibraryFront({
         )}
       </div>
     </div>
+  )
+}
+
+const SORTS = [
+  { value: 'name', label: 'A–Z' },
+  { value: 'size', label: 'Largest first' },
+]
+
+/** The front page's controls, in the Library's header: the order of the topics, folders or rows,
+ * and (for folders) their size. */
+export function FrontTools({ layout, size, sort, onLayout, onSize, onSort }: {
+  layout: FrontLayout
+  size: number
+  sort: FrontSort
+  onLayout: (l: FrontLayout) => void
+  onSize: (n: number) => void
+  onSort: (s: FrontSort) => void
+}) {
+  return (
+    <>
+      <Dropdown className="lf-sort" label="Order of the topics" value={sort} options={SORTS} onChange={(v) => onSort(v as FrontSort)} />
+      {layout === 'grid' && <SizeSlider size={size} onSize={onSize} />}
+      <div className="seg seg-icons" role="group" aria-label="Show the topics as">
+        <button aria-pressed={layout === 'grid'} onClick={() => onLayout('grid')} title="Folders" aria-label="Folders">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z" />
+          </svg>
+        </button>
+        <button aria-pressed={layout === 'list'} onClick={() => onLayout('list')} title="Rows" aria-label="Rows">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <path d="M5 7h14M5 12h14M5 17h14" />
+          </svg>
+        </button>
+      </div>
+    </>
   )
 }
 
