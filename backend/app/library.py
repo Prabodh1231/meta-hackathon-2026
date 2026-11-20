@@ -1205,27 +1205,206 @@ class Library:
             row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
             if not row:
                 raise LookupError(f"Document {doc_id} not found")
-        # The file's hash, to recognise it if it's added again. Documents from before hashes were
-        # kept use the duplicate finder's cache when the file is already in the Recycle Bin.
-        sha = row["sha256"] or self._file_info(row["source"])["sha256"] or ""
+        sha = self._removal_hash(row)
         with self.lock, self.conn:
-            if not sha:
+            self._remove_row(row, sha, reason, duplicate_of, trashed)
+
+    def _removal_hash(self, row) -> str:
+        """The file's hash, to recognise it if it's added again. Documents from before hashes were
+        kept use the duplicate finder's cache when the file is already in the Recycle Bin. Not inside
+        a transaction: hashing a file may write the hash cache."""
+        sha = row["sha256"] or self._file_info(row["source"])["sha256"] or ""
+        if not sha:
+            with self.lock:
                 cached = self.conn.execute("SELECT sha256 FROM file_hashes WHERE path = ?", (row["source"],)).fetchone()
-                sha = cached["sha256"] if cached else ""
-            edited = {k: (json.loads(row[k]) if k == "authors" else row[k]) for k in json.loads(row["edited_fields"])}
-            folders = [r["name"] for r in self.conn.execute(
-                "SELECT f.name FROM doc_folders df JOIN folders f ON f.id = df.folder_id "
-                "WHERE df.doc_id = ? AND df.state = 'user' ORDER BY f.name COLLATE NOCASE", (doc_id,))]
-            kept = self.conn.execute("SELECT title FROM documents WHERE id = ?", (duplicate_of,)).fetchone() if duplicate_of else None
-            self.conn.execute(
-                "INSERT OR REPLACE INTO removed_documents (id, source, kind, title, authors, year, venue, doi, url, published, "
-                "sha256, file_date, edited_fields, folders, added_at, reason, duplicate_of, duplicate_of_title, file_trashed) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (doc_id, row["source"], row["kind"], row["title"], row["authors"], row["year"], row["venue"], row["doi"],
-                 row["url"], row["published"], sha, row["file_date"], json.dumps(edited), json.dumps(folders),
-                 row["added_at"], reason, duplicate_of if kept else None, kept["title"] if kept else "", int(trashed)),
-            )
-            self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+            sha = cached["sha256"] if cached else ""
+        return sha
+
+    def _remove_row(self, row, sha: str, reason: str, duplicate_of: int | None, trashed: bool) -> None:
+        """Log what the document was and delete it. Inside the caller's transaction, under the lock."""
+        doc_id = row["id"]
+        edited = {k: (json.loads(row[k]) if k == "authors" else row[k]) for k in json.loads(row["edited_fields"])}
+        folders = [r["name"] for r in self.conn.execute(
+            "SELECT f.name FROM doc_folders df JOIN folders f ON f.id = df.folder_id "
+            "WHERE df.doc_id = ? AND df.state = 'user' ORDER BY f.name COLLATE NOCASE", (doc_id,))]
+        kept = self.conn.execute("SELECT title FROM documents WHERE id = ?", (duplicate_of,)).fetchone() if duplicate_of else None
+        self.conn.execute(
+            "INSERT OR REPLACE INTO removed_documents (id, source, kind, title, authors, year, venue, doi, url, published, "
+            "sha256, file_date, edited_fields, folders, added_at, reason, duplicate_of, duplicate_of_title, file_trashed) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (doc_id, row["source"], row["kind"], row["title"], row["authors"], row["year"], row["venue"], row["doi"],
+             row["url"], row["published"], sha, row["file_date"], json.dumps(edited), json.dumps(folders),
+             row["added_at"], reason, duplicate_of if kept else None, kept["title"] if kept else "", int(trashed)),
+        )
+        self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+
+    # ---------- swapping a version for another ----------
+
+    MOVED_REASON = "Moved from the other version: this quote wasn't found in the version kept. Check it."
+
+    def merge_into(self, other_id: int, kept_id: int, dry_run: bool = False) -> dict:
+        """Keep one copy of a paper and move everything from another copy of it (a preprint, say)
+        to it: every citation of the other in every draft, its review-matrix rows, saved findings,
+        highlights and notes, the topics it was put in by hand and its star. Then the other is
+        removed through the removal log, as a duplicate of the kept one.
+
+        Each moved citation's quote is found again in the kept paper. One that isn't found keeps
+        its quote but is marked as needing a check (quote_not_found, MOVED_REASON), never pointed
+        at another passage; a matrix cell likewise becomes unverified, and a highlight keeps its
+        text and note without a place. A version of each draft is saved first, so History can undo
+        it. Everything is written in one transaction. `dry_run` only counts what would move."""
+        if other_id == kept_id:
+            raise ValueError("Pick two different papers")
+        with self.lock:
+            other, kept = self.get_document(other_id), self.get_document(kept_id)  # LookupError if gone
+            plan = self._merge_plan(other, kept)
+            report = {**plan["report"], "kept_id": kept_id, "kept_title": kept["title"],
+                      "other_id": other_id, "other_title": other["title"], "done": False}
+            if dry_run:
+                return report
+            row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (other_id,)).fetchone()
+            sha = self._removal_hash(row)  # may write the hash cache: before the transaction
+            with self.conn:  # one transaction: all of it, or none of it
+                for d in plan["drafts"]:
+                    self._insert_version(d["id"], f"Before moving citations to “{kept['title'][:60]}”",
+                                         d["title"], d["old"])
+                    self.conn.execute("UPDATE drafts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                      (d["new"], d["id"]))
+                for mid in plan["matrix_dropped"]:
+                    self.conn.execute("DELETE FROM matrix_cells WHERE matrix_id = ? AND doc_id = ?", (mid, other_id))
+                    self.conn.execute("DELETE FROM matrix_rows WHERE matrix_id = ? AND doc_id = ?", (mid, other_id))
+                for mid in plan["matrix_moved"]:
+                    self.conn.execute("UPDATE matrix_rows SET doc_id = ? WHERE matrix_id = ? AND doc_id = ?", (kept_id, mid, other_id))
+                for c in plan["cells"]:
+                    self.conn.execute(
+                        'UPDATE matrix_cells SET doc_id = ?, status = ?, chunk_id = ?, page = ?, start = ?, "end" = ?, label = ? '
+                        "WHERE matrix_id = ? AND doc_id = ? AND col = ?",
+                        (kept_id, c["status"], c["chunk_id"], c["page"], c["start"], c["end"], c["label"],
+                         c["matrix_id"], other_id, c["col"]))
+                for fid, sentences, snapshot in plan["findings"]:
+                    self.conn.execute("UPDATE matrix_findings SET sentences = ?, snapshot = ? WHERE id = ?", (sentences, snapshot, fid))
+                for h in plan["highlights"]:
+                    self.conn.execute('UPDATE highlights SET doc_id = ?, page = ?, start = ?, "end" = ? WHERE id = ?',
+                                      (kept_id, h["page"], h["start"], h["end"], h["id"]))
+                for folder_id in plan["topics"]:
+                    self.conn.execute(
+                        "INSERT INTO doc_folders (doc_id, folder_id, state) VALUES (?, ?, 'user') "
+                        "ON CONFLICT(doc_id, folder_id) DO UPDATE SET state = 'user'", (kept_id, folder_id))
+                if plan["report"]["starred"]:
+                    self.conn.execute("UPDATE documents SET starred = 1 WHERE id = ?", (kept_id,))
+                self._remove_row(row, sha, "duplicate", kept_id, False)
+        return {**report, "done": True}
+
+    def _merge_plan(self, other: dict, kept: dict) -> dict:
+        """What merge_into would change, worked out without changing anything. Call under the lock."""
+        o, k = other["id"], kept["id"]
+        cache: dict = {}
+        report = {"citations": 0, "citations_to_check": 0, "drafts": 0, "highlights": 0, "highlights_unplaced": 0,
+                  "topics": 0, "matrix_rows": 0, "matrix_rows_dropped": 0, "cells_to_check": 0, "findings": 0,
+                  "starred": bool(other["starred"] and not kept["starred"])}
+
+        def found(page, quote):
+            return self.resolve_citation(k, page or 1, quote, _cache=cache) if quote and quote.strip() else None
+
+        def chip(attrs: dict) -> None:
+            report["citations"] += 1
+            loc = found(attrs.get("page"), attrs.get("quote") or "")
+            attrs["docId"] = k
+            if loc:
+                attrs.update(chunkId=loc["chunk_id"], page=loc["page"], start=loc["start"], end=loc["end"], label=loc["label"])
+            elif attrs.get("quote"):
+                report["citations_to_check"] += 1
+                attrs.update(chunkId=None, start=None, end=None, status="quote_not_found", reason=self.MOVED_REASON,
+                             label=short_label(kept))
+            else:  # written from a review matrix: it cites the paper as a whole
+                attrs["label"] = short_label(kept)
+
+        def walk(node) -> bool:
+            changed = False
+            if isinstance(node, dict):
+                attrs = node.get("attrs") or {}
+                if node.get("type") == "citation" and attrs.get("docId") == o:
+                    chip(attrs)
+                    changed = True
+                for r in attrs.get("results") or [] if node.get("type") == "citeMark" else []:
+                    if isinstance(r, dict) and r.get("docId") == o:  # a marker's suggestion, not yet confirmed
+                        loc = found(r.get("page"), r.get("quote") or "")
+                        r["docId"] = k
+                        if loc:
+                            r.update(chunkId=loc["chunk_id"], page=loc["page"], start=loc["start"], end=loc["end"], label=loc["label"])
+                        changed = True
+                for child in node.get("content") or []:
+                    changed = walk(child) or changed
+            return changed
+
+        drafts = []
+        for r in self.conn.execute("SELECT id, title, content FROM drafts ORDER BY id").fetchall():
+            try:
+                doc = json.loads(r["content"] or "{}")
+            except ValueError:
+                continue
+            if walk(doc):
+                drafts.append({"id": r["id"], "title": r["title"], "old": r["content"], "new": json.dumps(doc)})
+        report["drafts"] = len(drafts)
+
+        in_kept = {r["matrix_id"] for r in self.conn.execute("SELECT matrix_id FROM matrix_rows WHERE doc_id = ?", (k,))}
+        mine = [r["matrix_id"] for r in self.conn.execute("SELECT matrix_id FROM matrix_rows WHERE doc_id = ?", (o,))]
+        moved, dropped = [m for m in mine if m not in in_kept], [m for m in mine if m in in_kept]
+        report["matrix_rows"], report["matrix_rows_dropped"] = len(moved), len(dropped)
+        cells = []
+        for c in self.conn.execute(
+            f'SELECT matrix_id, col, status, quote, chunk_id, page, start, "end", label FROM matrix_cells '
+            f"WHERE doc_id = ? AND matrix_id IN ({','.join('?' * len(moved)) or 'NULL'})", (o, *moved)).fetchall():
+            c = dict(c)
+            loc = found(c["page"], c["quote"])
+            if loc:
+                c.update(chunk_id=loc["chunk_id"], page=loc["page"], start=loc["start"], end=loc["end"], label=loc["label"])
+            elif c["quote"].strip():
+                report["cells_to_check"] += 1
+                c.update(status="unverified", chunk_id=None, start=None, end=None)
+            cells.append(c)
+
+        def repoint(value):
+            if isinstance(value, dict):
+                return {key: (k if key in ("doc_id", "docId") and v == o else repoint(v)) for key, v in value.items()}
+            if isinstance(value, list):
+                return [repoint(v) for v in value]
+            return value
+
+        findings = []
+        for r in self.conn.execute("SELECT id, sentences, snapshot FROM matrix_findings").fetchall():
+            s, snap = repoint(json.loads(r["sentences"])), repoint(json.loads(r["snapshot"]))
+            if json.dumps(s) != json.dumps(json.loads(r["sentences"])) or json.dumps(snap) != json.dumps(json.loads(r["snapshot"])):
+                findings.append((r["id"], json.dumps(s), json.dumps(snap)))
+        report["findings"] = len(findings)
+
+        highlights = []
+        for h in self.conn.execute('SELECT id, page, text FROM highlights WHERE doc_id = ? ORDER BY id', (o,)).fetchall():
+            loc = found(h["page"], h["text"])
+            report["highlights"] += 1
+            if not loc:
+                report["highlights_unplaced"] += 1
+            highlights.append({"id": h["id"], "page": loc["page"] if loc else h["page"],
+                               "start": loc["start"] if loc else None, "end": loc["end"] if loc else None})
+
+        kept_topics = {r["folder_id"] for r in self.conn.execute(
+            "SELECT folder_id FROM doc_folders WHERE doc_id = ? AND state = 'user'", (k,))}
+        topics = [r["folder_id"] for r in self.conn.execute(
+            "SELECT folder_id FROM doc_folders WHERE doc_id = ? AND state = 'user'", (o,)) if r["folder_id"] not in kept_topics]
+        report["topics"] = len(topics)
+        return {"report": report, "drafts": drafts, "matrix_moved": moved, "matrix_dropped": dropped, "cells": cells,
+                "findings": findings, "highlights": highlights, "topics": topics}
+
+    def _insert_version(self, draft_id: int, label: str, title: str, content: str) -> None:
+        """A milestone of a draft, written inside the caller's transaction (see _add_version)."""
+        text = draft_review.plain_text(content)
+        latest = self.conn.execute(
+            "SELECT text FROM draft_versions WHERE draft_id = ? ORDER BY id DESC LIMIT 1", (draft_id,)).fetchone()
+        change = draft_review.change_pct(latest["text"], text) if latest else 100
+        self.conn.execute(
+            "INSERT INTO draft_versions (draft_id, kind, label, title, content, text, words, change) "
+            "VALUES (?, 'milestone', ?, ?, ?, ?, ?, ?)",
+            (draft_id, label[:120], title, content, text, draft_review.word_count(text), change))
 
     # ---------- removal log ----------
 

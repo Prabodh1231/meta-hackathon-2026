@@ -10,6 +10,7 @@ import type {
   DocxConversion,
   DocxImport,
   DocxStyle,
+  MergeReport,
   FoundWorks,
   ReadingOrder,
   DraftSummary,
@@ -67,7 +68,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 30
+export const API_VERSION = 31
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -173,6 +174,9 @@ export const api = {
     request<FetchResult>('POST', '/library/fetch-work', w),
   /** Citations worldwide and abstracts, by DOI. */
   worksInfo: (dois: string[]) => request<Record<string, IndexWork>>('POST', '/works/info', { dois }),
+  /** Keep `keptId` and move everything from `otherId` to it, then remove `otherId`; `dryRun` only says what would move. */
+  mergeInto: (otherId: number, keptId: number, dryRun = false) =>
+    request<MergeReport>('POST', `/documents/${otherId}/merge-into/${keptId}${dryRun ? '?dry_run=true' : ''}`),
   duplicateFiles: (cited: number[]) => request<FileDuplicateReport>('POST', '/library/duplicates', { cited }),
   page: (docId: number, page: number) => request<PageText>('GET', `/documents/${docId}/pages/${page}`),
 

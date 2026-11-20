@@ -644,6 +644,26 @@ export interface DuplicateGroup {
   docs: DuplicateDoc[]
 }
 
+/** What keeping one copy of a paper and moving everything from the other did (or, on a dry run, would do). */
+export interface MergeReport {
+  citations: number
+  citations_to_check: number // their quote wasn't found in the copy kept: marked to check
+  drafts: number
+  highlights: number
+  highlights_unplaced: number // moved without a place on the page
+  topics: number
+  matrix_rows: number
+  matrix_rows_dropped: number // the kept copy was in that matrix already
+  cells_to_check: number
+  findings: number
+  starred: boolean
+  kept_id: number
+  kept_title: string
+  other_id: number
+  other_title: string
+  done: boolean
+}
+
 export interface FileDuplicateReport {
   groups: DuplicateGroup[]
   counts: Record<DuplicateKind, number>

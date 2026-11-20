@@ -808,6 +808,13 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .newfolder input:not([type="range"]) { padding: 6px 10px; background: var(--panel); }
 .newfolder p { margin: 0; }
 .newfolder-actions { display: flex; gap: 6px; }
+/* Keeping one version of a paper and moving everything to it (the duplicate finder) */
+.vm-pub { margin: 4px 0 10px; }
+.vm-confirm { display: flex; flex-direction: column; gap: 6px; }
+.vm-confirm ul { margin: 0; padding-left: 18px; line-height: 1.6; }
+.vm-confirm p { margin: 0; }
+.vm-report { margin: 0 20px 8px; }
+.vm-check { margin: 4px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 12.5px; }
 /* A paper whose file isn't where it was added from */
 .lib-detail-missing { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; padding: 10px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 12.5px; line-height: 1.45; }
 .lib-detail-missing code { overflow-wrap: anywhere; color: var(--text); }
