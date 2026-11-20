@@ -2,7 +2,7 @@ import { Ribbons } from './Ribbons'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MuseTag } from './MuseTag'
 import { api } from '../api'
-import type { Doc, Folder, FolderColor, IngestJob, PassageHit, RefStyle, RemovedDoc } from '../types'
+import type { Doc, DocxStyle, Folder, FolderColor, IngestJob, PassageHit, RefStyle, RemovedDoc } from '../types'
 import {
   type TimeField, type TimeWindow, buildAxis, docSpan, fmtDay, fmtPublished, gotAt, inWindow, posLabel, removedSince,
 } from '../timeline'
@@ -25,6 +25,7 @@ import { type FrontLayout, type FrontSort, type RecentShown, LibraryFront, SizeS
 import { FolderSummary } from './FolderSummary'
 import { FolderPeek } from './FolderPeek'
 import { FolderMenu } from './FolderMenu'
+import { ReadingListDialog } from './ReadingListDialog'
 import { DropShelf, draggedIds } from './DropShelf'
 import { PaperCovers, coversPerRow } from './PaperCovers'
 import { type Recent, noteRecent, readRecent } from '../recentlyOpened'
@@ -54,6 +55,8 @@ interface Props {
   cited: number[] // documents the draft cites
   /** Where a new folder's similarity starts (Settings). */
   folderSimilarity: number
+  /** The Settings citation style, for a reading list. */
+  citationStyle?: DocxStyle
   /** Show a PDF in the app's reader, at a page, with `find` marked there. */
   onOpenPdf: (doc: Doc, page?: number, find?: string) => void
   /** Background imports, newest first, with each file's progress. */
@@ -1004,7 +1007,7 @@ const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? 
  * every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs: allDocs, folders, query, onQuery, selected: drafting, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
-  folderSimilarity, onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint,
+  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS) // the chips above the list
@@ -1038,6 +1041,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   const [size, setSizeState] = useState<number>(() => load<number>(SIZE_KEY, 60, (v) => typeof v === 'number' && v >= 0 && v <= 100))
   const [peekKey, setPeekKey] = useState<string | null>(null) // Space on a folder: its papers listed over the folders
   const [folderMenu, setFolderMenu] = useState<{ key: string; x: number; y: number } | null>(null)
+  const [readingList, setReadingList] = useState<{ docs: Doc[]; title: string } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null) // the folder whose name is being edited in place
   const [dragging, setDragging] = useState<number | null>(null) // papers being dragged: the shelf of topics shows
   const [recent, setRecent] = useState<Recent[]>(readRecent)
@@ -2224,6 +2228,12 @@ export const LibraryPanel = memo(function LibraryPanel({
                     {allDrafting ? 'Stop drafting from' : 'Use for drafting'}
                   </button>
                   <button aria-haspopup="menu" onClick={(e) => setMenu({ kind: 'cite', ...under(e.currentTarget) })}>Copy citation ▾</button>
+                  <button
+                    onClick={() => setReadingList({ docs: chosen, title: openFolder ? `${openFolder.name} reading list` : 'Reading list' })}
+                    title="A Word file of these papers' references, Muse's summaries and your highlights and notes"
+                  >
+                    Export reading list…
+                  </button>
                   <button className="danger-text" onClick={() => remove(chosen)} title="Remove from the library (Delete). The files stay on disk.">Remove</button>
                 </div>
               )}
@@ -2486,6 +2496,19 @@ export const LibraryPanel = memo(function LibraryPanel({
             if (id !== undefined) requestAnimationFrame(() => setMenu({ kind: 'merge', x, y, folderId: id }))
           }}
           onDelete={() => menuItem.saved && deleteView(menuItem.saved)}
+          onReadingList={() => setReadingList({ docs: menuItem.docs, title: `${menuItem.name} reading list` })}
+        />
+      )}
+      {readingList && (
+        <ReadingListDialog
+          docIds={readingList.docs.map((d) => d.id)}
+          papers={readingList.docs.filter((d) => d.kind !== 'text').length}
+          notes={readingList.docs.filter((d) => d.kind === 'text').length}
+          defaultTitle={readingList.title}
+          style={citationStyle}
+          onClose={() => setReadingList(null)}
+          onSaved={(name) => say(`Saved the reading list as ${name}.`)}
+          onError={onError}
         />
       )}
       {dragging !== null && <DropShelf topics={topicItems} openKey={opened} count={dragging} onDrop={dropOnTopic} />}

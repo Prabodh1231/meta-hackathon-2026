@@ -476,6 +476,8 @@ export interface Health {
 
 export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
 export type DocxStyle = Exclude<RefStyle, 'bibtex'>
+/** How a reading list is ordered: by first author, or by year (oldest first). */
+export type ReadingOrder = 'author' | 'year'
 export type ThemePref = 'system' | 'light' | 'dark'
 
 /** Preferences from the Settings window, stored in the library database (USER_SETTINGS in

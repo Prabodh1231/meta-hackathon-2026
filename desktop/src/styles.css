@@ -799,6 +799,15 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .newfolder input:not([type="range"]) { padding: 6px 10px; background: var(--panel); }
 .newfolder p { margin: 0; }
 .newfolder-actions { display: flex; gap: 6px; }
+/* Export reading list */
+.modal.reading-list { width: min(440px, 92vw); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.modal.reading-list h2 { margin: 0; font: 600 18px/1.25 var(--doc-font); }
+.modal.reading-list p { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.rl-field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.rl-field > span { font-weight: 600; }
+.rl-field input { padding: 6px 10px; }
+.rl-field .segmented { align-self: flex-start; }
+
 /* What's new in a topic */
 .na-note { display: flex; align-items: center; gap: 12px; margin: 0 20px 8px; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 12.5px; }
 .na-note span { flex: 1; }
