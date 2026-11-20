@@ -1,5 +1,6 @@
 import { Ribbons } from './Ribbons'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MuseTag } from './MuseTag'
 import { api } from '../api'
 import type { Doc, DocxStyle, Folder, FolderColor, IngestJob, PassageHit, RefStyle, RemovedDoc } from '../types'
@@ -21,7 +22,8 @@ import {
   load, plural, save, useDismiss,
 } from './libraryParts'
 import type { FrontItem } from './FolderTile'
-import { type FrontLayout, type FrontSort, type RecentShown, LibraryFront, SizeSlider, tileWidth } from './LibraryFront'
+import { type FrontLayout, type FrontSort, type RecentShown, FrontTools, LibraryFront, SizeSlider, tileWidth } from './LibraryFront'
+import { SmartViews } from './SmartViews'
 import { FolderSummary } from './FolderSummary'
 import { FolderPeek } from './FolderPeek'
 import { FolderMenu } from './FolderMenu'
@@ -49,6 +51,7 @@ interface Props {
   focusTopic?: { id: number; n: number } | null
   /** A saved view to open (from Home); `n` changes per request. */
   focusView?: { id: string; n: number } | null
+  toFront?: number // goes up each time Library is clicked in the sidebar: show the folders
   /** Ctrl K's Surprise me: open a random unread paper from the whole library. */
   surprise?: number
   onFindDuplicates: () => void
@@ -75,6 +78,8 @@ interface Props {
   onWhatsNew?: (folderId: number) => void
   /** What the app bar's search box says it searches: the folders, or the open folder. */
   onSearchHint?: (placeholder: string) => void
+  onFront?: (atFront: boolean) => void // the folders are showing: the dock says which keys work there
+  sideSlot?: HTMLElement | null // the app's sidebar, while the Library is open: the smart views go there
 }
 
 const FILTERS: { id: Doc['kind']; label: string }[] = [
@@ -1042,6 +1047,7 @@ const FRONT_LAYOUT_KEY = 'gw.library.folderLayout'
 const FRONT_SORT_KEY = 'gw.library.folderSort'
 const PAPER_LAYOUT_KEY = 'gw.library.paperLayout'
 const SIZE_KEY = 'gw.library.size'
+const SUMMARY_KEY = 'gw.library.summaryOpen' // the panel beside the folders, shown or hidden
 const RECENT_SHOWN = 5
 /** The smart folders made from ready-made views, in the order they show; each shows only when it has
  * something in it, except All sources and Drafting from. */
@@ -1072,7 +1078,7 @@ const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? 
  * every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs: allDocs, folders, query, onQuery, selected: drafting, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
-  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, focusView, surprise, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint,
+  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, focusView, surprise, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint, onFront, sideSlot, toFront,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS) // the chips above the list
@@ -1104,6 +1110,7 @@ export const LibraryPanel = memo(function LibraryPanel({
   const [frontSort, setFrontSortState] = useState<FrontSort>(() => load<FrontSort>(FRONT_SORT_KEY, 'size', (v) => v === 'size' || v === 'name'))
   const [paperLayout, setPaperLayoutState] = useState<PaperLayout>(() => load<PaperLayout>(PAPER_LAYOUT_KEY, 'rows', (v) => v === 'rows' || v === 'covers'))
   const [size, setSizeState] = useState<number>(() => load<number>(SIZE_KEY, 60, (v) => typeof v === 'number' && v >= 0 && v <= 100))
+  const [summaryOpen, setSummaryOpenState] = useState<boolean>(() => load<boolean>(SUMMARY_KEY, true, (v) => typeof v === 'boolean'))
   const [peekKey, setPeekKey] = useState<string | null>(null) // Space on a folder: its papers listed over the folders
   const [folderMenu, setFolderMenu] = useState<{ key: string; x: number; y: number } | null>(null)
   const [readingList, setReadingList] = useState<{ docs: Doc[]; title: string } | null>(null)
@@ -1494,6 +1501,15 @@ export const LibraryPanel = memo(function LibraryPanel({
   useEffect(() => {
     if (focusView && views.some((x) => x.id === focusView.id)) openKey(`s:${focusView.id}`)
   }, [focusView?.n]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Library clicked in the sidebar: out of any folder or view, to the folders (the one left stays selected).
+  useEffect(() => {
+    if (toFront) {
+      closePeek()
+      setPeekKey(null)
+      setFolderMenu(null)
+      goBack()
+    }
+  }, [toFront]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (surprise) surpriseFrom(allDocs, 'your library')
   }, [surprise]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1895,6 +1911,10 @@ export const LibraryPanel = memo(function LibraryPanel({
   useEffect(() => {
     onSearchHint?.(atFront ? 'Search topics, and the titles of the papers in them…' : opened ? `Search in ${openedName}…` : 'Search titles, authors, and inside papers…')
   }, [atFront, opened, openedName, onSearchHint])
+  useEffect(() => {
+    onFront?.(atFront)
+  }, [atFront, onFront])
+  useEffect(() => () => onFront?.(false), [onFront])
   // A folder selected on the front page that is gone now (deleted, merged, emptied) is let go.
   useEffect(() => {
     if (selKey && !itemByKey.has(selKey) && docs.length) setSelKey(null)
@@ -1904,10 +1924,17 @@ export const LibraryPanel = memo(function LibraryPanel({
   const setFrontSort = (s: FrontSort) => (setFrontSortState(s), save(FRONT_SORT_KEY, s))
   const setPaperLayout = (l: PaperLayout) => (setPaperLayoutState(l), save(PAPER_LAYOUT_KEY, l))
   const setSize = (n: number) => (setSizeState(n), save(SIZE_KEY, n))
+  const setSummaryOpen = (o: boolean) => (setSummaryOpenState(o), save(SUMMARY_KEY, o))
 
   /** Give the keyboard back to a folder on the front page (after a menu, a rename, the peek). */
   const focusTile = (key: string | null) =>
-    requestAnimationFrame(() => ((key && frontRef.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)) || frontRef.current)?.focus({ preventScroll: true }))
+    requestAnimationFrame(() => {
+      // A dialog the menu just opened (Peek inside) keeps the keyboard.
+      if ((document.activeElement as HTMLElement | null)?.closest('[role="dialog"]')) return
+      const at = key ? `[data-key="${CSS.escape(key)}"]` : ''
+      const el = (at && (frontRef.current?.querySelector<HTMLElement>(at) ?? document.querySelector<HTMLElement>(`.lib-side ${at}`))) || frontRef.current || listEl()
+      el?.focus({ preventScroll: true })
+    })
   /** A name edited in place on the front page: a topic's, or a saved view's. Null: left as it was. */
   const renamed = (key: string, name: string | null) => {
     setRenaming(null)
@@ -1982,7 +2009,7 @@ export const LibraryPanel = memo(function LibraryPanel({
     <section
       ref={sectionRef}
       tabIndex={-1}
-      className={`panel library${paneOpen && !atFront ? ' has-pane' : ''}${atFront ? ' at-front' : ''}`}
+      className={`panel library${paneOpen && !atFront ? ' has-pane' : ''}${atFront ? ' at-front' : ''}${atFront && summaryOpen ? ' has-summary' : ''}`}
       aria-label="Library"
       onKeyDown={(e) => {
         // Backspace or Alt+Left inside a folder: back to the folders, as in a file explorer.
@@ -2001,6 +2028,20 @@ export const LibraryPanel = memo(function LibraryPanel({
       }}
       onDragEnd={() => setDragging(null)}
     >
+      {sideSlot &&
+        docs.length > 0 &&
+        createPortal(
+          <SmartViews
+            items={smartItems}
+            total={docs.length}
+            active={opened ?? (atFront ? 'v:all' : null)}
+            renaming={renaming}
+            onOpen={openKey}
+            onMenu={(key, x, y) => setFolderMenu({ key, x, y })}
+            onRenamed={onRenamed}
+          />,
+          sideSlot,
+        )}
       <header className="lib-head">
         {opened === null ? (
           <div className="lib-title">
@@ -2033,6 +2074,9 @@ export const LibraryPanel = memo(function LibraryPanel({
           </div>
         )}
         <span className="spacer" />
+        {atFront && (
+          <FrontTools layout={frontLayout} size={size} sort={frontSort} onLayout={setFrontLayout} onSize={setSize} onSort={setFrontSort} />
+        )}
         {opened !== null && !showingRemoved && docs.length > 0 && (
           <>
             {paperLayout === 'covers' && <SizeSlider size={size} onSize={setSize} />}
@@ -2053,6 +2097,19 @@ export const LibraryPanel = memo(function LibraryPanel({
           }}
           onShow={showDoc}
         />
+        {atFront && (
+          <button
+            className={`ghost lib-icon-btn lib-sum-toggle${summaryOpen ? ' on' : ''}`}
+            onClick={() => setSummaryOpen(!summaryOpen)}
+            aria-pressed={summaryOpen}
+            aria-label={summaryOpen ? 'Hide the folder panel' : 'Show the folder panel'}
+            title={summaryOpen ? 'Hide the panel that sums up the selected folder' : 'Show the panel that sums up the selected folder'}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 5h16v14H4zM14 5v14" />
+            </svg>
+          </button>
+        )}
         {docs.length > 0 && (
           <div className="lib-more" ref={moreRef}>
             <button className="ghost lib-icon-btn" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More library actions" title="More" onClick={() => setMoreOpen((o) => !o)}>
@@ -2138,7 +2195,6 @@ export const LibraryPanel = memo(function LibraryPanel({
         {atFront && (
           <div className="lib-front">
             <LibraryFront
-              smart={shownSmart}
               topics={shownTopics}
               totalTopics={topicItems.length}
               recent={recentShown}
@@ -2147,12 +2203,8 @@ export const LibraryPanel = memo(function LibraryPanel({
               cited={citedBy}
               layout={frontLayout}
               size={size}
-              sort={frontSort}
               renaming={renaming}
               scrollRef={frontRef}
-              onLayout={setFrontLayout}
-              onSize={setSize}
-              onSort={setFrontSort}
               onSelect={setSelKey}
               onOpen={openKey}
               onPeek={setPeekKey}
@@ -2209,21 +2261,6 @@ export const LibraryPanel = memo(function LibraryPanel({
                 />
               )}
             </LibraryFront>
-            <FolderSummary
-              item={selKey ? itemByKey.get(selKey) : undefined}
-              topics={topicItems}
-              cited={citedSet}
-              drafting={drafting}
-              onOpen={() => selKey && openKey(selKey)}
-              onDraft={toggleDrafting}
-              onMap={(name) => onMapTopic?.(name)}
-              onWhatsNew={onWhatsNew}
-              onOpenKey={openKey}
-              onSurprise={() => {
-                const it = selKey ? itemByKey.get(selKey) : undefined
-                if (it) surpriseFrom(it.docs, it.kind === 'topic' ? it.name : 'your library')
-              }}
-            />
           </div>
         )}
 
@@ -2529,6 +2566,27 @@ export const LibraryPanel = memo(function LibraryPanel({
           </div>
         )}
       </div>
+      {atFront && summaryOpen && (
+        <FolderSummary
+          item={selKey ? itemByKey.get(selKey) : undefined}
+          topics={topicItems}
+          cited={citedSet}
+          drafting={drafting}
+          onOpen={() => selKey && openKey(selKey)}
+          onClose={() => {
+            setSummaryOpen(false)
+            focusTile(selKey)
+          }}
+          onDraft={toggleDrafting}
+          onMap={(name) => onMapTopic?.(name)}
+          onWhatsNew={onWhatsNew}
+          onOpenKey={openKey}
+          onSurprise={() => {
+            const it = selKey ? itemByKey.get(selKey) : undefined
+            if (it) surpriseFrom(it.docs, it.kind === 'topic' ? it.name : 'your library')
+          }}
+        />
+      )}
 
       {peek && current && (
         <QuickLook
@@ -2562,7 +2620,7 @@ export const LibraryPanel = memo(function LibraryPanel({
           }}
         />
       )}
-      {atFront && peekItem && (
+      {peekItem && (
         <FolderPeek
           item={peekItem}
           onClose={closeFolderPeek}
@@ -2570,7 +2628,7 @@ export const LibraryPanel = memo(function LibraryPanel({
           onStep={peekStep}
         />
       )}
-      {atFront && folderMenu && menuItem && (
+      {folderMenu && menuItem && (
         <FolderMenu
           item={menuItem}
           x={folderMenu.x}
@@ -2590,6 +2648,14 @@ export const LibraryPanel = memo(function LibraryPanel({
           }}
           onDelete={() => menuItem.saved && deleteView(menuItem.saved)}
           onSurprise={() => surpriseFrom(menuItem.docs, menuItem.kind === 'topic' ? menuItem.name : 'your library')}
+          draftLabel={
+            menuItem.docs.length > 0 && menuItem.view !== 'all' && menuItem.view !== 'drafting' && menuItem.view !== 'removed'
+              ? menuItem.docs.every((d) => drafting.has(d.id))
+                ? 'Stop drafting from'
+                : 'Use for drafting'
+              : undefined
+          }
+          onDraft={() => toggleDrafting(menuItem.docs)}
           onReadingList={() => setReadingList({ docs: menuItem.docs, title: `${menuItem.name} reading list` })}
         />
       )}

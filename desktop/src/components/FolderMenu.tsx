@@ -7,7 +7,7 @@ const COLOR_NAME: Record<FolderColor, string> = { rose: 'Rose', gold: 'Gold', vi
 
 /** Right-click on a folder of the front page. A topic can be given a colour, renamed or merged into
  * another; a saved view renamed or deleted; every folder opened or peeked into. */
-export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRename, onMerge, onDelete, onReadingList, onSurprise }: {
+export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRename, onMerge, onDelete, onReadingList, onSurprise, draftLabel, onDraft }: {
   item: FrontItem
   x: number
   y: number
@@ -20,6 +20,8 @@ export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRen
   onDelete: () => void // a saved view
   onSurprise?: () => void // open a random unread paper from it
   onReadingList?: () => void // a topic's papers as a Word reading list
+  draftLabel?: string // "Use for drafting" or "Stop drafting from"; none where it would change nothing
+  onDraft?: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
@@ -69,6 +71,11 @@ export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRen
       {onSurprise && (item.kind === 'topic' || item.view === 'all') && item.docs.length > 0 && (
         <button role="menuitem" onClick={act(onSurprise)} title="Open a paper from it you haven't read yet, at random">
           <span className="lib-pop-label">Surprise me</span>
+        </button>
+      )}
+      {draftLabel && onDraft && (
+        <button role="menuitem" onClick={act(onDraft)} title="The sources Muse drafts from and searches for citations in">
+          <span className="lib-pop-label">{draftLabel}</span>
         </button>
       )}
       {item.kind === 'topic' && (

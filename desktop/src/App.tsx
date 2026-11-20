@@ -101,6 +101,16 @@ function modelLine(h: Health): string {
   return `${ai} · hybrid search`
 }
 
+// Whether the sidebar on the left is wide (labelled, with the Library's smart views) or icons only.
+const RAIL_KEY = 'gw.sidebarWide'
+function storedRailWide(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
 // Whether the writing tools are open beside the draft; Settings can override it at launch.
 const TOOLS_KEY = 'rc.toolsOpen'
 function storedToolsOpen(): boolean {
@@ -282,6 +292,7 @@ export default function App() {
   const [libFocus, setLibFocus] = useState<{ id: number; n: number } | null>(null)
   const [libTopic, setLibTopic] = useState<{ id: number; n: number } | null>(null) // a topic to open in the library
   const [libView, setLibView] = useState<{ id: string; n: number } | null>(null) // a saved view to open there (from Home)
+  const [libHome, setLibHome] = useState(0) // Library clicked in the sidebar: back to its front page of folders
   const openView = useCallback((id: string) => {
     setLibView((v) => ({ id, n: (v?.n ?? 0) + 1 }))
     setMode('library')
@@ -292,6 +303,7 @@ export default function App() {
   }, [])
   // The Library's search box says what it searches: the folders on its front page, or the open one.
   const [libHint, setLibHint] = useState('')
+  const [libFront, setLibFront] = useState(false) // the Library shows its folders: the dock names their keys
   /** "Map it" on a topic: the citation network, searched for the topic's name. */
   const mapTopic = useCallback((name: string) => {
     setNetQuery(name)
@@ -301,6 +313,34 @@ export default function App() {
     setMode('library')
     setLibFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
   }, [])
+
+  const [railWide, setRailWide] = useState(storedRailWide)
+  const [railSlot, setRailSlot] = useState<HTMLDivElement | null>(null) // where the Library puts its smart views
+  const railScrollRef = useRef<HTMLDivElement>(null)
+  const [railMore, setRailMore] = useState(false) // more of the sidebar below its foot: fade it there
+  useEffect(() => {
+    const el = railScrollRef.current
+    if (!el) return
+    const check = () => setRailMore(el.scrollHeight - el.scrollTop - el.clientHeight > 2)
+    check()
+    el.addEventListener('scroll', check, { passive: true })
+    const sized = new ResizeObserver(check) // the window, or the sidebar widened or collapsed
+    sized.observe(el)
+    const filled = new MutationObserver(check) // the Library adding or taking away its smart views
+    filled.observe(el, { childList: true, subtree: true })
+    return () => {
+      el.removeEventListener('scroll', check)
+      sized.disconnect()
+      filled.disconnect()
+    }
+  }, [])
+  useEffect(() => {
+    try {
+      localStorage.setItem(RAIL_KEY, railWide ? '1' : '0')
+    } catch {
+      /* storage unavailable */
+    }
+  }, [railWide])
 
   useEffect(() => {
     try {
@@ -1512,20 +1552,40 @@ export default function App() {
       </header>
 
       <div className="workspace">
-        <nav className="rail" aria-label="Places">
-          {MODES.map((m) => (
-            <button
-              key={m.mode}
-              className={`rail-btn${mode === m.mode ? ' on' : ''}`}
-              onClick={() => setMode(m.mode)}
-              title={m.hint}
-              aria-current={mode === m.mode ? 'page' : undefined}
-            >
-              <Icon name={m.icon} />
-              <span>{m.label}</span>
-              {m.mode === 'library' && docs.length > 0 && <em className="rail-badge">{docs.length}</em>}
-            </button>
-          ))}
+        <nav className={`rail${railWide ? ' wide' : ''}`} aria-label="Places">
+          {/* Scrolls when the window is short; fades at the foot while more is below */}
+          <div className={`rail-scroll${railMore ? ' more' : ''}`} ref={railScrollRef}>
+          <div className="rail-modes">
+            {MODES.map((m) => (
+              <button
+                key={m.mode}
+                className={`rail-btn${mode === m.mode ? ' on' : ''}`}
+                onClick={() => {
+                  setMode(m.mode)
+                  // Library always opens on its front page of folders, wherever it was left
+                  if (m.mode === 'library') setLibHome((n) => n + 1)
+                }}
+                title={`${m.label}: ${m.hint}`}
+                aria-current={mode === m.mode ? 'page' : undefined}
+              >
+                <Icon name={m.icon} />
+                <span>{m.label}</span>
+              </button>
+            ))}
+          </div>
+          {/* The Library fills this with its smart views while it is the place open */}
+          <div className="rail-slot" ref={setRailSlot} />
+          </div>
+          <button
+            className="rail-toggle"
+            onClick={() => setRailWide((w) => !w)}
+            title={railWide ? 'Collapse the sidebar to icons' : 'Expand the sidebar'}
+            aria-label={railWide ? 'Collapse the sidebar' : 'Expand the sidebar'}
+            aria-expanded={railWide}
+          >
+            <Icon name={railWide ? 'sidebarClose' : 'sidebarOpen'} size={19} />
+            <span>Collapse</span>
+          </button>
         </nav>
 
         <div className="view home-view" hidden={mode !== 'home'}>
@@ -1836,6 +1896,7 @@ export default function App() {
             focus={libFocus}
             focusTopic={libTopic}
             focusView={libView}
+            toFront={libHome}
             surprise={surprise}
             jobs={jobs}
             onAddPaths={addToLibrary}
@@ -1852,6 +1913,8 @@ export default function App() {
             cited={citedIds}
             onMapTopic={mapTopic}
             onSearchHint={setLibHint}
+            onFront={setLibFront}
+            sideSlot={mode === 'library' ? railSlot : null}
           />
         </div>
 
@@ -1943,6 +2006,11 @@ export default function App() {
           </button>
         </div>
         <span className="spacer" />
+        {mode === 'library' && libFront && (
+          <span className="dock-keys">
+            <kbd>Space</kbd> to peek · <kbd>Enter</kbd> to open
+          </span>
+        )}
         {health && health.api !== API_VERSION && !offline && (
           <span className="offline status" title="The backend was started before the app was updated">
             Restart the app to finish updating
