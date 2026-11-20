@@ -89,7 +89,7 @@ export function NewFolderForm({ initial, onCreate, onCancel }: {
 
 /** Shown for an opened topic: its name, how closely a paper has to match to be filed here,
  * and renaming or deleting it. */
-export function FolderBar({ folder, run }: { folder: Folder; run: Run }) {
+export function FolderBar({ folder, run, onWhatsNew }: { folder: Folder; run: Run; onWhatsNew?: (folderId: number) => void }) {
   const [value, setValue] = useState(folder.similarity)
   const [renaming, setRenaming] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -157,6 +157,11 @@ export function FolderBar({ folder, run }: { folder: Folder; run: Run }) {
           </>
         ) : (
           <>
+            {onWhatsNew && (
+              <button className="link" onClick={() => onWhatsNew(folder.id)} title="Recent works that cite this topic's papers and aren't in your library">
+                What's new
+              </button>
+            )}
             <button className="link" onClick={() => setRenaming(true)}>Rename</button>
             <button className="link danger-link" onClick={() => setDeleting(true)} title="The sources stay in your library">
               Delete

@@ -426,6 +426,33 @@ export interface MissingWorks {
  *  no_free_copy: found, but paywalled · not_found: no index knows it · failed: an error */
 export type FetchStatus = 'in_library' | 'downloaded' | 'link' | 'no_free_copy' | 'not_found' | 'failed'
 
+/** What's new in a topic: recent works outside the library citing its papers (GET /folders/{id}/new-arrivals). */
+export interface NewArrivals {
+  folder_id: number
+  name: string
+  papers: number // in the topic
+  known: number // of those, known to OpenAlex
+  asked: number // of those, asked about (the most cited, up to a cap)
+  capped: boolean
+  not_looked_up: number[] // papers never looked up in the index
+  not_in_index: number // papers OpenAlex doesn't know
+  found?: number // new works found, of which `works` are the closest
+  checked_at: string | null // "YYYY-MM-DD HH:MM:SS", UTC
+  works: {
+    openalex_id: string
+    doi: string
+    title: string
+    authors: string[]
+    year: number | null
+    venue: string
+    cited_by_count: number | null
+    abstract: string
+    published: string
+    first_author: string
+    cites_titles: string[] // the topic's papers it cites
+  }[]
+}
+
 export interface FetchResult {
   status: FetchStatus
   doc_id?: number

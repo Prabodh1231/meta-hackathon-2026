@@ -43,6 +43,7 @@ LOOKUP_FIELDS = ",".join(dict.fromkeys(RECORD_FIELDS.split(",") + OA_FIELDS.spli
 LOOKUP_MAX_AGE_SECONDS = 600  # a looked-up work is reused this long (a fetched paper's record follows soon)
 LOOKUP_MEMO_SIZE = 256
 IDS_PER_REQUEST = 50  # OpenAlex takes up to this many ids in one filter
+CITING_ANY_PER_REQUEST = 200  # the newest citing works asked for per batch of cited ones (OpenAlex's page limit)
 CITED_BY_MAX_AGE_DAYS = 30  # a cached work's cited_by_count is fetched again when older than this
 CACHE_FILE = "openalex_cache.db"  # in the app data folder
 
@@ -472,6 +473,23 @@ class OpenAccess:
             return 0, []
         body = res.json()
         return (body.get("meta") or {}).get("count") or 0, [listed_work(w) for w in body.get("results") or []]
+
+    def citing_any(self, openalex_ids: list[str], limit: int = CITING_ANY_PER_REQUEST) -> list[dict]:
+        """The newest works citing any of these works, IDS_PER_REQUEST of them to a request rather
+        than one request each. Each is listed as listed_work, with its publication date and
+        `cites`: which of the given works it cites."""
+        ids = list(dict.fromkeys(openalex_ids))
+        wanted, out = set(ids), {}
+        for i in range(0, len(ids), IDS_PER_REQUEST):
+            batch = ids[i:i + IDS_PER_REQUEST]
+            res = self._get(f"{OPENALEX}/works", self._params(
+                select=LIST_FIELDS + ",publication_date,referenced_works", filter="cites:" + "|".join(batch),
+                sort="publication_date:desc", **{"per-page": str(limit)}))
+            for w in (res.json().get("results") or []) if res else []:
+                item = out.setdefault(_short_id(w.get("id")), {**listed_work(w), "published": w.get("publication_date") or ""})
+                cited = {_short_id(u) for u in w.get("referenced_works") or []} & wanted
+                item["cites"] = sorted(set(item.get("cites", [])) | cited)
+        return list(out.values())
 
     def search(self, query: str, limit: int = 15) -> list[dict]:
         """Works matching a free-text query (title, abstract and full text), most relevant first."""

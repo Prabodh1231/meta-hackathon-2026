@@ -9,6 +9,7 @@ import os
 import queue
 import re
 import threading
+import time
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -71,6 +72,11 @@ MAX_AUTO_VERSIONS = 40
 SOURCE_MATCH = 0.5  # closely matches the source
 SOURCE_COPIED = 0.85  # copied nearly word for word
 INDEX_LOOKUP_WORKERS = 4  # papers looked up in OpenAlex at once; it asks for a polite pace
+# "What's new" for a topic: the papers asked about (two requests of IDS_PER_REQUEST), the works shown,
+# and how long an answer is kept, so opening the list again doesn't ask OpenAlex again.
+NEW_ARRIVALS_PAPERS = 100
+NEW_ARRIVALS_SHOWN = 10
+NEW_ARRIVALS_MAX_AGE = 6 * 3600
 REMOVAL_REASONS = ("removed", "duplicate")
 # The colours a topic's folder can be given in the Library; the app draws each from its own palette.
 FOLDER_COLORS = ("rose", "gold", "violet", "sky", "slate")
@@ -157,6 +163,7 @@ class Library:
         self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
         self._answers_from = self.provider  # whose answers those are
         self._graph_cache: tuple | None = None  # see _network
+        self._new_arrivals: dict[int, tuple] = {}  # folder id -> (papers asked about, when, works); see topic_new_arrivals
         # Search is keyword search, bge-small and a local reranker, plus the provider; folders,
         # highlights and duplication use word statistics. The models load in the background, so
         # the library lists at once.
@@ -839,15 +846,81 @@ class Library:
             return {"status": "in_library", "doc_id": m.doc_id}
         return self._download_and_add(ref)
 
-    def fetch_work(self, title: str, doi: str = "", year: int | None = None, first_author: str = "") -> dict:
-        """Find a free copy of any work (one citing a library paper, say) and add it to the library."""
+    def fetch_work(self, title: str, doi: str = "", year: int | None = None, first_author: str = "",
+                   folder_id: int | None = None) -> dict:
+        """Find a free copy of any work (one citing a library paper, say) and add it to the library,
+        and to topic `folder_id` when given: filed as if by hand, so re-filing leaves it there."""
         ref = Reference(raw=title, year=year, doi=openaccess._doi(doi), title=title, first_author=first_author)
         with self.lock:
             docs = self._docs_brief()
+            if folder_id is not None and not self.conn.execute("SELECT 1 FROM folders WHERE id = ?", (folder_id,)).fetchone():
+                raise LookupError(f"Folder {folder_id} not found")
         m = match_reference(ref, docs)
         if m:
             return {"status": "in_library", "doc_id": m.doc_id}
-        return self._download_and_add(ref)
+        out = self._download_and_add(ref)
+        if folder_id is not None and out.get("doc_id"):
+            try:
+                out["document"] = self.set_folder_membership(out["doc_id"], folder_id, True)
+            except LookupError:
+                pass  # the topic was deleted while the copy downloaded: it stays in the library
+        return out
+
+    def topic_new_arrivals(self, folder_id: int, refresh: bool = False) -> dict:
+        """Works outside the library that cite a topic's papers, as OpenAlex knows them: the ones
+        citing more of the topic first, then the newest. One request per IDS_PER_REQUEST papers,
+        for the NEW_ARRIVALS_PAPERS most cited, and the answer is kept for NEW_ARRIVALS_MAX_AGE
+        unless `refresh`. Also says which papers haven't been looked up in OpenAlex yet, since
+        works citing those can't be found."""
+        with self.lock:
+            folder = self.conn.execute("SELECT id, name FROM folders WHERE id = ?", (folder_id,)).fetchone()
+            if not folder:
+                raise LookupError(f"Folder {folder_id} not found")
+            rows = [dict(r) for r in self.conn.execute(
+                "SELECT d.id, d.title, d.openalex_id, d.enriched, d.cited_by_count FROM documents d "
+                "JOIN doc_folders df ON df.doc_id = d.id AND df.folder_id = ? AND df.state != 'rejected'", (folder_id,))]
+            brief = self._docs_brief()
+            library_ids = {r["openalex_id"] for r in self.conn.execute(
+                "SELECT openalex_id FROM documents WHERE openalex_id != ''")}
+        known = sorted((r for r in rows if r["openalex_id"]), key=lambda r: (-(r["cited_by_count"] or 0), r["id"]))
+        asked = known[:NEW_ARRIVALS_PAPERS]
+        out = {
+            "folder_id": folder_id, "name": folder["name"], "papers": len(rows), "asked": len(asked),
+            "known": len(known), "capped": len(known) > len(asked),
+            "not_looked_up": [r["id"] for r in rows if not r["openalex_id"] and r["enriched"] == ""],
+            "not_in_index": sum(1 for r in rows if not r["openalex_id"] and r["enriched"] in ("not_found", "mismatch")),
+            "works": [], "checked_at": None,
+        }
+        if not asked:
+            return out
+        key = tuple(r["openalex_id"] for r in asked)
+        now = time.time()
+        with self.lock:
+            kept = self._new_arrivals.get(folder_id)
+        if not refresh and kept and kept[0] == key and now - kept[1] < NEW_ARRIVALS_MAX_AGE:
+            works, checked = kept[2], kept[1]
+        else:
+            try:
+                works = self.open_access.citing_any(list(key))
+            except (httpx.HTTPError, ValueError) as exc:  # ValueError: a reply that isn't JSON
+                raise ValueError(f"Couldn't reach OpenAlex: {exc}") from exc
+            checked = now
+            with self.lock:
+                self._new_arrivals[folder_id] = (key, now, works)
+        titles = {r["openalex_id"]: r["title"] for r in asked}
+        fresh = []
+        for w in works:
+            if w["openalex_id"] in library_ids or not w["title"].strip():
+                continue  # in the library; or a record with no title, which there'd be no finding a copy of
+            first = w["authors"][0].split()[-1] if w["authors"] else ""
+            if match_reference(Reference(raw=w["title"], year=w["year"], doi=w["doi"], title=w["title"], first_author=first), brief):
+                continue  # already in the library under another record
+            fresh.append({**w, "first_author": first, "cites_titles": [titles[i] for i in w["cites"] if i in titles]})
+        # The works citing most of the topic first; among those, the newest.
+        fresh.sort(key=lambda w: (len(w["cites_titles"]), w.get("published") or str(w.get("year") or "")), reverse=True)
+        out.update(works=fresh[:NEW_ARRIVALS_SHOWN], found=len(fresh),
+                   checked_at=datetime.fromtimestamp(checked, timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+        return out
 
     def _docs_brief(self) -> list[dict]:
         """Every document as reference matching needs it. Call under the lock."""

@@ -27,6 +27,7 @@ import { FindingView } from './components/FindingView'
 import { ProposalDialog } from './components/ProposalDialog'
 import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { CitingPapersDialog } from './components/CitingPapersDialog'
+import { TopicNewArrivalsDialog } from './components/TopicNewArrivalsDialog'
 import { ReaderDialog } from './components/ReaderDialog'
 import { HighlightsPanel } from './components/HighlightsPanel'
 import { ReviewPanel } from './components/ReviewPanel'
@@ -223,6 +224,7 @@ export default function App() {
   const [citedFor, setCitedFor] = useState<number | null>(null) // paper whose cited works are listed
   const [missingQuery, setMissingQuery] = useState<string | null>(null) // topic of the most-cited missing works
   const [citingFor, setCitingFor] = useState<number | null>(null) // paper whose citing works are listed
+  const [newFor, setNewFor] = useState<number | null>(null) // topic whose new citing works are listed
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [askAttach, setAskAttach] = useState<{ text: string; n: number } | null>(null) // text sent to Compose's chat
   const [pdfView, setPdfView] = useState<{ doc: Doc; page: number; find?: string } | null>(null) // a PDF in the app's reader
@@ -1826,6 +1828,7 @@ export default function App() {
             onFindDuplicates={findDuplicateFiles}
             onCitedPapers={setCitedFor}
             onCitingPapers={setCitingFor}
+            onWhatsNew={setNewFor}
             onFindMissing={findMissing}
             folderSimilarity={settings.folder_similarity}
             onOpenPdf={openPdf}
@@ -1975,6 +1978,16 @@ export default function App() {
           onOpenPaper={showPaper}
           onChanged={refresh}
           onClose={() => setCitedFor(null)}
+          onError={onError}
+        />
+      )}
+
+      {newFor != null && (
+        <TopicNewArrivalsDialog
+          folderId={newFor}
+          onOpenPaper={showPaper}
+          onChanged={refresh}
+          onClose={() => setNewFor(null)}
           onError={onError}
         />
       )}
