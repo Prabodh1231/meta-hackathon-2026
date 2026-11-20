@@ -25,6 +25,7 @@ import { type FrontLayout, type FrontSort, type RecentShown, LibraryFront, SizeS
 import { FolderSummary } from './FolderSummary'
 import { FolderPeek } from './FolderPeek'
 import { FolderMenu } from './FolderMenu'
+import { pickSurprise, surpriseText } from '../surprise'
 import { AddByWork, typedKind } from './AddByWork'
 import { ReadingListDialog } from './ReadingListDialog'
 import { DropShelf, draggedIds } from './DropShelf'
@@ -48,6 +49,8 @@ interface Props {
   focusTopic?: { id: number; n: number } | null
   /** A saved view to open (from Home); `n` changes per request. */
   focusView?: { id: string; n: number } | null
+  /** Ctrl K's Surprise me: open a random unread paper from the whole library. */
+  surprise?: number
   onFindDuplicates: () => void
   onCitedPapers: (docId: number) => void
   /** List the works that cite a paper (OpenAlex). */
@@ -1069,7 +1072,7 @@ const named = (ds: Doc[]) => (ds.length === 1 ? `“${ds[0].title.length > 48 ? 
  * every pause in typing, and the library has no reason to follow. */
 export const LibraryPanel = memo(function LibraryPanel({
   docs: allDocs, folders, query, onQuery, selected: drafting, onToggle, onChanged, onError, focus, onFindDuplicates, onCitedPapers, onCitingPapers, onFindMissing, cited,
-  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, focusView, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint,
+  folderSimilarity, citationStyle = 'apa', onOpenPdf, jobs, focusTopic, focusView, surprise, onAddPaths, onCancelJob, onDismissJob, onMapTopic, onWhatsNew, onSearchHint,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS) // the chips above the list
@@ -1280,6 +1283,13 @@ export const LibraryPanel = memo(function LibraryPanel({
     else if (d.kind === 'pdf') onOpenPdf(d, page, find)
     else if (window.rc?.openFile) window.rc.openFile(d.source).catch((e) => onError(`Could not open “${d.title}”: ${e instanceof Error ? e.message : e}`))
   }
+  /** Open a paper from `ds` the reader hasn't read yet, at random, and say which and why. */
+  const surpriseFrom = (ds: Doc[], where: string) => {
+    const pick = pickSurprise(ds)
+    if (!pick) return say(`There's no paper in ${where} to open.`)
+    openFile(pick.doc)
+    say(surpriseText(pick, where))
+  }
   const openGhost = (id: number | null) => {
     setPicked(new Set())
     setCur(null)
@@ -1484,6 +1494,9 @@ export const LibraryPanel = memo(function LibraryPanel({
   useEffect(() => {
     if (focusView && views.some((x) => x.id === focusView.id)) openKey(`s:${focusView.id}`)
   }, [focusView?.n]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (surprise) surpriseFrom(allDocs, 'your library')
+  }, [surprise]) // eslint-disable-line react-hooks/exhaustive-deps
   const saveView = (name: string) => {
     const same = views.find((v) => v.name.toLowerCase() === name.toLowerCase())
     const view: SavedView = { id: same?.id ?? Date.now().toString(36), name, scope, query: query.trim(), filters }
@@ -2206,6 +2219,10 @@ export const LibraryPanel = memo(function LibraryPanel({
               onMap={(name) => onMapTopic?.(name)}
               onWhatsNew={onWhatsNew}
               onOpenKey={openKey}
+              onSurprise={() => {
+                const it = selKey ? itemByKey.get(selKey) : undefined
+                if (it) surpriseFrom(it.docs, it.kind === 'topic' ? it.name : 'your library')
+              }}
             />
           </div>
         )}
@@ -2572,6 +2589,7 @@ export const LibraryPanel = memo(function LibraryPanel({
             if (id !== undefined) requestAnimationFrame(() => setMenu({ kind: 'merge', x, y, folderId: id }))
           }}
           onDelete={() => menuItem.saved && deleteView(menuItem.saved)}
+          onSurprise={() => surpriseFrom(menuItem.docs, menuItem.kind === 'topic' ? menuItem.name : 'your library')}
           onReadingList={() => setReadingList({ docs: menuItem.docs, title: `${menuItem.name} reading list` })}
         />
       )}

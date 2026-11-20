@@ -7,7 +7,7 @@ const COLOR_NAME: Record<FolderColor, string> = { rose: 'Rose', gold: 'Gold', vi
 
 /** Right-click on a folder of the front page. A topic can be given a colour, renamed or merged into
  * another; a saved view renamed or deleted; every folder opened or peeked into. */
-export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRename, onMerge, onDelete, onReadingList }: {
+export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRename, onMerge, onDelete, onReadingList, onSurprise }: {
   item: FrontItem
   x: number
   y: number
@@ -18,6 +18,7 @@ export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRen
   onRename: () => void
   onMerge: (x: number, y: number) => void
   onDelete: () => void // a saved view
+  onSurprise?: () => void // open a random unread paper from it
   onReadingList?: () => void // a topic's papers as a Word reading list
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -65,6 +66,11 @@ export function FolderMenu({ item, x, y, onClose, onOpen, onPeek, onColor, onRen
         <span className="lib-pop-label">Peek inside</span>
         <kbd>Space</kbd>
       </button>
+      {onSurprise && (item.kind === 'topic' || item.view === 'all') && item.docs.length > 0 && (
+        <button role="menuitem" onClick={act(onSurprise)} title="Open a paper from it you haven't read yet, at random">
+          <span className="lib-pop-label">Surprise me</span>
+        </button>
+      )}
       {item.kind === 'topic' && (
         <>
           <hr />
