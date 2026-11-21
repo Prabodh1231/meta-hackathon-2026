@@ -137,3 +137,21 @@ def test_the_graph_can_be_drawn_for_chosen_papers(lib, tmp_path):
     whole = client.get("/graph").json()
     assert {n["doc_id"] for n in whole["nodes"] if n["kind"] == "paper"} == {trust, a, b}
     assert client.get("/graph", params={"ids": "a,b"}).status_code == 400
+
+
+def test_missing_work_without_a_year_counts_when_it_has_a_doi():
+    from app.citegraph import _clean, build_graph, ghost_key
+    from app.refparse import Reference
+
+    assert ghost_key(Reference(raw="", title="A long enough title about bonds")) is None
+    assert ghost_key(Reference(raw="", title="A long enough title about bonds", doi="10.1/ABC")) == \
+        "a long enough title about bonds|doi:10.1/abc"
+    assert _clean("Müller García\x85\x9f") == "Müller García"
+
+    docs = [{"id": 1, "title": "Paper one"}, {"id": 2, "title": "Paper two"}]
+    work = "Trusting the stock market and its hidden risks"
+    refs = {1: [Reference(raw="", title=work, year=2008)],
+            2: [Reference(raw="", title=work, year=2008, first_author="Smith")]}
+    graph = build_graph(docs, refs, matches={1: [None], 2: [None]})
+    [missing] = graph["missing"]
+    assert missing["authors"] == ["Smith"]  # taken from the entry that has it

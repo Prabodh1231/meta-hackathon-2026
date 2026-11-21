@@ -95,11 +95,16 @@ def norm_doi(doi: str) -> str:
     return d.rstrip(".")
 
 
+_SUFFIXES = {"jr", "sr", "ii", "iii", "iv"}
+
+
 def _surname(author: str) -> str:
-    a = norm_title(author)
     if "," in author:  # "Chen, Alice"
         return norm_title(author.split(",")[0])
-    return a.split()[-1] if a else ""
+    words = norm_title(author).split()
+    while len(words) > 1 and words[-1] in _SUFFIXES:  # "John Smith Jr." is a Smith
+        words.pop()
+    return words[-1] if words else ""
 
 
 def compare_metadata(a: dict, b: dict) -> dict:

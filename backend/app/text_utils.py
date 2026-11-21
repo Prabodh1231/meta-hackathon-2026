@@ -48,3 +48,18 @@ def sentence_spans(text: str) -> list[tuple[int, int]]:
 
 def sentences(text: str) -> list[str]:
     return [text[s:e] for s, e in sentence_spans(text)]
+
+
+def densest_run(blocks: list, pos, window: float) -> list:
+    """The consecutive difflib matching blocks that cover the most matched text within `window`
+    of one side (`pos(block)` gives a block's start on that side). Taking everything from the
+    first block to the last instead lets one stray early "of the" stretch a match over a page."""
+    best, total, i = (0, 0, 0), 0, 0
+    for j, b in enumerate(blocks):
+        total += b.size
+        while i < j and pos(b) + b.size - pos(blocks[i]) > window:
+            total -= blocks[i].size
+            i += 1
+        if total > best[0]:
+            best = (total, i, j + 1)
+    return blocks[best[1]:best[2]]

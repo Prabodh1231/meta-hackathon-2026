@@ -23,12 +23,22 @@ _HEADING = re.compile(r"^heading\s*(\d)$", re.I)
 
 
 def blocks(document) -> Iterator[Paragraph | Table]:
-    """Top-level paragraphs and tables, in the order they appear in the document."""
-    for child in document.element.body.iterchildren():
-        if child.tag == qn("w:p"):
-            yield Paragraph(child, document)
-        elif child.tag == qn("w:tbl"):
-            yield Table(child, document)
+    """Top-level paragraphs and tables, in the order they appear in the document. Those inside a
+    content control (Word's title pages and tables of contents, a reference manager's
+    bibliography) count as top-level too."""
+
+    def walk(parent):
+        for child in parent.iterchildren():
+            if child.tag == qn("w:p"):
+                yield Paragraph(child, document)
+            elif child.tag == qn("w:tbl"):
+                yield Table(child, document)
+            elif child.tag == qn("w:sdt"):
+                content = child.find(qn("w:sdtContent"))
+                if content is not None:
+                    yield from walk(content)
+
+    yield from walk(document.element.body)
 
 
 def table_rows(table: Table) -> list[list[str]]:

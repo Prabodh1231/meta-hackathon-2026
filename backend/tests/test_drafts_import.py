@@ -227,3 +227,26 @@ def test_old_word_files_get_a_clear_message(client, tmp_path):
     f.write_bytes(b"\xd0\xcf\x11\xe0 not really")
     [res] = client.post("/ingest/path", json={"path": str(f)}).json()["results"]
     assert not res["ok"] and "save it as .docx" in res["error"]
+
+
+def test_text_inside_a_content_control_is_kept():
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+
+    from app import docx_import
+
+    d = docx.Document()
+    d.add_paragraph("Before the bibliography.")
+    sdt = parse_xml(
+        f'<w:sdt {nsdecls("w")}><w:sdtPr/><w:sdtContent>'
+        '<w:p><w:r><w:t>Smith, J. (2008). Trusting the stock market.</w:t></w:r></w:p>'
+        '</w:sdtContent></w:sdt>')
+    d.element.body.insert(len(d.element.body) - 1, sdt)  # before the section properties
+    d.add_paragraph("After it.")
+    buf = io.BytesIO()
+    d.save(buf)
+
+    doc, _, _ = docx_import.to_editor(buf.getvalue())
+    texts = [n["content"][0]["text"] for n in doc["content"]]
+    assert texts == ["Before the bibliography.", "Smith, J. (2008). Trusting the stock market.", "After it."]
+    assert "Trusting the stock market" in docx_import.plain_text(docx.Document(io.BytesIO(buf.getvalue())))
