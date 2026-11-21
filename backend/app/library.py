@@ -50,6 +50,9 @@ RANK_CHARS = 450
 # expansions, and the same passages for it the same scores. A review matrix asks each column's
 # question of every paper, and Cite and Recheck all search a sentence again, so these repeat.
 SEARCH_CACHE = 500
+# Sentences whose duplication-check candidates are kept: a re-check while writing then searches
+# only the sentences that changed (each search is ~10 ms; a long draft has hundreds of sentences).
+DUP_CACHE = 5000
 # Cite's support checks are separate Muse calls; they run side by side.
 CHECK_WORKERS = 4
 MIN_OWN_KEYWORDS = 3  # a paper's printed keyword list this long replaces the model's tags
@@ -187,8 +190,10 @@ class Library:
         self.provider = provider or make_provider(settings)
         self._expansions = RecentCache(SEARCH_CACHE)  # query -> the provider's expansions
         self._rankings = RecentCache(SEARCH_CACHE)  # (query, passages) -> the provider's scores
+        self._dup_candidates = RecentCache(DUP_CACHE)  # (library state, sentence) -> chunk ids to compare it with
         self._answers_from = self.provider  # whose answers those are
         self._graph_cache: tuple | None = None  # see _network
+        self._graph_lock = threading.Lock()  # one build of _graph_cache at a time; taken before self.lock
         self._used_cache: tuple | None = None  # see _used_elsewhere
         self._new_arrivals: dict[int, tuple] = {}  # folder id -> (papers asked about, when, works); see topic_new_arrivals
         # Search is keyword search, bge-small and a local reranker, plus the provider; folders,
@@ -671,14 +676,12 @@ class Library:
                     found[r["doc_id"]]["why"].append("text")
         return found
 
-    def _graph_inputs(self) -> tuple[list[dict], dict[int, list[Reference]]]:
-        """Every paper, and every paper's reference list (a list index is the entry's idx)."""
-        self._parse_references()
-        docs = [
+    def _graph_docs(self) -> list[dict]:
+        """Every paper, as the citation graph matches references against them. Call under the lock."""
+        return [
             {"id": r["id"], "title": r["title"], "authors": json.loads(r["authors"]), "year": r["year"], "doi": r["doi"]}
             for r in self.conn.execute("SELECT id, title, authors, year, doi FROM documents ORDER BY id")
         ]
-        return docs, defaultdict(list, self._reference_lists())
 
     def _reference_lists(self, doc_id: int | None = None) -> dict[int, list[Reference]]:
         """Each paper's reference list (an entry's idx is its place in it): the entries read from
@@ -777,22 +780,42 @@ class Library:
         citation graph built from them: kept until a paper's record or a reference list changes.
         Comparing every reference with every paper is the slow part (seconds on a library of a
         hundred papers), and the network, the missing-works list and each paper's related papers
-        all need it. Shared between requests, so read what this returns and don't change it."""
-        with self.lock:
-            docs, refs = self._graph_inputs()
-        key = hash((
-            tuple((d["id"], d["title"], d["year"], d["doi"], tuple(d["authors"])) for d in docs),
-            tuple((i, tuple((r.raw, r.title, r.year, r.doi) for r in rs)) for i, rs in sorted(refs.items())),
-        ))
-        kept = self._graph_cache
-        if kept is None or kept[0] != key:
+        all need it. Shared between requests, so read what this returns and don't change it.
+        Whether anything changed is read from the reference tables' fingerprint (_refs_fingerprint),
+        not from the merged lists: merging them (_reference_lists) took 0.3-0.9 s on every call."""
+        # One build at a time: Home asking twice at startup built it twice, side by side.
+        with self._graph_lock:
+            with self.lock:
+                self._parse_references()
+                docs = self._graph_docs()
+                key = hash((
+                    tuple((d["id"], d["title"], d["year"], d["doi"], tuple(d["authors"])) for d in docs),
+                    self._refs_fingerprint(),
+                ))
+                kept = self._graph_cache
+                if kept is not None and kept[0] == key:
+                    return kept[1:]
+                refs = defaultdict(list, self._reference_lists())
             matches = match_all(docs, refs)
             kept = self._graph_cache = (key, docs, refs, matches, build_graph(docs, refs, matches))
-        return kept[1:]
+            return kept[1:]
+
+    def _refs_fingerprint(self) -> tuple:
+        """What the reference tables hold, cheaply (~10 ms where merging them takes most of a second):
+        rows are only inserted or deleted (a re-read, an OpenAlex list), never edited in place, so
+        their count, rowids and text lengths change whenever a list does. Call under the lock."""
+        return tuple(tuple(self.conn.execute(
+            "SELECT count(*), coalesce(max(rowid), 0), coalesce(sum(rowid), 0), total(length(raw)), "
+            f"total(length(doi)), total(length(title)), total(year) FROM {table}").fetchone())
+            for table in ("doc_refs", "index_refs"))
 
     def _whole_graph(self) -> dict:
         """The library's citation graph (see _network)."""
         return self._network()[3]
+
+    def prepare_graph(self) -> None:
+        """Build the citation graph now (see _network), so the next request finds it ready."""
+        self._network()
 
     def related(self, doc_id: int, limit: int = 5) -> list[dict]:
         """The papers in the library closest to one paper, the closest first, each with why:
@@ -2003,13 +2026,22 @@ class Library:
         match = fts_query(query)
         if not match:
             return []
-        scope = f" AND c.doc_id IN ({','.join('?' * len(doc_ids))})" if doc_ids else ""
         with self.lock:
-            rows = self.conn.execute(
-                "SELECT c.id, bm25(chunks_fts) AS s FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
-                f"WHERE chunks_fts MATCH ?{scope} ORDER BY s LIMIT ?",
-                (match, *(doc_ids or []), n),
-            ).fetchall()
+            if doc_ids:
+                # Only the chosen papers: the join gives each chunk's paper.
+                rows = self.conn.execute(
+                    "SELECT c.id, bm25(chunks_fts) AS s FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                    f"WHERE chunks_fts MATCH ? AND c.doc_id IN ({','.join('?' * len(doc_ids))}) ORDER BY s LIMIT ?",
+                    (match, *doc_ids, n),
+                ).fetchall()
+            else:
+                # The whole library: the index's rowid is the chunk's id, so no join. Joining made SQLite
+                # look up every matching chunk before sorting, ~5x slower (the duplication check runs
+                # one of these per sentence). Same results: triggers keep the index and chunks in step.
+                rows = self.conn.execute(
+                    "SELECT rowid AS id, bm25(chunks_fts) AS s FROM chunks_fts WHERE chunks_fts MATCH ? ORDER BY s LIMIT ?",
+                    (match, n),
+                ).fetchall()
         return [(r["id"], -r["s"]) for r in rows]  # FTS5's bm25() is lower-is-better
 
     def _hit(self, chunk_id: int, score: float) -> dict | None:
@@ -2914,7 +2946,9 @@ class Library:
             )
         if snapshot:
             self._auto_versions(draft_id, previous, title, content)
-        return self.get_draft(draft_id)
+        # With its word count, as the drafts list has it: the app updates its list from this
+        # instead of asking for every draft again (which reads and parses each one) after each autosave.
+        return {**self.get_draft(draft_id), "words": draft_review.word_count(draft_review.plain_text(content))}
 
     def rename_draft(self, draft_id: int, title: str) -> dict:
         """Name a draft, so saves keep the name. An empty name goes back to the draft's first line."""
@@ -3068,8 +3102,21 @@ class Library:
         # words, a few more than are likely to be needed so a lightly reworded copy is
         # still among them. Overlap of word n-grams then decides, so a passage that only
         # shares the sentence's subject isn't flagged.
-        candidates: dict[int, set[int]] = {k: {cid for cid, _ in self._keyword(sents[k].text, 10, None)}
-                                           for k in checked}
+        # A sentence the last check searched for, in the same library, has the same candidates: kept,
+        # so a re-check while writing searches only what was edited. Chunks are never rewritten in
+        # place, so papers added or removed are what change the answers.
+        with self.lock:
+            state = tuple(self.conn.execute(
+                "SELECT (SELECT count(*) FROM chunks), (SELECT coalesce(max(id), 0) FROM chunks), "
+                "(SELECT count(*) FROM documents), (SELECT coalesce(max(added_at), '') FROM documents)").fetchone())
+        candidates: dict[int, set[int]] = {}
+        for k in checked:
+            key = (state, sents[k].text)
+            found = self._dup_candidates.get(key)
+            if found is None:
+                found = frozenset(cid for cid, _ in self._keyword(sents[k].text, 10, None))
+                self._dup_candidates.put(key, found)
+            candidates[k] = set(found)
         with self.lock:
             ids = sorted(set().union(*candidates.values())) if candidates else []
             chunk_text = {

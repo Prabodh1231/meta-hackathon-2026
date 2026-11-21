@@ -61,6 +61,24 @@ def test_a_work_only_one_paper_cites_is_not_a_node_and_new_papers_change_the_edg
     assert {n["doc_id"] for n in graph["nodes"] if n["kind"] == "paper"} == {a, b}
 
 
+def test_the_kept_graph_follows_a_reference_list_that_changes(lib, tmp_path):
+    trust = add(lib, tmp_path, "t.txt", paper("Trusting the stock market and its many hidden risks", FILLER, year=2008))
+    a = add(lib, tmp_path, "a.txt", paper("First study of household finance", [TRUST, *FILLER]))
+    cites = lambda: {(e["source"], e["target"]) for e in lib.citation_graph()["citations"]}  # noqa: E731
+    assert (f"doc:{a}", f"doc:{trust}") in cites()
+    assert lib._graph_cache is not None and lib.citation_graph() == lib.citation_graph()  # kept between calls
+
+    # The paper read again, its list no longer citing that one but as long as before: the graph kept
+    # from before must not be reused.
+    assert lib.conn.execute("SELECT count(*) FROM pages WHERE doc_id = ?", (a,)).fetchone()[0] == 1
+    with lib.conn:
+        lib.conn.execute("DELETE FROM doc_refs WHERE doc_id = ?", (a,))
+        lib.conn.execute("UPDATE documents SET refs_parsed = 0 WHERE id = ?", (a,))
+        lib.conn.execute("UPDATE pages SET text = ? WHERE doc_id = ?",
+                         (paper("First study of household finance", [HONG, *FILLER]), a))
+    assert (f"doc:{a}", f"doc:{trust}") not in cites()
+
+
 def test_a_paper_without_a_reference_list_is_isolated(lib, tmp_path):
     lone = add(lib, tmp_path, "c.txt", "Field notes\nNo list here, only prose about coral. " * 20)
     add(lib, tmp_path, "a.txt", paper("First study of household finance", [HONG, *FILLER]))

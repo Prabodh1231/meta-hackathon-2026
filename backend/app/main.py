@@ -2,6 +2,7 @@ import base64
 import itertools
 import json
 import logging
+import threading
 import time
 
 from fastapi import FastAPI, Request, Response
@@ -23,6 +24,24 @@ from .settings import Settings
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
+log = logging.getLogger(__name__)
+
+
+def warm_graph_in_background(lib: Library) -> threading.Thread:
+    """Build the citation graph while the window opens. Home, the first screen, lists the works the
+    draft's sources cite that the library lacks, and the first build takes seconds; a request that
+    arrives meanwhile waits for this build instead of starting another. A failure is only logged:
+    the first request then builds it."""
+
+    def run() -> None:
+        try:
+            lib.prepare_graph()
+        except Exception:
+            log.exception("Could not build the citation graph ahead of time")
+
+    thread = threading.Thread(target=run, name="graph-warmup", daemon=True)
+    thread.start()
+    return thread
 
 
 class IngestPathIn(BaseModel):
@@ -331,6 +350,8 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         # Loads in the background (first launch downloads the model); search is keyword-only until it is ready.
         embedder = LoadingEmbedder(lambda: make_embedder(settings.data_dir / "models"))
     lib = library or Library(settings, embedder=embedder, reranker=reranker)
+    if library is None:
+        warm_graph_in_background(lib)
     app = FastAPI(title="Groundwork")
     app.state.library = lib
     jobs = IngestJobs(lib, INGEST_WORKERS)
@@ -367,8 +388,9 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     @app.get("/health")
     def health():
         # Search never waits for the model: until bge-small has loaded it is keyword search plus the provider.
-        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name, "search": "keyword+muse",
-                "vectors": lib.vector_status()}
+        # The app asks every few seconds, so this reads nothing from the library: how many passages the
+        # search model has covered (a count over every chunk, ~75 ms with the lock held) is in /settings/search.
+        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name, "search": "keyword+muse"}
 
     @app.post("/ingest/path")
     def ingest_path(body: IngestPathIn):

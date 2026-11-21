@@ -14,7 +14,7 @@ import { FormatToolbar } from './FormatToolbar'
 import { ChipCard } from './ChipCard'
 import type { RetractedWhy } from './TrustBadges'
 import { api } from '../api'
-import type { Citation, DraftSentence, Suggestion } from '../types'
+import type { Citation, DraftSentence, DraftSummary, Suggestion } from '../types'
 
 const MISSING_REASON = 'This passage is no longer in your library.'
 
@@ -155,7 +155,8 @@ export interface DraftStats {
   chips: ChipAttrs[] // the citation chips, in document order, for Check
 }
 
-export type SaveState = { state: 'idle' | 'saving' | 'saved' | 'error'; at?: number }
+/** `draft`: the saved draft as the drafts list shows it, when the backend sent its word count. */
+export type SaveState = { state: 'idle' | 'saving' | 'saved' | 'error'; at?: number; draft?: DraftSummary }
 
 function statsOf(editor: Editor): DraftStats {
   const s: DraftStats = { words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0, chips: [] }
@@ -437,9 +438,11 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     const next = saving.current.then(() =>
       api
         .saveDraft(id, title, content)
-        .then(() => {
+        .then((d) => {
           // A later edit already queued its own save: stay on "Saving…" until that one lands.
-          if (saveTimer.current === undefined && saving.current === next) report.current.onSaveState?.({ state: 'saved', at: Date.now() })
+          if (saveTimer.current !== undefined || saving.current !== next) return
+          const draft = typeof d.words === 'number' ? { id: d.id, title: d.title, named: d.named, updated_at: d.updated_at, words: d.words } : undefined
+          report.current.onSaveState?.({ state: 'saved', at: Date.now(), draft })
         })
         .catch((err) => {
           report.current.onSaveState?.({ state: 'error' })
