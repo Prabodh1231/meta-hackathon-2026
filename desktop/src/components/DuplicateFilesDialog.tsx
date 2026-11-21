@@ -66,7 +66,7 @@ export function DuplicateFilesDialog({ getCited, onChanged, onBeforeMerge, onMer
 
   useEffect(() => {
     scan()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- once, when the dialog opens; Check again runs it after
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()

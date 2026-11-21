@@ -496,7 +496,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     return () => {
       cancelled = true
     }
-  }, [editor, draftId])
+    // Only when the draft (or editor) changes: running again would load the draft over unsaved typing.
+  }, [editor, draftId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   editorRef.current = editor
 
@@ -771,7 +772,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         return ids
       },
     }),
-    [editor],
+    // Made once per editor: save() works through refs, and onError is App's callback, which never changes.
+    [editor], // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   // Ids, not the map itself, decide when to redraw: the library list is rebuilt on every refresh.

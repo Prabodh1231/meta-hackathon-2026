@@ -8,6 +8,7 @@ This guide is about using the app. For setup, see the [README](../README.md#run-
 
 - [The layout](#the-layout)
 - [Home](#home)
+- [Write](#write)
 - [Try the demo](#try-the-demo)
 - [1. Add your sources](#1-add-your-sources)
 - [2. Organize the library](#2-organize-the-library)
@@ -42,18 +43,20 @@ The window has four parts:
 
 ## Home
 
-![Home: the headline, what you had open last, and the five tools](images/home.png)
+![Home: what needs you, for the draft you're working on, across your library, and for when you have time](images/home.png)
 
-**Home** is where the app opens: one scrolling page with everything in one place. Nothing on it is a setting; every part is a way into the rest of the app.
+**Home** is where the app opens. It lists what needs you, most pressing first, each with the button that does it. Everything on it is worked out from your drafts and your library.
 
-- **The top** has one line that stays current (the share of the open draft's citations backed by a source), **Continue writing**, **Open the library**, and a row of what you had open or added last: your two most recent drafts and your newest sources.
-- **Getting started** shows here, with a small drawing of the screen each step happens on, until its steps are done or you hide it. The same steps show above an empty draft in Write, and they tick off together.
-- **Five tool cards** each show what's in that tool right now and open it when clicked: the open draft's first lines and one of its checked quotes (Write), the draft's citations counted as Check counts them, the papers you've highlighted most, the Network, and your review matrices.
-- **The sample library** has a dark banner of its own. Once the demo is loaded it shows how many of its five steps you've done and opens the demo draft.
-- **Your library at a glance** gives four numbers: sources (and how many are unread), highlights and notes, the share of the open draft's citations that are supported, and drafts. Each opens the place it counts.
-- **Your topics** are a row of cards, largest first, with how many papers in each are unread. The arrows move along the row; a card opens that topic in the Library.
-- **Pick up where you left off** has three tabs: **Drafts** (words and citations supported for each), **Recently added** (pages and highlights) and **Saved views** (the views you kept in the Library).
-- **The foot of the page** lists the main actions with their keyboard shortcuts.
+- **For this draft** comes first: the draft open in Write, unless you pick another under **Working on**. It lists the draft's citations that a source only partly backs or doesn't back (**Check them** opens Check at them), works that two or more of the draft's sources build on but that aren't in your library (**Find a free copy**), and unread papers in the topics most of its sources come from (**Read the newest**).
+- **Across your library**: citations to check in your other drafts, answers in a review matrix whose quoted words weren't found in the paper (**Review them**), and papers in your library that have been retracted (**Open it**).
+- **When you have time**: a gap a review matrix found. **Add to this draft** writes it into the draft, citing the matrix's papers and checked against the matrix.
+- **Show details** under an item lists what it's about: each citation, the sources that cite a missing work, the unread papers.
+- **Later** (the clock) hides an item until tomorrow, and **Not needed** (×) hides it for good. Both are listed under *set aside* at the foot of the page, with **Bring back**.
+- At launch, while Home is still looking, it says *Looking through your library…*; the list and its count show once everything is in. When nothing needs you, it says so and offers **Continue writing**. With an empty library it offers **Add sources** and **Try the sample library**.
+
+## Write
+
+**Write** shows the open draft on its page, with the writing tools beside it.
 
 ### The writing tools
 
@@ -85,7 +88,7 @@ The save state stays in the corner. Esc, or **Exit focus**, brings the rest back
 
 ## Try the demo
 
-With a new library, **Getting started** shows on Home and above the empty draft in Write. If its first step says *Connect the AI*, the app is running on the offline mock, which matches words instead of reading them; **Add a Muse key** opens Settings at **AI model**. The status bar says so too: *Offline mock* shows in amber, and clicking it opens the same place.
+With a new library, **Getting started** shows above the empty draft in Write. If its first step says *Connect the AI*, the app is running on the offline mock, which matches words instead of reading them; **Add a Muse key** opens Settings at **AI model**. The status bar says so too: *Offline mock* shows in amber, and clicking it opens the same place.
 
 **Try the sample library** (under *Add your sources*, or **Load sample library** in Ctrl K) adds six small files on sleep and coral reefs: two papers, reading notes, a fieldwork log, lab slides and a chapter outline. When they're in, the demo draft opens: four sentences from those papers, each with a cite marker that starts checking it at once. One sentence is false on purpose: the sleep paper found that reactivation during REM sleep did nothing, so Muse marks the claim that it helped as unsupported. (On the mock it may only be marked partial, or even pass.)
 

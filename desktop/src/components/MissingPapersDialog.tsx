@@ -41,7 +41,7 @@ export function MissingPapersDialog({ initialQuery, onOpenPaper, onChanged, onCl
       .catch((e) => onError(`Could not read the reference lists: ${e instanceof Error ? e.message : e}`))
       .finally(() => current && setLoading(false))
     return () => { current = false }
-  }, [topic])
+  }, [topic, onError])
 
   // What OpenAlex knows about the works with a DOI: extra, so the list never waits for it.
   useEffect(() => {
@@ -50,7 +50,8 @@ export function MissingPapersDialog({ initialQuery, onOpenPaper, onChanged, onCl
     let current = true
     api.worksInfo(dois.slice(0, 200)).then((got) => current && setInfo((old) => ({ ...old, ...got }))).catch(() => {})
     return () => { current = false }
-  }, [data])
+    // Not on `info`: each answer would ask again, and works OpenAlex doesn't know would be asked for every time.
+  }, [data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()

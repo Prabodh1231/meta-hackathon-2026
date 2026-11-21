@@ -184,6 +184,7 @@ Settings → AI model writes the key to `~/.groundwork/.env` (`RC_PROVIDER=muse`
 ```bash
 cd desktop && npm run dev        # Vite + Electron; Electron starts the backend
 npm run typecheck                # TypeScript
+npm run lint                     # ESLint: React's rules of hooks (Babel parses the TSX; TypeScript 7 has no JS API)
 npm run smoke                    # build, launch, check the token and the backend restart
 cd ../backend && .venv/Scripts/python -m pytest
 ```

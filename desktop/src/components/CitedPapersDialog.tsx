@@ -26,7 +26,7 @@ export function CitedPapersDialog({ docId, onOpenPaper, onChanged, onClose, onEr
       onError(`Could not read the reference list: ${e instanceof Error ? e.message : e}`)
       onClose()
     })
-  }, [docId])
+  }, [docId]) // eslint-disable-line react-hooks/exhaustive-deps -- once per paper; onError/onClose only report (new each render)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()

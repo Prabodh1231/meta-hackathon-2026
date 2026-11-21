@@ -1335,7 +1335,8 @@ export const LibraryPanel = memo(function LibraryPanel({
   const searching = words.length > 0
   const openFolder = typeof scope === 'number' ? folders.find((f) => f.id === scope) : undefined
   const citedSet = useMemo(() => new Set(cited), [cited])
-  const recentSince = useMemo(() => new Date(Date.now() - RECENT_DAYS * 864e5).toISOString().slice(0, 19).replace('T', ' '), [allDocs])
+  // "Now" again whenever the library changes, so Recently added moves on as papers come in.
+  const recentSince = useMemo(() => new Date(Date.now() - RECENT_DAYS * 864e5).toISOString().slice(0, 19).replace('T', ' '), [allDocs]) // eslint-disable-line react-hooks/exhaustive-deps
   const inView = useCallback(
     (d: Doc, v: Scope): boolean =>
       v === 'all' ? true
@@ -1353,8 +1354,9 @@ export const LibraryPanel = memo(function LibraryPanel({
         : d.folders.some((f) => f.id === v),
     [recentSince, drafting, citedSet],
   )
-  // The timeline's window, kept inside the dates there are now (sources come and go under it).
-  const axis = useMemo(() => (timeline ? buildAxis(timeline.field, docs, removed) : null), [timeline?.field, docs, removed])
+  // The timeline's window, kept inside the dates there are now (sources come and go under it). The axis
+  // depends on which date the timeline uses, not on where its window is.
+  const axis = useMemo(() => (timeline ? buildAxis(timeline.field, docs, removed) : null), [timeline?.field, docs, removed]) // eslint-disable-line react-hooks/exhaustive-deps
   const tl = useMemo<TimeWindow | null>(() => {
     if (!timeline || !axis) return null
     const clamp = (v: number) => Math.max(axis.start, Math.min(axis.end, v))

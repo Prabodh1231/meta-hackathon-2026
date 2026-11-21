@@ -56,7 +56,7 @@ export function HistoryPanel({ draftId, list, onRefresh, getJSON, getTitle, onRe
 
   useEffect(() => {
     onRefresh().catch(fail)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- once, when the panel opens
 
   // Re-run the comparison when the choice changes (and when the list refreshes after a save).
   useEffect(() => {
@@ -70,7 +70,8 @@ export function HistoryPanel({ draftId, list, onRefresh, getJSON, getTitle, onRe
     return () => {
       stale = true
     }
-  }, [selected?.id, against, list])
+    // draftId is fixed (App keys the panel by it) and getJSON reads the draft as it is now.
+  }, [selected?.id, against, list]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function saveMilestone() {
     const content = getJSON()

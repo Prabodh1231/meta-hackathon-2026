@@ -1,6 +1,7 @@
 // Retake the user guide's screenshots (docs/images) from the web preview, in Edge, at 1360x680.
 // Start the "backend" and "web" previews first, then:
 //   node desktop/scripts/doc-screenshots.mjs [outDir] [name,name]
+// GW_URL points it at another address (a built copy served elsewhere, say); the default is the web preview.
 // It drives your own library (its open draft, the "Cryptocurrency" matrix) without editing drafts
 // or settings, and shows the light theme without changing your saved one. pdf-viewer.png
 // (Chromium's PDF window) is not taken here.
@@ -11,7 +12,12 @@ const ONLY = process.argv[3]?.split(',')
 const wait = (p, ms) => p.waitForTimeout(ms)
 const btn = (p, name, exact = false) => p.getByRole('button', { name, exact }).first()
 
-const openMatrix = async (p) => { await btn(p, /^Matrix/).click(); await wait(p, 2000); await btn(p, /^Open .Cryptocurrency/).click(); await wait(p, 3000) }
+const URL_ = process.env.GW_URL || 'http://localhost:5173/'
+// Matrix opens on the matrix open last: pick "Cryptocurrency" from the matrices in the sidebar.
+const openMatrix = async (p) => {
+  await btn(p, /^Matrix/).click(); await wait(p, 2000)
+  await p.locator('.mx-side .lib-side-item', { hasText: 'Cryptocurrency' }).first().click(); await wait(p, 3000)
+}
 
 // The app opens on Home; every shot but `home` starts from Write (see below).
 const SHOTS = {
@@ -29,7 +35,8 @@ const SHOTS = {
     await p.locator('.lf-scroll').evaluate((e) => (e.scrollTop = 0)); await wait(p, 900) // the smart folders above it in view too
   },
   'add-sources': async (p) => { await btn(p, /^Library/).click(); await wait(p, 1200); await btn(p, /Add sources/).click() },
-  network: async (p) => { await btn(p, /^Network/).click(); await wait(p, 1500); await p.getByPlaceholder(/^A topic/).first().fill('cryptocurrency'); await btn(p, 'Map this topic').click(); await wait(p, 45000) },
+  // The Network's start page has no box of its own: the topic goes in the app bar's search box.
+  network: async (p) => { await btn(p, /^Network/).click(); await wait(p, 1500); await p.locator('.search-pill input').fill('cryptocurrency'); await wait(p, 45000) },
   matrix: async (p) => { await openMatrix(p) },
   'matrix-cell': async (p) => { await openMatrix(p); await p.locator('td.mx-cell:not(.mx-detail)').nth(1).click({ position: { x: 30, y: 20 } }); await wait(p, 4000) },
   'matrix-new': async (p) => { await btn(p, /^Matrix/).click(); await wait(p, 2000); await btn(p, /New matrix/).click(); await wait(p, 1500) },
@@ -47,7 +54,7 @@ for (const [name, steps] of Object.entries(SHOTS)) {
     route.fulfill({ response: res, json: { ...(await res.json()), theme: 'light' } })
   })
   try {
-    await page.goto('http://localhost:5173/')
+    await page.goto(URL_)
     // Light theme for the docs without changing the user's saved setting: keep <html data-theme> light.
     await page.evaluate(() => {
       const force = () => { if (document.documentElement.dataset.theme !== 'light') document.documentElement.dataset.theme = 'light' }
