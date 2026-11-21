@@ -5,11 +5,27 @@ prompts on top of `chat`. The mock overrides the task methods with offline heuri
 """
 
 import json
+import logging
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from . import prompts
+
+log = logging.getLogger(__name__)
+
+MAX_INPUT = 60000  # characters of matrix or proposal text sent in one call
+
+
+def fit(text: str, limit: int = MAX_INPUT) -> str:
+    """`text` cut to `limit` characters at a line break, saying how many lines were left out, so
+    the model neither reads half a study nor takes the ones it can't see as missing."""
+    if len(text) <= limit:
+        return text
+    cut = text.rfind("\n", 0, limit)
+    kept = text[:cut] if cut > 0 else text[:limit]
+    left = text[len(kept):].strip().count("\n") + 1
+    return f"{kept}\n(… {left} more line{'s' if left != 1 else ''} left out: too long to send in full.)"
 
 
 @dataclass
@@ -61,7 +77,8 @@ class LLMProvider(ABC):
 
     def tag_document(self, title: str, text: str) -> list[str]:
         out = self._json(prompts.TAGS_SYSTEM, f"Title: {title}\n\n{text[:8000]}", prompts.TAGS_SCHEMA)
-        return [t.strip().lower() for t in out.get("tags", []) if t.strip()][:6]
+        tags = [str(t).strip().lower() for t in out.get("tags", []) if str(t).strip()]
+        return list(dict.fromkeys(tags))[:6]  # "AI" and "ai" are one tag
 
     def name_topic(self, samples: list[str]) -> dict:
         user = "\n\n---\n\n".join(s[:1500] for s in samples[:10])
@@ -80,8 +97,9 @@ class LLMProvider(ABC):
         scores: dict[str, int] = {}
         for item in out.get("scores", []):
             name = by_name.get(str(item.get("folder", "")).strip().lower())
-            if name is not None and isinstance(item.get("score"), (int, float)):
-                scores[name] = max(0, min(100, int(item["score"])))
+            score = item.get("score")
+            if name is not None and isinstance(score, (int, float)) and not isinstance(score, bool):
+                scores[name] = max(0, min(100, round(score)))
         return scores
 
     def draft(self, instruction: str, context: str, passages: list[Passage]) -> list[dict]:
@@ -112,12 +130,12 @@ class LLMProvider(ABC):
 
     def find_gaps(self, topic: str, table: str) -> list[dict]:
         """Gaps across a matrix's studies: [{title, detail}]."""
-        out = self._json(prompts.GAPS_SYSTEM, f"Topic: {topic}\n\n{table[:60000]}", prompts.GAPS_SCHEMA, max_tokens=1200)
+        out = self._json(prompts.GAPS_SYSTEM, f"Topic: {topic}\n\n{fit(table)}", prompts.GAPS_SCHEMA, max_tokens=1200)
         return out.get("gaps", [])
 
     def judge_against_matrix(self, claim: str, topic: str, table: str) -> dict:
         """Does a review matrix (as text, one line per study) support a sentence written from it?"""
-        user = f"Sentence: {claim}\n\nMatrix: {topic}\n{table[:60000]}"
+        user = f"Sentence: {claim}\n\nMatrix: {topic}\n{fit(table)}"
         out = self._json(prompts.MATRIX_JUDGE_SYSTEM, user, prompts.JUDGE_SCHEMA, max_tokens=300)
         if out.get("verdict") not in ("supported", "partial", "unsupported"):
             out["verdict"] = "unsupported"
@@ -126,7 +144,7 @@ class LLMProvider(ABC):
     def propose_variables(self, tables: str, gaps: str, focus: str) -> list[dict]:
         """Variables a study addressing these gaps would use: [{name, role, why, measures: [{study, how}]}]."""
         user = (f"Gaps to address:\n{gaps}\n\n" + (f"The writer's focus: {focus}\n\n" if focus else "")
-                + f"Review matrices:\n{tables[:60000]}")
+                + f"Review matrices:\n{fit(tables)}")
         return self._json(prompts.VARIABLES_SYSTEM, user, prompts.VARIABLES_SCHEMA, max_tokens=2000).get("variables", [])
 
     @staticmethod
@@ -142,7 +160,7 @@ class LLMProvider(ABC):
         """One study's title, core question, questions, hypotheses, variables, and the gaps it leaves out."""
         user = (self._brief(gaps, focus, exclusions, resources, avoid)
                 + f"Variables and the writer's roles:\n{variables or '(choose them)'}\n\n"
-                + f"Review matrices:\n{tables[:60000]}")
+                + f"Review matrices:\n{fit(tables)}")
         return self._json(prompts.PLAN_SYSTEM, user, prompts.PLAN_SCHEMA, max_tokens=1800)
 
     def review_questions(self, plan: str) -> dict:
@@ -153,19 +171,41 @@ class LLMProvider(ABC):
                        avoid: str = "") -> dict:
         """The rest of a planned study's proposal (PROPOSAL_SCHEMA): background, gap, measures, design…"""
         user = (f"The planned study (fixed):\n{plan}\n\n" + self._brief(gaps, "", exclusions, resources, avoid)
-                + f"Review matrices:\n{tables[:60000]}")
+                + f"Review matrices:\n{fit(tables)}")
         return self._json(prompts.PROPOSAL_SYSTEM, user, prompts.PROPOSAL_SCHEMA, max_tokens=5000)
 
     def repair_claims(self, items: list[dict]) -> list[str]:
         """Rewrites of claims the matrix rows they cite don't back: items are {claim, reason, rows}."""
-        user = "\n\n".join(f"Item {i + 1}\nSentence: {it['claim']}\nWhy it isn't backed: {it['reason']}\n"
-                            f"Rows it cites:\n{it['rows']}" for i, it in enumerate(items))
-        out = self._json(prompts.REPAIR_SYSTEM, user[:60000], prompts.REPAIR_SCHEMA, max_tokens=600 + 250 * len(items))
-        return [str(r) for r in out.get("rewrites") or []]
+        # Rewrites line up with items by position, so items go whole, in calls that each fit:
+        # cutting the text instead would leave the last item half there.
+        def entry(i: int, it: dict) -> str:
+            return (f"Item {i + 1}\nSentence: {it['claim']}\nWhy it isn't backed: {it['reason']}\n"
+                    f"Rows it cites:\n{fit(str(it['rows']), MAX_INPUT - 2000)}")
+
+        batches: list[list[dict]] = [[]]
+        size = 0
+        for it in items:
+            n = len(entry(0, it)) + 2
+            if batches[-1] and size + n > MAX_INPUT:
+                batches.append([])
+                size = 0
+            batches[-1].append(it)
+            size += n
+        rewrites: list[str] = []
+        for batch in batches:
+            if not batch:
+                continue
+            user = "\n\n".join(entry(i, it) for i, it in enumerate(batch))
+            out = self._json(prompts.REPAIR_SYSTEM, user, prompts.REPAIR_SCHEMA, max_tokens=600 + 250 * len(batch))
+            got = [str(r) for r in out.get("rewrites") or []][:len(batch)]
+            rewrites += got
+            if len(got) < len(batch):  # a later batch's rewrites would line up with the wrong items
+                break
+        return rewrites
 
     def check_exclusions(self, exclusions: str, proposal: str) -> list[dict]:
         """Where a proposal breaks what the writer ruled out: [{rule, section, why}]."""
-        user = f"The writer rules out:\n{exclusions}\n\nThe proposal:\n{proposal[:30000]}"
+        user = f"The writer rules out:\n{exclusions}\n\nThe proposal:\n{fit(proposal, 30000)}"
         return self._json(prompts.EXCLUSIONS_SYSTEM, user, prompts.EXCLUSIONS_SCHEMA, max_tokens=1200).get("violations", [])
 
     def judge_support(self, claim: str, passage: str) -> dict:
@@ -194,7 +234,8 @@ class LLMProvider(ABC):
         try:
             out = self._search_json(prompts.EXPAND_QUERY_SYSTEM, f"Query: {query}",
                                     prompts.EXPAND_QUERY_SCHEMA, max_tokens=200)
-        except Exception:
+        except Exception as exc:  # search goes on with the query alone, but say why
+            log.warning("Query expansion failed, searching with the query alone: %s", exc)
             return []
         queries: list[str] = []
         for item in out.get("queries", []) if isinstance(out, dict) else []:
@@ -213,7 +254,8 @@ class LLMProvider(ABC):
         try:
             out = self._search_json(prompts.RANK_PASSAGES_SYSTEM, f"Query: {query}\n\nPassages:\n{listing}",
                                     prompts.RANK_PASSAGES_SCHEMA, max_tokens=100 + 40 * len(passages))
-        except Exception:
+        except Exception as exc:
+            log.warning("Ranking passages failed, keeping the keyword order: %s", exc)
             return None
         ids = {pid for pid, _ in passages}
         by_id: dict[int, float] = {}
