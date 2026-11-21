@@ -429,9 +429,11 @@ Esc returns to the draft.
 
 | Cell | Meaning |
 |---|---|
-| answer with a ✓ and a page | the quote was found on that page; click the page to open the PDF there |
-| answer with an amber **Needs check** pill | the quote wasn't found in the paper: check it before you rely on it |
+| a green **✓ p. 6** chip | the quote was found on that page; click the chip to open the PDF there |
+| an amber **Needs check · p. 6** chip | the quote wasn't found in the paper: check it before you rely on it |
 | *Not reported* | the passages read don't say; nothing is guessed |
+
+Long answers are cut to three lines (two in **Compact**); **More** beside the chip shows the rest. **Compact / Comfortable** above the table sets the row height, and is remembered.
 
 Answers say only what their quote shows, so they can be checked; a fuller answer spread over several passages is cut to the part the quote covers.
 
@@ -443,19 +445,19 @@ Edit the answer and **Save answer** (it keeps its quote as evidence), **Read aga
 
 **Use it.**
 
-- **Find gaps:** Muse reads the finished matrix and names what the studies leave out (populations, places, periods, methods) and where their findings conflict, naming the studies each gap rests on. They're listed in one box, **Gaps across these studies**, above the table, marked **Written by Muse** (it isn't checked against a quote, so read the studies before citing it). The box starts folded so the table shows first; **Show** opens it. Each study a gap names is a link to that study's row. **Insert into draft** beside a gap puts it in the draft, citing every paper in the matrix. Running Find gaps again updates that box: the wait shows inside it, new gaps are marked **New**, and gaps the new run didn't find are removed, except those a draft (or a saved version of one) cites. Those stay, greyed and marked **In your draft**, so their citations can still be checked against the matrix.
-- **Write from this matrix:** Muse writes a comparison of the studies from the matrix's quotes, each sentence citing them. Tick the sentences to keep and insert them into the draft.
-- **Kept with the matrix:** every gap and every written passage keeps a copy of the rows it came from. Passages you insert are listed in the same box under **Written from this matrix**. The box shows when the matrix has changed since one was written, and you can insert one again or delete it.
-- **Write a proposal:** plans a study that addresses the gaps (see [Write a research proposal](#write-a-research-proposal)).
-- The toolbar above a matrix groups its actions: **Paper details** and **Filter** change what you see; **Find gaps** and **Write a proposal** analyse it; **Write from this matrix** is the main action, and **Insert or export ▾** holds the rest.
-- **Insert into draft** (under **Insert or export**): the matrix as a table at the cursor, with the columns you choose. Each cell cites its quote, so the paper joins the reference list and the Word export; the citations are checked in the background, like the Assistant's. In the draft, **−Row**, **−Col** and **×Table** appear in the toolbar while the cursor is in a table.
-- **Export** (also under **Insert or export**): an *Excel workbook* or *CSV* (each column's answer, then its evidence: page and quote), or a *Word table* whose cells cite their sources in your citation style, with a reference list.
+- **Find gaps:** Muse reads the finished matrix and names what the studies leave out (populations, places, periods, methods) and where their findings conflict, naming the studies each gap rests on. The amber **✦ Find gaps** pill beside the matrix's name runs it; afterwards it reads **✦ Gaps · 7** and opens **Gaps across these studies** in the panel on the right, where a cell opens (one or the other: clicking a cell replaces the gaps, the pill brings them back; × or Esc closes it). Each gap is marked **Written by Muse** (it isn't checked against a quote, so read the studies before citing it). Each study a gap names is a link to that study's row. **Insert into draft** beside a gap puts it in the draft, citing every paper in the matrix. **Find again** in the panel updates it: the wait shows inside it, new gaps are marked **New**, and gaps the new run didn't find are removed, except those a draft (or a saved version of one) cites. Those stay, greyed and marked **In your draft**, so their citations can still be checked against the matrix.
+- **Write from matrix:** Muse writes a comparison of the studies from the matrix's quotes, each sentence citing them. Tick the sentences to keep and insert them into the draft.
+- **Kept with the matrix:** every gap and every written passage keeps a copy of the rows it came from. Passages you insert are listed in the same panel under **Written from this matrix**. The panel shows when the matrix has changed since one was written, and you can insert one again or delete it.
+- **Write a proposal** (under **⋯**): plans a study that addresses the gaps (see [Write a research proposal](#write-a-research-proposal)).
+- The header above a matrix keeps to one row: the name, the paper count and the gaps pill on the left; **Columns (5/17)** and **Filter** change what you see, **Compact / Comfortable** the row height, **Write from matrix** is the main action, and **⋯** holds the rest.
+- **Insert into draft** (under **⋯**): the matrix as a table at the cursor, with the columns you choose. Each cell cites its quote, so the paper joins the reference list and the Word export; the citations are checked in the background, like the Assistant's. In the draft, **−Row**, **−Col** and **×Table** appear in the toolbar while the cursor is in a table.
+- **Export to Excel / CSV / a Word table** (also under **⋯**): an *Excel workbook* or *CSV* (each column's answer, then its evidence: page and quote), or a *Word table* whose cells cite their sources in your citation style, with a reference list.
 
-**Paper details.** Detail columns show each paper's record as it is in your library: what OpenAlex and Crossref found (see [More library tools](#more-library-tools-)) and what you corrected under Edit details. They aren't read by Muse, so they fill in at once, cost nothing, carry no quote, and change when the record does. **Paper details** above the table adds or removes them (questions are limited to 12, details aren't).
+**Paper details.** Detail columns show each paper's record as it is in your library: what OpenAlex and Crossref found (see [More library tools](#more-library-tools-)) and what you corrected under Edit details. They aren't read by Muse, so they fill in at once, cost nothing, carry no quote, and change when the record does. **Columns** above the table adds or removes them (questions are limited to 12, details aren't).
 
 - **Sort:** click a detail's heading: years and citations go newest or most first, then the other way, then back to the order they were added. Papers without that detail go last.
 - **Filter:** **Filter** narrows the rows by a detail: years or citations between two numbers, or a journal, author or keyword containing a word. Filters add up, each shows as a chip (× removes it), and papers without the detail are left out while it applies.
-- They're used too: **Find gaps** and **Write from this matrix** are told each study's details (e.g. that no study is after 2018, or that the most cited one disagrees), though only quotes are cited. The Excel, CSV and Word exports and **Insert into draft** include them as plain columns.
+- They're used too: **Find gaps** and **Write from matrix** are told each study's details (e.g. that no study is after 2018, or that the most cited one disagrees), though only quotes are cited. The Excel, CSV and Word exports and **Insert into draft** include them as plain columns.
 
 Matrices are saved with your library; **⋯ → Delete this matrix** removes one (the papers stay).
 
@@ -470,7 +472,7 @@ Matrices are saved with your library; **⋯ → Delete this matrix** removes one
 
 ### Write a research proposal
 
-**Write a proposal** above a matrix (or *Write a research proposal* in Ctrl K) plans one study that addresses the gaps you found, in four steps:
+**⋯ → Write a proposal** above a matrix (or *Write a research proposal* in Ctrl K) plans one study that addresses the gaps you found, in four steps:
 
 1. **Gaps:** tick the gaps to address, from one matrix or several. Ticking more than one matrix draws on several reviews, and a paper in two of them counts once. You can also say what the study should focus on, or write a focus instead of ticking gaps.
 2. **Variables:** Muse suggests the variables such a study would use, most central first, each with a likely role and how the reviewed studies measured it. Only three start switched on: the outcome, its main cause and the next most central one, which makes the simplest study. Give any other a role (independent, dependent, mediator, moderator or control) to use it too, add your own, and say how you'd measure each if you know. Muse uses the fewest of the ones you switch on that answer the study's question.

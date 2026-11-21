@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { Icon } from './Icon'
 import { MuseTag } from './MuseTag'
 import { api } from '../api'
 import {
@@ -33,6 +35,8 @@ interface Props {
   openRequest?: { id: number; at: number } | null
   /** The Matrix place is on screen: a matrix finishing while it isn't sends a desktop notification. */
   visible: boolean
+  /** The app's sidebar, while the Matrix is open: the list of matrices goes there, as the Library's smart views do. */
+  sideSlot?: HTMLElement | null
   /** A matrix finished being read while another place in the app was showing. */
   onReady?: (m: { id: number; name: string; cells: number }) => void
 }
@@ -569,7 +573,7 @@ async function save(name: string, data: ArrayBuffer, ext: string) {
   return file
 }
 
-export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences, onInsertFinding, onWriteProposal, openRequest, visible, onReady }: Props) {
+export function MatrixView({ docs, folders, selected, query, citationStyle, onError, onOpenPdf, onInsertTable, onInsertSentences, onInsertFinding, onWriteProposal, openRequest, visible, onReady, sideSlot }: Props) {
   const [list, setList] = useState<MatrixSummary[] | null>(null)
   const [matrix, setMatrix] = useState<Matrix | null>(null)
   const [creating, setCreating] = useState(false)
@@ -592,6 +596,36 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   const [draft, setDraft] = useState<{ field: string; min: string; max: string; text: string }>({ field: 'year', min: '', max: '', text: '' })
   const [detailColsShown, setDetailColsShown] = useState(false) // paper-detail columns stay behind Paper details until asked for
   const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set()) // long answers opened in place
+  useEffect(() => {
+    if (cellAt) setShowGaps(false) // a cell takes the right-hand panel from the gaps
+  }, [cellAt])
+  useEffect(() => {
+    if (!cellAt && !showGaps) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      const t = e.target as HTMLElement | null
+      if (t?.closest('input, textarea, select, [role="dialog"], .modal')) return
+      setCellAt(null)
+      setShowGaps(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [cellAt, showGaps])
+  const [density, setDensityState] = useState<'compact' | 'comfortable'>(() => {
+    try {
+      return localStorage.getItem('gw.matrix.density') === 'compact' ? 'compact' : 'comfortable'
+    } catch {
+      return 'comfortable'
+    }
+  })
+  const setDensity = (d: 'compact' | 'comfortable') => {
+    setDensityState(d)
+    try {
+      localStorage.setItem('gw.matrix.density', d)
+    } catch {
+      /* not remembered */
+    }
+  }
 
   useEffect(() => {
     api.matrixDetails().then(setFields).catch(() => {})
@@ -675,6 +709,7 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   /** Gaps from a new run replace the earlier ones (but those a draft cites); new ones are marked. */
   function findGaps() {
     if (!matrix) return
+    setCellAt(null)
     // New is by wording: the same gap from an edited matrix is kept again under a new id.
     const said = (g: { title: string; detail: string }) => `${g.title}
 ${g.detail}`
@@ -705,6 +740,8 @@ ${g.detail}`
   const keptById = new Map((kept ?? []).map((f) => [f.id, f]))
   const earlierGaps = (kept ?? []).filter((f) => f.kind === 'gap' && !latestGaps.has(f.id))
   const passages = (kept ?? []).filter((f) => f.kind === 'synthesis')
+  const hasGaps = !!matrix && (matrix.gaps !== null || earlierGaps.length > 0 || passages.length > 0)
+  const gapCount = (matrix?.gaps?.length ?? 0) + earlierGaps.length
 
   const needle = query.trim().toLowerCase()
   const doc = (id: number) => docs.find((d) => d.id === id) // a row's paper, for its page links
@@ -753,21 +790,41 @@ ${g.detail}`
 
   return (
     <section className="panel mx" aria-label="Review matrices">
-      <nav className="mx-list" aria-label="Matrices">
-        <div className="lib-nav-label">Review matrices</div>
-        {(list ?? []).map((m) => (
-          <button key={m.id} className={`mx-list-item${matrix?.id === m.id && !creating ? ' on' : ''}`} onClick={() => open(m.id)}>
-            <span className="mx-list-name">{m.name}</span>
-            <span className="muted">
-              {m.papers} papers · {m.pending ? 'reading…' : `edited ${ago(m.updated_at)}`}
-            </span>
-          </button>
-        ))}
-        <button className="lib-nav-item lib-nav-new" onClick={() => (setCreating(true), setCellAt(null))}>
-          <span className="lib-nav-ico" aria-hidden="true">+</span>
-          <span className="lib-nav-name">New matrix</span>
-        </button>
-      </nav>
+      {sideSlot &&
+        createPortal(
+          <nav className="lib-side mx-side" aria-label="Review matrices">
+            <div className="lib-side-label">Matrices</div>
+            {(list ?? []).map((m) => {
+              const on = matrix?.id === m.id && !showNew
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`lib-side-item${on ? ' on' : ''}`}
+                  aria-current={on ? 'page' : undefined}
+                  title={`${m.name}: ${m.papers} papers · ${m.pending ? 'reading…' : `edited ${ago(m.updated_at)}`}`}
+                  onClick={() => open(m.id)}
+                >
+                  <Icon name="matrix" size={19} />
+                  <span className="mx-side-dot" aria-hidden="true" />
+                  <span className="lib-side-name">{m.name}</span>
+                  <span className="lib-side-n">{m.pending ? '…' : m.papers}</span>
+                </button>
+              )
+            })}
+            <button
+              type="button"
+              className={`lib-side-item${showNew ? ' on' : ''}`}
+              aria-current={showNew ? 'page' : undefined}
+              title="New matrix: compare papers side by side"
+              onClick={() => (setCreating(true), setCellAt(null))}
+            >
+              <Icon name="plus" size={19} />
+              <span className="lib-side-name">New matrix</span>
+            </button>
+          </nav>,
+          sideSlot,
+        )}
 
       <div className="mx-main">
         {showNew ? (
@@ -827,58 +884,70 @@ ${g.detail}`
                     {matrix.name}
                   </h2>
                 )}
-                <span className="muted">
-                  {matrix.rows.length} papers · {matrix.columns.filter((c) => !isDetail(c)).length} questions
-                  {matrix.columns.some(isDetail) && ` · ${matrix.columns.filter(isDetail).length} details`}
-                  {` · ${visibleColumns.length} of ${matrix.columns.length} columns shown`}
-                  {narrowed && ` · ${rows.length} shown`}
-                  <span className="mx-how"> · each answer shows the page its quote is on: click it to read the quote</span>
+                <span className="mx-count" title={`${matrix.columns.filter((c) => !isDetail(c)).length} questions${matrix.columns.some(isDetail) ? ` · ${matrix.columns.filter(isDetail).length} paper details` : ''} · each answer shows the page its quote is on: click it to read the quote`}>
+                  {matrix.rows.length} papers{narrowed && ` · ${rows.length} shown`}
                 </span>
+                {/* The gaps live behind this pill: it opens them, or finds them the first time */}
+                <button
+                  className={`mx-gaps-pill${showGaps && hasGaps && !cellAt ? ' on' : ''}`}
+                  onClick={() => (hasGaps ? (setCellAt(null), setShowGaps(!(showGaps && !cellAt))) : findGaps())}
+                  disabled={busy === FINDING_GAPS || (!hasGaps && (!!matrix.pending || !!busy))}
+                  aria-expanded={hasGaps ? showGaps && !cellAt : undefined}
+                  title={hasGaps ? 'What these studies leave out and where they disagree, written by Muse' : 'Muse names what these studies leave out and where they disagree'}
+                >
+                  <span aria-hidden="true">✦</span>
+                  {busy === FINDING_GAPS ? 'Finding gaps…' : hasGaps ? `Gaps · ${gapCount}` : 'Find gaps'}
+                </button>
               </div>
               <div className="mx-tools">
                 {fields.length > 0 && (
                   <>
-                    <button className={panel === 'details' ? 'on' : ''} aria-expanded={panel === 'details'} onClick={() => {
+                    <button
+                      className={panel === 'details' ? 'on' : ''}
+                      aria-expanded={panel === 'details'}
+                      onClick={() => {
                         const next = panel === 'details' ? null : 'details'
                         setPanel(next)
                         if (next === 'details') setDetailColsShown(true)
                       }}
-                      title="Show the papers' year, journal, citations, abstract… as columns">
-                      Paper details
+                      title={`Show the papers' year, journal, citations, abstract… as columns${hiddenDetailCount ? ` (${hiddenDetailCount} hidden now)` : ''}`}
+                    >
+                      <Icon name="columns" size={16} />
+                      Columns ({visibleColumns.length}/{matrix.columns.length})
                     </button>
                     <button className={panel === 'filter' || filters.length ? 'on' : ''} aria-expanded={panel === 'filter'} onClick={() => setPanel(panel === 'filter' ? null : 'filter')}
                       title="Show only papers from some years, a journal, with enough citations…">
+                      <Icon name="funnel" size={15} />
                       Filter{filters.length ? ` (${filters.length})` : ''}
                     </button>
                   </>
                 )}
-                {/* Three groups: look at the matrix, analyse it, write from it (the one main action) */}
-                <span className="mx-tool-sep" aria-hidden="true" />
-                <button onClick={findGaps} disabled={!!matrix.pending || !!busy} title="Muse names what these studies leave out and where they disagree">
-                  Find gaps
-                </button>
-                <button onClick={() => onWriteProposal(matrix.id)} disabled={!!matrix.pending} title="A research proposal for a study that addresses this review's gaps">
-                  Write a proposal
-                </button>
-                <span className="mx-tool-sep" aria-hidden="true" />
-                <button className="primary" onClick={() => setDialog('synthesis')} disabled={!!matrix.pending} title="Muse writes a comparison of the studies, each sentence citing its quotes">
-                  Write from this matrix
+                <div className="seg mx-density" role="group" aria-label="Row height">
+                  <button aria-pressed={density === 'compact'} onClick={() => setDensity('compact')} title="Tighter rows, two lines per answer">Compact</button>
+                  <button aria-pressed={density === 'comfortable'} onClick={() => setDensity('comfortable')} title="Roomier rows, three lines per answer">Comfortable</button>
+                </div>
+                <button className="primary mx-write" onClick={() => setDialog('synthesis')} disabled={!!matrix.pending} title="Muse writes a comparison of the studies, each sentence citing its quotes">
+                  Write from matrix
                 </button>
                 <div className="mx-menu-wrap" onMouseDown={(e) => e.stopPropagation()}>
-                  <button onClick={() => setMenu(menu === 'export' ? null : 'export')} aria-haspopup="menu" aria-expanded={menu === 'export'}>
-                    Insert or export ▾
+                  <button className="ghost lib-icon-btn mx-more" onClick={() => setMenu(menu === 'more' ? null : 'more')} aria-haspopup="menu" aria-expanded={menu === 'more'} aria-label="More" title="More: a proposal, insert or export, questions">
+                    ⋯
                   </button>
-                  {menu === 'export' && (
-                    <div className="lib-menu" role="menu">
+                  {menu === 'more' && (
+                    <div className="lib-menu mx-menu" role="menu">
+                      <button role="menuitem" disabled={!!matrix.pending} onClick={() => (setMenu(null), onWriteProposal(matrix.id))}>
+                        <b>Write a proposal</b>
+                        <span>A research proposal for a study that addresses this review's gaps</span>
+                      </button>
                       <button role="menuitem" onClick={() => (setMenu(null), setDialog('insert'))}>
                         <b>Insert into draft</b>
                         <span>The matrix as a table at the cursor; each cell cites its quote</span>
                       </button>
                       {(
                         [
-                          ['xlsx', 'Excel workbook', 'An answer column and an evidence column (page and quote) per question'],
-                          ['csv', 'CSV', 'The same, for any spreadsheet or R/Python'],
-                          ['docx', 'Word table', `Cells cite their sources in ${citationStyle.toUpperCase()}, with a reference list`],
+                          ['xlsx', 'Export to Excel', 'An answer column and an evidence column (page and quote) per question'],
+                          ['csv', 'Export to CSV', 'The same, for any spreadsheet or R/Python'],
+                          ['docx', 'Export a Word table', `Cells cite their sources in ${citationStyle.toUpperCase()}, with a reference list`],
                         ] as const
                       ).map(([fmt, title, hint]) => (
                         <button
@@ -896,15 +965,7 @@ ${g.detail}`
                           <span>{hint}</span>
                         </button>
                       ))}
-                    </div>
-                  )}
-                </div>
-                <div className="mx-menu-wrap" onMouseDown={(e) => e.stopPropagation()}>
-                  <button className="ghost lib-icon-btn" onClick={() => setMenu(menu === 'more' ? null : 'more')} aria-label="More" title="More">
-                    ⋯
-                  </button>
-                  {menu === 'more' && (
-                    <div className="lib-menu" role="menu">
+                      <hr />
                       <button role="menuitem" onClick={() => (setMenu(null), setEditingCol({ index: -1, label: '', instruction: '' }))}>
                         <b>Add a question</b>
                         <span>A new column Muse reads for every paper</span>
@@ -1038,70 +1099,9 @@ ${g.detail}`
               </section>
             )}
 
-            {(busy === FINDING_GAPS || matrix.gaps !== null || earlierGaps.length > 0 || passages.length > 0) && (
-              <section className="mx-gaps">
-                <button className="mx-gaps-head" onClick={() => setShowGaps((s) => !s)} aria-expanded={showGaps}>
-                  <span className="mx-gaps-title">
-                    <b>Gaps across these studies</b> <MuseTag from="this matrix's cells" />
-                  </span>
-                  <span className="muted">{showGaps ? 'Hide' : `Show ${(matrix.gaps?.length ?? 0) + earlierGaps.length + passages.length}`}</span>
-                </button>
-                {showGaps && (
-                  <div className="mx-gaps-body">
-                    {busy === FINDING_GAPS && <WaitStatus label={busy} startedAt={busyAt} usual="This usually takes 10 to 40 seconds." />}
-                    {matrix.gaps?.length === 0 && busy !== FINDING_GAPS && <p className="muted">No gaps stood out across these studies.</p>}
-                    {(matrix.gaps?.length ?? 0) + earlierGaps.length > 0 && (
-                      <ul>
-                        {matrix.gaps?.map((g) => (
-                          <li key={g.id}>
-                            <b>{g.title}</b> <GapText text={g.detail} rows={rows} />
-                            <FindingMeta
-                              finding={keptById.get(g.id)}
-                              isNew={fresh.has(g.id)}
-                              onInsert={() => onInsertFinding(g.id)}
-                            />
-                          </li>
-                        ))}
-                        {earlierGaps.map((f) => (
-                          <li key={f.id} className="mx-earlier">
-                            <b>{f.title}</b> <GapText text={f.text} rows={rows} />
-                            <FindingMeta finding={f} earlier onInsert={() => onInsertFinding(f.id)} onDelete={() => removeKept(f)} />
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {passages.length > 0 && (
-                      <>
-                        <div className="eyebrow mx-passages-label">Written from this matrix</div>
-                        <ul className="mx-passages">
-                          {passages.map((f) => (
-                            <li key={f.id}>
-                              <span className="mx-kept-text">{f.text}</span>
-                              <FindingMeta finding={f} onInsert={() => onInsertFinding(f.id)} onDelete={() => removeKept(f)} />
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-                  </div>
-                )}
-              </section>
-            )}
-
             <div className="mx-body">
               <div className="mx-table-wrap">
-                <div className="mx-col-count" role="status">
-                  <span>
-                    {visibleColumns.length} of {matrix.columns.length} columns shown
-                    {hiddenDetailCount > 0 && ` · ${hiddenDetailCount} paper-detail column${hiddenDetailCount === 1 ? '' : 's'} hidden: open Paper details to show ${hiddenDetailCount === 1 ? 'it' : 'them'}`}
-                  </span>
-                  <span className="mx-legend">
-                    <span className="mx-dot" aria-hidden="true">✓</span> quote found on the page shown ·{' '}
-                    <span className="mx-needs-check">Needs check</span> the quote wasn’t found — check it before you rely on it
-                  </span>
-                  {visibleColumns.length > 1 && <span className="mx-scroll-cue">Scroll sideways → more columns · the Study column stays in view</span>}
-                </div>
-                <table className="mx-table">
+                <table className={`mx-table ${density}`}>
                   <thead>
                     <tr>
                       <th className="mx-study">Study</th>
@@ -1155,7 +1155,7 @@ ${g.detail}`
                           const expanded = expandedCells.has(cellKey)
                           const pagePart = cell?.label.split(', ').slice(-1)[0] ?? ''
                           const printedPage = pagePart.match(/^p\. ([\w-]+)$/)?.[1]
-                          const pageText = printedPage ? `Printed p. ${printedPage}` : cell?.page ? `PDF page ${cell.page}` : pagePart
+                          const pageText = printedPage ? `p. ${printedPage}` : cell?.page ? `PDF p. ${cell.page}` : pagePart
                           const pageTitle =
                             printedPage && cell?.page
                               ? `Printed page ${printedPage} · PDF page ${cell.page}: open the PDF at this page`
@@ -1185,47 +1185,41 @@ ${g.detail}`
                                 <span className="mx-nr">Couldn't read: click to retry</span>
                               ) : (
                                 <>
-                                  <span className={`mx-answer-text${expanded ? ' expanded' : ''}`}>{cell.answer}</span>
-                                  {cell.answer.length > 160 && (
-                                    <button
-                                      className="link mx-expand"
-                                      aria-expanded={expanded}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setExpandedCells((s) => {
-                                          const n = new Set(s)
-                                          if (n.has(cellKey)) n.delete(cellKey)
-                                          else n.add(cellKey)
-                                          return n
-                                        })
-                                      }}
-                                    >
-                                      {expanded ? 'Show less' : 'Show more'}
-                                    </button>
-                                  )}
-                                  <span className="mx-where">
-                                    {/* ✓ the quote was found on that page; ? it wasn't, so check it */}
-                                    <span className="mx-dot" aria-hidden="true">{cell.status === 'unverified' ? '?' : '✓'}</span>
-                                    {doc(r.doc_id)?.kind === 'pdf' && cell.page ? (
-                                      <button
-                                        className="mx-page-chip"
-                                        onClick={(e) => (e.stopPropagation(), onOpenPdf(doc(r.doc_id)!, cell.page!))}
-                                        title={pageTitle}
-                                      >
-                                        {pageText}
-                                      </button>
-                                    ) : (
-                                      <span className="mx-page-chip" title={pageTitle}>
-                                        {pageText}
-                                      </span>
-                                    )}
-                                    {cell.status === 'unverified' && (
-                                      <span className="mx-needs-check" title="The quote wasn’t found in the paper: check it">
-                                        Needs check
-                                      </span>
-                                    )}
-                                    {cell.edited ? ' · edited' : ''}
-                                  </span>
+                                  <CellAnswer
+                                    text={cell.answer}
+                                    expanded={expanded}
+                                    onToggle={() =>
+                                      setExpandedCells((s) => {
+                                        const n = new Set(s)
+                                        if (n.has(cellKey)) n.delete(cellKey)
+                                        else n.add(cellKey)
+                                        return n
+                                      })
+                                    }
+                                  >
+                                    {/* One chip: ✓ and the page when the quote was found there; "Needs check" and the page when it wasn't */}
+                                    {(() => {
+                                      const unchecked = cell.status === 'unverified'
+                                      const label = (
+                                        <>
+                                          {unchecked ? 'Needs check · ' : <span aria-hidden="true">✓</span>}
+                                          {pageText}
+                                        </>
+                                      )
+                                      const title = unchecked ? `The quote wasn’t found in the paper: check it · ${pageTitle}` : `Quote found on this page · ${pageTitle}`
+                                      const cls = `mx-page-chip${unchecked ? ' unchecked' : ''}`
+                                      return doc(r.doc_id)?.kind === 'pdf' && cell.page ? (
+                                        <button className={cls} onClick={(e) => (e.stopPropagation(), onOpenPdf(doc(r.doc_id)!, cell.page!))} title={title}>
+                                          {label}
+                                        </button>
+                                      ) : (
+                                        <span className={cls} title={title}>
+                                          {label}
+                                        </span>
+                                      )
+                                    })()}
+                                    {cell.edited ? <span className="mx-edited">edited</span> : null}
+                                  </CellAnswer>
                                 </>
                               )}
                             </td>
@@ -1260,6 +1254,63 @@ ${g.detail}`
                   onOpenPdf={onOpenPdf}
                 />
               )}
+              {/* The gaps open on the right, where a cell opens: one panel at a time */}
+              {!cellAt && (busy === FINDING_GAPS || (showGaps && hasGaps)) && (
+                <aside className="mx-pane mx-gaps-pane" aria-label="Gaps across these studies">
+                  <header className="mx-pane-head">
+                    <div>
+                      <span className="eyebrow">{busy === FINDING_GAPS ? 'Finding gaps' : `${gapCount} gap${gapCount === 1 ? '' : 's'}`}</span>
+                      <h3>Gaps across these studies</h3>
+                      <MuseTag from="this matrix's cells" />
+                    </div>
+                    <button className="icon" onClick={() => setShowGaps(false)} aria-label="Close" title="Close (Esc)">
+                      ×
+                    </button>
+                  </header>
+                  <div className="mx-pane-actions">
+                    <button onClick={findGaps} disabled={!!matrix.pending || !!busy} title="Muse reads the matrix again for gaps; ones a draft cites are kept">
+                      Find again
+                    </button>
+                  </div>
+                  <div className="mx-gaps-body">
+                {busy === FINDING_GAPS && <WaitStatus label={busy} startedAt={busyAt} usual="This usually takes 10 to 40 seconds." />}
+                {matrix.gaps?.length === 0 && busy !== FINDING_GAPS && <p className="muted">No gaps stood out across these studies.</p>}
+                {(matrix.gaps?.length ?? 0) + earlierGaps.length > 0 && (
+                  <ul>
+                    {matrix.gaps?.map((g) => (
+                      <li key={g.id}>
+                        <b>{g.title}</b> <GapText text={g.detail} rows={rows} />
+                        <FindingMeta
+                          finding={keptById.get(g.id)}
+                          isNew={fresh.has(g.id)}
+                          onInsert={() => onInsertFinding(g.id)}
+                        />
+                      </li>
+                    ))}
+                    {earlierGaps.map((f) => (
+                      <li key={f.id} className="mx-earlier">
+                        <b>{f.title}</b> <GapText text={f.text} rows={rows} />
+                        <FindingMeta finding={f} earlier onInsert={() => onInsertFinding(f.id)} onDelete={() => removeKept(f)} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {passages.length > 0 && (
+                  <>
+                    <div className="eyebrow mx-passages-label">Written from this matrix</div>
+                    <ul className="mx-passages">
+                      {passages.map((f) => (
+                        <li key={f.id}>
+                          <span className="mx-kept-text">{f.text}</span>
+                          <FindingMeta finding={f} onInsert={() => onInsertFinding(f.id)} onDelete={() => removeKept(f)} />
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                  </div>
+                </aside>
+              )}
             </div>
 
             {dialog === 'synthesis' && <SynthesisDialog matrix={matrix} onInsert={onInsertSentences} onClose={() => setDialog(null)} onError={onError} />}
@@ -1268,6 +1319,43 @@ ${g.detail}`
         )}
       </div>
     </section>
+  )
+}
+
+/** An answer clamped to the row height, then its chips; "More" shows only when the answer is cut off. */
+function CellAnswer({ text, expanded, onToggle, children }: { text: string; expanded: boolean; onToggle: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [cut, setCut] = useState(false)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const check = () => setCut(el.scrollHeight > el.clientHeight + 1)
+    check()
+    const ro = new ResizeObserver(check) // Compact / Comfortable and the column width change where it cuts
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [text])
+  return (
+    <>
+      <span ref={ref} className={`mx-answer-text${expanded ? ' expanded' : ''}`}>
+        {text}
+      </span>
+      <span className="mx-where">
+        {children}
+        {(cut || expanded) && (
+          <button
+            className="link mx-expand"
+            aria-expanded={expanded}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggle()
+            }}
+          >
+            {expanded ? 'Less' : 'More'}
+          </button>
+        )}
+      </span>
+    </>
   )
 }
 
