@@ -10,6 +10,8 @@ import type { ChipAttrs } from './WritingEditor'
 
 interface Props {
   visible: boolean
+  /** The library has loaded (until then `docs` is empty because nothing has come back yet, not because it's empty). */
+  ready: boolean
   docs: Doc[]
   drafts: DraftSummary[]
   /** The draft open in Write: its citations are read live from the editor, not from its last save. */
@@ -124,18 +126,25 @@ export function HomeView(p: Props) {
   // list: marking a paper read or starring it gives a new list with the same papers.
   const papersKey = useMemo(() => sig(docs.map((d) => `${d.id}:${d.doi ?? ''}:${d.title}`)), [docs])
   useEffect(() => {
-    if (!p.visible) return
+    if (!p.visible || !p.ready) return
     let current = true
     // A moment's wait, so what changes together asks once: at launch the library, the drafts and the
     // open draft's citations arrive one after another, and Home sent four requests in two seconds.
     const wait = window.setTimeout(() => {
-      api.homeTodo(focusId).then((t) => current && setTodo(t)).catch(() => {})
+      api
+        .homeTodo(focusId)
+        .then((t) => current && setTodo(t))
+        // Couldn't ask: list what's known without it, rather than "looking" for ever.
+        .catch(() => current && setTodo((t) => t ?? { drafts: [], missing: [], matrices: [] }))
     }, 150)
     return () => {
       current = false
       window.clearTimeout(wait)
     }
-  }, [p.visible, focusId, papersKey])
+  }, [p.visible, p.ready, focusId, papersKey])
+  // Until the library and the first to-do list are in, Home says it's looking and counts nothing: shown
+  // as each part arrived, the list grew under the reader and the count jumped (1, then 7).
+  const loading = !p.ready || todo === null
 
   // Settings aside from another day come back.
   useEffect(() => {
@@ -441,7 +450,15 @@ export function HomeView(p: Props) {
         <div className="desk-date">{date}</div>
         <div className="desk-head">
           <h1>
-            {!docs.length ? (
+            {loading ? (
+              <>
+                <b>What needs you</b>
+                <span className="desk-looking" role="status">
+                  <span className="wait-spin" aria-hidden="true" />
+                  Looking through your library…
+                </span>
+              </>
+            ) : !docs.length ? (
               <b>Nothing needs you yet</b>
             ) : shown.length ? (
               <>
@@ -451,7 +468,7 @@ export function HomeView(p: Props) {
               <b>All caught up</b>
             )}
           </h1>
-          {choices.length > 1 && (
+          {!loading && choices.length > 1 && (
             <label className="desk-working">
               Working on
               <select value={focusId} onChange={(e) => setPicked(Number(e.target.value))}>
@@ -466,7 +483,19 @@ export function HomeView(p: Props) {
           )}
         </div>
 
-        {!docs.length ? (
+        {loading ? (
+          <ul className="desk-list desk-skel" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="desk-row">
+                <i className="sk-kind" />
+                <div className="desk-body">
+                  <i className="sk-line" />
+                  <i className="sk-line short" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : !docs.length ? (
           <div className="desk-empty">
             <p>Add your papers, and Home lists what needs you: citations to fix, papers your sources build on that you don’t have, and what to read next.</p>
             <div className="desk-pair">

@@ -1046,6 +1046,7 @@ const FRONT_SORT_KEY = 'gw.library.folderSort'
 const PAPER_LAYOUT_KEY = 'gw.library.paperLayout'
 const SIZE_KEY = 'gw.library.size'
 const SUMMARY_KEY = 'gw.library.summaryOpen' // the panel beside the folders, shown or hidden
+const ALL_KEY = 'v:all' // All sources: what the panel sums up before a folder is picked
 const RECENT_SHOWN = 5
 /** The smart folders made from ready-made views, in the order they show; each shows only when it has
  * something in it, except All sources and Drafting from. */
@@ -2571,11 +2572,13 @@ export const LibraryPanel = memo(function LibraryPanel({
       </div>
       {atFront && summaryOpen && (
         <FolderSummary
-          item={selKey ? itemByKey.get(selKey) : undefined}
+          // Nothing picked: the whole library (All sources) at a glance, not an empty column.
+          item={itemByKey.get(selKey ?? ALL_KEY)}
+          overview={!selKey}
           topics={topicItems}
           cited={citedSet}
           drafting={drafting}
-          onOpen={() => selKey && openKey(selKey)}
+          onOpen={() => openKey(selKey ?? ALL_KEY)}
           onClose={() => {
             setSummaryOpen(false)
             focusTile(selKey)
@@ -2585,7 +2588,7 @@ export const LibraryPanel = memo(function LibraryPanel({
           onWhatsNew={onWhatsNew}
           onOpenKey={openKey}
           onSurprise={() => {
-            const it = selKey ? itemByKey.get(selKey) : undefined
+            const it = itemByKey.get(selKey ?? ALL_KEY)
             if (it) surpriseFrom(it.docs, it.kind === 'topic' ? it.name : 'your library')
           }}
         />

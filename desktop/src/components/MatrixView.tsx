@@ -12,6 +12,9 @@ import { SourceViewer, type SourceTarget } from './SourceViewer'
 import { StatusBadge } from './StatusBadge'
 import { WaitStatus } from './WaitStatus'
 import { notifyDone, timeLeft } from '../notify'
+import { useConfirm } from './ConfirmDialog'
+
+const LAST_KEY = 'gw.matrix.last' // the matrix open last time: Matrix opens on it
 
 interface Props {
   docs: Doc[]
@@ -596,6 +599,7 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
   const [draft, setDraft] = useState<{ field: string; min: string; max: string; text: string }>({ field: 'year', min: '', max: '', text: '' })
   const [detailColsShown, setDetailColsShown] = useState(false) // paper-detail columns stay behind Paper details until asked for
   const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set()) // long answers opened in place
+  const [ask, confirmDialog] = useConfirm() // "are you sure?" in the app's own dialog
   useEffect(() => {
     if (cellAt) setShowGaps(false) // a cell takes the right-hand panel from the gaps
   }, [cellAt])
@@ -679,9 +683,40 @@ export function MatrixView({ docs, folders, selected, query, citationStyle, onEr
     if (openRequest) open(openRequest.id)
   }, [openRequest]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Matrix opens on the matrix used last (else the one edited last). With matrices to go back to, the
+  // introduction on every first visit was a step in the way; it stays for someone with none yet.
+  const autoOpened = useRef(false)
+  useEffect(() => {
+    if (autoOpened.current || !list || matrix || creating || openRequest) return
+    autoOpened.current = true
+    if (!list.length) return
+    let last = NaN
+    try {
+      last = Number(localStorage.getItem(LAST_KEY))
+    } catch {
+      /* storage unavailable: the one edited last */
+    }
+    const pick = list.find((m) => m.id === last) ?? [...list].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))[0]
+    open(pick.id)
+  }, [list]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!matrix) return
+    try {
+      localStorage.setItem(LAST_KEY, String(matrix.id))
+    } catch {
+      /* storage unavailable */
+    }
+  }, [matrix?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function removeKept(f: FindingSummary) {
     const what = f.kind === 'gap' ? `the gap “${f.title}”` : 'this written passage'
-    if (!window.confirm(`Delete ${what}? Citations to it in your drafts keep their colour but can no longer be checked against the matrix.`)) return
+    const sure = await ask({
+      title: `Delete ${what}?`,
+      body: 'Citations to it in your drafts keep their colour but can no longer be checked against the matrix.',
+      verb: f.kind === 'gap' ? 'Delete gap' : 'Delete passage',
+      danger: true,
+    })
+    if (!sure) return
     try {
       await api.deleteFinding(f.id)
       setKept((k) => k?.filter((x) => x.id !== f.id) ?? null)
@@ -976,9 +1011,15 @@ ${g.detail}`
                       </button>
                       <button
                         role="menuitem"
-                        onClick={() => {
+                        onClick={async () => {
                           setMenu(null)
-                          if (window.confirm(`Delete “${matrix.name}”? The papers stay in your library.`)) {
+                          const sure = await ask({
+                            title: `Delete “${matrix.name}”?`,
+                            body: 'The matrix and its answers are deleted. The papers stay in your library.',
+                            verb: 'Delete matrix',
+                            danger: true,
+                          })
+                          if (sure) {
                             run('Deleting…', async () => {
                               await api.deleteMatrix(matrix.id)
                               setMatrix(null)
@@ -1318,6 +1359,7 @@ ${g.detail}`
           </>
         )}
       </div>
+      {confirmDialog}
     </section>
   )
 }
