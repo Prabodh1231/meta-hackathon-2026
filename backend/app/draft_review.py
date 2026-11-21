@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
-from .text_utils import sentence_spans
+from .text_utils import densest_run, sentence_spans
 
 _WORD = re.compile(r"\w+(?:['’\-]\w+)*")
 SHINGLE = 3  # words per n-gram when measuring overlap
@@ -46,13 +46,23 @@ def parse(content: str | dict | None) -> dict:
 def blocks(content: str | dict | None) -> list[Block]:
     out: list[Block] = []
 
+    def add(block: Block, text: str) -> None:
+        # Spacing is collapsed as the text is built, not afterwards, so a citation's offset
+        # (taken as len(block.text)) is already a position in the final text.
+        text = re.sub(r"[ \t]+", " ", text)
+        if not block.text:
+            text = text.lstrip()
+        elif block.text.endswith(" "):
+            text = text.lstrip(" ")
+        block.text += text
+
     def inline(nodes: list[dict], block: Block) -> None:
         for node in nodes:
             kind = node.get("type")
             if kind == "text":
-                block.text += node.get("text") or ""
+                add(block, node.get("text") or "")
             elif kind == "hardBreak":
-                block.text += " "
+                add(block, " ")
             elif kind == "citation":
                 block.cites.append((len(block.text), (node.get("attrs") or {}).get("docId") or 0))
             elif node.get("content"):
@@ -65,7 +75,8 @@ def blocks(content: str | dict | None) -> list[Block]:
                 b = Block("heading" if kind == "heading" else "paragraph", "",
                           int((node.get("attrs") or {}).get("level") or 1) if kind == "heading" else 0)
                 inline(node.get("content") or [], b)
-                b.text = re.sub(r"[ \t]+", " ", b.text).strip()
+                b.text = b.text.rstrip()
+                b.cites = [(min(off, len(b.text)), d) for off, d in b.cites]
                 if b.text:
                     out.append(b)
             elif node.get("content"):  # lists, list items, blockquotes
@@ -235,15 +246,15 @@ def compare(old_content: str | dict | None, new_content: str | dict | None) -> d
 
     # Sections match by heading, so moving or editing one section doesn't mark the others changed.
     old_s, new_s = sections(old_b), sections(new_b)
-    by_title = {}
+    # Two sections can share a heading (a "Limitations" under each study): they pair up in order.
+    by_title: dict[str, list[Section]] = {}
     for s in old_s:
-        by_title.setdefault(_norm(s.title), s)
+        by_title.setdefault(_norm(s.title), []).append(s)
     used: set[int] = set()
     sec_out = []
     for s in new_s:
-        match = by_title.get(_norm(s.title))
-        if match is not None and id(match) in used:
-            match = None
+        same = by_title.get(_norm(s.title))
+        match = same.pop(0) if same else None
         if match is not None:
             used.add(id(match))
         paras = [_paragraph_entry(o, n) for o, n in _align(match.paragraphs if match else [], s.paragraphs)]
@@ -333,6 +344,7 @@ def matched_span(sentence: str, text: str) -> tuple[int, int] | None:
     sw = words(sentence)
     blocks_ = [m for m in SequenceMatcher(None, sw, [w for w, _, _ in tw], autojunk=False).get_matching_blocks()
                if m.size >= 2]
+    blocks_ = densest_run(blocks_, lambda m: m.b, max(len(sw) * 1.5, len(sw) + 5))
     if not blocks_:
         return None
     first, last = blocks_[0], blocks_[-1]

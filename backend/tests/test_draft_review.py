@@ -156,3 +156,43 @@ def test_health_reports_the_api_version(client):
     from app.main import API_VERSION
 
     assert client.get("/health").json()["api"] == API_VERSION
+
+
+def _para(*nodes):
+    return {"type": "paragraph", "content": list(nodes)}
+
+
+def _t(text):
+    return {"type": "text", "text": text}
+
+
+def _cite(doc_id):
+    return {"type": "citation", "attrs": {"docId": doc_id}}
+
+
+def test_citations_stay_with_their_sentence_when_spacing_is_collapsed():
+    doc = {"type": "doc", "content": [_para(_t("  First   claim here is long."), _cite(7),
+                                              _t(" Second\tclaim  is here."), _cite(9))]}
+    [b] = draft_review.blocks(doc)
+    assert b.text == "First claim here is long. Second claim is here."
+    got = [(s.text, s.cited_docs) for s in draft_review.draft_sentences([b])]
+    assert got == [("First claim here is long.", {7}), ("Second claim is here.", {9})]
+
+
+def test_sections_sharing_a_heading_pair_up_in_order():
+    def doc(*secs):
+        content = []
+        for heading, text in secs:
+            content += [{"type": "heading", "attrs": {"level": 2}, "content": [_t(heading)]}, _para(_t(text))]
+        return {"type": "doc", "content": content}
+
+    old = doc(("Limitations", "Study one was small."), ("Method", "We ran it."), ("Limitations", "Study two was short."))
+    new = doc(("Limitations", "Study one was small."), ("Method", "We ran it."), ("Limitations", "Study two was very short."))
+    got = [(s["title"], s["status"]) for s in draft_review.compare(old, new)["sections"]]
+    assert got == [("Limitations", "unchanged"), ("Method", "unchanged"), ("Limitations", "modified")]
+
+
+def test_matched_span_ignores_a_stray_shared_phrase_far_away():
+    text = "Many of the studies agree. " + "filler " * 80 + "Sleep deprivation impairs working memory in adolescents."
+    start, end = draft_review.matched_span("Of the findings, sleep deprivation impairs working memory in adolescents.", text)
+    assert text[start:end] == "Sleep deprivation impairs working memory in adolescents"

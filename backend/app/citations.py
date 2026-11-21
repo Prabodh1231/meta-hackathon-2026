@@ -1,29 +1,44 @@
 """Find a model-supplied quote in the source text, tolerating whitespace, case, curly
 quotes and small OCR/extraction differences, and return its exact character span."""
 
+import re
+import unicodedata
 from difflib import SequenceMatcher
+
+from .text_utils import densest_run
 
 _CHAR_MAP = {
     "“": '"', "”": '"', "‘": "'", "’": "'",
-    "–": "-", "—": "-", "­": "",
-    "ﬁ": "fi", "ﬂ": "fl",
+    "–": "-", "—": "-", "−": "-", "‐": "-", "‑": "-", "­": "",
 }
+# A word hyphenated across a line break in PDF text: "consoli-\ndation" reads as "consolidation".
+_LINE_HYPHEN = re.compile(r"(?<=\w)[-‐­][ \t]*\r?\n\s*(?=\w)")
 
 
 def _normalize(text: str) -> tuple[str, list[int]]:
-    """Lowercase, collapse whitespace and map typographic characters, keeping for every
-    output character the index of the input character it came from."""
+    """Lowercase, collapse whitespace, join words hyphenated across line breaks and map
+    typographic characters and ligatures, keeping for every output character the index of
+    the input character it came from."""
     out: list[str] = []
     index: list[int] = []
     prev_space = True
+    joins = iter([(m.start(), m.end()) for m in _LINE_HYPHEN.finditer(text)] + [(len(text) + 1, 0)])
+    join = next(joins)
     for i, ch in enumerate(text):
+        if i >= join[0]:
+            if i < join[1]:
+                continue
+            join = next(joins)
         if ch.isspace():
             if not prev_space:
                 out.append(" ")
                 index.append(i)
                 prev_space = True
             continue
-        for c in _CHAR_MAP.get(ch, ch).lower():
+        mapped = _CHAR_MAP.get(ch)
+        if mapped is None:
+            mapped = unicodedata.normalize("NFKC", ch) if ord(ch) > 127 else ch  # "ﬃ" -> "ffi"
+        for c in mapped.lower():
             out.append(c)
             index.append(i)
         prev_space = False
@@ -54,12 +69,13 @@ def locate_quote(
         return None
 
     blocks = [b for b in SequenceMatcher(None, nt, nq, autojunk=False).get_matching_blocks() if b.size >= 3]
+    # One passage, not pieces scattered across the page: the best-covered stretch no longer
+    # than half again the quote.
+    blocks = densest_run(blocks, lambda b: b.a, len(nq) * 1.5)
     matched = sum(b.size for b in blocks)
     if not blocks or matched / len(nq) < min_ratio:
         return None
     s, e = blocks[0].a, blocks[-1].a + blocks[-1].size
-    if e - s > len(nq) * 1.5:  # pieces scattered across the page, not one passage
-        return None
     return idx[s], idx[e - 1] + 1, matched / len(nq)
 
 

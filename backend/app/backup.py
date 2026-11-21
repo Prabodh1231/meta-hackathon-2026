@@ -34,7 +34,9 @@ def backup_library(db_path: Path, keep: int = KEEP, min_age: float = MIN_AGE) ->
         return None
     target = folder / f"library-{datetime.now():%Y%m%d-%H%M%S}.db"
     partial = target.with_suffix(".partial")
-    source = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    # as_uri escapes "#", "?" and "%" in folder names; unescaped, SQLite cuts the path there and
+    # backs up an empty database it creates in its place.
+    source = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
     try:
         dest = sqlite3.connect(partial)
         try:

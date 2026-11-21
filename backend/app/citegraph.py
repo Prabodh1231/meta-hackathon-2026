@@ -14,16 +14,20 @@ MIN_GHOST_TITLE = 15  # shorter parsed titles are usually fragments, not works
 def _clean(text: str) -> str:
     """PDF text can carry lone surrogates and C1 control characters; neither belongs in a title shown to the user."""
     text = text.encode("utf-8", "ignore").decode("utf-8")
-    return "".join(ch for ch in text if ch >= " " and not "" <= ch <= "").strip()
+    return "".join(ch for ch in text if ch >= " " and not "\x7f" <= ch <= "\x9f").strip()
 
 
 def ghost_key(ref: Reference) -> str | None:
     """A stable identity for a cited work that is not in the library, or None when the entry
-    is too thin to tell works apart."""
+    is too thin to tell works apart. Title and year when the entry has a year; an entry without
+    one still counts when it has a DOI (title and DOI then)."""
     title = norm(ref.title)
-    if len(title) < MIN_GHOST_TITLE or not ref.year:
+    if len(title) < MIN_GHOST_TITLE:
         return None
-    return f"{title[:70]}|{ref.year}"
+    if ref.year:
+        return f"{title[:70]}|{ref.year}"
+    doi = (ref.doi or "").strip().lower()
+    return f"{title[:70]}|doi:{doi}" if doi else None
 
 
 def match_all(docs: list[dict], refs_by_doc: dict[int, list[Reference]]) -> dict[int, list[Match | None]]:
@@ -58,7 +62,8 @@ def build_graph(docs: list[dict], refs_by_doc: dict[int, list[Reference]],
                 continue
             key = ghost_key(ref)
             if key:
-                ghosts.setdefault(f"ghost:{key}", {"title": _clean(ref.title), "first_author": _clean(ref.first_author), "year": ref.year})
+                g = ghosts.setdefault(f"ghost:{key}", {"title": _clean(ref.title), "first_author": "", "year": ref.year})
+                g["first_author"] = g["first_author"] or _clean(ref.first_author)  # as missing_works does
                 cites[doc_id].setdefault(f"ghost:{key}", "unresolved")
 
     citers = Counter(k for works in cites.values() for k in works if k.startswith("ghost:"))

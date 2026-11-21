@@ -49,3 +49,20 @@ def test_only_the_newest_are_kept(tmp_path):
     made = backup_library(lib.settings.db_path, keep=3)
     names = sorted(p.name for p in folder.iterdir())
     assert names == ["library-20260103-090000.db", "library-20260104-090000.db", made.name]
+
+
+def test_backup_from_a_folder_whose_name_has_a_hash(tmp_path):
+    folder = tmp_path / "lib#1 %20"  # Windows allows "#" and "%" in folder names, not "?"
+    folder.mkdir()
+    db = folder / "library.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE notes (a)")
+    conn.commit()
+    conn.close()
+    made = backup_library(db)
+    copy = sqlite3.connect(made)
+    try:
+        assert copy.execute("SELECT name FROM sqlite_master").fetchall() == [("notes",)]
+    finally:
+        copy.close()
+    assert sorted(p.name for p in tmp_path.iterdir()) == [folder.name]  # no stray empty database beside it

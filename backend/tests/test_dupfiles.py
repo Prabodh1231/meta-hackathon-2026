@@ -164,3 +164,10 @@ def test_missing_files_and_cached_hashes(client, lib, tmp_path):
     missing = next(x for x in g["docs"] if not x["exists"])
     assert missing["size"] is None and g["keep"] != missing["id"] and g["keep_reason"] == "the other file is missing"
     assert g["recoverable"] == 0
+
+
+def test_name_suffixes_are_not_surnames():
+    assert dupfiles._surname("John Smith Jr.") == "smith"
+    assert dupfiles._surname("Alice Chen III") == "chen"
+    assert dupfiles._surname("Chen, Alice") == "chen"
+    assert dupfiles._surname("Jr") == "jr"  # a lone word is kept whatever it is
