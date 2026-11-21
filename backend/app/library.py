@@ -248,12 +248,16 @@ class Library:
         except Exception:
             log.exception("Embedding the library stopped; search uses the vectors it has")
 
+    def search_model_state(self) -> str:
+        """The local search model (bge-small): "off", "loading", "ready" or "failed". Reads nothing from the library."""
+        return getattr(self.embedder, "state", "ready") if self.embedder is not None else "off"
+
     def vector_status(self) -> dict:
         """How much of the library the search model has covered, for Settings."""
         with self.lock:
             total, done = self.conn.execute(
                 "SELECT count(*), count(embedding) FROM chunks").fetchone()
-        state = getattr(self.embedder, "state", "ready") if self.embedder is not None else "off"
+        state = self.search_model_state()
         return {"model": getattr(self.embedder, "id", None) if state == "ready" else None, "state": state,
                 "device": self.embedder.device if state == "ready" else None, "chunks": total, "embedded": done}
 

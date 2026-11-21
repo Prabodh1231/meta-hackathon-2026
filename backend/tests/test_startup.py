@@ -14,6 +14,7 @@ def test_the_library_lists_and_searches_without_a_search_model(tmp_path):
 
     h = client.get("/health").json()
     assert h["search"] == "keyword+muse" and "embedder" not in h and "reranker" not in h
+    assert h["dense"] == "off" and "vectors" not in h  # the model's state only: no count over the chunks every few seconds
     for path in ("/documents", "/folders", "/drafts", "/settings"):
         assert client.get(path).status_code == 200, path
     assert client.get("/settings/search").json() == {"search": "keyword", "ranking": "mock", "model": None,

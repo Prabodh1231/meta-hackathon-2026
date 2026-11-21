@@ -390,7 +390,9 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
         # Search never waits for the model: until bge-small has loaded it is keyword search plus the provider.
         # The app asks every few seconds, so this reads nothing from the library: how many passages the
         # search model has covered (a count over every chunk, ~75 ms with the lock held) is in /settings/search.
-        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name, "search": "keyword+muse"}
+        # `dense` is that model's state, so the status bar says "hybrid search" only once it is ready.
+        return {"ok": True, "api": API_VERSION, "provider": lib.provider.name, "search": "keyword+muse",
+                "dense": lib.search_model_state()}
 
     @app.post("/ingest/path")
     def ingest_path(body: IngestPathIn):

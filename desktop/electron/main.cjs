@@ -1,7 +1,7 @@
 // Electron main process: starts the Python backend on a free local port with a per-launch
 // token, then opens the window. Set RC_BACKEND_URL to use a backend you started yourself
 // (e.g. `uvicorn app.main:app --reload`); the token check is off in that case.
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require('electron')
 const { spawn } = require('node:child_process')
 const crypto = require('node:crypto')
 const fs = require('node:fs')
@@ -34,6 +34,7 @@ function defaultDataDir() {
 const LOG_PATH = path.join(DATA_DIR, 'logs', 'backend.log')
 const MAX_RESTARTS_PER_MINUTE = 3
 const CLOSE_WAIT_MS = 4000 // how long a closing window waits for the draft's last save
+const SHOW_WAIT_MS = 4000 // the main window is shown after this even if the page never says it has drawn
 // The demo corpus: the repo's samples folder, or its copy shipped in resources/samples. The
 // library reads a copy in the data folder, so removing the samples never touches the app's files.
 const SAMPLES_SOURCE = app.isPackaged ? path.join(process.resourcesPath, 'samples') : path.join(__dirname, '..', '..', 'samples')
@@ -141,6 +142,9 @@ function createWindow() {
     minHeight: 640,
     title: 'Groundwork',
     icon: path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
+    // Hidden until the page has drawn (rc:painted below); the app's own background meanwhile (--bg in styles.css).
+    show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0d1210' : '#f4f6f5',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -167,6 +171,12 @@ function createWindow() {
   const onReady = (event) => fromThisWindow(event) && closeNow()
   ipcMain.on('rc:close-guard', onGuard)
   ipcMain.on('rc:ready-to-close', onReady)
+  // Shown once the page has drawn its first frame, in its theme. Shown at once, it was a white window
+  // (or the other theme) while the app loaded; shown anyway after SHOW_WAIT_MS should the page not say so.
+  const show = () => !win.isDestroyed() && !win.isVisible() && win.show()
+  const onPainted = (event) => fromThisWindow(event) && show()
+  ipcMain.on('rc:painted', onPainted)
+  setTimeout(show, SHOW_WAIT_MS)
   win.webContents.on('did-start-loading', () => (guarded = false)) // a reloaded page says so again
   win.webContents.on('render-process-gone', () => (guarded = false))
   win.on('close', (e) => {
@@ -178,6 +188,7 @@ function createWindow() {
   win.on('closed', () => {
     ipcMain.removeListener('rc:close-guard', onGuard)
     ipcMain.removeListener('rc:ready-to-close', onReady)
+    ipcMain.removeListener('rc:painted', onPainted)
   })
   // Back in front (from the reader window, say): the page is told, so the library can show what
   // was highlighted or opened meanwhile. The page's own focus event doesn't come reliably here.

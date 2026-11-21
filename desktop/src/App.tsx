@@ -15,6 +15,7 @@ import { CitedPapersDialog } from './components/CitedPapersDialog'
 import { DemoGuide } from './components/DemoGuide'
 import { DraftNameField, DraftsPanel } from './components/DraftsPanel'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
+import { PaneBoundary } from './components/ErrorBoundary'
 import { ExportControl } from './components/ExportControl'
 import { GettingStarted } from './components/GettingStarted'
 import { HomeView } from './components/HomeView'
@@ -95,10 +96,12 @@ const SEARCH: Record<Exclude<Mode, 'home' | 'write'>, { scope: string; placehold
 
 const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mock' }
 
-/** "Muse · hybrid search": the AI in use, and how the library is searched (keyword and local models, ranked by the AI). */
+/** "Muse · hybrid search": the AI in use, and how the library is searched. Hybrid (keywords plus the
+ * local search model) only once that model is ready; while it loads, or when it's off, keywords alone. */
 function modelLine(h: Health): string {
   const ai = PROVIDER_NAMES[h.provider] ?? h.provider
-  return `${ai} · hybrid search`
+  const how = h.dense === undefined || h.dense === 'ready' ? 'hybrid search' : h.dense === 'loading' ? 'keyword search for now' : 'keyword search'
+  return `${ai} · ${how}`
 }
 
 // Whether the sidebar on the left is wide (labelled, with the Library's smart views) or icons only.
@@ -902,7 +905,7 @@ export default function App() {
       try {
         const h = await api.health()
         // The provider changed (or the backend restarted with another): show it.
-        setHealth((prev) => (prev && prev.search === h.search && prev.provider === h.provider ? prev : h))
+        setHealth((prev) => (prev && prev.search === h.search && prev.provider === h.provider && prev.dense === h.dense ? prev : h))
         if (wasOffline) await refresh() // back after a restart: reload what may have changed
         wasOffline = false
       } catch {
@@ -1910,19 +1913,21 @@ export default function App() {
 
         {mode === 'network' && (
           <div className="view network-view">
-            <Suspense fallback={<p className="network-note">Loading the network…</p>}>
-              <LibraryTrust.Provider value={docsById}>
-                <NetworkView
-                  query={netQuery}
-                  ticked={selected}
-                  librarySize={docs.length}
-                  onOpenPaper={showPaper}
-                  onCitedPapers={setCitedFor}
-                  onFindMissing={setMissingQuery}
-                  onError={onError}
-                />
-              </LibraryTrust.Provider>
-            </Suspense>
+            <PaneBoundary what="the citation network" beforeReload={async () => editor.current?.flush()}>
+              <Suspense fallback={<p className="network-note">Loading the network…</p>}>
+                <LibraryTrust.Provider value={docsById}>
+                  <NetworkView
+                    query={netQuery}
+                    ticked={selected}
+                    librarySize={docs.length}
+                    onOpenPaper={showPaper}
+                    onCitedPapers={setCitedFor}
+                    onFindMissing={setMissingQuery}
+                    onError={onError}
+                  />
+                </LibraryTrust.Provider>
+              </Suspense>
+            </PaneBoundary>
           </div>
         )}
       </div>
@@ -2000,7 +2005,7 @@ export default function App() {
               {`${docs.length} source${docs.length === 1 ? '' : 's'} · ${modelLine(health)}`}
             </button>
           ) : (
-            <span className="status" title={health ? `model: ${health.provider} · search: ${health.search}` : undefined}>
+            <span className="status" title={health ? `model: ${health.provider} · search: ${health.search}${health.dense ? ` · local search model: ${health.dense}` : ''}` : undefined}>
               <span className={`dot${health ? ' live' : ''}`} />
               {health ? `${docs.length} source${docs.length === 1 ? '' : 's'} · ${modelLine(health)}` : 'Starting backend…'}
             </span>
@@ -2110,20 +2115,20 @@ export default function App() {
         </div>
       )}
 
-      {(errors.length > 0 || notice) && (
-        <div className="toasts">
-          {notice && (
-            <div className="toast info" onClick={() => setNotice(null)} title="Click to dismiss">
-              {notice}
-            </div>
-          )}
-          {errors.map((e, i) => (
-            <div key={i} className="toast" onClick={() => setErrors((es) => es.filter((_, j) => j !== i))}>
-              {e}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Always there, empty when there's nothing to say: a screen reader announces what appears in a
+          live region that already exists (one added along with its message is often missed). Errors interrupt. */}
+      <div className="toasts" aria-live="polite">
+        {notice && (
+          <div className="toast info" role="status" onClick={() => setNotice(null)} title="Click to dismiss">
+            {notice}
+          </div>
+        )}
+        {errors.map((e, i) => (
+          <div key={i} className="toast" role="alert" onClick={() => setErrors((es) => es.filter((_, j) => j !== i))}>
+            {e}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

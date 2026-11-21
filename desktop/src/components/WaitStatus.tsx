@@ -49,8 +49,9 @@ export function WaitStatus({ label, startedAt, usual, steps = false, onCancel, c
     <div className="wait-status" role="status" aria-live="polite">
       <span className="wait-spin" aria-hidden="true" />
       <div>
+        {/* The seconds are left out of what a screen reader hears: in this live region it read out every tick. */}
         <b>
-          {step ?? label} {waited} s
+          {step ?? label} <span aria-hidden="true">{waited} s</span>
         </b>
         {hint && <p className={note ? 'wait-note' : 'muted'}>{hint}</p>}
       </div>
