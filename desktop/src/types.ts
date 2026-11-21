@@ -492,6 +492,8 @@ export interface Health {
   api?: number // backend API version; missing from backends older than the version check
   provider: string
   search: string // how search works: "keyword+muse" (keyword + bge-small search, reranked locally and ranked by the provider)
+  dense?: 'off' | 'loading' | 'ready' | 'failed' // bge-small, the local search model; missing from older backends
+
 }
 
 export type RefStyle = 'apa' | 'mla' | 'ieee' | 'bibtex'
@@ -715,6 +717,8 @@ declare global {
       onWindowFocus?: (callback: () => void) => () => void
       /** The window is about to close: it stays open until the promise `callback` returns settles. */
       onBeforeClose?: (callback: () => Promise<void>) => () => void
+      /** The page has drawn its first frame; the desktop app shows the main window then, not before. */
+      painted?: () => void
       /** Where a dropped or picked file is on disk ('' for one that isn't a file on disk). */
       pathForFile?: (file: File) => string
       /** Copies the demo corpus into the data folder and resolves to that folder. */

@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld('rc', {
       ipcRenderer.send('rc:close-guard', false)
     }
   },
+  // The page has drawn its first frame, in its theme: the main window is shown then (see createWindow).
+  painted: () => ipcRenderer.send('rc:painted'),
   // The demo corpus, copied into the data folder; resolves to that folder.
   copySamples: () => ipcRenderer.invoke('rc:copy-samples'),
   // A dropped file carries no path in the sandboxed page; Electron can tell where it is.
