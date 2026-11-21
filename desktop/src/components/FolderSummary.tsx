@@ -15,10 +15,12 @@ function yearBars(years: number[]) {
   return { lo, hi, bins, top: Math.max(...bins) }
 }
 
-/** What is in the selected folder, beside the front page. Its column is always there, empty until a
- * folder is selected, so selecting one never moves the folders under the pointer. */
-export function FolderSummary({ item, topics, cited, drafting, onOpen, onClose, onDraft, onMap, onOpenKey, onWhatsNew, onSurprise }: {
+/** What is in the selected folder, beside the front page. Its column is always there, so selecting a
+ * folder never moves the folders under the pointer. Before one is picked (`overview`), it sums up the
+ * whole library: All sources, with its largest topics and what was added last. */
+export function FolderSummary({ item, overview = false, topics, cited, drafting, onOpen, onClose, onDraft, onMap, onOpenKey, onWhatsNew, onSurprise }: {
   item: FrontItem | undefined
+  overview?: boolean // nothing is picked: `item` is All sources, shown as the library at a glance
   topics: FrontItem[] // every topic, to say which share papers with this one
   cited: Set<number>
   drafting: Set<number>
@@ -48,7 +50,11 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onClose, 
   const bars = years.length ? yearBars(years) : null
   const nCited = docs.filter((d) => cited.has(d.id)).length
   const nTicked = docs.filter((d) => drafting.has(d.id) && !cited.has(d.id)).length
-  const newest = [...docs].sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || b.added_at.localeCompare(a.added_at)).slice(0, 4)
+  // A folder lists its newest papers by year; the whole library, what came in last.
+  const newest = overview
+    ? [...docs].sort((a, b) => b.added_at.localeCompare(a.added_at)).slice(0, 5)
+    : [...docs].sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || b.added_at.localeCompare(a.added_at)).slice(0, 4)
+  const largest = overview ? [...topics].sort((a, b) => b.count - a.count).slice(0, 5) : []
   const authors = [...docs.reduce((m, d) => (d.authors[0] ? m.set(surname(d.authors[0]), (m.get(surname(d.authors[0])) ?? 0) + 1) : m), new Map<string, number>())]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 4)
@@ -67,7 +73,8 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onClose, 
   const canDraft = docs.length > 0 && item.view !== 'all' && item.view !== 'drafting' && item.view !== 'removed'
 
   return (
-    <aside className="lf-summary" aria-label={`About ${item.name}`}>
+    <aside className={`lf-summary${overview ? ' lf-overview' : ''}`} aria-label={overview ? 'Your library' : `About ${item.name}`}>
+      {overview && <p className="lf-sum-eyebrow">Your library</p>}
       <div className="lf-sum-head">
         <h3>{item.name}</h3>
         <button className="lf-sum-x" onClick={onClose} aria-label="Hide this panel" title="Hide this panel (the button beside More brings it back)">
@@ -128,10 +135,23 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onClose, 
         </section>
       )}
 
+      {largest.length > 0 && (
+        <section className="lf-sec">
+          <h4>Largest topics</h4>
+          <p className="lf-shares">
+            {largest.map((t) => (
+              <button key={t.key} className="lf-chip" onClick={() => onOpenKey(t.key)} title={`Open ${t.name}`}>
+                {t.name} <span>{t.count}</span>
+              </button>
+            ))}
+          </p>
+        </section>
+      )}
+
       {newest.length > 0 && (
         <section className="lf-sec">
           <h4>
-            Recent papers <span>{newest.length}</span>
+            {overview ? 'Recently added' : 'Recent papers'} <span>{newest.length}</span>
           </h4>
           <ul className="lf-papers">
             {newest.map((d) => (
@@ -163,6 +183,7 @@ export function FolderSummary({ item, topics, cited, drafting, onOpen, onClose, 
           </p>
         </section>
       )}
+      {overview && <p className="lf-sum-hint muted">Click a folder to see what’s in it; double-click to open it.</p>}
     </aside>
   )
 }

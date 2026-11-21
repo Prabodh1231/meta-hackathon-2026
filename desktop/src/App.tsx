@@ -15,6 +15,7 @@ import { CitedPapersDialog } from './components/CitedPapersDialog'
 import { DemoGuide } from './components/DemoGuide'
 import { DraftNameField, DraftsPanel } from './components/DraftsPanel'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
+import { useConfirm } from './components/ConfirmDialog'
 import { PaneBoundary } from './components/ErrorBoundary'
 import { ExportControl } from './components/ExportControl'
 import { GettingStarted } from './components/GettingStarted'
@@ -197,6 +198,17 @@ export default function App() {
   const [matrixSeen, setMatrixSeen] = useState(false) // mounted once opened, so a matrix keeps its place
   const [errors, setErrors] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+  const [copied, setCopied] = useState<number | null>(null) // the error message just copied ("Copied" for a moment)
+  const [ask, confirmDialog] = useConfirm() // "are you sure?" in the app's own dialog
+  async function copyError(i: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(i)
+      window.setTimeout(() => setCopied((c) => (c === i ? null : c)), 2000)
+    } catch {
+      /* the clipboard is unavailable: the message is still on screen */
+    }
+  }
   // What finished while the writer was elsewhere in the app, across the top of the window until dismissed.
   const [bar, setBar] = useState<BarNotice | null>(null)
   const modeRef = useRef(mode)
@@ -302,6 +314,17 @@ export default function App() {
   // The Library's search box says what it searches: the folders on its front page, or the open one.
   const [libHint, setLibHint] = useState('')
   const [libFront, setLibFront] = useState(false) // the Library shows its folders: the dock names their keys
+  // The Network's start page points at the app bar's search box (it has none of its own): the box is
+  // highlighted and takes the typing while that page shows.
+  const [netStart, setNetStart] = useState(false)
+  const searchInput = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (mode === 'network' && netStart) searchInput.current?.focus()
+  }, [mode, netStart])
+  const topTopics = useMemo(
+    () => [...folders].sort((a, b) => b.doc_count - a.doc_count).map((f) => ({ name: f.name, count: f.doc_count })),
+    [folders],
+  )
   /** "Map it" on a topic: the citation network, searched for the topic's name. */
   const mapTopic = useCallback((name: string) => {
     setNetQuery(name)
@@ -473,10 +496,13 @@ export default function App() {
     }
   }
 
+  // The library has come back at least once: before that, no papers means "not loaded yet", not "empty".
+  const [libraryLoaded, setLibraryLoaded] = useState(false)
   const refresh = useCallback(async () => {
     const [d, f] = await Promise.all([api.documents(), api.folders()])
     setDocs(d)
     setFolders(f)
+    setLibraryLoaded(true)
     setSelected((s) => new Set([...s].filter((id) => d.some((doc) => doc.id === id))))
   }, [])
 
@@ -837,7 +863,13 @@ export default function App() {
 
   /** Take the sample files out of the library (and its removal log) and delete the demo draft. */
   async function removeSamples() {
-    if (!window.confirm('Remove the sample files from your library and delete the demo draft? Your own sources and drafts stay.')) return
+    const sure = await ask({
+      title: 'Remove the sample library?',
+      body: 'The sample files leave your library and the demo draft is deleted. Your own sources and drafts stay.',
+      verb: 'Remove samples',
+      danger: true,
+    })
+    if (!sure) return
     setDemoBusy('Removing the samples…')
     try {
       const dir = (await window.rc?.config())?.samplesDir ?? ''
@@ -1470,11 +1502,12 @@ export default function App() {
             <kbd>Ctrl K</kbd>
           </button>
         ) : (
-          <div className="search-pill search-field">
+          <div className={`search-pill search-field${mode === 'network' && netStart ? ' call' : ''}`}>
             <Icon name="search" size={16} />
             <span className="search-scope">{SEARCH[mode].scope}</span>
             <input
               key={mode}
+              ref={searchInput}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -1566,6 +1599,7 @@ export default function App() {
         <div className="view home-view" hidden={mode !== 'home'}>
           <HomeView
             visible={mode === 'home'}
+            ready={libraryLoaded}
             docs={docs}
             drafts={drafts}
             draftId={draftId}
@@ -1919,6 +1953,9 @@ export default function App() {
                 <LibraryTrust.Provider value={docsById}>
                   <NetworkView
                     query={netQuery}
+                    onSearch={setNetQuery}
+                    topics={topTopics}
+                    onStartPage={setNetStart}
                     ticked={selected}
                     librarySize={docs.length}
                     onOpenPaper={showPaper}
@@ -2116,17 +2153,35 @@ export default function App() {
         </div>
       )}
 
+      {confirmDialog}
+
       {/* Always there, empty when there's nothing to say: a screen reader announces what appears in a
           live region that already exists (one added along with its message is often missed). Errors interrupt. */}
+      {/* Bottom right, above the status bar (in the middle they sat on it), each with ×: a notice runs out
+          after 8 s (the line shows how long), an error stays and can copy what it says. */}
       <div className="toasts" aria-live="polite">
         {notice && (
-          <div className="toast info" role="status" onClick={() => setNotice(null)} title="Click to dismiss">
-            {notice}
+          <div className="toast info" role="status">
+            <Icon name="check" size={17} />
+            <span className="toast-text">{notice}</span>
+            <button className="toast-x" onClick={() => setNotice(null)} aria-label="Dismiss" title="Dismiss">
+              ×
+            </button>
+            <span key={notice} className="toast-life" aria-hidden="true" />
           </div>
         )}
         {errors.map((e, i) => (
-          <div key={i} className="toast" role="alert" onClick={() => setErrors((es) => es.filter((_, j) => j !== i))}>
-            {e}
+          <div key={i} className="toast" role="alert">
+            <Icon name="alert" size={17} />
+            <div className="toast-text">
+              {e}
+              <button className="link toast-copy" onClick={() => copyError(i, e)}>
+                {copied === i ? 'Copied' : 'Copy the details'}
+              </button>
+            </div>
+            <button className="toast-x" onClick={() => setErrors((es) => es.filter((_, j) => j !== i))} aria-label="Dismiss" title="Dismiss">
+              ×
+            </button>
           </div>
         ))}
       </div>

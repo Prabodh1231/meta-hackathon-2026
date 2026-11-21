@@ -8,6 +8,12 @@ import type { CitationGraph, GraphNode } from '../types'
 interface Props {
   /** The topic typed in the app bar's search box. */
   query: string
+  /** Put a topic in the app bar's search box (a topic picked on the start page), or clear it. */
+  onSearch: (topic: string) => void
+  /** The library's largest topics, offered on the start page. */
+  topics: { name: string; count: number }[]
+  /** Whether the start page is showing: the app bar's search box is then the place to type. */
+  onStartPage?: (showing: boolean) => void
   /** Papers ticked in the Library: one thing the network can show. */
   ticked: Set<number>
   librarySize: number
@@ -30,7 +36,7 @@ function byline(n: GraphNode): string {
 
 /** The library as a network: papers, who cites whom, who shares references, and the works
  *  several papers cite that the library lacks. */
-export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPapers, onFindMissing, onError }: Props) {
+export function NetworkView({ query, onSearch, topics, onStartPage, ticked, librarySize, onOpenPaper, onCitedPapers, onFindMissing, onError }: Props) {
   const [graph, setGraph] = useState<CitationGraph | null>(null)
   const [showShared, setShowShared] = useState(false) // citation links only, until the reader asks for more
   const [showMissing, setShowMissing] = useState(false) // listed beside the graph; drawn on request
@@ -39,7 +45,6 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
   const [since, setSince] = useState(0) // when the map was asked for, for the wait line
   const [drawing, setDrawing] = useState(false) // laying the graph out (it holds the window while it runs)
   const [scope, setScope] = useState<Scope | null>(query.trim() ? { kind: 'topic', topic: query.trim() } : null)
-  const [typed, setTyped] = useState('') // the topic typed on the start screen
   const [picked, setPicked] = useState<string | null>(null)
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null)
   const [link, setLink] = useState<{ source: string; target: string; kind: 'cites' | 'coupled' | 'keyword' } | null>(null)
@@ -63,6 +68,18 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
     return () => { current = false }
   }, [scope, onError]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The start page has no search box of its own: it points at the app bar's, which App highlights.
+  useEffect(() => {
+    onStartPage?.(!scope)
+  }, [scope]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onStartPage?.(false), []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Back to the start page: the topic leaves the app bar's search box too. */
+  function clearScope() {
+    setScope(null)
+    if (query) onSearch('')
+  }
+
   // The app bar's search box maps a topic; clearing it goes back to choosing.
   useEffect(() => {
     const t = setTimeout(() => {
@@ -82,13 +99,16 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
     const accent = css('--accent'), muted = css('--muted'), border = css('--border'), text = css('--text'), panel = css('--panel')
     const shown = graph.nodes.filter((n) => n.kind === 'paper' || showMissing)
     const ids = new Set(shown.map((n) => n.id))
-    // Papers by the same author in the same year get their title's start too, so their names differ.
+    // Names are author and year. Papers by the same author in the same year are told apart as a reference
+    // list does (Jariyapan 2022a, 2022b): the start of the title made names long enough to cover each other.
     const baseLabel = (n: GraphNode) => (n.authors[0] ? `${n.authors[0].split(' ').pop()} ${n.year ?? ''}`.trim() : n.title.slice(0, 18))
-    const labelCounts = new Map<string, number>()
-    for (const n of shown) labelCounts.set(baseLabel(n), (labelCounts.get(baseLabel(n)) ?? 0) + 1)
+    const sameName = new Map<string, string[]>()
+    for (const n of shown) sameName.set(baseLabel(n), [...(sameName.get(baseLabel(n)) ?? []), n.id])
     const labelFor = (n: GraphNode) => {
       const base = baseLabel(n)
-      if ((labelCounts.get(base) ?? 0) < 2) return base
+      const same = sameName.get(base) ?? []
+      if (same.length < 2) return base
+      if (n.year) return `${base}${String.fromCharCode(97 + Math.min(25, same.indexOf(n.id)))}`
       const title = n.title.replace(/\s+/g, ' ').trim()
       return title ? `${base} · ${title.slice(0, 20)}${title.length > 20 ? '…' : ''}` : base
     }
@@ -98,7 +118,7 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
     const elements: cytoscape.ElementDefinition[] = [
       ...shown.map((n) => ({
         position: placed.current.get(n.id),
-        data: { id: n.id, label: labelFor(n), kind: n.kind, hub: hubs.has(n.id), size: Math.min(54, 14 + 4.5 * Math.sqrt(n.cites + n.cited_by)) /* capped: one hub can't cover its neighbours */, isolated: n.kind === 'paper' && n.doc_id !== undefined && graph.isolated.includes(n.doc_id) }
+        data: { id: n.id, label: labelFor(n), kind: n.kind, hub: hubs.has(n.id), links: n.cites + n.cited_by, size: Math.min(54, 14 + 4.5 * Math.sqrt(n.cites + n.cited_by)) /* capped: one hub can't cover its neighbours */, isolated: n.kind === 'paper' && n.doc_id !== undefined && graph.isolated.includes(n.doc_id) }
       })),
       ...graph.citations
         .filter((e) => ids.has(e.source) && ids.has(e.target))
@@ -132,6 +152,10 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
         { selector: 'node[?hub]', style: { 'background-color': css('--ember') } },
         { selector: 'node[?hub], node.named', style: { label: 'data(label)', 'z-index': 10, 'text-background-color': panel, 'text-background-opacity': 0.85, 'text-background-padding': '2px', 'text-background-shape': 'roundrectangle', 'text-outline-width': 0 } },
         { selector: 'node[?hub]', style: { 'font-weight': 600, 'font-size': 12 } },
+        // A most-linked paper whose name would cover another's waits for the pointer (see quietLabels);
+        // pointing at it, or picking it or a neighbour, names it again.
+        { selector: 'node.quiet', style: { label: '' } },
+        { selector: 'node.named', style: { label: 'data(label)' } },
         { selector: 'node[kind = "missing"]', style: { 'background-color': css('--pending-bg'), 'border-width': 2, 'border-color': text, 'border-style': 'dashed', color: muted, 'font-style': 'italic' } },
         { selector: 'node[?isolated]', style: { 'background-color': border, 'border-width': 1, 'border-color': muted } },
         { selector: 'edge[kind = "cites"]', style: { width: 1.6, 'line-color': accent, 'target-arrow-color': accent, 'target-arrow-shape': 'triangle', 'arrow-scale': 1.7, 'target-distance-from-node': 2, 'curve-style': 'bezier', opacity: 0.9 } },
@@ -149,6 +173,8 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
     })
     if (keep && viewport) c.viewport(viewport)
     if (!c) return
+    quietLabels(c)
+    c.on('dragfree', 'node', () => c && quietLabels(c))
     c.on('tap', 'node', (ev) => (setLink(null), setPicked(ev.target.id())))
     c.on('tap', (ev) => { if (ev.target === c) (setPicked(null), setLink(null)) })
     // A line says why its two papers are linked, in the side panel.
@@ -238,28 +264,21 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
             Who cites whom, which papers share references, and the works several of them cite that you don't have. Start from a
             topic or from papers you picked: drawing a whole library at once can take a long time.
           </p>
-          <form
-            className="network-start-topic"
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (typed.trim()) setScope({ kind: 'topic', topic: typed.trim() })
-            }}
-          >
-            <input
-              autoFocus
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              placeholder="A topic, e.g. financial literacy"
-              aria-label="Topic to map"
-            />
-            <button className="primary" disabled={!typed.trim()} aria-describedby={typed.trim() ? undefined : 'map-needs'}>
-              Map this topic
-            </button>
-          </form>
-          {!typed.trim() && (
-            <p id="map-needs" className="network-needs">
-              Type a topic to map the papers about it, e.g. “bitcoin”, “financial inclusion” or “technology adoption”.
-            </p>
+          {/* One search box: the app bar's (highlighted while this page shows), not a second one here. */}
+          <p className="network-pointer">
+            <span aria-hidden="true">↑</span> Type a topic in the search box above to map the papers about it, e.g. “bitcoin” or “financial inclusion”.
+          </p>
+          {topics.length > 0 && (
+            <div className="network-topics-wrap">
+              <p className="muted">Or start from one of your topics:</p>
+              <div className="network-topics">
+                {topics.slice(0, 9).map((t) => (
+                  <button key={t.name} onClick={() => onSearch(t.name)} title={`Map the papers about ${t.name}`}>
+                    {t.name} <span>{t.count}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
           <div className="network-start-row">
             <button disabled={ticked.size === 0} onClick={() => setScope({ kind: 'ticked', ids: [...ticked] })}>
@@ -282,16 +301,24 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
 
   return (
     <div className="network" aria-label="Citation network">
+      {/* One row: what's mapped as a chip (× maps something else), short counts, and short layer toggles. */}
       <header className="network-head">
         <h2>Citation network</h2>
-        {graph && (
-          <span className="network-count">
-            {`${papers} paper${papers === 1 ? '' : 's'} ${what} · `}{graph.citations.filter((e) => e.target.startsWith('doc:')).length} citations among them · {graph.coupling.filter((e) => e.weight >= 2).length} pairs share 2+ references
-          </span>
-        )}
-        <button className="link" onClick={() => setScope(null)} title="Map a topic, the papers you're drafting from, or the whole library instead">
-          Change
-        </button>
+        <span className="network-scope">
+          {scope.kind === 'topic' ? topic : scope.kind === 'ticked' ? 'Papers you’re drafting from' : 'Whole library'}
+          <button className="icon" onClick={clearScope} aria-label="Map something else" title="Map a topic, the papers you're drafting from, or the whole library instead">
+            ×
+          </button>
+        </span>
+        {graph && (() => {
+          const cites = graph.citations.filter((e) => e.target.startsWith('doc:')).length
+          const pairs = graph.coupling.filter((e) => e.weight >= 2).length
+          return (
+            <span className="network-count" title={`${papers} paper${papers === 1 ? '' : 's'} ${what} · ${cites} citations among them · ${pairs} pairs share 2+ references`}>
+              {papers} paper{papers === 1 ? '' : 's'} · {cites} citation{cites === 1 ? '' : 's'}
+            </span>
+          )
+        })()}
         <div className="spacer" />
         <div className="network-view-switch" role="group" aria-label="Show the papers as">
           <button aria-pressed={view === 'graph'} className={view === 'graph' ? 'on' : ''} onClick={() => setView('graph')}>
@@ -302,11 +329,17 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
           </button>
         </div>
         {view === 'graph' && (
-          <>
-            <label><input type="checkbox" checked={showKeywords} onChange={(e) => setShowKeywords(e.target.checked)} /> Shared keywords</label>
-            <label><input type="checkbox" checked={showShared} onChange={(e) => setShowShared(e.target.checked)} /> Shared references</label>
-            <label><input type="checkbox" checked={showMissing} onChange={(e) => setShowMissing(e.target.checked)} /> Missing works</label>
-          </>
+          <div className="network-layers" role="group" aria-label="Also draw">
+            <button aria-pressed={showKeywords} className={showKeywords ? 'on' : ''} onClick={() => setShowKeywords((v) => !v)} title="Dashed lines between papers that share keywords">
+              Keywords
+            </button>
+            <button aria-pressed={showShared} className={showShared ? 'on' : ''} onClick={() => setShowShared((v) => !v)} title="Lines between papers that share two or more references">
+              References
+            </button>
+            <button aria-pressed={showMissing} className={showMissing ? 'on' : ''} onClick={() => setShowMissing((v) => !v)} title="Works several of these papers cite that aren't in your library">
+              Missing works
+            </button>
+          </div>
         )}
       </header>
       <div className="network-body">
@@ -338,7 +371,7 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
                 label={`Reading the reference lists of the papers ${what}…`}
                 startedAt={since}
                 usual="A few seconds for a topic; longer for the whole library."
-                onCancel={() => setScope(null)}
+                onCancel={clearScope}
                 cancelTitle="Stop and choose something else to map"
               />
             </div>
@@ -377,7 +410,7 @@ export function NetworkView({ query, ticked, librarySize, onOpenPaper, onCitedPa
             {showKeywords && <span><svg width="38" height="12" aria-hidden="true"><line x1="1" y1="6" x2="37" y2="6" stroke="var(--warn)" strokeWidth="2" strokeDasharray="4 3" /></svg> share keywords</span>}
             <span><svg width="38" height="14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="currentColor" /><circle cx="26" cy="7" r="4" fill="currentColor" /></svg> your papers; bigger = more links</span>
             {showMissing && <span><svg width="38" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="var(--pending-bg)" stroke="var(--text)" strokeDasharray="2 1.5" /></svg> cited, but not in your library</span>}
-            <span className="network-legend-tip">The {HUBS} most-linked papers are orange and named; point at any other to see it.</span>
+            <span className="network-legend-tip">The {HUBS} most-linked papers are orange and named, unless a name would cover another; point at any paper to see its name.</span>
             <span className="network-legend-tip">Keyboard: Tab to the graph, then arrow keys move between papers and Enter opens one. List is the accessible equivalent: the same papers in a sortable table.</span>
           </div>
         </div>
@@ -467,6 +500,21 @@ function NodeList({ title, items, onPick, badge }: { title: string; items: { nod
       </ul>
     </section>
   )
+}
+
+/** Of the named (most-linked) papers, the most linked keep their names; one whose name would land on a
+ * name already kept is left for the pointer. Label boxes are in the graph's own units, so zooming
+ * doesn't change which overlap: this runs after each layout and after a paper is dragged. */
+function quietLabels(c: cytoscape.Core) {
+  c.nodes().removeClass('quiet')
+  const kept: cytoscape.BoundingBox12[] = []
+  const hubs = c.nodes('[?hub]').toArray().sort((a, b) => (b.data('links') ?? 0) - (a.data('links') ?? 0))
+  for (const n of hubs) {
+    const b = n.boundingBox({ includeNodes: false, includeEdges: false, includeLabels: true, includeOverlays: false })
+    if (!(b.w > 0)) continue
+    if (kept.some((k) => k.x1 < b.x2 && b.x1 < k.x2 && k.y1 < b.y2 && b.y1 < k.y2)) n.addClass('quiet')
+    else kept.push(b)
+  }
 }
 
 /** The middle of the graph's box, for the zoom buttons. */

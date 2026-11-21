@@ -38,6 +38,8 @@ The window has four parts:
 
 **Notices at the top.** When something finishes while you're in another part of the app, a dark line across the top of the window says so, with a link to it: citations that finished checking while you were away from Write, a review matrix that Muse finished reading, files that were added while you weren't in the Library, or an update that needs a restart. One shows at a time and it stays until you follow its link or close it with **×**. Quick confirmations still appear at the bottom and close by themselves.
 
+**Messages** (files added, something that failed) show at the bottom right, above the status bar. A notice closes by itself after a few seconds, and a thin line shows how long it has left; an error stays until you close it with **×**, and **Copy the details** copies what it says. Anything that deletes asks first in the app's own dialog, which says what goes and what stays; **Cancel** is the default.
+
 ## Home
 
 ![Home: the headline, what you had open last, and the five tools](images/home.png)
@@ -125,6 +127,7 @@ The library opens on its **folders**, the way a desktop shows a directory: your 
 
 ### The folders
 
+- **Before you pick a folder**, the panel on the right sums up the whole library (All sources): its numbers, papers by year, its largest topics and what was added last.
 - **Select a folder:** click it. The panel on the right sums it up: how many papers and which years, how much of it the open draft cites (green) and how much more is ticked for drafting (blue), papers by year, its most recent papers, the most frequent first authors, and the topics it shares papers with (click one to open it). **Use for drafting** ticks all its papers for Muse, **Map** shows the topic in the [citation network](#the-citation-network). **×** hides the panel and gives the folders the room; the panel button beside **⋯** at the top brings it back. The library remembers.
 - **Open a folder:** double-click it, press **Enter**, or click **Open** in the panel. A trail at the top, **Library › Topic name**, leads back; so do the ‹ button, **Backspace**, **Alt ←** and **Library** in the sidebar, which return you to the folders with the one you left still selected. Clicking **Library** from elsewhere in the app always opens it on the folders.
 - **Move between folders** with the arrow keys.
@@ -388,19 +391,19 @@ While Check is open, matching passages are underlined in the draft: red for an u
 
 **Network** in the sidebar shows your papers as a graph. It starts by asking what to show, since laying out a whole library at once can keep the window busy for a long time:
 
-- **Map this topic:** type a topic there or in the search box at the top. You get the papers about it and the works they cite that you don't have.
+- **Map a topic:** type it in the search box at the top (the start page has no box of its own; the top one is highlighted and ready to type in), or click one of your topics listed on the page. You get the papers about it and the works they cite that you don't have.
 - **Map the papers you're drafting from:** the papers under **Drafting from** in the Library.
 - **Map the whole library:** every paper. Above 60 papers it warns that this can take a while.
 
-**Change** next to the counts goes back to choosing.
+What's mapped sits in a chip beside the title, with the counts after it; its **×** goes back to choosing.
 
 ![The citation network](images/network.png)
 
 The graph is drawn on a dark panel in both the light and the dark theme. The ten most-linked papers are orange and carry their names; the others are pale blue.
 
-- An arrow from A to B means A cites B. Grey lines join papers that share references, and dashed amber lines (Shared keywords) join papers with keywords in common. The checkboxes at the top turn each kind on or off.
+- An arrow from A to B means A cites B. Grey lines join papers that share references, and dashed amber lines join papers with keywords in common. **Keywords**, **References** and **Missing works** at the top turn each kind on or off.
 - Dashed circles are works that several of your papers cite but that aren't in your library. They're off at first, since a topic can bring dozens of them; the list beside the graph names them either way, and **Missing works** draws them.
-- The ten most-linked papers are named on the graph; point at any other paper to see its name and a card with its title. **+**, **−** and **Fit** (top right) zoom, as does scrolling.
+- The ten most-linked papers are named on the graph by author and year (*Jariyapan 2022a*, *2022b* when an author has two papers that year), unless a name would cover another; point at any paper to see its name and a card with its title. **+**, **−** and **Fit** (top right) zoom, as does scrolling.
 - Click a paper to highlight its neighbours and list what it cites, what cites it, and what it shares. **Open in library** jumps to it.
 - Click a line to see why its two papers are linked: which cites which, the works both cite (as far as this map shows them), or the keywords they share.
 - **Graph | List** at the top switches to a table of the same papers: year, how many of the mapped papers cite each one, how many works it cites, and how many papers it shares two or more references with. Click a heading to sort, and a title to open the paper beside the table, as clicking its node does. The table works with the keyboard and screen readers.
@@ -413,7 +416,7 @@ Esc returns to the draft.
 
 ## Review matrix
 
-**Matrix** in the sidebar builds a literature review matrix: one row per paper, one column per question (sample, setting, method, findings, limitations, or your own), the table systematic reviewers fill in by hand.
+**Matrix** in the sidebar builds a literature review matrix: one row per paper, one column per question (sample, setting, method, findings, limitations, or your own), the table systematic reviewers fill in by hand. It opens on the matrix you had open last (or the one edited last); the introduction shows only until you have one.
 
 ![A review matrix: one row per paper, each cell a short answer with the page its quote is on](images/matrix.png)
 
