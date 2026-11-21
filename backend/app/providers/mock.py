@@ -8,7 +8,7 @@ from ..text_utils import keywords, sentences, tokenize
 from .base import LLMProvider, Passage
 
 _DOI = re.compile(r"\b10\.\d{4,9}/[^\s\"<>]+", re.I)
-_YEAR = re.compile(r"\b(19[5-9]\d|20[0-4]\d)\b")
+_YEAR = re.compile(r"(?<![=<>]\s)(?<![=<>])(?<!\bn\s)(?<!\bN\s)\b(19[5-9]\d|20[0-4]\d)\b")
 _NAME = re.compile(r"^[A-Z][a-zA-Z.\-']+(?: [A-Z][a-zA-Z.\-']+)+$")
 # Words must be whitespace-separated: with an optional separator, an all-caps line
 # ("NATIONAL BUREAU OF ECONOMIC RESEARCH") splits into words exponentially many ways.
@@ -117,10 +117,12 @@ class MockProvider(LLMProvider):
         return out
 
     def find_gaps(self, topic: str, table: str) -> list[dict]:
-        # Offline: a column most studies leave empty is a gap.
-        lines = [line for line in table.splitlines() if line.strip()]
-        missing = Counter(m for line in lines for m in re.findall(r"(\w[\w ]*): not reported", line))
-        return [{"title": f"Little on {name.lower()}", "detail": f"{n} of {len(lines)} studies don't report it."}
+        # Offline: a column most studies leave empty is a gap. Study lines read
+        # "Label (title): Column: answer | Column: answer"; column names can hold any punctuation.
+        studies = [line.split("): ", 1)[1] for line in table.splitlines() if "): " in line]
+        missing = Counter(col.strip() for line in studies for col, _, val in
+                          (part.rpartition(": ") for part in line.split(" | ")) if col and val.strip() == "not reported")
+        return [{"title": f"Little on {name.lower()}", "detail": f"{n} of {len(studies)} studies don't report it."}
                 for name, n in missing.most_common(6) if n]
 
     # Words a sentence about the studies as a set uses (a gap, a comparison) that no table cell does.
@@ -187,10 +189,10 @@ class MockProvider(LLMProvider):
 
     def review_questions(self, plan: str) -> dict:
         # Offline: everything is kept as it is.
-        block = plan.split("Research questions:\n", 1)[-1].split("\n\n", 1)[0]
+        block = plan.split("Research questions:\n", 1)[-1].split("\n\n", 1)[0] if "Research questions:\n" in plan else ""
         qs = [q.lstrip("- ").strip() for q in block.splitlines() if q.strip()]
         hyp = plan.split("Hypotheses:\n", 1)[-1].split("\n\n", 1)[0] if "Hypotheses:\n" in plan else ""
-        title = plan.split("Title: ", 1)[-1].split("\n", 1)[0]
+        title = plan.split("Title: ", 1)[-1].split("\n", 1)[0] if "Title: " in plan else ""
         core = plan.split("Core question: ", 1)[-1].split("\n", 1)[0] if "Core question: " in plan else ""
         return {"title": title, "core_question": core, "core_changed_why": "",
                 "questions": [{"original": q, "verdict": "keep", "text": q, "why": "Mock: kept."} for q in qs],
@@ -219,20 +221,24 @@ class MockProvider(LLMProvider):
         }
 
     def repair_claims(self, items: list[dict]) -> list[str]:
-        # Offline: keep each cited row's first answer, the only thing the mock can be sure of.
+        # Offline: keep each cited row's first reported answer, the only thing the mock can be sure of.
         out = []
         for it in items:
             studies = self._studies(it["rows"])
-            out.append(" ".join(f"{name} reports {vals[0][1]}." for name, _, vals in studies if vals and vals[0][1]))
+            said = [(name, next((v for _, v in vals if v and v not in ("not reported", "unknown")), "")) for name, _, vals in studies]
+            out.append(" ".join(f"{name} reports {v}." for name, v in said if v))
         return out
 
+    _NEGATION = re.compile(r"\b(?:no|not|never|without|avoid\w*|don't|doesn't|won't|cannot|can't|neither|nor)\b", re.I)
+
     def check_exclusions(self, exclusions: str, proposal: str) -> list[dict]:
-        # Offline: a rule is broken when every content word of it appears in the proposal.
-        words = set(tokenize(proposal))
+        # Offline: a rule is broken when one sentence of the proposal has every content word of it
+        # and doesn't say it is avoided ("We do not use surveys" keeps "No surveys").
+        said = [set(tokenize(s)) for s in sentences(proposal) if not self._NEGATION.search(s)]
         out = []
         for rule in re.split(r"[\n;]+", exclusions):
             content = [w for w in tokenize(rule) if w not in {"no", "not", "avoid", "without", "don", "any", "use"}]
-            if content and all(w in words for w in content):
+            if content and any(all(w in words for w in content) for words in said):
                 out.append({"rule": rule.strip(), "section": "proposal", "why": "Mock: its words appear in the proposal."})
         return out
 
@@ -270,10 +276,12 @@ class MockProvider(LLMProvider):
         if not tokens:
             return []
         out: list[str] = []
+        original = " ".join(str(query).split()).lower()
 
         def add(text: str) -> None:
+            # Never the query itself: the search runs it already (see LLMProvider.expand_query).
             text = " ".join(text.split())
-            if text and text.lower() not in {q.lower() for q in out}:
+            if text and text.lower() != original and text.lower() not in {q.lower() for q in out}:
                 out.append(text)
 
         add(" ".join(tokens))

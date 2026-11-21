@@ -6,8 +6,8 @@ text at choices[0].message.content.
 
 Muse reasons before it answers, and those tokens count against `max_completion_tokens`:
 a one-line JSON verdict used ~500 of them. Each call therefore gets the caller's answer
-budget plus REASONING_HEADROOM, and a reply cut off by the limit raises instead of
-returning half a JSON object.
+budget plus headroom for the reasoning (more at higher efforts, see headroom()), and a
+reply cut off by the limit raises instead of returning half a JSON object.
 """
 
 import base64
@@ -24,8 +24,12 @@ from .base import LLMProvider
 
 log = logging.getLogger(__name__)
 
-REASONING_HEADROOM = 4096
+REASONING_HEADROOM = 4096  # at "minimal" and "low"
+# Higher efforts think longer, and the 4,096 above could run out before a long answer (a
+# proposal's 5,000-token budget) is written. Unset effort means Meta's default: room for "high".
+_EFFORT_HEADROOM = {"medium": 8192, "high": 12288, "xhigh": 16384, "": 12288}
 RETRY_STATUS = {429, 500, 502, 503, 504}
+MAX_RETRY_AFTER = 30.0  # seconds: the longest a Retry-After header is waited for
 # Search help is one small call behind an interactive search, so it gets a much shorter
 # wait than the 180 s a long drafting or proposal call may need.
 SEARCH_TIMEOUT = 20.0
@@ -45,12 +49,27 @@ SEARCH_MODEL = "muse-ember-1.0"
 CHECK_EFFORT = "low"
 
 
-class MuseError(RuntimeError):
-    """An error answer from the Model API; `code` is the API's own error code, when it gave one."""
+def headroom(effort: str | None) -> int:
+    """Tokens added to an answer's budget for the reasoning before it, at this effort."""
+    return _EFFORT_HEADROOM.get(effort or "", REASONING_HEADROOM)
 
-    def __init__(self, message: str, code: str | None = None):
+
+def _retry_after(resp: httpx.Response) -> float | None:
+    """The seconds a 429 or 503 asks to wait (Retry-After in seconds), or None."""
+    try:
+        return max(0.0, float(resp.headers.get("retry-after", "")))
+    except ValueError:
+        return None  # absent, or an HTTP date: back off as usual
+
+
+class MuseError(RuntimeError):
+    """An error answer from the Model API; `code` is the API's own error code, when it gave one,
+    and `status` its HTTP status."""
+
+    def __init__(self, message: str, code: str | None = None, status: int | None = None):
         super().__init__(message)
         self.code = code
+        self.status = status
 
 
 class MuseProvider(LLMProvider):
@@ -76,12 +95,12 @@ class MuseProvider(LLMProvider):
              reasoning_effort: str | None = None, timeout: float | None = None, retries: int | None = None,
              model: str | None = None) -> str:
         # temperature is not sent: Meta's docs say Muse Spark does best at its default.
+        effort = self.reasoning_effort if reasoning_effort is None else reasoning_effort
         payload: dict = {
             "model": model or self.model,
             "messages": messages,
-            "max_completion_tokens": max_tokens + REASONING_HEADROOM,
+            "max_completion_tokens": max_tokens + headroom(effort),
         }
-        effort = self.reasoning_effort if reasoning_effort is None else reasoning_effort
         if effort:
             payload["reasoning_effort"] = effort
         if schema is not None:
@@ -100,6 +119,7 @@ class MuseProvider(LLMProvider):
     def _post(self, payload: dict, timeout: float | None = None, retries: int | None = None) -> dict:
         retries = self.retries if retries is None else retries
         for attempt in range(retries + 1):
+            asked = None  # seconds the API asked us to wait, when it said
             try:
                 resp = (self.client.post("/chat/completions", json=payload, timeout=timeout)
                         if timeout is not None else self.client.post("/chat/completions", json=payload))
@@ -114,10 +134,14 @@ class MuseProvider(LLMProvider):
                             code = resp.json()["error"]["code"]
                         except Exception:
                             code = None
-                        raise MuseError(f"Muse API error {resp.status_code}: {resp.text[:300]}", code=code)
+                        raise MuseError(f"Muse API error {resp.status_code}: {resp.text[:300]}", code=code,
+                                        status=resp.status_code)
                     return resp.json()
                 why = "is busy (rate limit)" if resp.status_code == 429 else f"had a server error ({resp.status_code})"
+                asked = _retry_after(resp)
             wait = min(2 ** attempt, 8) + random.random()  # backoff with jitter
+            if asked is not None:  # the API said how long to wait: at least that, within reason
+                wait = max(wait, min(asked, MAX_RETRY_AFTER))
             activity.note("retry", f"Muse {why}; trying again in {wait:.0f} s (attempt {attempt + 2} of {retries + 1}).")
             time.sleep(wait)
         raise AssertionError("unreachable")
@@ -164,7 +188,10 @@ class MuseProvider(LLMProvider):
         try:
             raw = ask(self.search_model)
         except MuseError as exc:
-            if exc.code != "model_not_found" or self.search_model == self.model:
+            # Meta answers 404 model_not_found for a model the key can't use; a 403, or a 404
+            # without that code, reads the same way.
+            no_access = exc.code == "model_not_found" or (exc.status in (403, 404) and exc.code in (None, "permission_denied", "access_denied"))
+            if not no_access or self.search_model == self.model:
                 raise
             # This key can't use the search model: the main model does search help from now on.
             log.warning("Search model %s isn't available to this key; using %s for search", self.search_model, self.model)
