@@ -306,7 +306,9 @@ export const api = {
   importDocx: (filename: string, data: string) => request<DocxImport>('POST', '/drafts/import', { filename, data }),
   convertDocx: (filename: string, data: string) => request<DocxConversion>('POST', '/drafts/convert-docx', { filename, data }),
   getDraft: (id: number) => request<{ id: number; title: string; content: string }>('GET', `/drafts/${id}`),
-  saveDraft: (id: number, title: string, content: string) => request('PUT', `/drafts/${id}`, { title, content }),
+  /** The saved draft, with its word count (an older backend leaves `words` out). */
+  saveDraft: (id: number, title: string, content: string) =>
+    request<Omit<DraftSummary, 'words'> & { content: string; words?: number }>('PUT', `/drafts/${id}`, { title, content }),
 
   versions: (draftId: number) => request<VersionList>('GET', `/drafts/${draftId}/versions`),
   saveVersion: (draftId: number, label: string, title: string, content: string) =>

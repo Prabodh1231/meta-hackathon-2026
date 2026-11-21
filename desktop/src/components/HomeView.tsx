@@ -120,14 +120,22 @@ export function HomeView(p: Props) {
   const focus = citing.find((d) => d.id === focusId) ?? null
   const isOpen = focusId === p.draftId
 
+  // Asked again when papers come or go (what's missing changes), not at every refresh of the library
+  // list: marking a paper read or starring it gives a new list with the same papers.
+  const papersKey = useMemo(() => sig(docs.map((d) => `${d.id}:${d.doi ?? ''}:${d.title}`)), [docs])
   useEffect(() => {
     if (!p.visible) return
     let current = true
-    api.homeTodo(focusId).then((t) => current && setTodo(t)).catch(() => {})
+    // A moment's wait, so what changes together asks once: at launch the library, the drafts and the
+    // open draft's citations arrive one after another, and Home sent four requests in two seconds.
+    const wait = window.setTimeout(() => {
+      api.homeTodo(focusId).then((t) => current && setTodo(t)).catch(() => {})
+    }, 150)
     return () => {
       current = false
+      window.clearTimeout(wait)
     }
-  }, [p.visible, focusId, docs])
+  }, [p.visible, focusId, papersKey])
 
   // Settings aside from another day come back.
   useEffect(() => {

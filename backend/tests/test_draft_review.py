@@ -95,6 +95,32 @@ def test_check_duplicates_flags_copied_text_and_whether_it_is_cited(client, tmp_
     assert {p["block"] for p in r["paragraphs"]} == {0, 1}
 
 
+def test_a_recheck_reuses_what_it_found_but_sees_a_paper_added_since(client, tmp_path):
+    d = doc(("p", "Reefs exposed to prior moderate heat stress showed lower bleaching mortality, suggesting thermal acclimation."))
+    assert client.post("/drafts/check-duplicates", json={"content": d}).json()["source_matches"] == []
+    lib = client.app.state.library
+
+    # What the empty library gave for the sentence is kept, but not reused once a paper is added.
+    f = tmp_path / "coral.txt"
+    f.write_text(SOURCE, encoding="utf-8")
+    client.post("/ingest/path", json={"path": str(f)})
+    [m] = client.post("/drafts/check-duplicates", json={"content": d}).json()["source_matches"]
+    assert m["level"] == "copied"
+
+    searched = []
+    keyword = lib._keyword
+    lib._keyword = lambda *a: searched.append(a[0]) or keyword(*a)
+    d["content"].append(doc(("p", "Marine heatwaves in 2016 caused mass coral bleaching across the Great Barrier Reef."))["content"][0])
+    assert len(client.post("/drafts/check-duplicates", json={"content": d}).json()["source_matches"]) == 2
+    assert searched == ["Marine heatwaves in 2016 caused mass coral bleaching across the Great Barrier Reef."]  # only the new one
+
+
+def test_saving_a_draft_gives_its_word_count_for_the_drafts_list(client):
+    saved = client.put("/drafts/1", json={"title": "Reefs", "content": json.dumps(doc(("h", "Reefs"), ("p", "Corals bleach in heatwaves.")))}).json()
+    assert saved["words"] == 5
+    assert [d["words"] for d in client.get("/drafts").json()] == [5]
+
+
 def test_versions_milestones_compare_and_restore(client):
     v1 = doc(("h", "Intro"), ("p", "First version of the introduction."))
     v2 = doc(("h", "Intro"), ("p", "Second version of the introduction, much longer now."))

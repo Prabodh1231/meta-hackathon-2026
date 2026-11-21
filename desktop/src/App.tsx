@@ -979,10 +979,15 @@ export default function App() {
   }
 
   function onSaveState(s: SaveState) {
-    setSaveState(s)
+    // Every keystroke reports "saving": only a change of state redraws the app, not each key.
+    setSaveState((prev) => (prev.state === s.state && prev.at === s.at ? prev : s))
     if (s.state === 'saved') {
       refreshVersions().catch(() => {})
-      if (s.at) refreshDrafts().catch(() => {}) // a real save, not just a load: titles and word counts changed
+      // A real save, not just a load: its title and word count changed, and it's now the most recently
+      // edited. The save says so; an older backend's doesn't, so the whole list is asked for.
+      const d = s.draft
+      if (d) setDrafts((list) => [d, ...list.filter((x) => x.id !== d.id)])
+      else if (s.at) refreshDrafts().catch(() => {})
     }
   }
 
