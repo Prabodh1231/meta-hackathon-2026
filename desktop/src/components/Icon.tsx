@@ -11,6 +11,7 @@ const PATHS = {
   focus: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
   // Lucide: table
   matrix: `${BOX}M12 3v18M3 9h18M3 15h18`,
+  columns: `${BOX}M9 3v18M15 3v18`, // columns-3: which columns the matrix shows
   collapse: 'M8 6l6 6-6 6M19 5v14', // close a panel on the right: chevron toward its edge
   expand: 'M16 6l-6 6 6 6M5 5v14',
   // Lucide: folder (the Library opens on its topics drawn as folders)

@@ -2074,9 +2074,18 @@ export const LibraryPanel = memo(function LibraryPanel({
         {opened !== null && !showingRemoved && docs.length > 0 && (
           <>
             {paperLayout === 'covers' && <SizeSlider size={size} onSize={setSize} />}
-            <div className="seg" role="group" aria-label="Show the papers as">
-              <button aria-pressed={paperLayout === 'rows'} onClick={() => setPaperLayout('rows')}>Rows</button>
-              <button aria-pressed={paperLayout === 'covers'} onClick={() => setPaperLayout('covers')} title="Each paper's first page">Covers</button>
+            {/* The same icon pair as the front page's folders / rows, in the same order */}
+            <div className="seg seg-icons" role="group" aria-label="Show the papers as">
+              <button aria-pressed={paperLayout === 'covers'} onClick={() => setPaperLayout('covers')} title="Covers: each paper's first page" aria-label="Covers">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z" />
+                </svg>
+              </button>
+              <button aria-pressed={paperLayout === 'rows'} onClick={() => setPaperLayout('rows')} title="Rows" aria-label="Rows">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                  <path d="M5 7h14M5 12h14M5 17h14" />
+                </svg>
+              </button>
             </div>
           </>
         )}

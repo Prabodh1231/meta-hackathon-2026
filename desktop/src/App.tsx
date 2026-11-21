@@ -313,7 +313,7 @@ export default function App() {
   }, [])
 
   const [railWide, setRailWide] = useState(storedRailWide)
-  const [railSlot, setRailSlot] = useState<HTMLDivElement | null>(null) // where the Library puts its smart views
+  const [railSlot, setRailSlot] = useState<HTMLDivElement | null>(null) // where the Library puts its smart views, the Matrix its matrices
   const railScrollRef = useRef<HTMLDivElement>(null)
   const [railMore, setRailMore] = useState(false) // more of the sidebar below its foot: fade it there
   useEffect(() => {
@@ -1548,7 +1548,7 @@ export default function App() {
               </button>
             ))}
           </div>
-          {/* The Library fills this with its smart views while it is the place open */}
+          {/* The Library fills this with its smart views, and the Matrix with its matrices, while it is the place open */}
           <div className="rail-slot" ref={setRailSlot} />
           </div>
           <button
@@ -1900,6 +1900,7 @@ export default function App() {
               onWriteProposal={(id) => setProposalFrom({ matrixId: id })}
               openRequest={openMatrix}
               visible={mode === 'matrix'}
+              sideSlot={mode === 'matrix' ? railSlot : null}
               onReady={(m) =>
                 setBar({
                   id: `matrix-${m.id}`,

@@ -1,4 +1,4 @@
-/* The design elements adopted on Nov 16 with the Glacier + ember palette: two-tone statements, large
+/* The design elements adopted on Nov 16 (colours now forest green, Nov 20): two-tone statements, large
    buttons, the notice bar, the ribbon artwork, framed previews, the night panel, expanding rows and
    the passage card; Home's to-do list (Nov 21) replaced its landing page. Colours come from styles.css. */
 
@@ -37,13 +37,13 @@ button.sq-btn:hover:not(:disabled) { background: var(--accent); color: var(--acc
 
 /* ---------- Notice bar ---------- */
 .notice-slot { min-height: 0; }
-.notice-bar { display: flex; align-items: center; gap: 12px; padding: 7px 10px 7px 16px; background: var(--ban1); color: #e6ebf0; font-size: 13px; animation: notice-in 0.2s ease-out; }
+.notice-bar { display: flex; align-items: center; gap: 12px; padding: 7px 10px 7px 16px; background: var(--ban1); color: var(--night-text); font-size: 13px; animation: notice-in 0.2s ease-out; }
 .notice-bar > span { flex: 1; min-width: 0; }
 .notice-bar button { border: none; background: none; padding: 0; }
 .notice-bar button:hover:not(:disabled) { background: none; }
-.notice-link { color: #ffb98e; font-weight: 600; }
+.notice-link { color: var(--night-ember); font-weight: 600; }
 .notice-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-.notice-x { width: 26px; height: 26px; border-radius: 6px; color: #9fb0c0; font-size: 17px; line-height: 1; }
+.notice-x { width: 26px; height: 26px; border-radius: 6px; color: var(--night-muted); font-size: 17px; line-height: 1; }
 .notice-bar .notice-x:hover { color: #fff; background: rgb(255 255 255 / 0.12); }
 @keyframes notice-in { from { opacity: 0; transform: translateY(-6px); } }
 
@@ -61,7 +61,7 @@ button.sq-btn:hover:not(:disabled) { background: var(--accent); color: var(--acc
 .desk-n { color: var(--follow); }
 .desk-working { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
 .desk-working select { min-width: 0; max-width: 320px; }
-.desk-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 28px 0 8px; font: 600 11.5px/1.3 var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.desk-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 28px 0 8px; font: var(--eyebrow); letter-spacing: var(--eyebrow-track); text-transform: uppercase; color: var(--muted); }
 .desk-h small { font: 400 12.5px var(--doc-font); letter-spacing: 0; text-transform: none; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .desk-h .desk-hint { font-family: inherit; color: var(--muted); }
 .desk-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
@@ -126,20 +126,20 @@ button.sq-btn:hover:not(:disabled) { background: var(--accent); color: var(--acc
 .scene-muse { flex-direction: column; align-items: stretch !important; padding-left: 8px; border-left: 2px dashed var(--ember); }
 
 /* ---------- Night panel: a dot grid, chips joined by dashed lines, numbers filled with a gradient ---------- */
-.night { padding: 22px 22px 24px; border-radius: 12px; color: #dfe7ee; background: radial-gradient(rgb(255 255 255 / 0.09) 1px, transparent 1.4px) 0 0 / 18px 18px, #0f1720; }
-.night h4 { margin: 0 0 16px; font: 300 19px/1.3 var(--display); letter-spacing: -0.005em; color: #8ea3b6; }
+.night { padding: 22px 22px 24px; border-radius: 12px; color: var(--night-text); background: radial-gradient(rgb(255 255 255 / 0.09) 1px, transparent 1.4px) 0 0 / 18px 18px, var(--night); }
+.night h4 { margin: 0 0 16px; font: 300 19px/1.3 var(--display); letter-spacing: -0.005em; color: var(--night-muted); }
 .night h4 b { font-weight: 400; color: #fff; }
 .night-flow { display: flex; align-items: center; flex-wrap: wrap; row-gap: 8px; margin: 0; padding: 0; list-style: none; }
 .night-flow li { display: flex; align-items: center; }
-.night-flow li + li::before { content: ""; width: 18px; border-top: 1.5px dashed #5f7b92; }
-.night-flow span { padding: 5px 10px; border-radius: 7px; background: #24384c; border: 1px solid #3a5066; font-weight: 600; font-size: 12.5px; color: #fff; white-space: nowrap; }
+.night-flow li + li::before { content: ""; width: 18px; border-top: 1.5px dashed var(--night-edge); }
+.night-flow span { padding: 5px 10px; border-radius: 7px; background: var(--night-chip); border: 1px solid var(--night-edge); font-weight: 600; font-size: 12.5px; color: #fff; white-space: nowrap; }
 .night-flow li:last-child span { background: var(--ember); border-color: var(--ember); color: #2e1202; }
-.night-steps { display: grid; gap: 6px; margin: 16px 0 0; padding: 0 0 0 18px; font-size: 12.5px; line-height: 1.45; color: #b7c4d0; }
+.night-steps { display: grid; gap: 6px; margin: 16px 0 0; padding: 0 0 0 18px; font-size: 12.5px; line-height: 1.45; color: var(--night-soft); }
 .night-steps b { color: #fff; font-weight: 600; }
 .night-nums { display: flex; gap: 32px; flex-wrap: wrap; margin-top: 18px; }
 .night-nums strong { display: block; font: 300 32px/1.1 var(--display); letter-spacing: -0.02em; background: linear-gradient(90deg, #f3dcc0, #c98a3e 55%, #a5bbb0); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.night-nums span { font-size: 12px; color: #9fb0c0; }
-.night-close { float: right; border: none; background: none; padding: 0 4px; color: #9fb0c0; font-size: 17px; line-height: 1; }
+.night-nums span { font-size: 12px; color: var(--night-muted); }
+.night-close { float: right; border: none; background: none; padding: 0 4px; color: var(--night-muted); font-size: 17px; line-height: 1; }
 .night-close:hover:not(:disabled) { background: none; color: #fff; }
 
 /* ---------- Expanding rows: one sentence per source, opening to its figures ---------- */
@@ -214,10 +214,10 @@ button.sq-btn:hover:not(:disabled) { background: var(--accent); color: var(--acc
 /* Network: the graph sits on a night panel in both themes, and the papers are its chips. The tokens are
    redefined here, so the legend, zoom buttons and notes inside the canvas follow without rules of their own. */
 .network-canvas {
-  --bg: #0f1720; --panel: #17222e; --text: #e6ebf0; --muted: #9fb0c0; --border: #33475a; --line: rgb(230 235 240 / 0.1);
-  --accent: #a9c1d3; --accent-text: #0f1720; --hover: rgba(255, 255, 255, 0.08);
-  --pending: #8d9aa8; --pending-bg: #24384c; --ok: #56d08a; --ok-bg: #12261a; --warn: #e3b341; --warn-bg: #2b2111; --bad: #ff8a78; --bad-bg: #2d1614;
+  --bg: var(--night); --panel: var(--night-2); --text: var(--night-text); --muted: var(--night-muted); --border: var(--night-edge); --line: rgb(229 235 232 / 0.1);
+  --accent: var(--night-accent); --accent-text: #062418; --hover: rgba(255, 255, 255, 0.08);
+  --pending: #8ea59a; --pending-bg: var(--night-chip); --ok: #56d08a; --ok-bg: #12261a; --warn: #e3b341; --warn-bg: #2b2111; --bad: #ff8a78; --bad-bg: #2d1614;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.6);
   color: var(--text); color-scheme: dark;
-  background: radial-gradient(rgb(255 255 255 / 0.09) 1px, transparent 1.4px) 0 0 / 18px 18px, #0f1720;
+  background: radial-gradient(rgb(255 255 255 / 0.09) 1px, transparent 1.4px) 0 0 / 18px 18px, var(--night);
 }
