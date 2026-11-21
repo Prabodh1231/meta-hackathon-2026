@@ -48,7 +48,7 @@ export function CitingPapersDialog({ docId, onOpenPaper, onChanged, onClose, onE
       })
       .finally(() => current && setLoading(false))
     return () => { current = false }
-  }, [docId, sort])
+  }, [docId, sort]) // eslint-disable-line react-hooks/exhaustive-deps -- once per paper and order; onError/onClose only report
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()

@@ -135,10 +135,12 @@ This writes `desktop/release/Groundwork-Setup-<version>.exe`, with the backend b
 
 ```bash
 cd desktop && npm run typecheck
+npm run lint
 npm run smoke
 cd ../backend && .venv/Scripts/python -m pytest
 ```
 
+- `npm run lint` checks React's rules of hooks (ESLint); a warning fails it too.
 - `npm run smoke` builds the app, launches Electron, and checks the token check and the backend restart.
 - `npm run web` in `desktop/` serves the UI alone in a browser; it talks to a backend on `127.0.0.1:8765` with no token, so start one with `uvicorn app.main:app --port 8765` from `backend/`.
 - The backend log is `~/.groundwork/logs/backend.log`. If the backend exits, the app restarts it.

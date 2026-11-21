@@ -527,15 +527,17 @@ export default function App() {
     refreshVersions().catch(() => {})
   }, [draftId, refreshVersions])
 
-  // Once the backend is up: if the remembered draft was deleted, open the most recent one.
+  // Once the backend is up: if the remembered draft was deleted, open the most recent one. Once only: it
+  // checks the draft remembered from last time, not each draft the writer opens afterwards.
+  const backendUp = health !== null
   useEffect(() => {
-    if (!health) return
+    if (!backendUp) return
     refreshDrafts()
       .then((list) => {
         if (list.length && !list.some((d) => d.id === draftId)) setDraftId(list[0].id)
       })
       .catch(() => {})
-  }, [health !== null])
+  }, [backendUp, refreshDrafts]) // eslint-disable-line react-hooks/exhaustive-deps -- once, with the draft open at launch
 
   /** Save what's pending in the open draft, then show another. */
   async function switchDraft(id: number) {
@@ -918,7 +920,7 @@ export default function App() {
     return () => {
       stop = true
     }
-  }, [refresh])
+  }, [refresh, onError])
 
   // Once running, keep an eye on the backend so an outage shows in the dock instead of
   // surfacing only as errors on the next click. The desktop app restarts it automatically.

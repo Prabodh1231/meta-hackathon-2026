@@ -145,7 +145,7 @@ export function FolderBar({ folder, run, onWhatsNew }: { folder: Folder; run: Ru
         save()
       }
     },
-    [], // eslint-disable-line react-hooks/exhaustive-deps
+    [],
   )
   return (
     <div className="lib-folderbar">
