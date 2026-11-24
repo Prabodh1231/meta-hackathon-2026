@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('rc', {
   pickFiles: () => ipcRenderer.invoke('rc:pick-files'),
   pickFolder: () => ipcRenderer.invoke('rc:pick-folder'),
   saveFile: (defaultName, data) => ipcRenderer.invoke('rc:save-file', defaultName, data),
+  // The draft as PDF (opts.pdf: saved where the writer picks) or to the system's print dialog.
+  printHtml: (html, opts) => ipcRenderer.invoke('rc:print-html', html, opts),
   trashFile: (filePath) => ipcRenderer.invoke('rc:trash-file', filePath),
   showFile: (filePath) => ipcRenderer.invoke('rc:show-file', filePath),
   // A library file in its default app (Word, PowerPoint, an image viewer…).

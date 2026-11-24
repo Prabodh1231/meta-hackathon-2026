@@ -1,8 +1,13 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useSyncExternalStore } from 'react'
-import { EditorContent, useEditor } from '@tiptap/react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore } from 'react'
+import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
 import { TableKit } from '@tiptap/extension-table'
+import TextAlign from '@tiptap/extension-text-align'
+import Subscript from '@tiptap/extension-subscript'
+import Superscript from '@tiptap/extension-superscript'
+import Typography from '@tiptap/extension-typography'
+import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { Extension, type Editor, type JSONContent } from '@tiptap/core'
 import { EditorState } from '@tiptap/pm/state'
 import { CitationNode } from '../editor/citation'
@@ -10,13 +15,38 @@ import { CiteMarkNode, stateOf, stateSoFar, unfinished, type CiteMarkAttrs } fro
 import { RetractedCites, setRetractedDocs } from '../editor/retracted'
 import { ReviewMarks, findInBlock, setReviewMarks, textBlocks, type ReviewRange } from '../editor/reviewMarks'
 import { MUSE_META, MuseMark, insertMuse } from '../editor/museMark'
-import { FormatToolbar } from './FormatToolbar'
+import { FormatToolbar, stepFontSize } from './FormatToolbar'
+import { CommentsMargin, FindBar, FootnotesArea, Outline, PageBubbles } from './PageTools'
+import type { Counts } from './DocDialogs'
+import {
+  CommentMark,
+  DraftDocument,
+  Figure,
+  Footnote,
+  NamedHighlight,
+  PageBreak,
+  PageBreakKeys,
+  ParagraphFormat,
+  TextColor,
+  addComment,
+  clearFormatting,
+  footnotesOf,
+  imageData,
+  pageSetupOf,
+  setDocAttr,
+  type PageSetup,
+} from '../editor/docFormat'
+import { TableOfContents } from '../editor/TableOfContents'
+import { FindReplace } from '../editor/findReplace'
 import { ChipCard } from './ChipCard'
 import type { RetractedWhy } from './TrustBadges'
 import { api } from '../api'
 import type { Citation, DraftSentence, DraftSummary, Suggestion } from '../types'
 
 const MISSING_REASON = 'This passage is no longer in your library.'
+/** Width of the page's column (px) from which the outline and comment cards sit beside the page;
+ * the same as the container queries in writeTools.css. */
+const ROOMY = 1000
 
 /** Update chips and cite markers by cid. Not an undo step: these are the app's findings, and
  * Ctrl+Z should undo the writer's own edits, not a colour change that arrived meanwhile. */
@@ -153,13 +183,14 @@ export interface DraftStats {
   flagged: number // weak, unsupported or quote not found
   unconfirmed: number // cite markers waiting for the writer to pick a source
   chips: ChipAttrs[] // the citation chips, in document order, for Check
+  goal?: number // the draft's word goal, 0 for none
 }
 
 /** `draft`: the saved draft as the drafts list shows it, when the backend sent its word count. */
 export type SaveState = { state: 'idle' | 'saving' | 'saved' | 'error'; at?: number; draft?: DraftSummary }
 
 function statsOf(editor: Editor): DraftStats {
-  const s: DraftStats = { words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0, chips: [] }
+  const s: DraftStats = { words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0, chips: [], goal: Number(editor.state.doc.attrs.wordGoal) || 0 }
   s.words = (editor.getText().match(/\w+(?:['’-]\w+)*/g) ?? []).length
   editor.state.doc.descendants((node) => {
     if (node.type.name === 'citeMark') s.unconfirmed++
@@ -212,6 +243,26 @@ export interface WritingEditorHandle {
   reveal: (block: number, text?: string) => void
   /** Underline passages found by the duplication check; an empty list clears them. */
   markReview: (marks: { block: number; text: string; kind: ReviewRange['kind']; title?: string }[]) => void
+  /** Open find (Ctrl+F), or find and replace (Ctrl+H). */
+  openFind: (replace: boolean) => void
+  /** Words, characters and paragraphs in the draft and in the selection. */
+  counts: () => Counts
+  setWordGoal: (n: number) => void
+  getPageSetup: () => PageSetup | null
+  setPageSetup: (p: PageSetup) => void
+}
+
+/** setContent replaces the document's content but keeps the old document node, so the draft's own
+ * settings (page setup, spacing, word goal: DraftDocument's attributes) are put back from `json`, or
+ * reset to their defaults. Not an undo step, and not an edit to save. */
+function setDocAttrs(editor: Editor, json: JSONContent | string) {
+  const given = (typeof json === 'object' && json?.attrs) || {}
+  const { tr, doc } = editor.state
+  for (const [name, spec] of Object.entries(doc.type.spec.attrs ?? {})) {
+    const value = name in given ? given[name] : spec.default
+    if (JSON.stringify(doc.attrs[name]) !== JSON.stringify(value)) tr.setDocAttribute(name, value)
+  }
+  if (tr.docChanged) editor.view.dispatch(tr.setMeta('addToHistory', false).setMeta(MUSE_META, true).setMeta('preventUpdate', true))
 }
 
 function titleOf(editor: Editor): string {
@@ -303,10 +354,12 @@ interface Props {
   onError: (msg: string) => void
   /** Library papers that were retracted, and who says so: their chips carry a warning (still citable). */
   retracted?: Map<number, RetractedWhy>
+  /** The toolbar's "?": the keyboard shortcuts. */
+  onShortcuts: () => void
 }
 
 export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function WritingEditor(
-  { draftId, banner, spellcheck = true, onCitationClick, onCiteMarkClick, onCiteMarks, getScope, onAsk, onError, onStats, onSaveState, retracted },
+  { draftId, banner, spellcheck = true, onCitationClick, onCiteMarkClick, onCiteMarks, getScope, onAsk, onError, onStats, onSaveState, retracted, onShortcuts },
   ref,
 ) {
   const saveTimer = useRef<number | undefined>(undefined)
@@ -323,6 +376,37 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   const placed = useRef(false) // the writer has put the cursor somewhere since the draft opened
   const placedBefore = useRef(false) // `placed` as it was before the latest mousedown focused the editor
   const editorRef = useRef<Editor | null>(null)
+  const [find, setFindOpen] = useState<{ replace: boolean; key: number } | null>(null)
+  const findRef = useRef((replace: boolean) => setFindOpen((f) => ({ replace: replace || !!f?.replace, key: (f?.key ?? 0) + 1 })))
+  const [outlineOpen, setOutlineOpen] = useState(() => {
+    try {
+      return localStorage.getItem('gw.write.outline') === '1'
+    } catch {
+      return false
+    }
+  })
+  const [outlinePop, setOutlinePop] = useState(false) // the outline as a pop-up, when there's no room for its column
+  // Room beside the page for the outline's column (and comment cards at full size): writeTools.css
+  // switches at the same width with a container query.
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [wrapWidth, setWrapWidth] = useState(2000)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      const cs = getComputedStyle(el)
+      setWrapWidth(el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const [noteFocus, setNoteFocus] = useState<{ index: number; at: number } | null>(null)
+  const [commentFocus, setCommentFocus] = useState<{ id: string; at: number } | null>(null)
+  const [linkAsk, setLinkAsk] = useState(0) // Ctrl+Shift+K: the toolbar opens its link form
+  const insertFootnoteRef = useRef<() => void>(() => {})
+  const commentRef = useRef<() => void>(() => {})
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
 
   /** Find sources for a marker's sentence in the background, then recolour the marker. */
   function searchFor(cid: string, claim: string): Promise<void> {
@@ -371,8 +455,27 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      // The draft's own settings (page setup, spacing, word goal) live on its document node.
+      StarterKit.configure({ document: false, link: { openOnClick: false, autolink: true, defaultProtocol: 'https' } }),
+      DraftDocument,
       TextStyle,
+      TextColor,
+      NamedHighlight,
+      Subscript,
+      Superscript,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      ParagraphFormat,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      Figure,
+      PageBreak,
+      PageBreakKeys,
+      Footnote,
+      TableOfContents,
+      CommentMark,
+      // Curly quotes, dashes and ellipses as you type; Backspace right after puts back what was typed.
+      Typography.configure({ oneHalf: false, oneQuarter: false, threeQuarters: false, plusMinus: false, notEqual: false, laquo: false, raquo: false, multiplication: false, superscriptTwo: false, superscriptThree: false }),
+      FindReplace.configure({ onOpen: (replace: boolean) => findRef.current(replace) }),
       FontFamily,
       FontSize,
       CitationNode,
@@ -384,7 +487,15 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       TableKit.configure({ table: { resizable: false } }),
       Extension.create({
         name: 'citeShortcut',
-        addKeyboardShortcuts: () => ({ 'Mod-Shift-c': () => (citeRef.current(), true) }),
+        addKeyboardShortcuts: () => ({
+          'Mod-Shift-c': () => (citeRef.current(), true),
+          'Mod-Shift-k': () => (setLinkAsk((n) => n + 1), true),
+          'Mod-Alt-f': () => (insertFootnoteRef.current(), true),
+          'Mod-Alt-m': () => (commentRef.current(), true),
+          'Mod-Space': () => (editorRef.current && clearFormatting(editorRef.current), true),
+          'Mod-]': () => (editorRef.current && stepFontSize(editorRef.current, 1), true),
+          'Mod-[': () => (editorRef.current && stepFontSize(editorRef.current, -1), true),
+        }),
       }),
     ],
     onFocus: () => {
@@ -392,7 +503,8 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     },
     content: '',
     editorProps: {
-      attributes: { class: 'prose', spellcheck: 'true' },
+      // "tight": the draft is set without space between paragraphs (Alignment and spacing menu).
+      attributes: (state) => ({ class: state.doc.attrs.spaced === false ? 'prose tight' : 'prose', spellcheck: 'true' }),
       handleDOMEvents: {
         mousedown: () => {
           placedBefore.current = placed.current
@@ -401,7 +513,28 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       },
       // Clicking a marker or a citation focuses the editor but leaves the cursor where it was, so
       // it doesn't count as placing it: an insert still goes to the end, not above the title.
-      handleClickOn: (_view, _pos, node) => {
+      // A picture pasted or dropped onto the page goes into the draft (scaled down), not into the library.
+      handlePaste: (view, event) => {
+        const files = [...(event.clipboardData?.files ?? [])].filter((f) => f.type.startsWith('image/'))
+        if (!files.length) return false
+        event.preventDefault()
+        insertImages(files, view.state.selection.from)
+        return true
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        const files = [...(event.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith('image/'))
+        if (moved || !files.length) return false
+        event.preventDefault()
+        event.stopPropagation() // the window's drop-anywhere would add it to the library as well
+        insertImages(files, view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? view.state.selection.from)
+        return true
+      },
+      handleClickOn: (view, pos, node) => {
+        if (node.type.name === 'footnote') {
+          const index = footnotesOf(view.state.doc).findIndex((f) => f.pos === pos)
+          setNoteFocus({ index, at: Date.now() })
+          return true
+        }
         if (node.type.name === 'citeMark') {
           placed.current = placedBefore.current
           clickRef.current.mark(node.attrs.cid)
@@ -457,6 +590,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
    * Ctrl+Z can't bring back the text of the draft that was showing before. */
   function replaceContent(e: Editor, json: JSONContent | string) {
     e.chain().command(({ tr }) => (tr.setMeta(MUSE_META, true), true)).setContent(json, { emitUpdate: false }).run()
+    setDocAttrs(e, json)
     const { state } = e
     e.view.updateState(EditorState.create({ schema: state.schema, doc: state.doc, plugins: state.plugins }))
   }
@@ -500,10 +634,37 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
   }, [editor, draftId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   editorRef.current = editor
+  const hasComments = useEditorState({ editor, selector: ({ editor: e }) => !!e && e.state.doc.rangeHasMark(0, e.state.doc.content.size, e.schema.marks.comment) }) ?? false
 
   useEffect(() => {
     if (editor) editor.view.dom.setAttribute('spellcheck', String(spellcheck))
   }, [editor, spellcheck])
+
+  // A new draft opens without the last one's find.
+  useEffect(() => setFindOpen(null), [draftId])
+
+  /** Pictures as data URLs (scaled down), put in at `pos`. */
+  function insertImages(files: File[], pos: number) {
+    Promise.all(files.map(imageData))
+      .then((srcs) => editorRef.current?.chain().focus().insertContentAt(pos, srcs.map((src) => ({ type: 'image', attrs: { src, alt: '' } }))).run())
+      .catch((e) => onErrorRef.current(e instanceof Error ? e.message : String(e)))
+  }
+
+  // A footnote at the cursor, then straight to its note under the page.
+  insertFootnoteRef.current = () => {
+    const e = editorRef.current
+    if (!e) return
+    e.chain().focus().insertFootnote().run()
+    const at = e.state.selection.from
+    setNoteFocus({ index: footnotesOf(e.state.doc).filter((f) => f.pos < at).length - 1, at: Date.now() })
+  }
+  commentRef.current = () => {
+    const e = editorRef.current
+    if (!e) return
+    const id = addComment(e)
+    if (id) setCommentFocus({ id, at: Date.now() })
+    else onErrorRef.current('Select the text the comment is about first.')
+  }
 
   // Cite: put a grey "cite" marker at the end of the sentence at once and look for sources in
   // the background, so writing never waits. The cursor stays where it was.
@@ -719,7 +880,9 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
       setContent(json) {
         if (!editor) return
         window.clearTimeout(saveTimer.current) // a pending autosave of the old text must not win
-        editor.chain().command(({ tr }) => (tr.setMeta(MUSE_META, true), true)).setContent(json ? JSON.parse(json) : '', { emitUpdate: false }).run()
+        const content = json ? JSON.parse(json) : ''
+        editor.chain().command(({ tr }) => (tr.setMeta(MUSE_META, true), true)).setContent(content, { emitUpdate: false }).run()
+        setDocAttrs(editor, content)
         placed.current = false // the cursor was in the old text
         report.current.onStats?.(statsOf(editor))
         report.current.onCiteMarks?.(citeMarks(editor))
@@ -754,6 +917,35 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
         setReviewMarks(editor, ranges)
       },
 
+      openFind: (replace) => findRef.current(replace),
+
+      counts() {
+        const count = (text: string) => ({
+          words: (text.match(/\w+(?:['’-]\w+)*/g) ?? []).length,
+          chars: text.replace(/\n/g, '').length,
+          charsNoSpaces: text.replace(/\s/g, '').length,
+        })
+        if (!editor) return { words: 0, chars: 0, charsNoSpaces: 0, paragraphs: 0, selection: null }
+        const { doc, selection } = editor.state
+        let paragraphs = 0
+        doc.descendants((node) => {
+          if (!node.isTextblock) return true
+          if (node.textContent.trim()) paragraphs++
+          return false
+        })
+        const all = count(doc.textBetween(0, doc.content.size, '\n', ''))
+        const sel = selection.empty ? null : count(doc.textBetween(selection.from, selection.to, '\n', ''))
+        return { ...all, paragraphs, selection: sel }
+      },
+
+      setWordGoal(n) {
+        if (editor) setDocAttr(editor, 'wordGoal', Math.max(0, Math.round(n)))
+      },
+      getPageSetup: () => (editor ? pageSetupOf(editor) : null),
+      setPageSetup(p) {
+        if (editor) setDocAttr(editor, 'page', p)
+      },
+
       getText: () => editor?.getText() ?? '',
       getFocus() {
         if (!editor) return { selection: '', paragraph: '' }
@@ -783,14 +975,54 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, retractedKey])
 
+  // Comments take the room beside the page first; the outline's column needs room for both.
+  const roomy = wrapWidth >= ROOMY && (!hasComments || wrapWidth >= ROOMY + 250)
+
+  // With room beside the page the outline is a column that stays (remembered); without room (the
+  // writing tools open in a small window) it's a pop-up over the page's edge that closes once used.
+  const toggleOutline = () => {
+    if (!roomy) return setOutlinePop((o) => !o)
+    setOutlineOpen((o) => {
+      try {
+        localStorage.setItem('gw.write.outline', o ? '0' : '1')
+      } catch {
+        /* remembered only for this session */
+      }
+      return !o
+    })
+  }
+  const showOutline = roomy ? outlineOpen : outlinePop
+
   return (
     <>
-      <FormatToolbar editor={editor} onCite={() => citeRef.current()} onAsk={onAsk} />
-      <div className="editor-wrap">
-        {banner}
-        <EditorContent editor={editor} />
-        <ChipCard editor={editor} retracted={retracted} />
+      <FormatToolbar
+        editor={editor}
+        onCite={() => citeRef.current()}
+        onAsk={onAsk}
+        onFind={() => findRef.current(false)}
+        outlineOpen={showOutline}
+        onToggleOutline={toggleOutline}
+        onShortcuts={onShortcuts}
+        onComment={(id) => setCommentFocus({ id, at: Date.now() })}
+        onError={onError}
+        linkAsk={linkAsk}
+      />
+      <div className="page-scroll">
+        <div className="editor-wrap" ref={wrapRef}>
+          {banner}
+          <div className="page-row">
+            {editor && showOutline && <Outline editor={editor} floating={!roomy} onClose={toggleOutline} />}
+            <div className="page-sheet">
+              <EditorContent editor={editor} />
+              {editor && <FootnotesArea editor={editor} focus={noteFocus} />}
+            </div>
+            {editor && <CommentsMargin editor={editor} focusId={commentFocus} />}
+          </div>
+          <ChipCard editor={editor} retracted={retracted} />
+        </div>
       </div>
+      {editor && find && <FindBar editor={editor} replace={find.replace} focusKey={find.key} onClose={() => setFindOpen(null)} />}
+      {editor && <PageBubbles editor={editor} />}
     </>
   )
 })

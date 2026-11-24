@@ -701,6 +701,8 @@ declare global {
       pickFolder: () => Promise<string | null>
       /** Asks where to save; the dialog offers the type of `defaultName`'s extension (.docx, .xlsx, .csv). */
       saveFile: (defaultName: string, data: ArrayBuffer) => Promise<string | null>
+      /** PDF (saved where the writer picks; resolves to the path, or null if cancelled) or the print dialog. */
+      printHtml?: (html: string, opts: { pdf: boolean; fileName?: string; pageNumbers?: boolean }) => Promise<string | null>
       trashFile?: (path: string) => Promise<boolean> // to the Recycle Bin / Trash; library files only
       showFile?: (path: string) => Promise<void>
       /** A library file in the app the computer opens it with; library files only. */

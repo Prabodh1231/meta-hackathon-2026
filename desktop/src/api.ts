@@ -69,7 +69,7 @@ function config() {
 }
 
 /** The backend API version this UI needs (API_VERSION in backend/app/main.py). */
-export const API_VERSION = 31
+export const API_VERSION = 32
 
 /** The backend answered "no such endpoint": it's an older backend than this UI, still running
  * from before an update (the desktop app starts it once, at launch). */
@@ -293,6 +293,9 @@ export const api = {
 
   exportDocx: async (content: unknown, style: DocxStyle, title: string) =>
     (await send('POST', '/export/docx', { content, style, title })).arrayBuffer(),
+  /** The draft as one HTML page (citations formatted, references, page setup as CSS), for PDF and printing. */
+  exportHtml: async (content: unknown, style: DocxStyle, title: string) =>
+    (await send('POST', '/export/html', { content, style, title })).text(),
   /** These papers as an annotated reading list in Word: references, Muse's summaries, highlights and notes. */
   exportReadingList: async (docIds: number[], style: DocxStyle, title: string, order: ReadingOrder) =>
     (await send('POST', '/export/reading-list', { doc_ids: docIds, style, title, order })).arrayBuffer(),

@@ -1,0 +1,1254 @@
+<!doctype html>
+<html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Write · vertical toolbar</title>
+<style>
+/* Mock only (Nov 24). The writing toolbar turned on its side, so the page starts at the top of the window,
+   plus the tools a full word processor has. The page is really editable (the browser's own editing stands in
+   for TipTap), with the text of the proposal draft. The layout and each optional tool sit behind a switch in
+   the dark top strip. Forest palette, same tokens as the app. */
+:root {
+  --bg: #f4f6f5; --panel: #fff; --text: #17201c; --muted: #56625c; --border: #dce2df; --line: rgb(23 32 28 / .09);
+  --accent: #1f5c46; --accent-text: #fff; --hover: rgba(31, 92, 70, .07); --pick: rgba(31, 92, 70, .11); --rail: #eaeeec;
+  --ok: #23703f; --ok-bg: #dff3e6; --warn: #8a5f00; --warn-bg: #fbefcf; --bad: #b5371f; --bad-bg: #fbe3df; --pending: #97a39d;
+  --doc-font: Charter, "Bitstream Charter", Georgia, serif;
+  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --shadow: 0 1px 2px rgb(23 32 28 / .06), 0 8px 24px -12px rgb(23 32 28 / .2);
+  --pop: 0 12px 36px -8px rgb(23 32 28 / .28), 0 0 0 1px var(--border);
+  --page-w: 760px;
+  /* Text and highlight colours are stored by name and drawn from these, so they stay readable in the dark */
+  --tc-red: #b42318; --tc-orange: #b54708; --tc-green: #1f7a4d; --tc-blue: #175cd3; --tc-purple: #6941c6; --tc-grey: #667085;
+  --hl-yellow: #fff0a0; --hl-green: #cdf3db; --hl-blue: #d4e6ff; --hl-pink: #ffd6e5; --hl-orange: #ffdfbd;
+  --find: rgba(255, 196, 0, .35); --find-cur: #ffb300;
+}
+[data-theme="dark"] {
+  --bg: #0d1210; --panel: #141b18; --text: #e5ebe8; --muted: #8e9d96; --border: #25302b; --line: rgb(229 235 232 / .08);
+  --accent: #62c29a; --accent-text: #062418; --hover: rgba(255, 255, 255, .07); --pick: rgba(98, 194, 154, .14); --rail: #0f1513;
+  --ok: #56d08a; --ok-bg: #12261a; --warn: #e3b341; --warn-bg: #2b2111; --bad: #ff8a78; --bad-bg: #2d1614; --pending: #8e9d96;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -12px rgb(0 0 0 / .6);
+  --pop: 0 12px 36px -8px rgb(0 0 0 / .7), 0 0 0 1px var(--border);
+  --tc-red: #ff8a78; --tc-orange: #f5a35c; --tc-green: #62c29a; --tc-blue: #84b4ff; --tc-purple: #c4a1ee; --tc-grey: #98a2b3;
+  --hl-yellow: rgba(240, 200, 60, .32); --hl-green: rgba(98, 194, 154, .28); --hl-blue: rgba(110, 160, 255, .3); --hl-pink: rgba(255, 120, 170, .28); --hl-orange: rgba(255, 160, 80, .3);
+  --find: rgba(255, 196, 0, .28); --find-cur: rgba(255, 179, 0, .75);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--bg); color: var(--text); font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased; }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; padding: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+kbd { font: 600 10.5px/1 Consolas, monospace; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 2px 5px; background: var(--bg); white-space: nowrap; }
+
+/* ---- the switches ---- */
+.concept { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 8px 14px; background: #0f1a15; color: #d3ddd8; font-size: 12.5px; }
+.concept b { color: #fff; } .concept .sp { flex: 1; }
+.concept .lbl { color: #8fa39a; }
+.concept .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.concept .chips button, .concept .seg button { padding: 3px 9px; border: 1px solid #34483f; border-radius: 7px; color: #c9d6cf; }
+.concept .chips button[aria-pressed="true"] { background: #62c29a; border-color: #62c29a; color: #062418; font-weight: 600; }
+.concept .seg { display: flex; } .concept .seg button { border-radius: 0; } .concept .seg button:first-child { border-radius: 7px 0 0 7px; } .concept .seg button:last-child { border-radius: 0 7px 7px 0; } .concept .seg button + button { border-left: 0; }
+.concept .seg button[aria-pressed="true"] { background: #e5ebe8; color: #0f1a15; font-weight: 600; }
+.concept .note { flex-basis: 100%; color: #8fa39a; font-size: 12px; }
+.concept .note i { color: #d3ddd8; font-style: normal; }
+
+/* ---- the app around the page ---- */
+.app { display: grid; grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: 52px minmax(0, 1fr) 32px; min-height: 0; }
+.bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--panel); min-width: 0; }
+.logo { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: #1f5c46; color: #fff; font: 700 15px var(--doc-font); flex: none; }
+.titlebox { min-width: 0; max-width: 360px; }
+.titlebox .t { font: 600 14px/1.25 var(--doc-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.titlebox .s { color: var(--muted); font-size: 12px; }
+.titlebox .s b { color: var(--accent); font-weight: 600; }
+.pill { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; white-space: nowrap; }
+.search { flex: 1; max-width: 440px; margin-left: auto; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted); background: var(--bg); }
+.search .sp { flex: 1; }
+.barbtn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; white-space: nowrap; }
+.barbtn:hover { background: var(--hover); }
+.barbtn.sq { width: 32px; padding: 0; justify-content: center; }
+.exportwrap { position: relative; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 250px; padding: 6px; background: var(--panel); border-radius: 12px; box-shadow: var(--pop); }
+.menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border-radius: 8px; text-align: left; }
+.menu button:hover { background: var(--hover); }
+.menu button small { display: block; color: var(--muted); font-size: 11.5px; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 4px; }
+
+.side { background: var(--bg); border-right: 1px solid var(--border); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+.side button { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 9px; font-size: 14px; color: var(--text); text-align: left; }
+.side button.on { background: #e4e9e6; }
+[data-theme="dark"] .side button.on { background: #1b2420; }
+.side .foot { margin-top: auto; color: var(--muted); font-size: 13px; }
+
+.work { display: grid; grid-template-columns: minmax(0, 1fr) 380px; min-height: 0; min-width: 0; }
+.app[data-panel="closed"] .work { grid-template-columns: minmax(0, 1fr) 52px; }
+
+/* ---- the writing area: toolbar + scrolling page ---- */
+.write-area { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 0; min-width: 0; }
+.writing { overflow-y: auto; min-height: 0; scroll-padding-top: 80px; }
+.page-col { padding: 14px 24px 120px 18px; }
+.app[data-bar="old"] .page-col { padding-left: 24px; }
+.page-row { position: relative; display: flex; justify-content: center; gap: 18px; }
+#page {
+  flex: 0 1 var(--page-w); min-width: 0; min-height: 900px; padding: 64px 72px 90px; outline: none;
+  background: var(--panel); border-radius: 4px; box-shadow: 0 0 0 1px var(--border), var(--shadow);
+  font: 18px/1.75 var(--doc-font); caret-color: var(--accent);
+}
+@media (max-width: 1250px) { #page { padding: 44px 44px 80px; } }
+
+/* The vertical toolbar */
+.vbar { display: flex; flex-direction: column; min-height: 0; width: 48px; background: var(--panel); z-index: 6; }
+.app[data-bar="float"] .vbar { align-self: start; max-height: calc(100% - 24px); margin: 14px 0 0 12px; border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+.app[data-bar="strip"] .vbar { align-self: stretch; border-right: 1px solid var(--border); }
+.app[data-bar="old"] .vbar { display: none; }
+.app[data-bar="strip"] .page-col { padding-left: 24px; }
+.vscroll { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0; overflow-y: auto; scrollbar-width: none; min-height: 0; }
+.vscroll::-webkit-scrollbar { display: none; }
+.vbar.more .vscroll { mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+.vfoot { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 7px; border-top: 1px solid var(--line); }
+.tb button { position: relative; display: grid; place-items: center; width: 36px; height: 30px; border-radius: 7px; color: var(--text); }
+.tb button:hover { background: var(--hover); }
+.tb button.on { background: var(--pick); color: var(--accent); }
+.tb button.open { background: var(--hover); box-shadow: inset 0 0 0 1px var(--border); }
+.tb button:disabled { opacity: .35; cursor: default; }
+.tb .txt { font: 600 14px/1 var(--ui); }
+.tb .txt.serif { font: 700 15px/1 var(--doc-font); }
+.vbar .sep { width: 22px; height: 1px; background: var(--border); margin: 4px 0; flex: none; }
+/* a small corner on buttons that open more choices, as in Office and Photoshop */
+.tb .corner::after { content: ""; position: absolute; right: 3px; bottom: 3px; border: 3px solid transparent; border-right-color: currentColor; border-bottom-color: currentColor; opacity: .45; }
+.tb .bar-under { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 3px; border-radius: 2px; }
+.tb .ctx { color: var(--accent); }
+.tb .ctx::before { content: ""; position: absolute; left: -5px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--accent); }
+.vfoot .app-act { height: 44px; grid-template-rows: auto auto; gap: 1px; color: var(--accent); }
+.vfoot .app-act small { font: 600 10px/1 var(--ui); }
+.vfoot .app-act:hover { background: var(--pick); }
+
+/* Today's horizontal bar, for comparison */
+.oldbar { display: none; position: sticky; top: 12px; z-index: 5; width: fit-content; max-width: calc(100% - 32px); margin: 12px auto 0; padding: 5px 8px;
+  flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+.app[data-bar="old"] .oldbar { display: flex; }
+.oldbar .sel { width: 120px; display: flex; justify-content: space-between; padding: 0 8px; font-size: 13px; }
+.oldbar .sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
+.oldbar .lab { width: auto; padding: 0 8px; gap: 4px; grid-auto-flow: column; color: var(--accent); font-weight: 600; }
+
+/* Fly-outs open to the right of their button */
+.fly { position: fixed; z-index: 70; min-width: 220px; max-width: 420px; max-height: calc(100vh - 20px); overflow: auto; padding: 8px; background: var(--panel); border-radius: 12px; box-shadow: var(--pop); }
+.fly h4 { margin: 6px 8px 6px; font: 700 10.5px/1.2 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.fly h4:first-child { margin-top: 2px; }
+.fly .opt { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 5px 8px; border-radius: 8px; text-align: left; }
+.fly .opt:hover { background: var(--hover); }
+.fly .opt .ic { color: var(--muted); }
+.fly .opt > span { flex: 1; }
+.fly .opt.cur { color: var(--accent); }
+.fly .opt.cur::after { content: "✓"; font-weight: 700; }
+.fly .opt kbd { margin-left: auto; }
+.fly .opt.cur kbd { display: none; }
+.fly hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
+.fly .row { display: flex; gap: 4px; padding: 0 4px; flex-wrap: wrap; }
+.fly .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 0 4px; }
+.fly .seg button { padding: 5px 10px; min-width: 40px; }
+.fly .seg button + button { border-left: 1px solid var(--border); }
+.fly .seg button.cur { background: var(--pick); color: var(--accent); font-weight: 600; }
+.fly .seg button:hover:not(.cur) { background: var(--hover); }
+.fly .icons button { width: 36px; height: 32px; display: grid; place-items: center; border-radius: 8px; }
+.fly .icons button:hover { background: var(--hover); }
+.fly .icons button.cur { background: var(--pick); color: var(--accent); }
+.fly .cols { display: grid; grid-template-columns: 1fr 120px; gap: 8px; }
+.fly .sizes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 0 4px; }
+.fly .sizes button { height: 28px; border-radius: 6px; border: 1px solid var(--border); font-size: 12px; }
+.fly .sizes button.cur { border-color: var(--accent); color: var(--accent); background: var(--pick); font-weight: 600; }
+.fly .sizes button.wide { grid-column: span 3; }
+.swatches { display: flex; gap: 6px; padding: 2px 8px 6px; flex-wrap: wrap; }
+.swatches button { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 1px var(--border); font: 700 12px var(--doc-font); }
+.swatches button:hover { transform: scale(1.12); }
+.swatches .none { color: var(--muted); font: 400 15px/1 var(--ui); }
+.fly-note { margin: 4px 8px 2px; color: var(--muted); font-size: 11.5px; line-height: 1.4; max-width: 300px; }
+.fly .form { display: grid; gap: 8px; padding: 4px 6px; width: 300px; }
+.fly .form label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.fly .form input, .modal input, .modal select, .find input, .wc input { padding: 6px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); outline: none; color: var(--text); }
+.fly .form input:focus, .find input:focus { border-color: var(--accent); }
+.btns { display: flex; justify-content: flex-end; gap: 6px; }
+.btn { height: 30px; padding: 0 12px; border-radius: 8px; font-weight: 600; border: 1px solid var(--border); }
+.btn:hover { background: var(--hover); }
+.btn.go { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn.go:hover { filter: brightness(1.08); background: var(--accent); }
+.tgrid { display: grid; grid-template-columns: repeat(8, 18px); gap: 3px; padding: 4px 8px; }
+.tgrid i { width: 18px; height: 18px; border: 1px solid var(--border); border-radius: 3px; }
+.tgrid i.on { background: var(--pick); border-color: var(--accent); }
+.tgrid-l { margin: 2px 8px 4px; color: var(--muted); font-size: 12px; }
+.symgrid { display: grid; grid-template-columns: repeat(8, 32px); gap: 3px; padding: 2px 6px 6px; }
+.symgrid button { height: 32px; border-radius: 6px; font: 17px var(--doc-font); }
+.symgrid button:hover { background: var(--pick); color: var(--accent); }
+
+/* Tooltips name the button and its shortcut */
+.tip { position: fixed; z-index: 80; pointer-events: none; display: flex; align-items: center; gap: 8px; padding: 5px 9px; border-radius: 8px; background: #17201c; color: #fff; font-size: 12.5px; white-space: nowrap; }
+.tip kbd { color: #d3ddd8; border-color: #3c4a44; background: #222c28; }
+.tip small { color: #a9b6b0; }
+[data-theme="dark"] .tip { background: #e5ebe8; color: #0f1a15; }
+[data-theme="dark"] .tip kbd { color: #0f1a15; background: #fff; border-color: #c2ccc7; }
+[data-theme="dark"] .tip small { color: #56625c; }
+
+/* ---- the page's content ---- */
+#page h1 { font: 700 30px/1.25 var(--doc-font); margin: 0 0 18px; }
+#page h2 { font: 700 23px/1.3 var(--doc-font); margin: 1.4em 0 .4em; }
+#page h3 { font: 700 19px/1.3 var(--doc-font); margin: 1.2em 0 .3em; }
+#page p { margin: 0 0 .2em; }
+#page.spaced p { margin-bottom: .9em; }
+#page blockquote { margin: 0 0 1em; padding: 0 0 0 18px; border-left: 3px solid var(--border); color: var(--muted); }
+#page ul, #page ol { padding-left: 1.4em; margin: .3em 0 .8em; }
+#page ul.tasks { list-style: none; padding-left: .2em; }
+#page ul.tasks li { position: relative; padding-left: 1.7em; }
+#page ul.tasks li::before { content: ""; position: absolute; left: 0; top: .42em; width: .9em; height: .9em; border: 1.5px solid var(--muted); border-radius: 4px; cursor: pointer; }
+#page ul.tasks li[data-done]::before { background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12l5 5 9-10' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E") center/80% no-repeat; border-color: var(--accent); }
+#page ul.tasks li[data-done] { color: var(--muted); text-decoration: line-through; }
+#page a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+#page img { max-width: 100%; display: block; margin: .6em auto; border-radius: 4px; cursor: default; }
+#page img.sel { outline: 2px solid var(--accent); outline-offset: 3px; }
+#page img.w-s { width: 35%; } #page img.w-m { width: 60%; } #page img.w-l { width: 100%; }
+#page img.al-left { margin-left: 0; } #page img.al-right { margin-right: 0; }
+#page hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
+#page .pbreak { position: relative; margin: 1.6em -72px; height: 0; border-top: 2px dashed var(--border); }
+#page .pbreak::after { content: "Page break"; position: absolute; left: 50%; top: -10px; transform: translateX(-50%); padding: 0 8px; background: var(--panel); color: var(--muted); font: 600 11px/18px var(--ui); letter-spacing: .04em; text-transform: uppercase; }
+#page table { border-collapse: collapse; width: 100%; font-size: .72em; line-height: 1.45; margin: 1em 0; }
+#page th, #page td { border: 1px solid color-mix(in srgb, var(--muted) 40%, transparent); padding: 6px 8px; vertical-align: top; text-align: left; }
+#page th { background: var(--hover); font-family: var(--ui); font-weight: 600; }
+#page td.cur, #page th.cur { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+#page sup, #page sub { font-size: .7em; }
+#page code { font: .85em Consolas, monospace; background: var(--hover); padding: 1px 4px; border-radius: 4px; }
+.tc-red { color: var(--tc-red); } .tc-orange { color: var(--tc-orange); } .tc-green { color: var(--tc-green); } .tc-blue { color: var(--tc-blue); } .tc-purple { color: var(--tc-purple); } .tc-grey { color: var(--tc-grey); }
+mark { color: inherit; border-radius: 2px; padding: 0 1px; }
+.hl-yellow { background: var(--hl-yellow); } .hl-green { background: var(--hl-green); } .hl-blue { background: var(--hl-blue); } .hl-pink { background: var(--hl-pink); } .hl-orange { background: var(--hl-orange); }
+.cite { display: inline-flex; align-items: center; gap: 5px; font: 500 12px/1 var(--ui); padding: 3px 8px 3px 6px; border-radius: 99px; vertical-align: 2px; user-select: none; border: 1px solid var(--border); cursor: pointer; white-space: nowrap; }
+.cite::before { content: "✓"; font-weight: 700; color: var(--ok); }
+.cite.weak { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.cite.weak::before { content: "◐"; color: var(--warn); }
+.cite.weak b { font-weight: 600; color: var(--warn); }
+.cite.mark { color: var(--muted); border-style: dashed; }
+.cite.mark::before { content: "…"; color: var(--pending); }
+::highlight(find) { background-color: var(--find); }
+::highlight(find-cur) { background-color: var(--find-cur); color: #17201c; }
+
+/* Find and replace */
+.find { position: absolute; top: 12px; right: 22px; z-index: 20; width: 410px; display: grid; gap: 6px; padding: 8px; background: var(--panel); border-radius: 12px; box-shadow: var(--pop); }
+.find .r { display: flex; align-items: center; gap: 4px; }
+.find input { flex: 1 1 0; width: 0; min-width: 0; height: 30px; }
+.find .count { min-width: 62px; text-align: right; color: var(--muted); font-size: 12px; padding: 0 4px; }
+.find .count.none { color: var(--bad); }
+.find .ib { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); font: 600 12px var(--ui); }
+.find .ib:hover { background: var(--hover); color: var(--text); }
+.find .ib.cur { background: var(--pick); color: var(--accent); }
+.find .tog { transform: rotate(0); transition: transform .15s; }
+.find.rep .tog { transform: rotate(90deg); }
+.find .r2 { padding-left: 32px; }
+.find .btn { height: 28px; padding: 0 9px; font-size: 12px; }
+
+/* Link and image bubbles on the page */
+.bubble { position: fixed; z-index: 65; display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--panel); border-radius: 10px; box-shadow: var(--pop); font-size: 12.5px; }
+.bubble .url { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); padding: 0 8px; }
+.bubble button { height: 28px; padding: 0 9px; border-radius: 7px; }
+.bubble button:hover { background: var(--hover); }
+.bubble button.cur { background: var(--pick); color: var(--accent); font-weight: 600; }
+.bubble i { width: 1px; align-self: stretch; background: var(--line); margin: 3px 2px; }
+
+/* Outline beside the page */
+.page-col { container-type: inline-size; }
+#page { min-width: min(520px, 100%); }
+.outline { position: sticky; top: 0; align-self: flex-start; width: 190px; flex: none; z-index: 8; }
+.ol-card { max-height: calc(100vh - 140px); overflow-y: auto; padding: 10px 4px 0 0; scrollbar-width: thin; }
+/* No room beside the page: the outline floats over its left edge, and comments shrink to markers in the margin */
+@container (max-width: 820px) {
+  .outline { width: 0; margin-right: -18px; }
+  .ol-card { position: absolute; left: -6px; top: 6px; width: 220px; padding: 10px 6px 10px 4px; background: var(--panel); border-radius: 12px; box-shadow: var(--pop); }
+}
+@container (max-width: 1060px) {
+  .page-row:has(.margin:not([hidden])) .outline { width: 0; margin-right: -18px; }
+  .page-row:has(.margin:not([hidden])) .ol-card { position: absolute; left: -6px; top: 6px; width: 220px; padding: 10px 6px 10px 4px; background: var(--panel); border-radius: 12px; box-shadow: var(--pop); }
+}
+@container (max-width: 900px) {
+  .page-row .margin { width: 28px; }
+  .ccard:not(.cur) { width: 28px; height: 28px; padding: 0; border-radius: 8px; border-left-width: 1px; overflow: hidden; cursor: pointer; }
+  .ccard:not(.cur) > * { display: none; }
+  .ccard:not(.cur)::before { content: "💬"; display: grid; place-items: center; height: 100%; font-size: 13px; filter: grayscale(1); }
+  .ccard.cur { left: auto; right: 0; width: 240px; z-index: 9; }
+}
+.outline h5 { margin: 0 0 6px 10px; font: 700 10.5px/1.2 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.outline button { display: block; width: 100%; text-align: left; padding: 4px 8px 4px 10px; border-left: 2px solid transparent; color: var(--muted); font-size: 12.5px; line-height: 1.35; border-radius: 0 6px 6px 0; }
+.outline button:hover { background: var(--hover); color: var(--text); }
+.outline button.cur { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+.outline .lv1 { font-weight: 600; color: var(--text); } .outline .lv3 { padding-left: 24px; }
+
+/* Table of contents block */
+#page .toc { margin: 0 0 1.4em; padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; font-family: var(--ui); font-size: 14px; user-select: none; }
+#page .toc .toc-h { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 4px; }
+#page .toc .toc-h small { color: var(--muted); font-weight: 400; }
+#page .toc a { display: flex; gap: 8px; color: var(--text); text-decoration: none; padding: 2px 0; cursor: pointer; }
+#page .toc a::after { content: ""; flex: 1; order: 1; border-bottom: 1px dotted var(--border); margin-bottom: 6px; }
+#page .toc a span { order: 2; color: var(--muted); }
+#page .toc a.lv3 { padding-left: 18px; color: var(--muted); }
+
+/* Footnotes */
+#page sup.fn { color: var(--accent); font: 700 .65em var(--ui); padding: 0 1px; cursor: pointer; user-select: none; }
+#page .notes { margin-top: 2.4em; padding-top: .6em; border-top: 1px solid var(--border); font-size: .8em; line-height: 1.55; }
+#page .notes ol { margin: 0; }
+#page .notes li.flash { background: var(--pick); border-radius: 4px; }
+
+/* Comments to self, in a margin beside the page */
+#page .cmt { background: color-mix(in srgb, #e0a030 28%, transparent); border-bottom: 2px solid #c98a3e; cursor: pointer; }
+#page .cmt.cur { background: color-mix(in srgb, #e0a030 50%, transparent); }
+.margin { position: relative; width: 220px; flex: none; }
+.ccard { position: absolute; left: 0; right: 0; padding: 8px 10px; background: var(--panel); border: 1px solid var(--border); border-left: 3px solid #c98a3e; border-radius: 8px; box-shadow: var(--shadow); font-size: 12.5px; transition: top .15s; }
+.ccard.cur { border-color: #c98a3e; }
+.ccard .who { display: flex; justify-content: space-between; color: var(--muted); font-size: 11.5px; margin-bottom: 4px; }
+.ccard textarea { width: 100%; min-height: 44px; resize: vertical; border: 0; outline: none; background: none; padding: 0; font-size: 12.5px; line-height: 1.45; }
+.ccard .btns button { height: 24px; padding: 0 8px; font-size: 11.5px; }
+
+/* Format painter is on */
+.app.painting #page { cursor: cell; }
+
+/* ---- the side panel (unchanged, for scale) ---- */
+.panel { background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.panel header { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 0 16px; }
+.panel h3 { margin: 0; font: 700 11px/1 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.ptabs { display: flex; gap: 2px; margin: 8px 12px 0; border-bottom: 1px solid var(--line); }
+.ptabs button { display: flex; align-items: center; gap: 6px; padding: 9px 10px; border-bottom: 2px solid transparent; color: var(--muted); }
+.ptabs button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.ptabs .badge { background: var(--bad); color: #fff; border-radius: 99px; font: 700 10.5px/1.5 var(--ui); padding: 0 6px; }
+.pbody { padding: 10px 16px; overflow: auto; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.pbody h4 { margin: 14px 0 6px; font: 700 11px/1 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.pseg { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; background: var(--bg); border-radius: 10px; }
+.pseg span { text-align: center; padding: 5px; border-radius: 8px; color: var(--text); } .pseg span:first-child { background: var(--panel); box-shadow: var(--shadow); }
+.pbody textarea { width: 100%; min-height: 84px; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); resize: none; }
+.pbody textarea.ping { border-color: var(--accent); box-shadow: 0 0 0 3px var(--pick); }
+.chipsug { display: inline-block; margin: 6px 6px 0 0; padding: 4px 10px; border: 1px solid var(--border); border-radius: 99px; color: var(--text); }
+.panel.closed { align-items: center; padding-top: 8px; gap: 6px; }
+.panel.closed button { width: 38px; height: 36px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
+
+/* ---- status bar ---- */
+.dock { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 0 14px; border-top: 1px solid var(--border); background: var(--panel); font-size: 12px; color: var(--muted); }
+.dock b { color: var(--text); }
+.dock .ok { color: var(--ok); font-weight: 600; } .dock .bad { color: var(--bad); font-weight: 600; }
+.dock .sp { flex: 1; }
+.dock .mock { padding: 2px 10px; border-radius: 99px; background: var(--warn-bg); color: var(--text); }
+.wcbtn { display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; margin-left: -8px; border-radius: 6px; }
+.wcbtn:hover { background: var(--hover); }
+.goalbar { width: 54px; height: 5px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.goalbar i { display: block; height: 100%; background: var(--accent); }
+.wc { position: fixed; z-index: 70; width: 300px; padding: 12px 14px; background: var(--panel); border-radius: 12px; box-shadow: var(--pop); font-size: 12.5px; }
+.wc h4 { margin: 0 0 8px; font: 700 10.5px/1.2 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.wc table { width: 100%; border-collapse: collapse; }
+.wc td { padding: 3px 0; } .wc td + td, .wc th + th { text-align: right; font-variant-numeric: tabular-nums; }
+.wc th { text-align: left; color: var(--muted); font-weight: 400; font-size: 11.5px; padding-bottom: 4px; }
+.wc .goal { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.wc .goal input { width: 84px; }
+
+/* ---- dialogs and toasts ---- */
+.scrim { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgb(10 16 13 / .45); }
+.modal { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 60px); overflow: auto; padding: 18px 22px 18px; background: var(--panel); border-radius: 14px; box-shadow: var(--pop); }
+.modal h2 { margin: 0 0 4px; font: 600 18px var(--ui); }
+.modal p.m { margin: 0 0 14px; color: var(--muted); }
+.modal .grid { display: grid; grid-template-columns: 140px 1fr; gap: 12px 14px; align-items: center; }
+.modal .grid > span { color: var(--muted); }
+.modal .sheet { columns: 2; column-gap: 26px; }
+.modal .sheet section { break-inside: avoid; margin-bottom: 14px; }
+.modal .sheet h5 { margin: 0 0 4px; font: 700 10.5px/1.2 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.modal .sheet div { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.paper { display: flex; gap: 12px; }
+.paper button { display: grid; justify-items: center; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; min-width: 84px; font-size: 12px; }
+.paper button.cur { border-color: var(--accent); background: var(--pick); color: var(--accent); font-weight: 600; }
+.paper i { display: block; border: 1.5px solid currentColor; border-radius: 2px; }
+.toast { position: fixed; right: 18px; bottom: 44px; z-index: 95; max-width: 360px; padding: 9px 14px; border-radius: 10px; background: #17201c; color: #fff; box-shadow: var(--pop); font-size: 12.5px; }
+[data-theme="dark"] .toast { background: #e5ebe8; color: #0f1a15; }
+</style>
+</head>
+<body>
+
+<div class="concept">
+  <b>Write · toolbar on its side</b>
+  <span class="lbl">Toolbar</span>
+  <div class="seg" data-sw="bar"><button data-v="float" aria-pressed="true">Floating</button><button data-v="strip" aria-pressed="false">Full-height strip</button><button data-v="old" aria-pressed="false">Today's bar (compare)</button></div>
+  <span class="lbl">Side panel</span>
+  <div class="seg" data-sw="panel"><button data-v="open" aria-pressed="true">Open</button><button data-v="closed" aria-pressed="false">Closed</button></div>
+  <div class="seg" data-sw="theme"><button data-v="light" aria-pressed="true">Light</button><button data-v="dark" aria-pressed="false">Dark</button></div>
+  <span class="sp"></span>
+  <span class="lbl">Extras</span>
+  <div class="chips" id="extras"></div>
+  <div class="note">Core (always in): the vertical bar, style, font, size, <i>colour + highlight</i>, B I U, strike, super/subscript, change case, clear formatting, <i>alignment</i>, indent, line spacing, bullets / numbers / <i>checklist</i>, <i>link, image, table (+ row/column tools), horizontal line, page break</i>, <i>find &amp; replace</i>. Hover any button for its name and shortcut; a small corner means it opens more. The page is editable.</div>
+</div>
+
+<div class="app" id="app" data-bar="float" data-panel="open">
+  <header class="bar">
+    <div class="logo">G</div>
+    <div class="titlebox"><div class="t">Macro Financial Conditions and National Cryptocurrency Adoption</div><div class="s">Saved · <b>v3 ▾</b> · 2% changed since v3</div></div>
+    <span class="pill"><svg class="ic" viewBox="0 0 24 24"><path d="M8 3h8l4 4v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM16 3v4h4M10 12h6M10 16h4M3 7v12a2 2 0 0 0 2 2"/></svg>Drafts · 7 ▾</span>
+    <div class="search"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"/></svg>Search sources, drafts and actions<span class="sp"></span><kbd>Ctrl K</kbd></div>
+    <div class="exportwrap">
+      <button class="barbtn" id="exportBtn"><svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>Export<span id="exportCaret" hidden> ▾</span></button>
+      <div class="menu" id="exportMenu" hidden></div>
+    </div>
+    <button class="barbtn sq" title="Focus mode"><svg class="ic" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  </header>
+
+  <nav class="side">
+    <button><svg class="ic" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Home</button>
+    <button class="on"><svg class="ic" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497zM15 5l4 4"/></svg>Write</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Library</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><path d="M15 5a3 3 0 1 0 6 0a3 3 0 1 0-6 0M3 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0M15 19a3 3 0 1 0 6 0a3 3 0 1 0-6 0M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg>Network</button>
+    <button><svg class="ic" viewBox="0 0 24 24"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM12 3v18M3 9h18M3 15h18"/></svg>Matrix</button>
+    <button class="foot"><svg class="ic" viewBox="0 0 24 24"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 3v18M16 15l-3-3 3-3"/></svg>Collapse</button>
+  </nav>
+
+  <div class="work">
+    <div class="write-area" id="writeArea">
+      <!-- The vertical toolbar -->
+      <nav class="vbar tb" id="vbar" role="toolbar" aria-orientation="vertical" aria-label="Writing toolbar">
+        <div class="vscroll" id="vscroll">
+          <button data-act="undo" data-tip="Undo|Ctrl+Z" aria-label="Undo"></button>
+          <button data-act="redo" data-tip="Redo|Ctrl+Y" aria-label="Redo"></button>
+          <i class="sep"></i>
+          <button data-fly="style" class="txt serif corner" id="styleBtn" data-tip="Paragraph style|Normal, headings, quote" aria-label="Paragraph style">¶</button>
+          <button data-fly="font" class="txt corner" data-tip="Font, size and colour|" aria-label="Font, size and colour">Aa</button>
+          <i class="sep"></i>
+          <button data-act="bold" data-tip="Bold|Ctrl+B" aria-label="Bold"></button>
+          <button data-act="italic" data-tip="Italic|Ctrl+I" aria-label="Italic"></button>
+          <button data-act="underline" data-tip="Underline|Ctrl+U" aria-label="Underline"></button>
+          <button data-act="highlight" data-tip="Highlight|Ctrl+Shift+H|colours under Aa" aria-label="Highlight"><i class="bar-under" id="hlBar"></i></button>
+          <button data-fly="more" class="corner" data-tip="More text formatting|Strikethrough, super/subscript, case, clear" aria-label="More text formatting"></button>
+          <i class="sep"></i>
+          <button data-fly="align" class="corner" id="alignBtn" data-tip="Alignment and spacing|Ctrl+Shift+L / E / R / J" aria-label="Alignment and spacing"></button>
+          <button data-act="bullets" data-tip="Bulleted list|Ctrl+Shift+8" aria-label="Bulleted list"></button>
+          <button data-act="numbers" data-tip="Numbered list|Ctrl+Shift+7" aria-label="Numbered list"></button>
+          <button data-act="checklist" data-tip="Checklist|Ctrl+Shift+9" aria-label="Checklist"></button>
+          <i class="sep"></i>
+          <button data-fly="insert" class="corner" data-tip="Insert|Link, image, table, line, page break" aria-label="Insert"></button>
+          <button data-fly="table" class="corner ctx" id="tableBtn" data-tip="Table|You're in a table: rows, columns, header" aria-label="Table" hidden></button>
+          <button data-act="comment" data-extra="comments" data-tip="Comment to self|Ctrl+Alt+M" aria-label="Comment"></button>
+          <button data-act="painter" data-extra="painter" data-tip="Format painter|Copy this formatting onto other text" aria-label="Format painter"></button>
+          <i class="sep"></i>
+          <button data-act="find" data-tip="Find and replace|Ctrl+F · Ctrl+H" aria-label="Find and replace"></button>
+          <button data-act="outline" data-extra="outline" data-tip="Outline|Headings beside the page" aria-label="Outline"></button>
+          <button data-act="shortcuts" data-extra="shortcuts" class="txt" data-tip="Keyboard shortcuts|Ctrl+/" aria-label="Keyboard shortcuts">?</button>
+        </div>
+        <div class="vfoot">
+          <button class="app-act" data-act="cite" data-tip="Cite|Ctrl+Shift+C|mark the sentence, find a source" aria-label="Cite"><small>Cite</small></button>
+          <button class="app-act" data-act="ask" data-tip="Ask Muse|Ctrl+J|about the selection" aria-label="Ask Muse"><small>Ask</small></button>
+        </div>
+      </nav>
+
+      <main class="writing" id="writing">
+        <!-- Today's toolbar, for comparison (switch: Today's bar) -->
+        <div class="oldbar tb">
+          <button class="sel" data-fly="style">Normal text <span>▾</span></button><i class="sep"></i>
+          <button data-act="bold"><b>B</b></button><button data-act="italic"><i>I</i></button><button data-act="underline"><u>U</u></button><i class="sep"></i>
+          <button data-act="bullets"></button><button data-act="numbers"></button><button data-act="quote"></button><i class="sep"></i>
+          <button data-act="undo"></button><button data-act="redo"></button><i class="sep"></i>
+          <button data-fly="font" class="txt">Aa</button>
+          <button class="lab" data-act="cite"><span>Cite</span></button>
+          <button class="lab" data-act="ask"><span>Ask Muse</span></button>
+        </div>
+        <div class="page-col">
+          <div class="page-row" id="pageRow">
+            <aside class="outline" id="outline" hidden><div class="ol-card"><h5>Outline</h5><div id="outlineList"></div></div></aside>
+            <article id="page" contenteditable="true" spellcheck="false">
+<h1>Macro Financial Conditions and National Cryptocurrency Adoption</h1>
+<p>Background, the gap and how the reviewed studies measured each variable cite your review matrices and are checked against them. Everything from the research questions on is proposed for this study, so it cites no one.</p>
+<h2>Background</h2>
+<p>Bhimani et al. 2022 regress cryptocurrency adoption on ten development indicators across 137 countries and find only education, Gini index and network readiness index were statistically significant. <span class="cite" contenteditable="false">Bhimani et al. 2022</span> Parino et al. 2018 correlate Bitcoin adoption with GDP per capita, freedom of trade and internet penetration for 72 countries in 2012–2014 using IP addresses and client downloads as proxies. <span class="cite" contenteditable="false">Parino et al. 2018</span></p>
+<p>Saiedi et al. 2021 use random-effects Tobit regression on Bitnode and CoinMap data for 137 countries from 2014 to 2018 and find rule of law is more significant in explaining bitnode intensity at 0.1% with greater coefficient magnitude. <span class="cite" contenteditable="false">Saiedi et al. 2021</span></p>
+<h2>The gap</h2>
+<p>Cross-country indices dominate but geographic coverage is uneven. Bhimani et al. 2022 analyse 137 countries after approximating missing numbers by averaging neighbouring countries. <span class="cite" contenteditable="false">Bhimani et al. 2022</span> Alonso et al. 2021 analyse 133 countries after excluding 11 for missing human capital index data. <span class="cite" contenteditable="false">Alonso et al. 2021</span></p>
+<p>Findings on macro drivers contradict each other. Bhimani et al. 2022 find only education, Gini and network readiness significant when ten indicators are tested together. Saiedi et al. 2021 find rule of law more significant at 0.1% for bitnode intensity. <span class="cite weak" contenteditable="false">Saiedi et al. 2021 <b>partly supported</b></span></p>
+<h2>Research questions</h2>
+<ol><li>Do macro-national development and financial conditions explain variation in national cryptocurrency adoption across countries?</li><li>Which development and financial indicators remain associated with adoption when competing explanations are tested together?</li></ol>
+<h2>Variables</h2>
+<table><tbody><tr><th>Variable</th><th>Role</th><th>In this study</th></tr><tr><td>Actual cryptocurrency adoption and infrastructure use</td><td>Dependent</td><td>Chainalysis adoption index, CoinATMRadar counts and a Bitnodes snapshot, combined</td></tr><tr><td>Education</td><td>Independent</td><td>UNDP HDR mean years of schooling</td></tr><tr><td>Network readiness</td><td>Independent</td><td>Portulans Network Readiness Index 2024</td></tr></tbody></table>
+<h2>Design</h2>
+<p>Cross-sectional secondary-data design. No primary data collection, no panel data, no proxy creation. Single cross-section for most recent year with complete public data.</p>
+<p>Sample frame: all sovereign countries with complete data for dependent composite and the core independent set in that year. Target N = 120 to 140 after listwise deletion. Exclusion rule stated explicitly. No imputation by neighbor averaging, no interpolation, no English-only filtering.</p>
+<p>Estimation: OLS with heteroskedasticity-robust standard errors as baseline. Check VIF &lt;5 for multicollinearity. Alternative specification with standardized beta coefficients to compare indicator strength. Robustness: replace composite dependent with Chainalysis score alone.</p>
+<h3>Data</h3>
+<p>Sources: Chainalysis Global Crypto Adoption Index public report table, CoinATMRadar country counts, Bitnodes.io country snapshot, UNDP HDR, World Bank WDI 2024 vintage, Worldwide Governance Indicators 2024 update, IMF Financial Development Database, Portulans Network Readiness Index 2023 or 2024 report, Heritage Economic Freedom 2024, ITU statistics.</p>
+<p>Data preparation: merge by ISO3 code. Keep only countries with non-missing dependent composite and all Block 1 and 2 indicators. Countries missing any variable are dropped for that model and reported in exclusion table with reason.</p>
+<h2>Analysis</h2>
+<p>Step 1 descriptive: mean, sd, min, max for each variable, N per variable, correlation matrix (Pearson and Spearman), distribution plots for adoption composite.</p>
+<p>Step 2 bivariate: OLS regression of adoption composite on each independent indicator separately with robust SE, report beta, 95% CI, p-value, R2.</p>
+<p>Step 3 blocks: hierarchical OLS adding Block 1, then Block 2, then Block 3 to test change in R2 and coefficient stability.</p>
+<h2>To do before submission</h2>
+<ul class="tasks"><li data-done="">Check country counts against Bhimani et al.</li><li>Add the exclusion table</li><li>Ask the supervisor about the 2023 window</li></ul>
+            </article>
+            <aside class="margin" id="margin" hidden></aside>
+          </div>
+        </div>
+      </main>
+
+      <!-- Find and replace -->
+      <div class="find" id="find" hidden>
+        <div class="r">
+          <button class="ib tog" id="findTog" title="Show replace (Ctrl+H)">›</button>
+          <input id="findIn" placeholder="Find in draft" aria-label="Find">
+          <span class="count" id="findCount"></span>
+          <button class="ib" id="findCase" title="Match case">Aa</button>
+          <button class="ib" id="findWord" title="Whole words"><u>ab</u></button>
+          <button class="ib" id="findPrev" title="Previous (Shift+Enter)">↑</button>
+          <button class="ib" id="findNext" title="Next (Enter)">↓</button>
+          <button class="ib" id="findClose" title="Close (Esc)">✕</button>
+        </div>
+        <div class="r r2" id="repRow" hidden>
+          <input id="repIn" placeholder="Replace with" aria-label="Replace with">
+          <button class="btn" id="repOne">Replace</button>
+          <button class="btn" id="repAll">Replace all</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="panel" id="panel">
+      <header><h3>Writing tools</h3><button title="Close the writing tools">›|</button></header>
+      <div class="ptabs"><button class="on">✦ Compose</button><button>Check <span class="badge">1</span></button><button>Sources</button></div>
+      <div class="pbody">
+        Write with Muse: draft from your sources with checked quotes, or just chat. Your highlights for this paragraph are on top.
+        <h4>From your reading</h4>
+        No highlights for this paragraph yet.
+        <h4>Ask Muse</h4>
+        <div class="pseg"><span>Cite my sources</span><span>Just chat</span></div>
+        <textarea id="askBox" placeholder="What should I write? e.g. “Summarize the evidence on rule of law.”"></textarea>
+        <span class="chipsug">Summarize the main findings across my sources</span><span class="chipsug">Write an introduction paragraph</span>
+      </div>
+    </aside>
+    <aside class="panel closed" id="panelClosed" hidden>
+      <button title="Open the writing tools">|‹</button><button title="Compose">✦</button><button title="Check">◎</button><button title="Sources">❝</button>
+    </aside>
+  </div>
+
+  <footer class="dock">
+    <span id="wcWrap"><b id="wcN">0</b> words</span>
+    <span>Citations: <span class="ok">6 supported</span> · <span class="bad">1 needs attention</span></span>
+    <span>● Duplication <b>4%</b></span>
+    <span class="sp"></span>
+    <span class="mock">172 sources · Offline mock</span>
+  </footer>
+</div>
+
+<div class="fly" id="fly" hidden role="dialog"></div>
+<div class="tip" id="tip" hidden></div>
+<div class="bubble" id="bubble" hidden></div>
+<div class="wc" id="wcPop" hidden></div>
+<input type="file" id="imgPick" accept="image/*" hidden>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)]
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const app = $('#app'), page = $('#page'), scroller = $('#writing'), fly = $('#fly'), tip = $('#tip'), bubble = $('#bubble')
+
+// ---------- icons (24px line icons; most adapted from Lucide, ISC) ----------
+const P = {
+  undo: 'M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11', redo: 'm15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
+  bold: 'M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8', italic: 'M19 4h-9M14 20H5M15 4 9 20',
+  underline: 'M6 4v6a6 6 0 0 0 12 0V4M4 20h16', strike: 'M16 4H9a3 3 0 0 0-2.83 4M14 12a4 4 0 0 1 0 8H6M4 12h16',
+  sup: 'm4 19 8-8M12 19l-8-8M20 12h-4c0-1.5.44-2 1.5-2.5S20 8.33 20 7c0-.47-.17-.93-.48-1.29a2.1 2.1 0 0 0-2.62-.44c-.42.24-.74.62-.9 1.06',
+  sub: 'm4 5 8 8M12 5l-8 8M20 19h-4c0-1.5.44-2 1.5-2.5S20 15.33 20 14c0-.47-.17-.93-.48-1.29a2.1 2.1 0 0 0-2.62-.44c-.42.24-.74.62-.9 1.07',
+  highlight: 'm9 11-6 6v3h9l3-3M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4',
+  more: 'M5 12h.01M12 12h.01M19 12h.01', clear: 'M4 7V4h16v3M5 20h6M13 4 8 20M15 15l5 5M20 15l-5 5', case: 'M3 17l4-10 4 10M4.5 13.5h5M15 11a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM18 11v6',
+  left: 'M15 12H3M17 18H3M21 6H3', center: 'M17 12H7M19 18H5M21 6H3', right: 'M21 12H9M21 18H7M21 6H3', justify: 'M3 6h18M3 12h18M3 18h18',
+  indentMore: 'M21 12H11M21 18H11M21 6H11M3 8l4 4-4 4', indentLess: 'M21 12H11M21 18H11M21 6H11M7 8l-4 4 4 4',
+  bullets: 'M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13', numbers: 'M10 12h11M10 18h11M10 6h11M4 10h2M4 6h1v4M6 18H4c0-1 2-2 2-3s-1-1.5-2-1',
+  checklist: 'm3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8', quote: 'M7 8h4v4H8.5c0 1.4.9 2.5 2.5 2.9V17c-2.8-.4-4-2.4-4-5.2zm6 0h4v4h-2.5c0 1.4.9 2.5 2.5 2.9V17c-2.8-.4-4-2.4-4-5.2z',
+  insert: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM12 8v8M8 12h8',
+  link: 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
+  image: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 8a1 1 0 1 0 0 2 1 1 0 0 0 0-2M21 15l-3.1-3.1a2 2 0 0 0-2.8 0L6 21',
+  table: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM12 3v18M3 9h18M3 15h18',
+  hr: 'M3 12h18', pbreak: 'M5 3v4h14V3M5 21v-4h14v4M3 12h2M8 12h3M13 12h3M19 12h2',
+  find: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4', outline: 'M21 12h-8M21 6H8M21 18h-8M3 6v4c0 1.1.9 2 2 2h3M3 10v6c0 1.1.9 2 2 2h3',
+  painter: 'M18.4 2.6a1 1 0 1 1 3 3L17.4 9.6a.5.5 0 0 0 0 .7l.9.9a2.4 2.4 0 0 1 0 3.4l-.9.9a.5.5 0 0 1-.7 0L8.4 7.3a.5.5 0 0 1 0-.7l.9-.9a2.4 2.4 0 0 1 3.4 0l.9.9a.5.5 0 0 0 .7 0zM9 8c-1.8 2.7-4 3.5-6.6 4a.5.5 0 0 0-.3.8l7.3 8.9a1 1 0 0 0 1.2.2C12.7 20.4 16 16.8 16 15',
+  comment: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM12 7v6M9 10h6',
+  cite: 'M7 8h4v4H8.5c0 1.4.9 2.5 2.5 2.9V17c-2.8-.4-4-2.4-4-5.2zm6 0h4v4h-2.5c0 1.4.9 2.5 2.5 2.9V17c-2.8-.4-4-2.4-4-5.2z',
+  ask: 'M4 5h16v11h-9l-5 4v-4H4zM9.8 8.8a2.2 2.2 0 1 1 3 2c-.5.2-.8.6-.8 1.1M12 14h.01',
+  toc: 'M3 6h11M3 12h11M3 18h11M18 6h3M18 12h3M18 18h3', spacing: 'M3 5l2-2 2 2M5 3v18M3 19l2 2 2-2M11 6h10M11 12h10M11 18h10',
+  rowUp: 'M3 14h18v6H3zM12 3v7M9 6l3-3 3 3', rowDown: 'M3 4h18v6H3zM12 21v-7M9 18l3 3 3-3',
+  colLeft: 'M14 3h6v18h-6zM3 12h7M6 9l-3 3 3 3', colRight: 'M4 3h6v18H4zM21 12h-7M18 9l3 3-3 3',
+  trash: 'M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14', header: 'M3 5h18v5H3zM3 10v9h18v-9M12 10v9',
+}
+const svg = (n, s = 18) => `<svg class="ic" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true"><path d="${P[n]}"/></svg>`
+for (const b of $$('.tb [data-act], .tb [data-fly]')) {
+  const n = { undo: 'undo', redo: 'redo', bold: 'bold', italic: 'italic', underline: 'underline', highlight: 'highlight', more: 'more', align: 'left', bullets: 'bullets', numbers: 'numbers', checklist: 'checklist', insert: 'insert', table: 'table', find: 'find', outline: 'outline', painter: 'painter', comment: 'comment', cite: 'cite', ask: 'ask', quote: 'quote' }[b.dataset.act || b.dataset.fly]
+  if (n && !b.classList.contains('txt') && !b.classList.contains('sel')) b.insertAdjacentHTML('afterbegin', svg(n, b.closest('.vfoot') ? 19 : 18))
+}
+$('.oldbar [data-act="bold"]').innerHTML = '<b>B</b>'; $('.oldbar [data-act="italic"]').innerHTML = '<i>I</i>'; $('.oldbar [data-act="underline"]').innerHTML = '<u>U</u>'
+$$('.oldbar .lab').forEach((b) => b.querySelector('svg') || b.insertAdjacentHTML('afterbegin', svg(b.dataset.act, 16)))
+
+// ---------- the switches ----------
+const EXTRAS = [
+  ['outline', 'Outline', 'Headings listed beside the page; click one to jump there, the section you are in is marked.'],
+  ['wordcount', 'Word count & goal', 'Click the word count: words, characters, paragraphs, reading time, the selection; set a word goal.'],
+  ['footnotes', 'Footnotes', 'Insert → Footnote: numbered for you, notes at the foot; Word gets real footnotes.'],
+  ['toc', 'Table of contents', 'Insert → Table of contents, built from the headings and kept up to date.'],
+  ['symbols', 'Symbols', 'Insert → Symbol: dashes, §, ±, ≤, Greek letters, χ²…'],
+  ['smart', 'Smart punctuation', 'Curly quotes, -- to an em dash, ... to an ellipsis, as you type.'],
+  ['painter', 'Format painter', 'Copy the formatting of one passage onto another.'],
+  ['comments', 'Comments to self', 'Select text → comment; notes sit in the margin; Resolve removes them. Exported as Word comments.'],
+  ['pdf', 'PDF & print', 'Export also saves a PDF or prints, citations formatted as in Word.'],
+  ['pagesetup', 'Page setup', 'Paper size, margins, orientation, page numbers for Word, PDF and print.'],
+  ['shortcuts', 'Shortcuts sheet', 'Ctrl+/ lists every shortcut.'],
+]
+const S = { bar: 'float', panel: 'open', theme: 'light', x: new Set(EXTRAS.map((e) => e[0])) }
+$('#extras').innerHTML = EXTRAS.map(([k, l, t]) => `<button data-x="${k}" aria-pressed="true" title="${esc(t)}">${l}</button>`).join('')
+const on = (k) => S.x.has(k)
+function apply() {
+  document.documentElement.dataset.theme = S.theme
+  app.dataset.bar = S.bar
+  app.dataset.panel = S.panel
+  $('#panel').hidden = S.panel !== 'open'
+  $('#panelClosed').hidden = S.panel === 'open'
+  for (const seg of $$('.concept .seg')) for (const b of $$('button', seg)) b.setAttribute('aria-pressed', S[seg.dataset.sw] === b.dataset.v)
+  for (const b of $$('#extras button')) b.setAttribute('aria-pressed', on(b.dataset.x))
+  for (const el of $$('[data-extra]')) el.hidden = !on(el.dataset.extra)
+  if (!on('outline')) $('#outline').hidden = true
+  if (!on('comments')) $('#margin').hidden = true
+  else $('#margin').hidden = !$$('.cmt', page).length
+  $('#exportCaret').hidden = !(on('pdf') || on('pagesetup'))
+  closeFly()
+  words()
+  overflow()
+  requestAnimationFrame(placeCards)
+}
+document.querySelector('.concept').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  if (b.dataset.x) S.x.has(b.dataset.x) ? S.x.delete(b.dataset.x) : S.x.add(b.dataset.x)
+  else if (b.closest('.seg')) S[b.closest('.seg').dataset.sw] = b.dataset.v
+  apply()
+})
+
+// ---------- selection helpers ----------
+let saved = null
+document.addEventListener('selectionchange', () => {
+  const s = getSelection()
+  if (s.rangeCount && page.contains(s.anchorNode)) { saved = s.getRangeAt(0).cloneRange(); refresh() }
+})
+function restore() {
+  if (!saved) { page.focus(); return }
+  if (document.activeElement !== page) page.focus({ preventScroll: true })
+  const s = getSelection(); s.removeAllRanges(); s.addRange(saved)
+}
+function anchorEl() {
+  const s = getSelection()
+  let n = s.rangeCount && page.contains(s.anchorNode) ? s.anchorNode : saved?.startContainer
+  if (!n) return null
+  if (n.nodeType === 3) n = n.parentElement
+  return page.contains(n) ? n : null
+}
+const closestIn = (sel) => { const el = anchorEl()?.closest(sel); return el && page.contains(el) ? el : null }
+function blocksInSel() {
+  restore()
+  const r = getSelection().getRangeAt(0)
+  return $$('p,h1,h2,h3,li,blockquote', page).filter((b) => r.intersectsNode(b) && !b.querySelector('p,li'))
+}
+const q = (c) => { try { return document.queryCommandState(c) } catch { return false } }
+function exec(name, val = null) { restore(); document.execCommand(name, false, val); refresh(); words() }
+function needText() { restore(); if (getSelection().isCollapsed) { toast('Select some text first.'); return false } return true }
+function wrapSel(tag, cls) {
+  if (!needText()) return
+  const s = getSelection(), r = s.getRangeAt(0), el = document.createElement(tag)
+  el.className = cls; el.appendChild(r.extractContents()); r.insertNode(el)
+  const nr = document.createRange(); nr.selectNodeContents(el); s.removeAllRanges(); s.addRange(nr); saved = nr.cloneRange()
+  return el
+}
+function unwrapIn(sel) {
+  restore(); const r = getSelection().getRangeAt(0)
+  for (const el of $$(sel, page)) if (r.intersectsNode(el)) el.replaceWith(...el.childNodes)
+  const a = anchorEl()?.closest(sel); a && a.replaceWith(...a.childNodes)
+}
+
+// ---------- state shown on the bar ----------
+let hlColour = 'yellow'
+const STYLES = [['p', 'Normal text', 'font-size:14px', 'Ctrl+Alt+0'], ['h1', 'Heading 1', 'font:700 20px var(--doc-font)', 'Ctrl+Alt+1'], ['h2', 'Heading 2', 'font:700 17px var(--doc-font)', 'Ctrl+Alt+2'], ['h3', 'Heading 3', 'font:700 15px var(--doc-font)', 'Ctrl+Alt+3'], ['blockquote', 'Quote', 'font-style:italic;border-left:3px solid var(--border);padding-left:8px;color:var(--muted)', 'Ctrl+Shift+B']]
+function curBlock() { const b = anchorEl()?.closest('p,h1,h2,h3,blockquote,li,td,th'); return b ? (b.closest('blockquote') ? 'blockquote' : b.tagName.toLowerCase()) : 'p' }
+function curAlign() { return q('justifyCenter') ? 'center' : q('justifyRight') ? 'right' : q('justifyFull') ? 'justify' : 'left' }
+function setOn(act, v) { for (const b of $$(`.tb [data-act="${act}"]`)) { b.classList.toggle('on', !!v); b.setAttribute('aria-pressed', !!v) } }
+function refresh() {
+  const tasks = !!closestIn('ul.tasks')
+  setOn('bold', q('bold')); setOn('italic', q('italic')); setOn('underline', q('underline'))
+  setOn('bullets', q('insertUnorderedList') && !tasks); setOn('numbers', q('insertOrderedList')); setOn('checklist', tasks)
+  setOn('quote', curBlock() === 'blockquote'); setOn('highlight', !!closestIn('mark'))
+  const blk = curBlock()
+  $('#styleBtn').textContent = { h1: 'H1', h2: 'H2', h3: 'H3', blockquote: '❝' }[blk] || '¶'
+  $('#alignBtn').querySelector('path').setAttribute('d', P[curAlign()])
+  $('#hlBar').style.background = `var(--hl-${hlColour})`
+  $$('.tb [data-act="undo"]').forEach((b) => (b.disabled = !document.queryCommandEnabled('undo')))
+  $$('.tb [data-act="redo"]').forEach((b) => (b.disabled = !document.queryCommandEnabled('redo')))
+  // Table tools appear while the cursor is in a table
+  const cell = closestIn('td,th')
+  $$('#page .cur').forEach((c) => c !== cell && c.classList.remove('cur'))
+  if (cell) cell.classList.add('cur')
+  const tb = $('#tableBtn'), had = !tb.hidden
+  tb.hidden = !cell
+  if (had !== !tb.hidden) overflow()
+  if (!cell && fly.dataset.name === 'table') closeFly()
+  // Comments: mark the one at the cursor
+  const c = closestIn('.cmt')
+  $$('.cmt.cur, .ccard.cur').forEach((x) => x.classList.remove('cur'))
+  if (c) { c.classList.add('cur'); $(`.ccard[data-id="${c.dataset.id}"]`)?.classList.add('cur') }
+  linkBubble()
+}
+
+// ---------- fly-outs ----------
+let flyFor = null
+function placeAt(el, btn) {
+  const r = btn.getBoundingClientRect()
+  const right = btn.closest('.vbar')
+  el.style.left = (right ? r.right + 10 : r.left) + 'px'
+  el.style.top = '0px'
+  const h = el.offsetHeight
+  const top = right ? Math.min(r.top - 8, innerHeight - h - 10) : r.bottom + 8
+  el.style.top = Math.max(10, top) + 'px'
+}
+function openFly(btn, name) {
+  if (flyFor === btn && fly.dataset.name === name && !fly.hidden) return closeFly()
+  hideTip(); flyFor?.classList.remove('open')
+  fly.innerHTML = FLY[name](); fly.dataset.name = name; fly.hidden = false; flyFor = btn; btn.classList.add('open')
+  placeAt(fly, btn)
+  fly.querySelector('input')?.focus()
+}
+function closeFly() { fly.hidden = true; fly.dataset.name = ''; flyFor?.classList.remove('open'); flyFor = null }
+document.addEventListener('mousedown', (e) => {
+  if (!fly.hidden && !fly.contains(e.target) && !e.target.closest('[data-fly]')) closeFly()
+  if (!$('#wcPop').hidden && !e.target.closest('#wcPop, .wcbtn')) $('#wcPop').hidden = true
+  if (!$('#exportMenu').hidden && !e.target.closest('.exportwrap')) $('#exportMenu').hidden = true
+  if (!bubble.hidden && !bubble.contains(e.target) && !e.target.closest('#page img, #page a')) bubble.hidden = true
+})
+// Buttons keep the page's selection: no focus change on mousedown
+for (const box of [...$$('.tb'), fly, bubble]) box.addEventListener('mousedown', (e) => { if (e.target.closest('button') && !e.target.closest('input,textarea')) e.preventDefault() })
+
+const TC = ['red', 'orange', 'green', 'blue', 'purple', 'grey'], HL = ['yellow', 'green', 'blue', 'pink', 'orange']
+const FONTS = [['', 'Default (Charter)'], ['Georgia, serif', 'Georgia'], ['"Times New Roman", serif', 'Times New Roman'], ['Arial, sans-serif', 'Arial'], ['Calibri, sans-serif', 'Calibri'], ['"Segoe UI", sans-serif', 'Segoe UI'], ['Consolas, monospace', 'Consolas']]
+const SIZES = ['10', '11', '12', '14', '16', '18', '24', '32']
+const SYMBOLS = '— – … · • § ¶ † ‡ ± × ÷ ≈ ≠ ≤ ≥ ∞ ° µ ‰ α β γ δ Δ ε θ λ π ρ σ Σ τ φ χ² ω Ω ← → ↑ ↓ ⇒ ✓ © ® ™ € £ ¥ “ ” ‘ ’ « »'.split(' ')
+const FLY = {
+  style: () => `<h4>Paragraph style</h4>` + STYLES.map(([t, l, css, k]) => `<button class="opt${curBlock() === t ? ' cur' : ''}" data-block="${t}"><span style="${css}">${l}</span><kbd>${k}</kbd></button>`).join('') +
+    `<p class="fly-note">Word export uses Word's own Heading and Quote styles.</p>`,
+  font: () => {
+    const fam = document.queryCommandValue('fontName').replace(/"/g, '')
+    return `<div class="cols"><div><h4>Font</h4>${FONTS.map(([v, l]) => `<button class="opt${(v && fam && v.replace(/"/g, '').startsWith(fam.split(',')[0])) ? ' cur' : ''}" data-font="${esc(v)}"><span style="font-family:${v ? esc(v) : 'var(--doc-font)'};font-size:14px">${l}</span></button>`).join('')}</div>
+      <div><h4>Size</h4><div class="sizes">${SIZES.map((s) => `<button data-size="${s}">${s}</button>`).join('')}<button class="wide" data-size="">Default</button><button data-grow="-1" title="Smaller (Ctrl+[)">A−</button><button data-grow="1" title="Bigger (Ctrl+])" style="grid-column:span 2">A+</button></div></div></div>
+      <hr><h4>Text colour</h4><div class="swatches"><button class="none" data-tc="" title="Automatic">⌀</button>${TC.map((c) => `<button data-tc="${c}" title="${c}" style="color:var(--tc-${c})">A</button>`).join('')}</div>
+      <h4>Highlight</h4><div class="swatches"><button class="none" data-hl="" title="No highlight">⌀</button>${HL.map((c) => `<button data-hl="${c}" title="${c}" style="background:var(--hl-${c})"></button>`).join('')}</div>
+      <p class="fly-note">Colours keep their name, so they stay readable in the dark theme; Word gets the printed colour.</p>`
+  },
+  more: () => `<h4>Text</h4>
+    <button class="opt" data-cmd="strikeThrough">${svg('strike')}<span>Strikethrough</span><kbd>Ctrl+Shift+S</kbd></button>
+    <button class="opt" data-cmd="superscript">${svg('sup')}<span>Superscript</span><kbd>Ctrl+.</kbd></button>
+    <button class="opt" data-cmd="subscript">${svg('sub')}<span>Subscript</span><kbd>Ctrl+,</kbd></button>
+    <hr><h4>Change case</h4><div class="row"><div class="seg"><button data-case="sentence">Sentence</button><button data-case="lower">lower</button><button data-case="upper">UPPER</button><button data-case="title">Title</button></div></div>
+    <hr><button class="opt" data-cmd="clear">${svg('clear')}<span>Clear formatting</span><kbd>Ctrl+Space</kbd></button>`,
+  align: () => {
+    const a = curAlign(), lh = (anchorEl()?.closest('p,h1,h2,h3,li')?.style.lineHeight) || ''
+    return `<h4>Align</h4><div class="row icons">${['left', 'center', 'right', 'justify'].map((k) => `<button data-align="${k}" class="${a === k ? 'cur' : ''}" title="${{ left: 'Left (Ctrl+Shift+L)', center: 'Centre (Ctrl+Shift+E)', right: 'Right (Ctrl+Shift+R)', justify: 'Justify (Ctrl+Shift+J)' }[k]}">${svg(k)}</button>`).join('')}</div>
+    <hr><h4>Indent</h4><div class="row icons"><button data-indent="-1" title="Decrease (Shift+Tab in lists)">${svg('indentLess')}</button><button data-indent="1" title="Increase (Tab in lists)">${svg('indentMore')}</button></div>
+    <hr><h4>Line spacing</h4><div class="row"><div class="seg">${[['', 'Single'], ['1.15', '1.15'], ['1.5', '1.5'], ['2', 'Double']].map(([v, l]) => `<button data-lh="${v}" class="${lh === v ? 'cur' : ''}">${l}</button>`).join('')}</div></div>
+    <button class="opt${page.classList.contains('spaced') ? ' cur' : ''}" data-spaced="1" style="margin-top:6px"><span>Space after each paragraph</span></button>`
+  },
+  insert: () => `<h4>Insert</h4>
+    <button class="opt" data-ins="link">${svg('link')}<span>Link</span><kbd>Ctrl+Shift+K</kbd></button>
+    <button class="opt" data-ins="image">${svg('image')}<span>Image… <small class="muted" style="color:var(--muted)">or paste / drop one</small></span></button>
+    <button class="opt" data-ins="tgrid">${svg('table')}<span>Table</span><span style="flex:0;color:var(--muted)">›</span></button>
+    <button class="opt" data-ins="hr">${svg('hr')}<span>Horizontal line</span></button>
+    <button class="opt" data-ins="pbreak">${svg('pbreak')}<span>Page break</span><kbd>Ctrl+Enter</kbd></button>
+    ${on('footnotes') || on('toc') || on('symbols') ? '<hr>' : ''}
+    ${on('footnotes') ? `<button class="opt" data-ins="fn"><span style="flex:0;font:700 13px var(--ui);width:18px;text-align:center;color:var(--muted)">x¹</span><span>Footnote</span><kbd>Ctrl+Alt+F</kbd></button>` : ''}
+    ${on('toc') ? `<button class="opt" data-ins="toc">${svg('toc')}<span>Table of contents</span></button>` : ''}
+    ${on('symbols') ? `<button class="opt" data-ins="sym"><span style="flex:0;font:17px var(--doc-font);width:18px;text-align:center;color:var(--muted)">Ω</span><span>Symbol</span><span style="flex:0;color:var(--muted)">›</span></button>` : ''}
+    <p class="fly-note"><a href="#" data-ins="sample" style="color:var(--accent)">Try a sample figure</a> (mock only: a chart drawn here, instead of picking a file).</p>`,
+  tgrid: () => `<h4>Table</h4><div class="tgrid" id="tg">${Array.from({ length: 48 }, (_, i) => `<i data-r="${Math.floor(i / 8) + 1}" data-c="${(i % 8) + 1}"></i>`).join('')}</div><div class="tgrid-l" id="tgl">Pick a size</div>`,
+  sym: () => `<h4>Symbol</h4><div class="symgrid">${SYMBOLS.map((s) => `<button data-sym="${s}">${s}</button>`).join('')}</div>`,
+  link: () => {
+    const a = closestIn('a'); const txt = saved && !saved.collapsed ? saved.toString() : a?.textContent || ''
+    return `<h4>${a ? 'Edit link' : 'Link'}</h4><div class="form"><label>Text<input id="lkText" value="${esc(txt)}"></label><label>Address<input id="lkUrl" placeholder="https://… or doi.org/…" value="${esc(a?.getAttribute('href') || '')}"></label><div class="btns"><button class="btn" data-x-close>Cancel</button><button class="btn go" data-lk-apply>${a ? 'Update' : 'Add link'}</button></div></div>`
+  },
+  table: () => {
+    const hasHead = !!closestIn('table')?.querySelector('tr:first-child th')
+    return `<h4>Rows</h4><button class="opt" data-tbl="rowUp">${svg('rowUp')}<span>Insert row above</span></button><button class="opt" data-tbl="rowDown">${svg('rowDown')}<span>Insert row below</span></button>
+    <h4>Columns</h4><button class="opt" data-tbl="colLeft">${svg('colLeft')}<span>Insert column left</span></button><button class="opt" data-tbl="colRight">${svg('colRight')}<span>Insert column right</span></button>
+    <hr><button class="opt${hasHead ? ' cur' : ''}" data-tbl="head">${svg('header')}<span>Header row</span></button>
+    <hr><button class="opt" data-tbl="delRow">${svg('trash')}<span>Delete row</span></button><button class="opt" data-tbl="delCol">${svg('trash')}<span>Delete column</span></button><button class="opt" data-tbl="delTable" style="color:var(--bad)">${svg('trash')}<span>Delete table</span></button>`
+  },
+}
+
+fly.addEventListener('click', (e) => {
+  const b = e.target.closest('button, a'); if (!b) return
+  const d = b.dataset
+  if (b.tagName === 'A') e.preventDefault()
+  if (d.block) { restore(); document.execCommand('formatBlock', false, d.block); closeFly(); refresh(); outline(); return }
+  if ('font' in d) { d.font ? exec('fontName', d.font) : unwrapIn('font[face]'); closeFly(); return }
+  if ('size' in d) { setSize(d.size ? d.size + 'pt' : ''); closeFly(); return }
+  if (d.grow) { grow(+d.grow); return }
+  if ('tc' in d) { unwrapIn('span[class^="tc-"]'); if (d.tc) wrapSel('span', 'tc-' + d.tc); closeFly(); refresh(); return }
+  if ('hl' in d) { unwrapIn('mark'); if (d.hl) { hlColour = d.hl; wrapSel('mark', 'hl-' + d.hl) } closeFly(); refresh(); return }
+  if (d.cmd === 'clear') { exec('removeFormat'); unwrapIn('mark'); unwrapIn('span[class^="tc-"]'); unwrapIn('font'); closeFly(); return }
+  if (d.cmd) { exec(d.cmd); return }
+  if (d.case) { changeCase(d.case); return }
+  if (d.align) { exec({ left: 'justifyLeft', center: 'justifyCenter', right: 'justifyRight', justify: 'justifyFull' }[d.align]); fly.innerHTML = FLY.align(); return }
+  if (d.indent) { indent(+d.indent); return }
+  if ('lh' in d) { for (const bl of blocksInSel()) bl.style.lineHeight = d.lh; fly.innerHTML = FLY.align(); return }
+  if (d.spaced) { page.classList.toggle('spaced'); fly.innerHTML = FLY.align(); return }
+  if (d.ins) return insert(d.ins, b)
+  if (d.sym) { exec('insertText', d.sym); return }
+  if (d.tbl) { tableOp(d.tbl); return }
+  if ('xClose' in d) { closeFly(); restore(); return }
+  if ('lkApply' in d) { applyLink(); return }
+})
+fly.addEventListener('mouseover', (e) => {
+  const c = e.target.closest('#tg i'); if (!c) return
+  for (const i of $$('#tg i')) i.classList.toggle('on', +i.dataset.r <= +c.dataset.r && +i.dataset.c <= +c.dataset.c)
+  $('#tgl').textContent = `${c.dataset.r} × ${c.dataset.c} table`
+})
+fly.addEventListener('mousedown', (e) => {
+  const c = e.target.closest('#tg i'); if (!c) return
+  e.preventDefault(); insertTable(+c.dataset.r, +c.dataset.c); closeFly()
+})
+fly.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('#lkUrl,#lkText')) applyLink() })
+
+// ---------- text tools ----------
+function setSize(sz) {
+  if (!needText()) return
+  document.execCommand('fontSize', false, '7')
+  for (const f of $$('font[size="7"]', page)) { const s = document.createElement('span'); if (sz) s.style.fontSize = sz; s.append(...f.childNodes); f.replaceWith(s) }
+}
+function grow(d) {
+  restore(); const cur = parseFloat(getComputedStyle(anchorEl() || page).fontSize) * 0.75
+  const list = SIZES.map(Number), next = d > 0 ? list.find((s) => s > cur + 0.1) : [...list].reverse().find((s) => s < cur - 0.1)
+  if (next) setSize(next + 'pt')
+}
+function changeCase(k) {
+  if (!needText()) return
+  const t = getSelection().toString()
+  const out = k === 'lower' ? t.toLowerCase() : k === 'upper' ? t.toUpperCase() : k === 'title' ? t.toLowerCase().replace(/\b(\p{L})(\p{L}*)/gu, (m, a, b) => (/^(of|and|the|in|on|for|a|an|to|at|by)$/.test(m) ? m : a.toUpperCase() + b)).replace(/^\p{L}/u, (c) => c.toUpperCase()) : t.toLowerCase().replace(/(^\s*\p{L}|[.!?]\s+\p{L})/gu, (c) => c.toUpperCase())
+  document.execCommand('insertText', false, out)
+}
+function indent(d) {
+  restore()
+  if (closestIn('li')) return exec(d > 0 ? 'indent' : 'outdent')
+  for (const b of blocksInSel()) { const m = Math.max(0, (parseFloat(b.style.marginLeft) || 0) + d * 2); b.style.marginLeft = m ? m + 'em' : '' }
+}
+function list(kind) {
+  restore()
+  const tasks = closestIn('ul.tasks')
+  if (kind === 'tasks') {
+    if (tasks) { tasks.classList.remove('tasks'); document.execCommand('insertUnorderedList') }
+    else { if (!closestIn('ul')) document.execCommand('insertUnorderedList'); closestIn('ul')?.classList.add('tasks') }
+  } else if (kind === 'ul' && tasks) tasks.classList.remove('tasks')
+  else document.execCommand(kind === 'ul' ? 'insertUnorderedList' : 'insertOrderedList')
+  refresh()
+}
+page.addEventListener('mousedown', (e) => {
+  const li = e.target.closest('ul.tasks > li')
+  if (li && e.offsetX < 22) { e.preventDefault(); li.toggleAttribute('data-done') }
+})
+function toggleHighlight() {
+  restore()
+  if (closestIn('mark')) { unwrapIn('mark'); refresh(); return }
+  wrapSel('mark', 'hl-' + hlColour); refresh()
+}
+
+// ---------- insert ----------
+function insert(kind, b) {
+  if (kind === 'link') { fly.innerHTML = FLY.link(); fly.dataset.name = 'link'; placeAt(fly, flyFor); $('#lkUrl').focus(); return }
+  if (kind === 'tgrid') { fly.innerHTML = FLY.tgrid(); fly.dataset.name = 'tgrid'; return }
+  if (kind === 'sym') { fly.innerHTML = FLY.sym(); fly.dataset.name = 'sym'; placeAt(fly, flyFor); return }
+  closeFly()
+  if (kind === 'image') { $('#imgPick').click(); return }
+  if (kind === 'sample') return insertImage(sampleChart())
+  if (kind === 'hr') return exec('insertHorizontalRule')
+  if (kind === 'pbreak') return exec('insertHTML', '<div class="pbreak" contenteditable="false"></div><p><br></p>')
+  if (kind === 'fn') return footnote()
+  if (kind === 'toc') { exec('insertHTML', '<div class="toc" contenteditable="false"></div><p><br></p>'); tocs(); return }
+}
+function applyLink() {
+  const url = $('#lkUrl').value.trim(), text = $('#lkText').value.trim() || url
+  if (!url) return $('#lkUrl').focus()
+  const href = /^[a-z]+:/i.test(url) ? url : 'https://' + url
+  restore()
+  const a = closestIn('a')
+  if (a) { a.href = href; a.textContent = text }
+  else if (getSelection().isCollapsed || getSelection().toString() !== text) document.execCommand('insertHTML', false, `<a href="${esc(href)}">${esc(text)}</a>&nbsp;`)
+  else document.execCommand('createLink', false, href)
+  closeFly(); refresh()
+}
+$('#imgPick').addEventListener('change', (e) => {
+  const f = e.target.files[0]; if (!f) return
+  const r = new FileReader(); r.onload = () => insertImage(r.result); r.readAsDataURL(f); e.target.value = ''
+})
+page.addEventListener('paste', (e) => {
+  const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith('image/'))
+  if (!f) return
+  e.preventDefault(); const r = new FileReader(); r.onload = () => insertImage(r.result); r.readAsDataURL(f)
+})
+function insertImage(src) { exec('insertHTML', `<img src="${src}" class="w-m" alt=""><p><br></p>`) }
+function sampleChart() {
+  const c = document.createElement('canvas'); c.width = 640; c.height = 300; const g = c.getContext('2d')
+  g.fillStyle = '#fff'; g.fillRect(0, 0, 640, 300); g.fillStyle = '#17201c'; g.font = '600 18px Segoe UI'; g.fillText('Adoption index by income group (sample)', 24, 34)
+  const v = [0.21, 0.34, 0.47, 0.62], l = ['Low', 'Lower-mid', 'Upper-mid', 'High']
+  v.forEach((x, i) => { g.fillStyle = '#1f5c46'; g.fillRect(60 + i * 140, 260 - x * 300, 80, x * 300); g.fillStyle = '#56625c'; g.font = '14px Segoe UI'; g.fillText(l[i], 60 + i * 140, 284) })
+  return c.toDataURL()
+}
+function insertTable(r, c) {
+  const row = (tag) => `<tr>${Array.from({ length: c }, () => `<${tag}><br></${tag}>`).join('')}</tr>`
+  exec('insertHTML', `<table><tbody>${row('th')}${Array.from({ length: r - 1 }, () => row('td')).join('')}</tbody></table><p><br></p>`)
+}
+function tableOp(op) {
+  const cell = closestIn('td,th'); if (!cell) return
+  const tr = cell.parentElement, table = tr.closest('table'), i = cell.cellIndex
+  const blank = (tag) => { const x = document.createElement(tag); x.innerHTML = '<br>'; return x }
+  if (op === 'rowUp' || op === 'rowDown') { const n = document.createElement('tr'); for (let k = 0; k < tr.cells.length; k++) n.append(blank('td')); op === 'rowUp' && tr.querySelector('th') ? tr.after(n) : (op === 'rowUp' ? tr.before(n) : tr.after(n)) }
+  if (op === 'colLeft' || op === 'colRight') for (const row of table.rows) { const ref = row.cells[i]; const n = blank(ref.tagName.toLowerCase()); op === 'colLeft' ? ref.before(n) : ref.after(n) }
+  if (op === 'head') { const first = table.rows[0]; const toTh = !first.querySelector('th'); for (const c of [...first.cells]) { const n = document.createElement(toTh ? 'th' : 'td'); n.append(...c.childNodes); c.replaceWith(n) } }
+  if (op === 'delRow') tr.remove()
+  if (op === 'delCol') for (const row of table.rows) row.cells[i]?.remove()
+  if (op === 'delTable' || !table.rows.length || !table.rows[0].cells.length) { table.remove(); closeFly(); refresh(); return }
+  fly.innerHTML = FLY.table()
+}
+
+// Link and image bubbles
+function linkBubble() {
+  const a = closestIn('a')
+  if (!a || !fly.hidden) { if (bubble.dataset.kind === 'link') bubble.hidden = true; return }
+  bubble.dataset.kind = 'link'
+  bubble.innerHTML = `<span class="url">${esc(a.getAttribute('href'))}</span><i></i><button data-b="open">Open</button><button data-b="edit">Edit</button><button data-b="unlink">Remove</button>`
+  bubble.hidden = false; const r = a.getBoundingClientRect(); bubble.style.left = r.left + 'px'; bubble.style.top = r.bottom + 6 + 'px'
+}
+let imgSel = null
+page.addEventListener('click', (e) => {
+  $$('#page img.sel').forEach((i) => i.classList.remove('sel'))
+  const img = e.target.closest('img')
+  if (img) {
+    imgSel = img; img.classList.add('sel'); bubble.dataset.kind = 'img'
+    const w = ['w-s', 'w-m', 'w-l'].find((c) => img.classList.contains(c)), al = img.classList.contains('al-left') ? 'left' : img.classList.contains('al-right') ? 'right' : 'center'
+    bubble.innerHTML = `${[['w-s', 'Small'], ['w-m', 'Medium'], ['w-l', 'Full width']].map(([c, l]) => `<button data-w="${c}" class="${w === c ? 'cur' : ''}">${l}</button>`).join('')}<i></i>${['left', 'center', 'right'].map((k) => `<button data-al="${k}" class="${al === k ? 'cur' : ''}" title="${k}">${svg(k, 15)}</button>`).join('')}<i></i><button data-b="alt">Alt text…</button><button data-b="delimg">Remove</button>`
+    bubble.hidden = false; const r = img.getBoundingClientRect(); bubble.style.left = r.left + 'px'; bubble.style.top = Math.min(r.bottom + 6, innerHeight - 50) + 'px'
+  }
+  const fn = e.target.closest('sup.fn'); if (fn) { const li = $('#fn-' + fn.dataset.fn); li?.scrollIntoView({ block: 'center', behavior: 'smooth' }); li?.classList.add('flash'); setTimeout(() => li?.classList.remove('flash'), 1200) }
+  const t = e.target.closest('.toc a'); if (t) { $$('#page h2, #page h3')[+t.dataset.i]?.scrollIntoView({ block: 'start', behavior: 'smooth' }) }
+  const cm = e.target.closest('.cmt'); if (cm) $(`.ccard[data-id="${cm.dataset.id}"] textarea`)?.focus()
+})
+bubble.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  const d = b.dataset
+  if (d.w && imgSel) { imgSel.classList.remove('w-s', 'w-m', 'w-l'); imgSel.classList.add(d.w); imgSel.click() }
+  if (d.al && imgSel) { imgSel.classList.remove('al-left', 'al-right'); if (d.al !== 'center') imgSel.classList.add('al-' + d.al); imgSel.click() }
+  if (d.b === 'alt' && imgSel) { const v = prompt('Describe the image for screen readers and Word', imgSel.alt); if (v != null) imgSel.alt = v }
+  if (d.b === 'delimg' && imgSel) { imgSel.remove(); bubble.hidden = true }
+  if (d.b === 'open') toast('Opens in your browser.')
+  if (d.b === 'edit') { bubble.hidden = true; const ins = $('.vbar [data-fly="insert"]'); openFly(ins, 'insert'); insert('link') }
+  if (d.b === 'unlink') { const a = closestIn('a'); a && a.replaceWith(...a.childNodes); bubble.hidden = true }
+})
+
+// ---------- find and replace ----------
+const findBox = $('#find'), findIn = $('#findIn'), repIn = $('#repIn')
+let matches = [], curM = -1, fCase = false, fWord = false
+function openFind(replace) {
+  findBox.hidden = false
+  if (replace) { findBox.classList.add('rep'); $('#repRow').hidden = false }
+  const s = getSelection().toString(); if (s && s.length < 60 && !s.includes('\n')) findIn.value = s
+  findIn.focus(); findIn.select(); runFind()
+}
+function closeFind() { findBox.hidden = true; CSS.highlights?.clear(); restore() }
+function runFind() {
+  matches = []
+  const t = findIn.value
+  if (t) {
+    const re = new RegExp((fWord ? '\\b' : '') + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + (fWord ? '\\b' : ''), fCase ? 'g' : 'gi')
+    const w = document.createTreeWalker(page, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest('.cite,.toc') ? 2 : 1) })
+    let n; while ((n = w.nextNode())) for (const m of n.data.matchAll(re)) { const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length); matches.push(r) }
+  }
+  curM = matches.length ? Math.min(Math.max(curM, 0), matches.length - 1) : -1
+  paintFind()
+}
+function paintFind() {
+  const c = $('#findCount')
+  c.textContent = !findIn.value ? '' : matches.length ? `${curM + 1} of ${matches.length}` : 'No results'
+  c.classList.toggle('none', !!findIn.value && !matches.length)
+  if (!window.CSS?.highlights) return
+  CSS.highlights.set('find', new Highlight(...matches))
+  CSS.highlights.set('find-cur', curM >= 0 ? new Highlight(matches[curM]) : new Highlight())
+}
+function goFind(d) {
+  if (!matches.length) return
+  curM = (curM + d + matches.length) % matches.length; paintFind()
+  const rr = matches[curM].getBoundingClientRect(), sr = scroller.getBoundingClientRect()
+  if (rr.top < sr.top + 90 || rr.bottom > sr.bottom - 40) scroller.scrollBy({ top: rr.top - sr.top - sr.height / 3, behavior: 'smooth' })
+}
+findIn.addEventListener('input', () => { curM = 0; runFind(); goFind(0) })
+findIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') goFind(e.shiftKey ? -1 : 1); if (e.key === 'Escape') closeFind() })
+repIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') replaceOne(); if (e.key === 'Escape') closeFind() })
+$('#findNext').onclick = () => goFind(1); $('#findPrev').onclick = () => goFind(-1); $('#findClose').onclick = closeFind
+$('#findCase').onclick = (e) => { fCase = !fCase; e.currentTarget.classList.toggle('cur', fCase); runFind() }
+$('#findWord').onclick = (e) => { fWord = !fWord; e.currentTarget.classList.toggle('cur', fWord); runFind() }
+$('#findTog').onclick = () => { const r = $('#repRow').hidden; $('#repRow').hidden = !r; findBox.classList.toggle('rep', r); if (r) repIn.focus() }
+function replaceOne() { if (curM < 0) return; const r = matches[curM]; r.deleteContents(); r.insertNode(document.createTextNode(repIn.value)); runFind(); paintFind(); words() }
+$('#repOne').onclick = replaceOne
+$('#repAll').onclick = () => { const n = matches.length; for (const r of [...matches].reverse()) { r.deleteContents(); r.insertNode(document.createTextNode(repIn.value)) } runFind(); words(); toast(`Replaced ${n} ${n === 1 ? 'match' : 'matches'}. Ctrl+Z undoes it in the app.`) }
+
+// ---------- extras ----------
+// Outline
+function outline() {
+  const list = $('#outlineList'); if (!list) return
+  const hs = $$('h1,h2,h3', page)
+  list.innerHTML = hs.map((h, i) => `<button data-i="${i}" class="lv${h.tagName[1]}">${esc(h.textContent.trim()) || '(empty heading)'}</button>`).join('')
+  markOutline()
+}
+function markOutline() {
+  if ($('#outline').hidden) return
+  const top = scroller.getBoundingClientRect().top + 100, hs = $$('h1,h2,h3', page)
+  let cur = 0; hs.forEach((h, i) => { if (h.getBoundingClientRect().top <= top) cur = i })
+  $$('#outlineList button').forEach((b, i) => b.classList.toggle('cur', i === cur))
+}
+$('#outlineList').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) $$('h1,h2,h3', page)[+b.dataset.i]?.scrollIntoView({ behavior: 'smooth', block: 'start' }) })
+scroller.addEventListener('scroll', () => { markOutline(); bubble.hidden = true })
+
+// Table of contents
+function tocs() {
+  const hs = $$('#page h2, #page h3')
+  for (const t of $$('.toc', page)) t.innerHTML = `<div class="toc-h">Contents <small>updates as you write</small></div>` + hs.map((h, i) => `<a data-i="${i}" class="lv${h.tagName[1]}">${esc(h.textContent.trim())}<span>${i + 1}</span></a>`).join('')
+}
+
+// Footnotes
+let fnId = 0
+function footnote() {
+  restore()
+  const id = ++fnId
+  document.execCommand('insertHTML', false, `<sup class="fn" contenteditable="false" data-fn="${id}">*</sup>`)
+  let notes = $('.notes', page)
+  if (!notes) { page.insertAdjacentHTML('beforeend', '<div class="notes"><ol id="fnList"></ol></div>'); notes = $('.notes', page) }
+  $('#fnList').insertAdjacentHTML('beforeend', `<li id="fn-${id}"><br></li>`)
+  renumber()
+  const li = $('#fn-' + id), r = document.createRange(); r.setStart(li, 0); r.collapse(true)
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r); li.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  toast('Type the note; click its number in the text to come back.')
+}
+function renumber() {
+  const sups = $$('sup.fn', page), list = $('#fnList'); if (!list) return
+  sups.forEach((s, i) => { s.textContent = i + 1; const li = $('#fn-' + s.dataset.fn); li && list.append(li) })
+  for (const li of $$('li', list)) if (!sups.some((s) => 'fn-' + s.dataset.fn === li.id)) li.remove()
+  if (!sups.length) $('.notes', page)?.remove()
+}
+
+// Comments to self
+let cmtId = 0
+function comment() {
+  if (!needText()) return
+  const id = ++cmtId, span = wrapSel('span', 'cmt'); span.dataset.id = id
+  const m = $('#margin'); m.hidden = false
+  m.insertAdjacentHTML('beforeend', `<div class="ccard" data-id="${id}"><div class="who"><span>Note to self · now</span></div><textarea placeholder="Write a note…"></textarea><div class="btns"><button class="btn" data-resolve="${id}">Resolve</button></div></div>`)
+  placeCards(); $(`.ccard[data-id="${id}"] textarea`).focus()
+}
+function placeCards() {
+  const m = $('#margin'); if (m.hidden) return
+  const base = $('#pageRow').getBoundingClientRect().top
+  let bottom = 0
+  for (const s of $$('.cmt', page)) {
+    const card = $(`.ccard[data-id="${s.dataset.id}"]`); if (!card) continue
+    const top = Math.max(s.getBoundingClientRect().top - base - 6, bottom)
+    card.style.top = top + 'px'; bottom = top + card.offsetHeight + 8
+  }
+}
+$('#margin').addEventListener('click', (e) => {
+  const card = e.target.closest('.ccard:not(.cur)')
+  if (card) { $$('.cmt.cur, .ccard.cur').forEach((x) => x.classList.remove('cur')); card.classList.add('cur'); $(`.cmt[data-id="${card.dataset.id}"]`)?.classList.add('cur'); card.querySelector('textarea').focus(); return }
+  const r = e.target.closest('[data-resolve]'); if (!r) return
+  const s = $(`.cmt[data-id="${r.dataset.resolve}"]`); s && s.replaceWith(...s.childNodes)
+  r.closest('.ccard').remove(); if (!$$('.ccard').length) $('#margin').hidden = true; placeCards()
+})
+$('#margin').addEventListener('focusin', (e) => { const c = e.target.closest('.ccard'); if (!c) return; $$('.cmt.cur, .ccard.cur').forEach((x) => x.classList.remove('cur')); c.classList.add('cur'); $(`.cmt[data-id="${c.dataset.id}"]`)?.classList.add('cur') })
+
+// Format painter
+let painting = null
+function painter() {
+  if (painting) { painting = null; app.classList.remove('painting'); setOn('painter', false); return }
+  restore()
+  painting = { bold: q('bold'), italic: q('italic'), underline: q('underline'), strikeThrough: q('strikeThrough'), tc: closestIn('span[class^="tc-"]')?.className, hl: closestIn('mark')?.className }
+  app.classList.add('painting'); setOn('painter', true); toast('Now select the text to paint. Esc cancels.')
+}
+page.addEventListener('mouseup', () => setTimeout(() => {
+  if (!painting || getSelection().isCollapsed) return
+  const p = painting; painting = null; app.classList.remove('painting'); setOn('painter', false)
+  saved = getSelection().getRangeAt(0).cloneRange()
+  document.execCommand('removeFormat'); unwrapIn('mark'); unwrapIn('span[class^="tc-"]')
+  for (const k of ['bold', 'italic', 'underline', 'strikeThrough']) if (p[k] !== q(k)) document.execCommand(k)
+  if (p.tc) wrapSel('span', p.tc); if (p.hl) wrapSel('mark', p.hl)
+  refresh()
+}))
+
+// Smart punctuation
+page.addEventListener('beforeinput', (e) => {
+  if (!on('smart') || e.inputType !== 'insertText' || !e.data) return
+  const s = getSelection(); if (!s.isCollapsed) return
+  const n = s.anchorNode, o = s.anchorOffset, before = n.nodeType === 3 ? n.data.slice(0, o) : ''
+  const swap = (del, text) => { e.preventDefault(); if (del) { const r = document.createRange(); r.setStart(n, o - del); r.setEnd(n, o); s.removeAllRanges(); s.addRange(r) } document.execCommand('insertText', false, text) }
+  if (e.data === '"') swap(0, /(^|[\s([{—–])$/.test(before) ? '“' : '”')
+  else if (e.data === "'") swap(0, /(^|[\s([{—–])$/.test(before) ? '‘' : '’')
+  else if (e.data === '-' && before.endsWith('-')) swap(1, '—')
+  else if (e.data === '.' && before.endsWith('..')) swap(2, '…')
+})
+
+// Word count and goal
+const store = { get: (k) => { try { return localStorage.getItem(k) } catch { return null } }, set: (k, v) => { try { localStorage.setItem(k, v) } catch { /* no storage here */ } } }
+let goal = +(store.get('mock.goal') || 0)
+function countIn(el) {
+  const c = el.cloneNode(true); c.querySelectorAll('.cite,.toc,.notes,sup.fn').forEach((x) => x.remove())
+  const t = c.innerText || c.textContent || ''
+  return { words: (t.match(/\w+(?:['’-]\w+)*/g) || []).length, chars: t.replace(/\n/g, '').length, nospace: t.replace(/\s/g, '').length }
+}
+function words() {
+  const n = countIn(page).words
+  const w = $('#wcWrap')
+  if (on('wordcount')) {
+    w.innerHTML = `<button class="wcbtn" title="Word count and goal"><span><b>${n.toLocaleString()}</b>${goal ? ` / ${goal.toLocaleString()}` : ''} words</span>${goal ? `<span class="goalbar"><i style="width:${Math.min(100, (n / goal) * 100)}%"></i></span>` : ''}</button>`
+  } else w.innerHTML = `<b id="wcN">${n.toLocaleString()}</b> words`
+}
+$('#wcWrap').addEventListener('click', (e) => {
+  if (!e.target.closest('.wcbtn')) return
+  const pop = $('#wcPop')
+  if (!pop.hidden) { pop.hidden = true; return }
+  const all = countIn(page)
+  const sel = saved && !saved.collapsed ? (() => { const d = document.createElement('div'); d.append(saved.cloneContents()); return countIn(d) })() : null
+  const paras = $$('p,li', page).filter((p) => p.textContent.trim() && !p.closest('.notes')).length
+  const row = (l, a, b) => `<tr><td>${l}</td><td>${a.toLocaleString()}</td>${sel ? `<td>${b.toLocaleString()}</td>` : ''}</tr>`
+  pop.innerHTML = `<h4>Word count</h4><table><tr><th></th><th>Draft</th>${sel ? '<th>Selection</th>' : ''}</tr>${row('Words', all.words, sel?.words)}${row('Characters', all.chars, sel?.chars)}${row('Characters, no spaces', all.nospace, sel?.nospace)}<tr><td>Paragraphs</td><td>${paras}</td>${sel ? '<td></td>' : ''}</tr><tr><td>Reading time</td><td>${Math.max(1, Math.round(all.words / 230))} min</td>${sel ? '<td></td>' : ''}</tr></table>
+    <p class="fly-note" style="margin:6px 0 0">Citation chips, the reference list and footnotes aren't counted.</p>
+    <div class="goal"><span>Word goal</span><input type="number" min="0" step="100" id="goalIn" value="${goal || ''}" placeholder="e.g. 3000"><span style="color:var(--muted)">${goal ? Math.round((all.words / goal) * 100) + '%' : 'none'}</span></div>`
+  pop.hidden = false
+  const r = e.target.closest('.wcbtn').getBoundingClientRect(); pop.style.left = r.left + 'px'; pop.style.top = r.top - pop.offsetHeight - 8 + 'px'
+  $('#goalIn').addEventListener('change', (ev) => { goal = Math.max(0, +ev.target.value || 0); store.set('mock.goal', goal); words(); pop.hidden = true })
+})
+
+// Export menu, page setup, shortcuts
+$('#exportBtn').addEventListener('click', () => {
+  if (!(on('pdf') || on('pagesetup'))) return toast('Saves a Word file with APA citations and a reference list (as today).')
+  const m = $('#exportMenu')
+  m.innerHTML = `<button data-e="word">${svg('insert', 16)}<span>Word (.docx)<small>APA citations, reference list, comments on flagged citations</small></span></button>` +
+    (on('pdf') ? `<button data-e="pdf">${svg('image', 16)}<span>PDF<small>The same document, ready to send</small></span></button><button data-e="print">${svg('toc', 16)}<span>Print…</span></button>` : '') +
+    (on('pagesetup') ? `<hr><button data-e="setup">${svg('pbreak', 16)}<span>Page setup…<small>A4 · normal margins · page numbers</small></span></button>` : '')
+  m.hidden = !m.hidden
+})
+$('#exportMenu').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  $('#exportMenu').hidden = true
+  if (b.dataset.e === 'setup') return pageSetup()
+  toast({ word: 'Saves the .docx (mock).', pdf: 'Saves a PDF (mock).', print: 'Opens the print dialog (mock).' }[b.dataset.e])
+})
+function modal(html) {
+  const s = document.createElement('div'); s.className = 'scrim'; s.innerHTML = `<div class="modal" role="dialog">${html}</div>`
+  s.addEventListener('mousedown', (e) => { if (e.target === s || e.target.closest('[data-close]')) s.remove() })
+  s.addEventListener('click', (e) => { const b = e.target.closest('.paper button, .modal .seg button'); if (b) { [...b.parentElement.children].forEach((x) => x.classList.toggle('cur', x === b)) } })
+  document.body.append(s); return s
+}
+function pageSetup() {
+  modal(`<h2>Page setup</h2><p class="m">For Word, PDF and print. On screen the draft stays one long page.</p>
+  <div class="grid"><span>Paper</span><div class="paper"><button class="cur"><i style="width:21px;height:29px"></i>A4</button><button><i style="width:22px;height:28px"></i>Letter</button><button><i style="width:29px;height:21px"></i>Landscape</button></div>
+  <span>Margins</span><div class="fly"><div class="seg" style="margin:0"><button>Narrow · 1.27 cm</button><button class="cur">Normal · 2.54 cm</button><button>Wide · 3.18 cm</button></div></div>
+  <span>Page numbers</span><label><input type="checkbox" checked> Bottom centre</label>
+  <span>Line numbers</span><label><input type="checkbox"> For a reviewer copy</label></div>
+  <div class="btns" style="margin-top:18px"><button class="btn" data-close>Cancel</button><button class="btn go" data-close>Save</button></div>`)
+  $$('.scrim .fly').forEach((f) => { f.className = ''; })
+}
+const SHORTCUTS = [
+  ['Text', [['Bold', 'Ctrl+B'], ['Italic', 'Ctrl+I'], ['Underline', 'Ctrl+U'], ['Strikethrough', 'Ctrl+Shift+S'], ['Superscript', 'Ctrl+.'], ['Subscript', 'Ctrl+,'], ['Highlight', 'Ctrl+Shift+H'], ['Clear formatting', 'Ctrl+Space'], ['Bigger / smaller', 'Ctrl+] / Ctrl+[']]],
+  ['Paragraph', [['Normal text', 'Ctrl+Alt+0'], ['Heading 1–3', 'Ctrl+Alt+1–3'], ['Quote', 'Ctrl+Shift+B'], ['Align left / centre / right / justify', 'Ctrl+Shift+L E R J'], ['Bullets / numbers / checklist', 'Ctrl+Shift+8 7 9'], ['Indent in a list', 'Tab / Shift+Tab']]],
+  ['Insert', [['Link', 'Ctrl+Shift+K'], ['Page break', 'Ctrl+Enter'], ['Footnote', 'Ctrl+Alt+F'], ['Comment', 'Ctrl+Alt+M']]],
+  ['Find', [['Find', 'Ctrl+F'], ['Replace', 'Ctrl+H'], ['Next / previous', 'Enter / Shift+Enter']]],
+  ['Groundwork', [['Cite', 'Ctrl+Shift+C'], ['Ask Muse', 'Ctrl+J'], ['Search everything', 'Ctrl+K'], ['Writing tools', 'Ctrl+\\'], ['Focus mode', 'Ctrl+Shift+F'], ['This list', 'Ctrl+/']]],
+]
+function shortcuts() {
+  modal(`<h2>Keyboard shortcuts</h2><p class="m">Ctrl+K stays the search box, so a link is Ctrl+Shift+K.</p><div class="sheet">${SHORTCUTS.map(([h, rows]) => `<section><h5>${h}</h5>${rows.map(([a, k]) => `<div><span>${a}</span><kbd>${k}</kbd></div>`).join('')}</section>`).join('')}</div><div class="btns" style="margin-top:8px"><button class="btn" data-close>Close</button></div>`)
+}
+
+// ---------- the bar's own buttons ----------
+const ACT = {
+  undo: () => exec('undo'), redo: () => exec('redo'), bold: () => exec('bold'), italic: () => exec('italic'), underline: () => exec('underline'),
+  quote: () => { restore(); document.execCommand('formatBlock', false, curBlock() === 'blockquote' ? 'p' : 'blockquote'); refresh() },
+  highlight: toggleHighlight, bullets: () => list('ul'), numbers: () => list('ol'), checklist: () => list('tasks'),
+  find: () => (findBox.hidden ? openFind(false) : closeFind()),
+  outline: () => { const o = $('#outline'); o.hidden = !o.hidden; setOn('outline', !o.hidden); outline() },
+  painter, comment, shortcuts,
+  cite: () => {
+    restore(); const sp = '<span class="cite mark" contenteditable="false">cite</span>'
+    document.execCommand('insertHTML', false, ' ' + sp)
+    const m = $$('#page .cite.mark').pop(); setTimeout(() => { if (m) { m.classList.remove('mark'); m.textContent = 'Travel 2023' } }, 1600)
+  },
+  ask: () => { if (S.panel !== 'open') { S.panel = 'open'; apply() } const a = $('#askBox'); a.classList.add('ping'); a.focus(); setTimeout(() => a.classList.remove('ping'), 1200) },
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.tb [data-act], .tb [data-fly]'); if (!b) return
+  hideTip()
+  if (b.dataset.fly) return openFly(b, b.dataset.fly)
+  closeFly(); ACT[b.dataset.act]?.(b)
+})
+// Arrow keys move along the bar (one tab stop for the whole bar)
+$('#vbar').addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  const bs = $$('#vbar button').filter((b) => !b.hidden && b.offsetParent), i = bs.indexOf(document.activeElement)
+  e.preventDefault(); bs[(i + (e.key === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length].focus()
+})
+
+// Tooltips: name, then shortcut, then a hint
+let tipT
+function hideTip() { clearTimeout(tipT); tip.hidden = true }
+document.addEventListener('mouseover', (e) => {
+  const b = e.target.closest('.vbar [data-tip]')
+  if (!b || b.classList.contains('open')) return hideTip()
+  clearTimeout(tipT)
+  tipT = setTimeout(() => {
+    const [name, key, hint] = b.dataset.tip.split('|')
+    const isKey = key && /^(Ctrl|Shift|Alt|Tab)/.test(key)
+    tip.innerHTML = `<span>${esc(name)}</span>${key ? (isKey ? `<kbd>${esc(key)}</kbd>` : `<small>${esc(key)}</small>`) : ''}${hint ? `<small>${esc(hint)}</small>` : ''}`
+    tip.hidden = false; const r = b.getBoundingClientRect(); tip.style.left = r.right + 10 + 'px'; tip.style.top = r.top + r.height / 2 - tip.offsetHeight / 2 + 'px'
+  }, 280)
+})
+document.addEventListener('mouseout', (e) => { if (e.target.closest?.('.vbar [data-tip]') && !e.relatedTarget?.closest?.('.vbar [data-tip]')) hideTip() })
+
+// A short window: the bar scrolls, with a fade at its foot while more is below
+function overflow() { const v = $('#vscroll'); $('#vbar').classList.toggle('more', v.scrollHeight - v.scrollTop - v.clientHeight > 2) }
+$('#vscroll').addEventListener('scroll', overflow); addEventListener('resize', () => { overflow(); placeCards(); closeFly() })
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+  const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase()
+  if (e.key === 'Escape') { if (!fly.hidden) return closeFly(); if (painting) return painter(); if (!findBox.hidden) return closeFind(); $('.scrim')?.remove(); bubble.hidden = true }
+  if (!mod) return
+  const inPage = page.contains(document.activeElement) || document.activeElement === page
+  const map = {
+    f: !e.shiftKey && !e.altKey && (() => openFind(false)), h: !e.shiftKey && (() => openFind(true)), '/': () => on('shortcuts') && shortcuts(),
+  }
+  if (map[k]) { e.preventDefault(); return map[k]() }
+  if (!inPage) return
+  const run = (fn) => { e.preventDefault(); fn() }
+  if (e.shiftKey && k === 'h') return run(toggleHighlight)
+  if (e.shiftKey && k === 's') return run(() => exec('strikeThrough'))
+  if (e.shiftKey && k === 'k') return run(() => { openFly($('.vbar [data-fly="insert"]'), 'insert'); insert('link') })
+  if (e.shiftKey && 'lerj'.includes(k) && k.length === 1) return run(() => exec({ l: 'justifyLeft', e: 'justifyCenter', r: 'justifyRight', j: 'justifyFull' }[k]))
+  if (e.shiftKey && e.code === 'Digit8') return run(() => list('ul'))
+  if (e.shiftKey && e.code === 'Digit7') return run(() => list('ol'))
+  if (e.shiftKey && e.code === 'Digit9') return run(() => list('tasks'))
+  if (e.shiftKey && k === 'b') return run(ACT.quote)
+  if (e.shiftKey && k === 'c') return run(ACT.cite)
+  if (e.altKey && /^Digit[0-3]$/.test(e.code)) return run(() => { restore(); document.execCommand('formatBlock', false, e.code === 'Digit0' ? 'p' : 'h' + e.code[5]); refresh(); outline() })
+  if (e.altKey && k === 'f' && on('footnotes')) return run(footnote)
+  if (e.altKey && k === 'm' && on('comments')) return run(comment)
+  if (k === '.') return run(() => exec('superscript'))
+  if (k === ',') return run(() => exec('subscript'))
+  if (k === ' ') return run(() => { exec('removeFormat'); unwrapIn('mark'); unwrapIn('span[class^="tc-"]') })
+  if (k === ']') return run(() => grow(1))
+  if (k === '[') return run(() => grow(-1))
+  if (k === 'enter') return run(() => insert('pbreak'))
+  if (k === 'j') return run(ACT.ask)
+})
+
+// Keep derived things fresh as the text changes
+let tick
+page.addEventListener('input', () => {
+  clearTimeout(tick)
+  tick = setTimeout(() => { words(); outline(); tocs(); renumber(); placeCards(); if (!findBox.hidden) runFind() }, 200)
+})
+
+let toastT
+function toast(m) { $('.toast')?.remove(); const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.append(t); clearTimeout(toastT); toastT = setTimeout(() => t.remove(), 3200) }
+
+apply(); refresh(); outline()
+</script>
+</body>
+</html>

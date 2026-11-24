@@ -7,6 +7,7 @@ import { applyTheme, cachedTheme } from './theme'
 import './styles.css'
 import './design.css'
 import './libraryFolders.css'
+import './writeTools.css'
 
 applyTheme(cachedTheme())
 
