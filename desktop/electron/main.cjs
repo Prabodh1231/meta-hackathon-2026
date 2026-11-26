@@ -290,6 +290,50 @@ ipcMain.handle('rc:save-file', async (event, defaultName, data) => {
   return res.filePath
 })
 
+// PDF and printing: the backend renders the draft as one HTML page (citations formatted, page setup as
+// CSS @page). It's loaded from a temporary file into a hidden window with scripts off, then printed to
+// PDF (saved where the writer picks) or handed to the system's print dialog.
+ipcMain.handle('rc:print-html', async (event, html, opts = {}) => {
+  if (typeof html !== 'string' || !html) throw new Error('Nothing to print')
+  const parent = BrowserWindow.fromWebContents(event.sender)
+  const tmp = path.join(app.getPath('temp'), `groundwork-print-${process.pid}-${Date.now()}.html`)
+  await fs.promises.writeFile(tmp, html, 'utf8')
+  const win = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true } })
+  try {
+    await win.loadFile(tmp)
+    if (opts.pdf) {
+      const footer = opts.pageNumbers
+        ? '<div style="width:100%;font:9px Georgia,serif;color:#555;text-align:center"><span class="pageNumber"></span></div>'
+        : '<span></span>'
+      const data = await win.webContents.printToPDF({
+        preferCSSPageSize: true,
+        printBackground: true,
+        displayHeaderFooter: !!opts.pageNumbers,
+        headerTemplate: '<span></span>',
+        footerTemplate: footer,
+        generateTaggedPDF: true,
+        generateDocumentOutline: true,
+      })
+      const res = await dialog.showSaveDialog(parent, {
+        defaultPath: opts.fileName || 'Draft.pdf',
+        filters: [{ name: 'PDF document', extensions: ['pdf'] }],
+      })
+      if (res.canceled || !res.filePath) return null
+      await fs.promises.writeFile(res.filePath, data)
+      return res.filePath
+    }
+    return await new Promise((resolve, reject) => {
+      win.webContents.print({ silent: false, printBackground: true }, (ok, reason) => {
+        if (ok || reason === 'cancelled') resolve(ok ? 'printed' : null)
+        else reject(new Error(`Printing failed: ${reason}`))
+      })
+    })
+  } finally {
+    win.destroy()
+    fs.promises.unlink(tmp).catch(() => {})
+  }
+})
+
 // The duplicate finder can move a library file to the Recycle Bin / Trash, never delete it outright.
 // Only a file the library actually holds is accepted, so the renderer can't trash arbitrary paths.
 async function libraryFile(filePath) {

@@ -32,6 +32,8 @@ import { MissingPapersDialog } from './components/MissingPapersDialog'
 import { CitingPapersDialog } from './components/CitingPapersDialog'
 import { TopicNewArrivalsDialog } from './components/TopicNewArrivalsDialog'
 import { ReaderDialog } from './components/ReaderDialog'
+import { PageSetupDialog, ShortcutsDialog, WordCountPopover, type Counts } from './components/DocDialogs'
+import type { PageSetup } from './editor/docFormat'
 import { HighlightsPanel } from './components/HighlightsPanel'
 import { ReviewPanel } from './components/ReviewPanel'
 import logoUrl from './assets/logo.svg?no-inline'
@@ -244,6 +246,9 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>({ ...DEFAULT_SETTINGS, theme: cachedTheme() })
   const [showSettings, setShowSettings] = useState<SettingsSection | null>(null) // open, at this section
   const [dupFilesOpen, setDupFilesOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [pageSetup, setPageSetup] = useState<PageSetup | null>(null) // the page setup dialog, open with this
+  const [wordCount, setWordCount] = useState<{ anchor: DOMRect; counts: Counts } | null>(null)
   const [citeMarks, setCiteMarks] = useState<CiteMarkAttrs[]>([]) // "cite" markers in the draft, searching or waiting
   const [citeFocus, setCiteFocus] = useState<string | null>(null) // the marker Check is showing
   const [recheckingAll, setRecheckingAll] = useState(false)
@@ -419,6 +424,18 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
+      // The page handles its own keys first (find, links, footnotes); these are for anywhere else.
+      if (e.defaultPrevented) return
+      if (mod && e.key === '/') {
+        e.preventDefault()
+        setShortcutsOpen((o) => !o)
+        return
+      }
+      if (mod && !e.shiftKey && !e.altKey && (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'h') && mode === 'write' && !paletteOpen) {
+        e.preventDefault()
+        editor.current?.openFind(e.key.toLowerCase() === 'h')
+        return
+      }
       if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((o) => !o)
@@ -1538,6 +1555,8 @@ export default function App() {
             style={settings.citation_style}
             getJSON={() => editor.current?.getJSON() ?? null}
             getTitle={titleNow}
+            getPageSetup={() => editor.current?.getPageSetup() ?? null}
+            onPageSetup={() => setPageSetup(editor.current?.getPageSetup() ?? null)}
             onError={onError}
             onExported={() => markDemo('export')}
           />
@@ -1655,6 +1674,7 @@ export default function App() {
               spellcheck={settings.spellcheck}
               onError={onError}
               retracted={retracted}
+              onShortcuts={() => setShortcutsOpen(true)}
             />
           </main>
 
@@ -1980,9 +2000,24 @@ export default function App() {
               Draft
             </span>
           )}
-          <span className="stat" title="Words in the draft">
-            <b>{stats.words.toLocaleString()}</b> <span className="lbl">words</span>
-          </span>
+          <button
+            className="stat"
+            title="Words in the draft: details and a word goal"
+            aria-expanded={!!wordCount}
+            onClick={(e) => {
+              const counts = editor.current?.counts()
+              const anchor = e.currentTarget.getBoundingClientRect()
+              setWordCount((w) => (w || !counts ? null : { anchor, counts }))
+            }}
+          >
+            <b>{stats.words.toLocaleString()}</b>
+            {stats.goal ? <span className="lbl"> / {stats.goal.toLocaleString()}</span> : null} <span className="lbl">words</span>
+            {stats.goal ? (
+              <span className="goal-bar" aria-hidden="true">
+                <i style={{ width: `${Math.min(100, (stats.words / stats.goal) * 100)}%` }} />
+              </span>
+            ) : null}
+          </button>
           {/* Counted and worded as Check counts them, and as the chips say it. */}
           <button className="stat" onClick={() => showCitations()} title="Open Check: what needs your attention first">
             {cites.total === 0 ? (
@@ -2121,6 +2156,18 @@ export default function App() {
       )}
 
       {pdfView && <ReaderDialog doc={pdfView.doc} page={pdfView.page} find={pdfView.find} onClose={() => (setPdfView(null), void refresh().catch(() => {}))} onInsertQuote={insertQuote} />}
+
+      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {pageSetup && <PageSetupDialog value={pageSetup} onSave={(p) => editor.current?.setPageSetup(p)} onClose={() => setPageSetup(null)} />}
+      {wordCount && (
+        <WordCountPopover
+          anchor={wordCount.anchor}
+          counts={wordCount.counts}
+          goal={stats.goal ?? 0}
+          onGoal={(n) => editor.current?.setWordGoal(n)}
+          onClose={() => setWordCount(null)}
+        />
+      )}
 
       {showSettings && (
         <SettingsDialog

@@ -56,7 +56,57 @@ The window has four parts:
 
 ## Write
 
-**Write** shows the open draft on its page, with the writing tools beside it.
+**Write** shows the open draft on its page, with the writing toolbar on its left and the writing tools beside it.
+
+### The writing toolbar
+
+The toolbar is a slim column on the left of the page, so the page starts at the top of the window. Point at a button for its name and shortcut. A button with a small corner opens a menu to its right. From top to bottom:
+
+| Button | What it does |
+|---|---|
+| **Undo / Redo** | Ctrl+Z / Ctrl+Y. |
+| **¶** (paragraph style) | Normal text, Heading 1 to 3, Quote. It shows the style at the cursor (H1, H2, ❝). |
+| **Aa** | Font, size (A− and A+ step it, Ctrl+[ and Ctrl+]), text colour and highlight colour. Colours keep their name, so they stay readable in the dark theme; Word and PDF get the printed colour. |
+| **B I U** | Bold, italic, underline. |
+| **Highlighter** | Highlights the selection in the colour shown under it (the last one picked under Aa); Ctrl+Shift+H. |
+| **⋯** | Strikethrough, superscript (Ctrl+.), subscript (Ctrl+,), change case (Sentence, lower, UPPER, Title) and **Clear formatting** (Ctrl+Space). |
+| **Alignment** | Left, centre, right, justify (Ctrl+Shift+L, E, R, J); indent; line spacing (Single, 1.15, 1.5, Double); and **Space between paragraphs** for the whole draft. |
+| **Lists** | Bullets, numbers and a checklist (Ctrl+Shift+8, 7, 9). Tab and Shift+Tab nest a list item. |
+| **Insert** | **Link** (Ctrl+Shift+K; a DOI becomes a doi.org link), **Image** (or paste or drop a picture onto the page), **Table** (pick the size), **Horizontal line**, **Page break** (Ctrl+Enter), **Footnote** (Ctrl+Alt+F), **Table of contents**, **Symbol** (dashes, §, ±, ≤, Greek letters…). |
+| **Table** | Shows only while the cursor is in a table: insert rows and columns, the header row, merge or split cells, delete. |
+| **Comment** | A note to yourself on the selected text (Ctrl+Alt+M). See [Comments to self](#comments-to-self). |
+| **Format painter** | Copies the formatting at the cursor; the next text you select takes it. Esc puts it down. |
+| **Find and replace** | Ctrl+F, or Ctrl+H with the replace row open. See [Find and replace](#find-and-replace). |
+| **Outline** | The draft's headings beside the page. See [Outline](#outline). |
+| **?** | Every keyboard shortcut (Ctrl+/). |
+| **Cite** and **Ask** | At the foot: cite the sentence at the cursor (Ctrl+Shift+C), and ask Muse about the selection (Ctrl+J). |
+
+In a short window the column scrolls, with a fade at its foot while there's more below; Cite and Ask stay at the foot.
+
+Quotes, dashes and ellipses turn typographic as you type (`"` becomes “ or ”, `--` becomes —, `...` becomes …); Backspace straight after puts back what you typed.
+
+### Pictures, links, footnotes and contents
+
+- **A picture** is stored inside the draft (big ones are scaled down). Click it for a small bar: **Small**, **Medium** or **Full width** (a share of the text width), left, centre or right, **Alt text** (what the picture shows, for screen readers and Word), and **Remove**.
+- **A link**: put the cursor in it for a bar with its address, **Open** (in your browser) and **Remove link**. Insert → Link with the cursor in a link edits it.
+- **A footnote** puts a number at the cursor and takes you to its note under the page. Notes are numbered for you and renumber as they come and go. Enter in a note (or a click on its number) takes you back to the text; Shift+Enter starts a new line in it.
+- **A table of contents** lists the headings (Heading 1 to 3, leaving out a first-line Heading 1, which is the title) and keeps itself up to date. Click an entry to go there.
+
+### Find and replace
+
+Ctrl+F (or the toolbar's magnifier) opens a box at the top of the page. Matches are marked on the page; Enter and Shift+Enter (or ↑ ↓) step through them, with *3 of 12* beside the box. **Aa** matches case, **ab** whole words only. **›** (or Ctrl+H) opens the replace row: **Replace** changes the current match and moves on, **Replace all** changes every one at once (one Ctrl+Z undoes them all). Esc closes the box.
+
+### Outline
+
+**Outline** in the toolbar lists the draft's headings beside the page, with the section on screen marked; click one to go there. When there's no room beside the page (the writing tools open in a small window), the outline opens over the page's edge instead and closes once you've picked a heading or clicked elsewhere.
+
+### Comments to self
+
+Select some text and click **Comment** (or Ctrl+Alt+M): the passage is tinted and a card opens beside the page for your note. Click the passage or its card to read or change it; **Resolve** removes the comment and keeps the text. A comment left empty goes away by itself. When there's no room beside the page, comments shrink to small markers in the margin; click one to open it. They're exported to Word as comments (by *Note to self*) and left out of PDFs.
+
+### Word count and goal
+
+Click the word count in the status bar for the details: words, characters (with and without spaces), paragraphs and reading time, for the draft and for the selection. Set a **Word goal** there, and the status bar shows *2,372 / 3,000 words* with a bar. Citations, footnotes and the reference list aren't counted.
 
 ### The writing tools
 
@@ -322,7 +372,7 @@ Your notes are your own ideas: Muse may use them as guidance, but they're never 
 
 It answers from Muse's own knowledge, not your library, and its replies have no citations: check facts before you rely on them. To write from your sources with cited quotes, switch to **Cite my sources**.
 
-To ask about part of your draft, select it and press **Ctrl J**, or click **Ask Muse** in the toolbar beside Cite. Compose opens on Just chat with the text attached above the message box (× removes it).
+To ask about part of your draft, select it and press **Ctrl J**, or click **Ask** at the foot of the toolbar, under Cite. Compose opens on Just chat with the text attached above the message box (× removes it).
 
 Replies show formatted (bold, lists, headings, tables, code). **Insert into draft** under a reply puts it at the cursor with that formatting.
 
@@ -332,7 +382,7 @@ While Muse answers, the chat counts the seconds and says why when it's slower (M
 
 ## 4. Back up each claim
 
-Put the cursor in a sentence you wrote (or select some text) and press **Cite** in the toolbar, or Ctrl+Shift+C. A small grey `cite` marker appears at the end of the sentence and you keep writing; the search runs in the background and the cursor doesn't move.
+Put the cursor in a sentence you wrote (or select some text) and press **Cite** at the foot of the toolbar, or Ctrl+Shift+C. A small grey `cite` marker appears at the end of the sentence and you keep writing; the search runs in the background and the cursor doesn't move.
 
 Two searches start at once: a quick keyword search for the sentence as written, whose passages are checked straight away, and the full search that Muse expands and ranks. The marker turns green with a ✓ as soon as one source is found that supports the sentence (*Source found, confirm it*), often from the quick search within a few seconds, without waiting for the other candidates: click it and you can confirm that source at once, while the rest are listed as *Checking…* until their checks finish. The list is the full search's four candidates, plus any other supported source the quick search found. It turns amber with a ◐ when it's only partly supported, red with a ✕ when what was found doesn't support it, and red with a ? and a dashed border when nothing in your library matches (*No source found*). The symbol says the same as the colour, so it reads without colour too, and a screen reader hears it in words. The marker never changes size, so the line you're typing doesn't shift.
 
@@ -388,7 +438,12 @@ While Check is open, matching passages are underlined in the draft: red for an u
 
 ## 6. Export
 
-**Export** in the top bar saves the draft as a Word file. Citations are written in your citation style with a reference list at the end. A citation that didn't pass the check gets a Word comment saying why, every citation of a retracted paper gets one saying it was retracted, and a `cite` marker you haven't confirmed is left out of the text with a comment on its sentence.
+**Export ▾** in the top bar opens a menu:
+
+- **Word (.docx):** citations are written in your citation style with a reference list at the end. A citation that didn't pass the check gets a Word comment saying why, every citation of a retracted paper gets one saying it was retracted, and a `cite` marker you haven't confirmed is left out of the text with a comment on its sentence. The toolbar's formatting comes along: alignment, spacing, indents, colours, highlights, links, pictures, checklists, page breaks, real Word footnotes, the table of contents (a Word field: right-click it in Word and choose **Update Field** to add page numbers) and your comments to self.
+- **PDF:** the same document, ready to send, with bookmarks for its headings. Footnotes become notes at the end, and comments (the citation checks' and yours) are left out.
+- **Print…:** the same document, to your printer.
+- **Page setup…:** this draft's paper (A4 or Letter, portrait or landscape), margins (narrow, normal or wide), page numbers at the foot of each page, and line numbers for a reviewer's copy (Word only). It applies to Word, PDF and printing; on screen the draft stays one long page. A new draft starts on A4 with normal margins and page numbers.
 
 ## The citation network
 
@@ -456,7 +511,7 @@ Edit the answer and **Save answer** (it keeps its quote as evidence), **Read aga
 - **Kept with the matrix:** every gap and every written passage keeps a copy of the rows it came from. Passages you insert are listed in the same panel under **Written from this matrix**. The panel shows when the matrix has changed since one was written, and you can insert one again or delete it.
 - **Write a proposal** (under **⋯**): plans a study that addresses the gaps (see [Write a research proposal](#write-a-research-proposal)).
 - The header above a matrix keeps to one row: the name, the paper count and the gaps pill on the left; **Columns (5/17)** and **Filter** change what you see, **Compact / Comfortable** the row height, **Write from matrix** is the main action, and **⋯** holds the rest.
-- **Insert into draft** (under **⋯**): the matrix as a table at the cursor, with the columns you choose. Each cell cites its quote, so the paper joins the reference list and the Word export; the citations are checked in the background, like the Assistant's. In the draft, **−Row**, **−Col** and **×Table** appear in the toolbar while the cursor is in a table.
+- **Insert into draft** (under **⋯**): the matrix as a table at the cursor, with the columns you choose. Each cell cites its quote, so the paper joins the reference list and the Word export; the citations are checked in the background, like the Assistant's. In the draft, a **Table** button appears in the toolbar while the cursor is in a table, with rows, columns, the header row and delete.
 - **Export to Excel / CSV / a Word table** (also under **⋯**): an *Excel workbook* or *CSV* (each column's answer, then its evidence: page and quote), or a *Word table* whose cells cite their sources in your citation style, with a reference list.
 
 **Paper details.** Detail columns show each paper's record as it is in your library: what OpenAlex and Crossref found (see [More library tools](#more-library-tools-)) and what you corrected under Edit details. They aren't read by Muse, so they fill in at once, cost nothing, carry no quote, and change when the record does. **Columns** above the table adds or removes them (questions are limited to 12, details aren't).
@@ -496,6 +551,19 @@ The draft has a title and Background, The gap, Research questions, Hypotheses, V
 | Ctrl O | Import a Word file |
 | Ctrl Shift C | Cite the sentence at the cursor |
 | Ctrl J | Ask Muse about the selected text (Compose, Just chat) |
+| Ctrl / | Every keyboard shortcut, in a list |
+| Ctrl F / Ctrl H | Find / find and replace in the draft |
+| Ctrl B, I, U | Bold, italic, underline |
+| Ctrl Shift S / Ctrl . / Ctrl , | Strikethrough / superscript / subscript |
+| Ctrl Shift H | Highlight |
+| Ctrl Space | Clear formatting |
+| Ctrl ] / Ctrl [ | Bigger / smaller text |
+| Ctrl Alt 0 to 3 | Normal text, Heading 1 to 3 |
+| Ctrl Shift L, E, R, J | Align left, centre, right, justify |
+| Ctrl Shift 8, 7, 9 | Bulleted list, numbered list, checklist |
+| Ctrl Shift K | Link |
+| Ctrl Enter | Page break |
+| Ctrl Alt F / Ctrl Alt M | Footnote / comment |
 | Ctrl \ | Open or close the writing tools |
 | Ctrl Shift F | Focus mode on or off |
 | Ctrl Z / Ctrl Y | Undo / redo in the draft |

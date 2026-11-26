@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .backup import backup_in_background
-from .export_docx import export_docx, export_reading_list
+from .export_docx import export_docx, export_html, export_reading_list
 from .jobs import IngestJobs
 from .embeddings import FastReranker, LoadingEmbedder, LoadingReranker, make_embedder
 from .library import INGEST_WORKERS, Library
@@ -269,7 +269,7 @@ class ExportIn(BaseModel):
 
 # Bump when the UI starts relying on a new or changed endpoint. The app compares it with its own
 # number and asks for a restart when the backend that's running is older than the UI.
-API_VERSION = 31
+API_VERSION = 32
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -842,6 +842,11 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     def export(body: ExportIn):
         data = export_docx(lib, body.content, body.style, body.title)
         return Response(data, media_type=DOCX_MIME, headers={"Content-Disposition": 'attachment; filename="draft.docx"'})
+
+    @app.post("/export/html")
+    def export_page(body: ExportIn):
+        """The draft as one HTML page with its citations and references, for PDF and printing."""
+        return Response(export_html(lib, body.content, body.style, body.title), media_type="text/html; charset=utf-8")
 
     @app.get("/drafts/{draft_id}")
     def get_draft(draft_id: int):
