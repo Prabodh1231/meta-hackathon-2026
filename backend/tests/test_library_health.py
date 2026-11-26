@@ -82,6 +82,13 @@ def test_locate_file_keeps_the_document_its_highlights_and_citations(client, tmp
     assert client.get(f"/documents/{d['id']}/file").status_code == 200
 
 
+def test_the_browser_is_told_to_keep_no_copy_of_files_or_replies(client, tmp_path):
+    # The port changes every launch, so a cached PDF would only ever be stored again, never reused.
+    d = add(client, tmp_path, "okafor")
+    for path in (f"/documents/{d['id']}/file", f"/documents/{d['id']}", "/documents/999999/file"):
+        assert client.get(path).headers["cache-control"] == "no-store", path
+
+
 def test_a_different_version_needs_saying_so_and_wrong_files_are_refused(client, tmp_path):
     d = add(client, tmp_path, "okafor")
     other = add(client, tmp_path, "beta", seed=3)
