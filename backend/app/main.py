@@ -370,6 +370,14 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
                 return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
         return await call_next(request)
 
+    @app.middleware("http")
+    async def no_browser_cache(request: Request, call_next):
+        # The app's browser cache must keep nothing from here. The port changes every launch, so a
+        # cached reply is never read again; it was storing another copy of each PDF opened, every launch.
+        response = await call_next(request)
+        response.headers.setdefault("Cache-Control", "no-store")
+        return response
+
     app.add_middleware(  # added last so it wraps the token check and 401s still carry CORS headers
         CORSMiddleware,
         allow_origin_regex=r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|null)$",
