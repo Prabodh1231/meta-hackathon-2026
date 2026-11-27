@@ -4,7 +4,7 @@
     {
       "name": "backend",
       "runtimeExecutable": "backend/.venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--app-dir", "backend", "--host", "127.0.0.1", "--port", "8765"],
+      "runtimeArgs": ["-c", "import os, uvicorn; os.environ['RC_ALLOW_NO_TOKEN'] = '1'; uvicorn.run('app.main:app', app_dir='backend', host='127.0.0.1', port=8765)"],
       "port": 8765
     },
     {
