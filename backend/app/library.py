@@ -19,7 +19,7 @@ import httpx
 import numpy as np
 
 from . import db, docx_import, draft_review, dupfiles, openaccess, paper_meta
-from .citations import VERDICT_STATUS, locate_quote
+from .citations import VERDICT_STATUS, locate_quote, quote_conflict, source_words
 from .citegraph import build_graph, focus, keyword_links, match_all, missing_works
 from .embeddings import DIM, from_blob, to_blob
 from .refparse import Reference, match_reference, norm, parse_references
@@ -2560,12 +2560,19 @@ class Library:
 
         result = {
             "chunk_id": chunk_id, "doc_id": ch["doc_id"], "page": ch["page"], "page_label": page_row["label"],
-            "quote": quote, "start": start, "end": end, "match": round(ratio, 3),
+            # The page's own words, not the model's copy of them: a near match may differ by an
+            # OCR slip, and what the citation shows in quotation marks must be what the source says.
+            "quote": source_words(page_text, start, end) if start is not None else quote,
+            "start": start, "end": end, "match": round(ratio, 3),
             "label": short_label(doc, page=ch["page"], page_label=page_row["label"]),
             "status": "pending", "reason": "",
         }
         if start is None:
-            result.update(status="quote_not_found", reason="The quoted text does not appear in the cited source.")
+            conflict = quote_conflict(quote, page_text)
+            reason = (f"The source says “{source_words(page_text, conflict[1], conflict[2])}”: "
+                      f"the quote changes {conflict[0]}." if conflict
+                      else "The quoted text does not appear in the cited source.")
+            result.update(status="quote_not_found", reason=reason)
         elif judge:
             # Judge against the located passage plus surrounding text on the page.
             window = page_text[max(0, start - 1500) : end + 1500]

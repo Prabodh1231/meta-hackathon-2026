@@ -1,4 +1,9 @@
-from app.citations import locate_quote
+import pytest
+
+from app.citations import locate_quote, quote_conflict, source_words
+from app.library import Library
+from app.providers import MockProvider
+from app.settings import Settings
 
 PAGE = ("the cat sat on the mat. " + "x" * 300 +
         " Results show that consolidation of memory occurs during slow wave sleep in adults")
@@ -27,3 +32,78 @@ def test_ligatures_and_minus_signs_match_exactly():
     text = "An eﬃcient oﬀer with −2 dB gain."
     start, end, _ = locate_quote("efficient offer with -2 dB", text, fuzzy=False)
     assert text[start:end] == "eﬃcient oﬀer with −2 dB"
+
+
+# A near match that changes what the source says is not the source's text, however few
+# letters differ: the coverage ratio alone scored a dropped "not" as a perfect match.
+TRIAL = ("In the trial, the drug did not reduce mortality in older patients, although it shortened "
+         "stays by 30% (p < 0.05).12 The effect was insignificant overall.")
+
+
+@pytest.mark.parametrize("quote, changes, source_says", [
+    ("the drug reduced mortality in older patients", "a negation", "the drug did not reduce mortality in older patients"),
+    ("the drug did reduce mortality in older patients", "a negation", "the drug did not reduce mortality in older patients"),
+    ("reduce mortality in older patients", "a negation", "not reduce mortality in older patients"),
+    ("it shortened stays by 40% (p < 0.05)", "a number", "it shortened stays by 30% (p < 0.05)"),
+    ("The effect was significant overall", "a word's prefix", "The effect was insignificant overall"),
+    ("significant overall", "a word's prefix", "insignificant overall"),
+])
+def test_a_quote_that_changes_the_meaning_is_not_found(quote, changes, source_says):
+    assert locate_quote(quote, TRIAL) is None
+    what, start, end = quote_conflict(quote, TRIAL)
+    assert what == changes and source_words(TRIAL, start, end) == source_says
+
+
+def test_a_negation_added_to_the_quote_is_a_change():
+    text = "Mobile money increased household savings by 12 percent."
+    assert locate_quote("Mobile money did not increase household savings by 12 percent", text) is None
+    assert quote_conflict("Mobile money did not increase household savings by 12 percent", text)[0] == "a negation"
+
+
+def test_honest_near_matches_still_match():
+    # A footnote marker the quote leaves out, an OCR slip, case and spacing are no change of meaning.
+    start, end, _ = locate_quote("it shortened stays by 30% (p < 0.05). The effect", TRIAL)
+    assert TRIAL[start:end] == "it shortened stays by 30% (p < 0.05).12 The effect"
+    assert locate_quote("the drug did not reduce mortalty in older patients", TRIAL)
+    assert locate_quote("THE DRUG DID NOT  reduce mortality", TRIAL)
+    assert quote_conflict("the drug did not reduce mortality", TRIAL) is None
+    # "didn't" and "did not" are the same negation.
+    assert locate_quote("the drug didn't reduce mortality in older patients", TRIAL.replace("did not", "didn't"))
+
+
+def test_a_quote_inside_a_longer_word_is_widened_to_the_word():
+    text = "Results held for memory consolidations across nights."
+    start, end, _ = locate_quote("memory consolidation across nights", text)
+    assert text[start:end] == "memory consolidations across nights"
+
+
+def test_source_words_join_line_hyphens_and_spaces():
+    text = "Sleep aids memory consoli-\ndation\n during  the night."
+    start, end, _ = locate_quote("memory consolidation during", text)
+    assert source_words(text, start, end) == "memory consolidation during"
+
+
+def test_a_citation_shows_the_pages_words_and_says_what_a_changed_quote_changes(tmp_path):
+    lib = Library(Settings(data_dir=tmp_path / "data"), provider=MockProvider())
+    f = tmp_path / "trial.md"
+    f.write_text("# A drug trial\n\n" + TRIAL, encoding="utf-8")
+    lib.ingest_path(str(f))
+    chunk = lib.search("drug mortality older patients", k=1, mode="keyword")[0]["id"]
+
+    slipped = lib.verify_citation("The drug did not lower mortality.", chunk,
+                                  "the drug did not reduce mortalty in older patients", judge=False)
+    assert slipped["start"] is not None
+    assert slipped["quote"] == "the drug did not reduce mortality in older patients"  # the page's spelling
+
+    flipped = lib.verify_citation("The drug lowered mortality.", chunk,
+                                  "the drug reduced mortality in older patients", judge=False)
+    assert flipped["status"] == "quote_not_found" and flipped["start"] is None
+    assert "the drug did not reduce mortality in older patients" in flipped["reason"]
+    assert "negation" in flipped["reason"]
+
+
+def test_a_range_broken_across_a_line_is_one_range_not_one_number():
+    # Seen in a real library: "2004-\n12" used to read as "200412", a number the quote lacked.
+    text = "in 86 countries over the time period 2004-\n12. Banks differ"
+    start, end, ratio = locate_quote("in 86 countries over the time period 2004-12", text)
+    assert ratio == 1.0 and source_words(text, start, end) == "in 86 countries over the time period 2004-12"

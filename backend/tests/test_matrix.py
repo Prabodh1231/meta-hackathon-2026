@@ -383,3 +383,26 @@ def test_a_gap_in_the_draft_exports_citing_every_paper(setup):
     comments = [c.text for c in word.comments]
     assert len(comments) == 1  # none for the verified (blue) ones
     assert "review matrix only partly supports" in comments[0] and "Quoted" not in comments[0]
+
+
+def test_a_cell_whose_quote_changes_the_paper_is_unverified_and_cells_quote_the_page(setup, monkeypatch):
+    client, lib, ids = setup
+    real = lib.provider.extract_matrix_row
+
+    def reads(title, columns, passages):
+        cells = real(title, columns, passages)
+        p = passages[0].pid
+        for c in cells:
+            if c.get("column") == "findings":  # the paper says savings rose; this quote says they didn't
+                c.update(answer="No effect on savings", passage=p,
+                         quote="mobile money did not increase household savings by 12 percent")
+            if c.get("column") == "sample":  # an OCR-like slip: still the paper's words
+                c.update(answer="412 farmers", passage=p, quote="Our sample is 412 farmrs surveyed")
+        return cells
+
+    monkeypatch.setattr(lib.provider, "extract_matrix_row", reads)
+    mid = client.post("/matrices", json={"name": "M", "doc_ids": [ids["kenya.md"]]}).json()["id"]
+    m = wait(client, mid)
+    assert cell(m, ids["kenya.md"], "findings")["status"] == "unverified"
+    sample = cell(m, ids["kenya.md"], "sample")
+    assert sample["status"] == "found" and sample["quote"] == "Our sample is 412 farmers surveyed"

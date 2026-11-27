@@ -122,7 +122,8 @@ def test_draft_returns_located_citations_then_verifies(client, corpus):
     cite = draft["sentences"][0]["citations"][0]
     assert cite["status"] == "pending"
     page = client.get(f"/documents/{cite['doc_id']}/pages/{cite['page']}").json()["text"]
-    assert page[cite["start"] : cite["end"]] == cite["quote"]
+    # The quote is the page's own words at those offsets, with line breaks as spaces.
+    assert " ".join(page[cite["start"] : cite["end"]].split()) == cite["quote"]
 
     verified = client.post(
         "/citations/verify",
