@@ -1,7 +1,8 @@
 // Electron main process: starts the Python backend on a free local port with a per-launch
 // token, then opens the window. Set RC_BACKEND_URL to use a backend you started yourself
-// (e.g. `uvicorn app.main:app --reload`); the token check is off in that case.
-const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require('electron')
+// (e.g. `uvicorn app.main:app --reload`), with the same RC_API_TOKEN in both environments
+// (or RC_ALLOW_NO_TOKEN=1 for the backend alone, which turns its token check off).
+const { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, shell } = require('electron')
 const { spawn } = require('node:child_process')
 const crypto = require('node:crypto')
 const fs = require('node:fs')
@@ -45,11 +46,95 @@ const SAMPLES_DIR = path.join(DATA_DIR, 'samples')
 const MODELS_DIR = process.env.RC_MODELS_DIR
   || (app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(BACKEND_DIR, 'dist', 'models'))
 
+// The page is served from app://groundwork, not file://. A file:// page's origin is "null", which the
+// backend would have to allow, and "null" is also what a sandboxed frame on any website sends. The
+// backend allows this origin by name (ALLOWED_ORIGINS in backend/app/main.py). Registered before the
+// app is ready, as Electron requires; `standard` gives the page a real origin (its own localStorage,
+// relative URLs), `secure` makes it a secure context like file:// was.
+const APP_ORIGIN = 'app://groundwork'
+const DIST_DIR = path.join(__dirname, '..', 'dist')
+const BLANK_PAGE = '/__blank.html' // an empty page in the app's origin, for moving localStorage (below)
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, codeCache: true } },
+])
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.wasm': 'application/wasm',
+}
+
+// Only files inside dist/ are served: the path is resolved and must stay under it, so neither `..`
+// nor an encoded or backslashed form of it reaches another file.
+function serveAppProtocol() {
+  protocol.handle('app', async (request) => {
+    const url = new URL(request.url)
+    if (url.host !== 'groundwork') return new Response('Not found', { status: 404 })
+    if (url.pathname === BLANK_PAGE) return new Response('<!doctype html><title></title>', { headers: { 'content-type': MIME_TYPES['.html'] } })
+    let pathname
+    try {
+      pathname = decodeURIComponent(url.pathname)
+    } catch {
+      return new Response('Bad request', { status: 400 })
+    }
+    const file = path.resolve(DIST_DIR, '.' + (pathname === '/' ? '/index.html' : pathname))
+    const inside = path.relative(DIST_DIR, file)
+    if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) return new Response('Not found', { status: 404 })
+    try {
+      const data = await fs.promises.readFile(file)
+      return new Response(data, { headers: { 'content-type': MIME_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream' } })
+    } catch {
+      return new Response('Not found', { status: 404 })
+    }
+  })
+}
+
+// Until the page moved to app://groundwork it lived at file://, and its localStorage (saved Library views,
+// removals still waiting for Undo, layout choices, the draft open last) belongs to that origin. Copied once
+// into the new origin, before the first window opens; a key the new origin already has is kept. A marker
+// file in the user-data folder says it's done; a failure is logged and tried again at the next start.
+const STORAGE_MOVED = () => path.join(app.getPath('userData'), 'storage-moved-to-app-origin')
+
+async function moveStorageFromFileOrigin() {
+  if (fs.existsSync(STORAGE_MOVED())) return
+  const blank = path.join(app.getPath('temp'), `groundwork-storage-${process.pid}.html`)
+  const win = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } })
+  try {
+    await fs.promises.writeFile(blank, '<!doctype html><title></title>', 'utf8')
+    await win.loadFile(blank) // every file:// page shares the one file:// origin's storage
+    const entries = JSON.parse(await win.webContents.executeJavaScript('JSON.stringify(Object.entries(localStorage))'))
+    let copied = 0
+    if (entries.length) {
+      await win.loadURL(APP_ORIGIN + BLANK_PAGE)
+      copied = await win.webContents.executeJavaScript(
+        `(() => { let n = 0; for (const [k, v] of ${JSON.stringify(entries)}) if (localStorage.getItem(k) === null) { localStorage.setItem(k, v); n++ } return n })()`,
+      )
+    }
+    await fs.promises.writeFile(STORAGE_MOVED(), JSON.stringify({ at: new Date().toISOString(), found: entries.length, copied }))
+    log(`=== page storage moved from file:// to ${APP_ORIGIN}: ${copied} of ${entries.length} keys ===\n`)
+  } catch (err) {
+    log(`=== could not move page storage from file://: ${err && err.message} ===\n`)
+  } finally {
+    win.destroy()
+    fs.promises.unlink(blank).catch(() => {})
+  }
+}
+
 let backend = null
 let backendConfig = null
 let spawnArgs = null // { port, token }, reused on restart so the window's config stays valid
 let restartTimes = []
 let quitting = false
+let opening = true // until the main window exists; see 'window-all-closed'
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -125,7 +210,8 @@ function spawnBackend() {
 
 async function startBackend() {
   if (process.env.RC_BACKEND_URL) {
-    return { baseUrl: process.env.RC_BACKEND_URL.replace(/\/$/, ''), token: '' }
+    // The backend started by hand has the token it was given (or none, with RC_ALLOW_NO_TOKEN=1 there).
+    return { baseUrl: process.env.RC_BACKEND_URL.replace(/\/$/, ''), token: process.env.RC_API_TOKEN || '' }
   }
   spawnArgs = { port: await freePort(), token: crypto.randomBytes(24).toString('hex') }
   spawnBackend()
@@ -204,14 +290,14 @@ function createWindow() {
     if (/^https?:\/\//i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
-  if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL)
-  else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
-  if (process.env.RC_SMOKE_TEST) win.webContents.once('did-finish-load', smokeTest)
+  win.loadURL(process.env.VITE_DEV_SERVER_URL || `${APP_ORIGIN}/index.html`)
+  if (process.env.RC_SMOKE_TEST) win.webContents.once('did-finish-load', () => smokeTest(win))
 }
 
-// `npm run smoke`: confirm the window loads, the spawned backend answers an authenticated
-// request and rejects an unauthenticated one, and comes back by itself after being killed.
-async function smokeTest() {
+// `npm run smoke`: confirm the window loads from app://groundwork, the spawned backend answers an
+// authenticated request and rejects an unauthenticated one, the page itself may call it (CORS for its
+// origin), and the backend comes back by itself after being killed.
+async function smokeTest(win) {
   const { baseUrl, token } = backendConfig
   const authed = async () => {
     for (let i = 0; i < 120; i++) {
@@ -227,6 +313,14 @@ async function smokeTest() {
   const noToken = first && (await fetch(`${baseUrl}/documents`))
   console.log(`[smoke] window loaded; backend ${first?.status} with token, ${noToken?.status} without`)
   let ok = !!first?.ok && noToken.status === 401
+  if (ok && !process.env.VITE_DEV_SERVER_URL) {
+    const pageUrl = win.webContents.getURL()
+    const fromPage = await win.webContents.executeJavaScript(
+      `fetch(${JSON.stringify(`${baseUrl}/documents`)}, { headers: { 'x-rc-token': ${JSON.stringify(token)} } }).then((r) => r.status, (e) => String(e))`,
+    )
+    console.log(`[smoke] page at ${pageUrl}; its own request to the backend: ${fromPage}`)
+    ok = pageUrl.startsWith(`${APP_ORIGIN}/`) && fromPage === 200
+  }
   if (ok) {
     const oldPid = backend.pid
     backend.kill()
@@ -541,8 +635,7 @@ ipcMain.handle('rc:open-reader', async (_event, docId, page, title, find) => {
   const name = typeof title === 'string' && title.trim() ? title.trim().slice(0, 200) : 'PDF'
   const win = readerWindowFor()
   win.setTitle(`${name} · Reader`)
-  if (process.env.VITE_DEV_SERVER_URL) await win.loadURL(`${process.env.VITE_DEV_SERVER_URL}?${new URLSearchParams(query)}`)
-  else await win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), { query })
+  await win.loadURL(`${process.env.VITE_DEV_SERVER_URL || `${APP_ORIGIN}/index.html`}?${new URLSearchParams(query)}`)
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()
@@ -565,16 +658,21 @@ if (!process.env.RC_SMOKE_TEST && !app.requestSingleInstanceLock()) {
     appWindow.focus()
   })
   app.whenReady().then(async () => {
-    backendConfig = await startBackend()
+    serveAppProtocol()
+    const [config] = await Promise.all([startBackend(), moveStorageFromFileOrigin()])
+    backendConfig = config
     createWindow()
+    opening = false
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
   })
 }
 
+// Not while opening: the hidden window that moves page storage (moveStorageFromFileOrigin) can be the
+// only window when it closes, and quitting then would end the first start before the app's window opened.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (!opening && process.platform !== 'darwin') app.quit()
 })
 
 app.on('will-quit', () => {

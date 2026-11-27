@@ -141,7 +141,7 @@ cd ../backend && .venv/Scripts/python -m pytest
 ```
 
 - `npm run lint` checks React's rules of hooks (ESLint); a warning fails it too.
-- `npm run smoke` builds the app, launches Electron, and checks the token check and the backend restart.
-- `npm run web` in `desktop/` serves the UI alone in a browser; it talks to a backend on `127.0.0.1:8765` with no token, so start one with `uvicorn app.main:app --port 8765` from `backend/`.
+- `npm run smoke` builds the app, launches Electron, and checks the token check, that the page is served from `app://groundwork`, and the backend restart.
+- `npm run web` in `desktop/` serves the UI alone in a browser; it talks to a backend on `127.0.0.1:8765` with no token. A backend refuses to start without a token unless you ask it to, so start one from `backend/` with `RC_ALLOW_NO_TOKEN=1` set, then `uvicorn app.main:app --port 8765`. Any program on the computer can call a backend started that way.
 - The backend log is `~/.groundwork/logs/backend.log`. If the backend exits, the app restarts it.
 - How the code fits together is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

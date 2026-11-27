@@ -1,7 +1,9 @@
 import base64
+import hmac
 import itertools
 import json
 import logging
+import re
 import threading
 import time
 
@@ -25,6 +27,27 @@ from .settings import Settings
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
+
+
+# Pages that may call the backend: the desktop app's own page (served by Electron as app://groundwork,
+# see desktop/electron/main.cjs) and a page on this computer's loopback address (the Vite dev server,
+# the UI in a plain browser). Never "null", the origin of file:// pages and of sandboxed frames on any
+# website, which would let any site try its luck against the API.
+APP_ORIGIN = "app://groundwork"
+ALLOWED_ORIGINS = r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|" + re.escape(APP_ORIGIN) + r")$"
+
+
+def require_token(settings: Settings) -> None:
+    """A server must have a token unless the person running it opted out (RC_ALLOW_NO_TOKEN=1).
+    Without one, any program or page on this computer could read files through the API."""
+    if settings.api_token:
+        return
+    if not settings.allow_no_token:
+        raise RuntimeError(
+            "RC_API_TOKEN is not set. The desktop app sets it; to run the backend by hand, set "
+            "RC_API_TOKEN to a random value (and the same in the app's environment with RC_BACKEND_URL), "
+            "or set RC_ALLOW_NO_TOKEN=1 to run without the token check (for the UI in a plain browser).")
+    log.warning("RC_ALLOW_NO_TOKEN is set: the API has no token check. Any program on this computer can call it.")
 
 
 def warm_graph_in_background(lib: Library) -> threading.Thread:
@@ -338,7 +361,11 @@ class DuplicatesIn(BaseModel):
 
 
 def create_app(settings: Settings | None = None, library: Library | None = None) -> FastAPI:
-    settings = settings or Settings.from_env()
+    if settings is None and library is not None:
+        settings = library.settings
+    elif settings is None:  # a server being started (uvicorn app.main:app, the packaged backend); tests pass their own
+        settings = Settings.from_env()
+        require_token(settings)
     if settings.parent_pid:
         exit_with_parent(settings.parent_pid)
     if library is None:
@@ -361,12 +388,14 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
     highlights = Highlights(lib)
     app.state.matrices = matrices
 
+    expected_token = settings.api_token.encode()
+
     @app.middleware("http")
-    async def require_token(request: Request, call_next):
+    async def check_token(request: Request, call_next):
         # The backend can read any local file, so only the Electron app (which knows the
-        # per-launch token) may call it.
-        if settings.api_token and request.method != "OPTIONS" and request.url.path != "/health":
-            if request.headers.get("x-rc-token") != settings.api_token:
+        # per-launch token) may call it. Compared in constant time.
+        if expected_token and request.method != "OPTIONS" and request.url.path != "/health":
+            if not hmac.compare_digest(request.headers.get("x-rc-token", "").encode(), expected_token):
                 return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
         return await call_next(request)
 
@@ -380,7 +409,7 @@ def create_app(settings: Settings | None = None, library: Library | None = None)
 
     app.add_middleware(  # added last so it wraps the token check and 401s still carry CORS headers
         CORSMiddleware,
-        allow_origin_regex=r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|null)$",
+        allow_origin_regex=ALLOWED_ORIGINS,
         allow_methods=["*"],
         allow_headers=["*"],
     )

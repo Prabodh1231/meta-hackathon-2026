@@ -19,7 +19,8 @@ def default_data_dir() -> Path:
 class Settings:
     data_dir: Path
     provider: str = "mock"  # mock | muse
-    api_token: str = ""  # set by Electron per launch; empty disables the check
+    api_token: str = ""  # set by Electron per launch; a server started without one refuses to run (see main.create_app)
+    allow_no_token: bool = False  # RC_ALLOW_NO_TOKEN=1: run with no token check, for the UI in a plain browser
     parent_pid: int = 0  # set by Electron; the backend exits when that process does
     muse_api_base: str = "https://api.meta.ai/v1"
     muse_api_key: str = ""
@@ -49,6 +50,9 @@ class Settings:
             data_dir=data_dir,
             provider=env("RC_PROVIDER", "mock").lower(),
             api_token=env("RC_API_TOKEN"),
+            # Only from the real environment, never from the data folder's .env: a file the app writes
+            # must not be able to switch the token check off.
+            allow_no_token=os.environ.get("RC_ALLOW_NO_TOKEN", "").lower() in ("1", "true", "yes"),
             parent_pid=int(env("RC_PARENT_PID") or 0),
             muse_api_base=env("MUSE_API_BASE", cls.muse_api_base),
             # MODEL_API_KEY is the name Meta's docs use.
