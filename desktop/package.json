@@ -11,6 +11,7 @@
     "start": "electron .",
     "smoke": "vite build && cross-env RC_SMOKE_TEST=1 electron .",
     "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/*.test.mjs\"",
     "bundle-backend": "cd ../backend && .venv\\Scripts\\python -m PyInstaller groundwork-backend.spec --noconfirm",
     "dist": "npm run build && npm run bundle-backend && electron-builder --win",
     "lint": "eslint --max-warnings 0 src"

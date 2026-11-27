@@ -42,6 +42,7 @@ import { ChipCard } from './ChipCard'
 import type { RetractedWhy } from './TrustBadges'
 import { api } from '../api'
 import type { Citation, DraftSentence, DraftSummary, Suggestion } from '../types'
+import { countWords } from '../wordCount'
 
 const MISSING_REASON = 'This passage is no longer in your library.'
 /** Width of the page's column (px) from which the outline and comment cards sit beside the page;
@@ -191,7 +192,7 @@ export type SaveState = { state: 'idle' | 'saving' | 'saved' | 'error'; at?: num
 
 function statsOf(editor: Editor): DraftStats {
   const s: DraftStats = { words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0, chips: [], goal: Number(editor.state.doc.attrs.wordGoal) || 0 }
-  s.words = (editor.getText().match(/\w+(?:['’-]\w+)*/g) ?? []).length
+  s.words = countWords(editor.getText())
   editor.state.doc.descendants((node) => {
     if (node.type.name === 'citeMark') s.unconfirmed++
     if (node.type.name !== 'citation') return
@@ -921,7 +922,7 @@ export const WritingEditor = forwardRef<WritingEditorHandle, Props>(function Wri
 
       counts() {
         const count = (text: string) => ({
-          words: (text.match(/\w+(?:['’-]\w+)*/g) ?? []).length,
+          words: countWords(text),
           chars: text.replace(/\n/g, '').length,
           charsNoSpaces: text.replace(/\s/g, '').length,
         })
