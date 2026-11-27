@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -113,6 +114,17 @@ def test_a_recheck_reuses_what_it_found_but_sees_a_paper_added_since(client, tmp
     d["content"].append(doc(("p", "Marine heatwaves in 2016 caused mass coral bleaching across the Great Barrier Reef."))["content"][0])
     assert len(client.post("/drafts/check-duplicates", json={"content": d}).json()["source_matches"]) == 2
     assert searched == ["Marine heatwaves in 2016 caused mass coral bleaching across the Great Barrier Reef."]  # only the new one
+
+
+WORD_COUNT_CASES = json.loads(
+    (Path(__file__).resolve().parents[2] / "desktop" / "tests" / "word-count-cases.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("case", WORD_COUNT_CASES, ids=[c["why"] for c in WORD_COUNT_CASES])
+def test_word_count_in_every_language_matches_the_status_bar(case):
+    """The same cases as the app's own count (desktop/tests/wordCount.test.mjs), so the drafts list
+    and version history agree with the status bar."""
+    assert draft_review.word_count(case["text"]) == case["words"]
 
 
 def test_saving_a_draft_gives_its_word_count_for_the_drafts_list(client):

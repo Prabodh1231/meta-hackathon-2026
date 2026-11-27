@@ -1,0 +1,19 @@
+[
+  { "text": "", "words": 0, "why": "nothing" },
+  { "text": "  — … ! ", "words": 0, "why": "punctuation alone" },
+  { "text": "Corals bleach in heatwaves.", "words": 4, "why": "English" },
+  { "text": "don't stop — well-known results in 2016", "words": 6, "why": "apostrophes and hyphens join; a dash between words is not one" },
+  { "text": "snake_case names", "words": 2, "why": "an underscore joins" },
+  { "text": "The café naïve résumé", "words": 4, "why": "accented letters" },
+  { "text": "résumé draft", "words": 2, "why": "an accent stored apart from its letter (as macOS names files)" },
+  { "text": "Über Größe straße", "words": 3, "why": "German" },
+  { "text": "это тест памяти", "words": 3, "why": "Russian" },
+  { "text": "النوم والذاكرة", "words": 2, "why": "Arabic" },
+  { "text": "नींद और स्मृति", "words": 3, "why": "Hindi: vowel signs are marks inside the word" },
+  { "text": "ช่วย ความจำ", "words": 2, "why": "Thai: tone marks inside the word; Thai counts a word per run between spaces" },
+  { "text": "수면 중 기억 재활성화", "words": 4, "why": "Korean is written with spaces" },
+  { "text": "研究论文的引用", "words": 7, "why": "Chinese: each character is a word, as in Word" },
+  { "text": "睡眠中の記憶", "words": 6, "why": "Japanese kanji and kana" },
+  { "text": "我们用 GPT-4 做实验", "words": 7, "why": "Chinese with a Latin word" },
+  { "text": "Results 🎉 here", "words": 2, "why": "an emoji is not a word" }
+]
