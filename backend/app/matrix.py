@@ -491,9 +491,10 @@ class Matrices:
             if not p or not quote:
                 found[c["key"]] = {"status": "unverified", "answer": answer, "quote": quote}
                 continue
+            # Located means the page has these words, meaning intact; v["quote"] is then the page's own text.
             v = self.lib.verify_citation(answer, p.chunk_id, quote, judge=False)
             found[c["key"]] = {
-                "status": "found" if v["start"] is not None else "unverified", "answer": answer, "quote": quote,
+                "status": "found" if v["start"] is not None else "unverified", "answer": answer, "quote": v["quote"],
                 "chunk_id": p.chunk_id, "page": v["page"], "start": v["start"], "end": v["end"], "label": v["label"],
             }
         return self._write(mid, doc_id, found)
