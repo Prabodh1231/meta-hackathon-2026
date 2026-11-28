@@ -5,7 +5,7 @@ export interface BarNotice {
   action?: { label: string; run: () => void }
 }
 
-/** A slim dark line across the very top of the window: one sentence, one link, a close button. For
+/** A slim dark line across the window, under the app bar: one sentence, one link, a close button. For
  * what finished elsewhere (checks, a matrix, an import, an update), one at a time; it stays until
  * it's dismissed or its link is followed. Quick confirmations still use the toast at the bottom. */
 export function NoticeBar({ notice, onClose }: { notice: BarNotice | null; onClose: () => void }) {

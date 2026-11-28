@@ -73,8 +73,8 @@
 .lib-sum-toggle { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; }
 .lib-sum-toggle.on { color: var(--accent); }
 
-/* ---------- The header: the title large in the page serif, the front page's controls at the right ---------- */
-.library .lib-head { padding: 22px 28px 14px; gap: 12px; }
+/* ---------- The header: the title large in the page serif; the view controls on a row below ---------- */
+.library .lib-head { padding: 22px 28px 10px; gap: 10px; }
 .library .lib-head .lib-title h2 { font: 400 28px/1.15 var(--doc-font); letter-spacing: -0.01em; }
 .library .lib-title .muted { font-size: var(--fs-lg); }
 .library.at-front .lib-body { border-top: none; }

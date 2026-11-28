@@ -58,6 +58,7 @@ const PATHS = {
   sidebarOpen: `${BOX}M9 3v18M14 9l3 3-3 3`, // panel-left-open
   close: 'M6 6l12 12M18 6 6 18',
   idea: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z', // lightbulb
+  menu: 'M4 7h16M4 12h16M4 17h16', // ☰: the app's menu
 } as const
 
 export type IconName = keyof typeof PATHS

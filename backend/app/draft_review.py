@@ -12,18 +12,15 @@ import unicodedata
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
-from .text_utils import densest_run, sentence_spans
+from .text_utils import EAST_ASIAN, EAST_ASIAN_CHAR, densest_run, sentence_spans
 
 _WORD = re.compile(r"\w+(?:['’\-]\w+)*")
 
 # Words as the app counts them everywhere: desktop/src/wordCount.ts has the same rule, and both are
 # tested on desktop/tests/word-count-cases.json. A run of letters, marks, digits or underscores in any
 # script, joined by an apostrophe or hyphen; each Chinese character or Japanese kana is a word.
-_EAST_ASIAN = ("⺀-⿟々〇〡-〩〸-〻぀-ヿㇰ-ㇿ"
-               "㐀-䶿一-鿿豈-﫿ｦ-ﾟ\U00020000-\U0003ffff")
-_EAST_ASIAN_CHAR = re.compile(f"[{_EAST_ASIAN}]")
-_LETTER = rf"(?:(?![{_EAST_ASIAN}])\w)"
-_COUNTED_WORD = re.compile(rf"[{_EAST_ASIAN}]|{_LETTER}+(?:['’\-]{_LETTER}+)*")
+_LETTER = rf"(?:(?![{EAST_ASIAN}])\w)"
+_COUNTED_WORD = re.compile(rf"[{EAST_ASIAN}]|{_LETTER}+(?:['’\-]{_LETTER}+)*")
 SHINGLE = 3  # words per n-gram when measuring overlap
 
 # Within the draft: sentences sharing this share of the shorter one's word n-grams count as
@@ -126,7 +123,7 @@ def _marks_as_letters(text: str) -> str:
     out = []
     for c in text:
         cat = unicodedata.category(c)
-        out.append("a" if (cat[0] == "M" or cat == "Pc") and not _EAST_ASIAN_CHAR.match(c) else c)
+        out.append("a" if (cat[0] == "M" or cat == "Pc") and not EAST_ASIAN_CHAR.match(c) else c)
     return "".join(out)
 
 

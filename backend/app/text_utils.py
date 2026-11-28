@@ -16,6 +16,14 @@ STOPWORDS = frozenset(
 )
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z\-]{2,}")
+
+# Chinese characters and Japanese kana, as the inside of a [character class]. Those scripts put no
+# spaces between words, so each character is a word of its own (for counting, and for where a quote
+# may start or end). The same ranges as desktop/src/wordCount.ts.
+EAST_ASIAN = ("⺀-⿟々〇〡-〩〸-〻぀-ヿㇰ-ㇿ"
+              "㐀-䶿一-鿿豈-﫿ｦ-ﾟ\U00020000-\U0003ffff")
+EAST_ASIAN_CHAR = re.compile(f"[{EAST_ASIAN}]")
+
 # A sentence ends at terminal punctuation followed by whitespace, or at a blank line.
 # Single newlines don't end sentences: PDF extraction hard-wraps lines mid-sentence.
 _BOUNDARY = re.compile(r"[.!?]+[\"'\)\]]*(?=\s|$)|\n[ \t]*\n")

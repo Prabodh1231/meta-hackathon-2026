@@ -13,7 +13,9 @@ import type { CiteMarkAttrs } from './editor/citeMark'
 import { CommandPalette, type PaletteItem } from './components/CommandPalette'
 import { CitedPapersDialog } from './components/CitedPapersDialog'
 import { DemoGuide } from './components/DemoGuide'
-import { DraftNameField, DraftsPanel } from './components/DraftsPanel'
+import { DraftNameField } from './components/DraftNameField'
+import { SidebarDrafts } from './components/SidebarDrafts'
+import { usePeek } from './peek'
 import { DuplicateFilesDialog } from './components/DuplicateFilesDialog'
 import { useConfirm } from './components/ConfirmDialog'
 import { PaneBoundary } from './components/ErrorBoundary'
@@ -36,11 +38,13 @@ import { PageSetupDialog, ShortcutsDialog, WordCountPopover, type Counts } from 
 import type { PageSetup } from './editor/docFormat'
 import { HighlightsPanel } from './components/HighlightsPanel'
 import { ReviewPanel } from './components/ReviewPanel'
-import logoUrl from './assets/logo.svg?no-inline'
 import { DEFAULT_SETTINGS, SettingsDialog, type Section as SettingsSection } from './components/SettingsDialog'
 import { DEMO_STEPS, DEMO_TITLE, type DemoState, type DemoStep, demoDoc, inSamples, loadDemo, saveDemo } from './demo'
 import { WordImportDialog, convertedSummary, simplifiedNotes } from './components/WordImportDialog'
 import { applyTheme, cacheTheme, cachedTheme, watchSystemTheme } from './theme'
+import { arrowKeys } from './arrowKeys'
+import { WindowButtons } from './components/WindowButtons'
+import { AppMenu } from './components/AppMenu'
 import { SourceViewer, type SourceTarget } from './components/SourceViewer'
 import {
   WritingEditor,
@@ -89,6 +93,7 @@ const TABS: { tab: Tab; label: string; icon: IconName; hint: string }[] = [
 /** Compose's Muse box: write from your sources (cited and checked), or a plain chat. */
 type ComposeKind = 'cite' | 'chat'
 const TAB = Object.fromEntries(TABS.map((t) => [t.tab, t])) as Record<Tab, (typeof TABS)[number]>
+const MODE_LABEL = Object.fromEntries(MODES.map((m) => [m.mode, m.label])) as Record<Mode, string>
 
 /** What the one search box does in each place. */
 const SEARCH: Record<Exclude<Mode, 'home' | 'write'>, { scope: string; placeholder: string }> = {
@@ -97,33 +102,25 @@ const SEARCH: Record<Exclude<Mode, 'home' | 'write'>, { scope: string; placehold
   matrix: { scope: 'Matrix', placeholder: 'Filter studies and cells…' },
 }
 
-const PROVIDER_NAMES: Record<string, string> = { muse: 'Muse', mock: 'Offline mock' }
-
-/** "Muse · hybrid search": the AI in use, and how the library is searched. Hybrid (keywords plus the
- * local search model) only once that model is ready; while it loads, or when it's off, keywords alone. */
-function modelLine(h: Health): string {
-  const ai = PROVIDER_NAMES[h.provider] ?? h.provider
-  const how = h.dense === undefined || h.dense === 'ready' ? 'hybrid search' : h.dense === 'loading' ? 'keyword search for now' : 'keyword search'
-  return `${ai} · ${how}`
-}
-
-// Whether the sidebar on the left is wide (labelled, with the Library's smart views) or icons only.
-const RAIL_KEY = 'gw.sidebarWide'
-function storedRailWide(): boolean {
+// Whether the sidebar is pinned beside the page, or hidden until the pointer is at the window's left
+// edge (the default). A new key: the old one stored wide or icons only.
+const RAIL_KEY = 'gw.sidebarPinned'
+function storedRailPinned(): boolean {
   try {
-    return localStorage.getItem(RAIL_KEY) !== '0'
+    return localStorage.getItem(RAIL_KEY) === '1'
   } catch {
-    return true
+    return false
   }
 }
 
-// Whether the writing tools are open beside the draft; Settings can override it at launch.
-const TOOLS_KEY = 'rc.toolsOpen'
+// Whether the writing tools are pinned beside the draft, or hidden until the pointer is at the window's
+// right edge (the default); Settings can override it at launch. A new key, so both start hidden.
+const TOOLS_KEY = 'gw.toolsPinned'
 function storedToolsOpen(): boolean {
   try {
-    return localStorage.getItem(TOOLS_KEY) !== '0'
+    return localStorage.getItem(TOOLS_KEY) === '1'
   } catch {
-    return true
+    return false
   }
 }
 
@@ -240,7 +237,6 @@ export default function App() {
   }, [notice])
   const [draftId, setDraftId] = useState(initialDraft)
   const [drafts, setDrafts] = useState<DraftSummary[]>([])
-  const [draftsOpen, setDraftsOpen] = useState(false) // the drafts menu under the title
   const [draftsBusy, setDraftsBusy] = useState<string | null>(null)
   const [hideGuide, setHideGuide] = useState(guideHidden)
   const [settings, setSettings] = useState<Settings>({ ...DEFAULT_SETTINGS, theme: cachedTheme() })
@@ -291,7 +287,7 @@ export default function App() {
   const editor = useRef<WritingEditorHandle>(null)
   const [importing, setImporting] = useState<File | null>(null) // the Word file in the import dialog
   const wordInput = useRef<HTMLInputElement>(null)
-  const draftsMenu = useRef<HTMLDivElement>(null)
+  const versionsBox = useRef<HTMLDivElement>(null) // the version in the status bar, with its menu
   const [dropping, setDropping] = useState(false) // files dragged over the window
   const [jobs, setJobs] = useState<IngestJob[]>([]) // background imports, newest first
   const [demo, setDemo] = useState<DemoState | null>(loadDemo) // the demo draft and its checklist
@@ -340,7 +336,10 @@ export default function App() {
     setLibFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
   }, [])
 
-  const [railWide, setRailWide] = useState(storedRailWide)
+  const [railPinned, setRailPinned] = useState(storedRailPinned)
+  const railPeek = usePeek() // the sidebar, out over the page while pointed at (when it isn't pinned)
+  const toolsPeek = usePeek() // the writing tools, the same at the right edge
+  const toolsShown = toolsOpen || toolsPeek.shown // in sight: pinned, or out for a look
   const [railSlot, setRailSlot] = useState<HTMLDivElement | null>(null) // where the Library puts its smart views, the Matrix its matrices
   const railScrollRef = useRef<HTMLDivElement>(null)
   const [railMore, setRailMore] = useState(false) // more of the sidebar below its foot: fade it there
@@ -362,11 +361,11 @@ export default function App() {
   }, [])
   useEffect(() => {
     try {
-      localStorage.setItem(RAIL_KEY, railWide ? '1' : '0')
+      localStorage.setItem(RAIL_KEY, railPinned ? '1' : '0')
     } catch {
       /* storage unavailable */
     }
-  }, [railWide])
+  }, [railPinned])
 
   useEffect(() => {
     try {
@@ -421,6 +420,58 @@ export default function App() {
 
   const pickWord = useCallback(() => wordInput.current?.click(), [])
 
+  // Back and forward between the places you've been (Home, Write, Library…), as in a browser: the app
+  // bar's ← →, Alt+← and Alt+→, and a mouse's own back and forward buttons. Every change of place counts,
+  // however it happened (a click in the sidebar, a citation opening Write).
+  const [trail, setTrail] = useState<{ back: Mode[]; forward: Mode[] }>({ back: [], forward: [] })
+  const trailStep = useRef<{ was: Mode; by: 'back' | 'forward' | null }>({ was: mode, by: null })
+  useEffect(() => {
+    const t = trailStep.current
+    if (t.was === mode) return
+    const from = t.was
+    const by = t.by
+    t.was = mode
+    t.by = null
+    setTrail((h) =>
+      by === 'back'
+        ? { back: h.back.slice(0, -1), forward: [...h.forward, from] }
+        : by === 'forward'
+          ? { back: [...h.back, from], forward: h.forward.slice(0, -1) }
+          : { back: [...h.back, from].slice(-50), forward: [] },
+    )
+  }, [mode])
+  const step = (by: 'back' | 'forward') => {
+    const to = (by === 'back' ? trail.back : trail.forward).at(-1)
+    if (!to) return
+    trailStep.current.by = by
+    setMode(to)
+  }
+  const stepRef = useRef(step)
+  stepRef.current = step
+  /** Ctrl+\ and the ☰ menu: the writing tools beside the draft, open or closed (opened from anywhere else). */
+  const toggleTools = () => (mode === 'write' && !focusMode ? setToolsOpen((o) => !o) : revealTools())
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      // Not while typing, and not when the page took the key (Alt+← inside a Library folder goes up to the folders)
+      if (e.defaultPrevented || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) return
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      e.preventDefault()
+      stepRef.current(e.key === 'ArrowLeft' ? 'back' : 'forward')
+    }
+    const mouse = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return
+      e.preventDefault()
+      stepRef.current(e.button === 3 ? 'back' : 'forward')
+    }
+    window.addEventListener('keydown', key)
+    window.addEventListener('mouseup', mouse)
+    return () => {
+      window.removeEventListener('keydown', key)
+      window.removeEventListener('mouseup', mouse)
+    }
+  }, [])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
@@ -457,7 +508,6 @@ export default function App() {
         toggleFocus()
       } else if (e.key === 'Escape' && !paletteOpen && !importing && !pdfView) {
         if (focusMode) setFocusMode(false)
-        else if (draftsOpen) setDraftsOpen(false)
         else if (versionsOpen) setVersionsOpen(false)
         // Esc on the page itself (not in a field or the library table) goes back to the draft.
         else if (mode !== 'write' && e.target === document.body) setMode('write')
@@ -465,19 +515,18 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [paletteOpen, importing, pdfView, pickWord, draftsOpen, versionsOpen, mode, focusMode, revealTools, toggleFocus])
+  }, [paletteOpen, importing, pdfView, pickWord, versionsOpen, mode, focusMode, revealTools, toggleFocus])
 
-  // The drafts and versions menus close on a click anywhere else.
+  // The versions menu closes on a click anywhere else.
   useEffect(() => {
-    if (!draftsOpen && !versionsOpen) return
+    if (!versionsOpen) return
     const close = (e: MouseEvent) => {
-      if (draftsMenu.current?.contains(e.target as Node)) return
-      setDraftsOpen(false)
+      if (versionsBox.current?.contains(e.target as Node)) return
       setVersionsOpen(false)
     }
     window.addEventListener('mousedown', close)
     return () => window.removeEventListener('mousedown', close)
-  }, [draftsOpen, versionsOpen])
+  }, [versionsOpen])
 
   // While the backend is still starting, a tool that asked it too early (the highlights for the first
   // paragraph, say) is not an error to show: the status bar says "Starting backend…" and it asks again.
@@ -558,7 +607,6 @@ export default function App() {
 
   /** Save what's pending in the open draft, then show another. */
   async function switchDraft(id: number) {
-    setDraftsOpen(false)
     setMode('write')
     if (id === draftId) return
     await editor.current?.flush()
@@ -572,7 +620,6 @@ export default function App() {
   }
 
   async function newDraft() {
-    setDraftsOpen(false)
     setMode('write')
     // The open draft is still a blank page: that's the new draft, rather than another empty one.
     if (editor.current?.isEmpty()) {
@@ -608,7 +655,6 @@ export default function App() {
 
   /** Show the import dialog for a Word file (picked, dropped, or from the drafts menu). */
   function importWord(file: File) {
-    setDraftsOpen(false)
     if (!WORD_FILE.test(file.name)) {
       onError(`${file.name} isn't a .docx file. Older .doc files: open them in Word and save as .docx first.`)
       return
@@ -774,6 +820,18 @@ export default function App() {
     } catch (e) {
       onError(`Could not rename the draft: ${e instanceof Error ? e.message : e}`)
     }
+  }
+
+  /** The sidebar's Delete: asked first, in the app's own dialog. */
+  async function confirmDeleteDraft(id: number) {
+    const title = drafts.find((d) => d.id === id)?.title || 'Untitled'
+    const sure = await ask({
+      title: `Delete “${title}”?`,
+      body: 'The draft and its saved versions are deleted. This can’t be undone.',
+      verb: 'Delete draft',
+      danger: true,
+    })
+    if (sure) await deleteDraft(id)
   }
 
   async function deleteDraft(id: number) {
@@ -982,7 +1040,7 @@ export default function App() {
   }, [])
 
   // Check is in view: what the duplication check found is underlined in the draft.
-  const reviewing = mode === 'write' && tab === 'check' && toolsOpen && !focusMode
+  const reviewing = mode === 'write' && tab === 'check' && toolsShown && !focusMode
 
   // Underline what the check found while Check is open.
   useEffect(() => {
@@ -1344,7 +1402,7 @@ export default function App() {
     { group: 'DO', name: 'Check for duplication', hint: 'repeats and text matching sources', run: () => showTab('check') },
     { group: 'DO', name: 'Version history', hint: 'save, compare and restore versions', run: () => (setMode('write'), setVersionsOpen(true)) },
     { group: 'DO', name: 'New draft', hint: 'a blank page · Ctrl+N', run: () => newDraft() },
-    { group: 'DO', name: 'Show drafts', hint: 'switch, import or delete', run: () => setDraftsOpen(true) },
+    { group: 'DO', name: railPinned ? 'Hide the sidebar' : 'Keep the sidebar open', hint: 'places and drafts', run: () => setRailPinned((p) => !p) },
     { group: 'DO', name: 'Import a Word file', hint: '.docx · Ctrl+O', run: pickWord },
     { group: 'DO', name: 'Find duplicate files', hint: 'suggests cleanup, removes nothing', run: findDuplicateFiles },
     { group: 'DO', name: 'Surprise me', hint: 'a random unread paper', run: () => (setMode('library'), setSurprise((n) => n + 1)) },
@@ -1425,13 +1483,53 @@ export default function App() {
           <button onClick={() => setFocusMode(false)} title="Show the rail, the writing tools and the status bar again">
             Exit focus <kbd>Esc</kbd>
           </button>
+          <WindowButtons />
         </div>
       )}
-      <NoticeBar notice={bar} onClose={() => setBar(null)} />
       <header className="app-bar">
-        <div className="doc-id" ref={draftsMenu}>
-          <img className="logo" src={logoUrl} alt="" title="Groundwork: write only what your sources say" />
-          <div className="doc-id-text">
+        {/* Three columns, the search box in the middle of the window: on its left the app's buttons and the
+            draft's name, on its right Export, focus and the window's own buttons */}
+        <div className="bar-start">
+          {/* As in Claude desktop: the app's menu, the sidebar, and back and forward between places */}
+          <nav className="bar-nav" aria-label="App">
+            <AppMenu
+              onNewDraft={() => newDraftRef.current()}
+              onImportWord={pickWord}
+              onFocus={toggleFocus}
+              onTools={toggleTools}
+              onSettings={() => setShowSettings('appearance')}
+              onShortcuts={() => setShortcutsOpen(true)}
+            />
+            <button
+              className="bar-nav-btn bar-rail-toggle"
+              onClick={() => (railPinned && railPeek.hide(), setRailPinned((p) => !p))}
+              title={railPinned ? "Hide the sidebar (point at the window's left edge to see it)" : 'Keep the sidebar open'}
+              aria-label={railPinned ? 'Hide the sidebar' : 'Keep the sidebar open'}
+              aria-pressed={railPinned}
+            >
+              <Icon name={railPinned ? 'sidebarClose' : 'sidebarOpen'} size={18} />
+            </button>
+            <button
+              className="bar-nav-btn"
+              onClick={() => step('back')}
+              disabled={!trail.back.length}
+              title={trail.back.length ? `Back to ${MODE_LABEL[trail.back[trail.back.length - 1]]} (Alt+←)` : 'Back (Alt+←)'}
+              aria-label="Back"
+            >
+              <Icon name="back" size={18} />
+            </button>
+            <button
+              className="bar-nav-btn"
+              onClick={() => step('forward')}
+              disabled={!trail.forward.length}
+              title={trail.forward.length ? `Forward to ${MODE_LABEL[trail.forward[trail.forward.length - 1]]} (Alt+→)` : 'Forward (Alt+→)'}
+              aria-label="Forward"
+            >
+              <Icon name="forward" size={18} />
+            </button>
+          </nav>
+          {/* The draft's name only: whether it's saved, its version and how much changed are in the status bar */}
+          <div className="doc-id">
             {renamingTitle ? (
               <DraftNameField
                 draft={{ title: docTitle, named: !!draftName }}
@@ -1444,7 +1542,7 @@ export default function App() {
             ) : (
               <button
                 className={`doc-title${draftName ? '' : ' unnamed'}`}
-                onClick={() => (setDraftsOpen(false), setVersionsOpen(false), setRenamingTitle(true))}
+                onClick={() => (setVersionsOpen(false), setRenamingTitle(true))}
                 title={draftName ? `${docTitle}\nClick to rename this draft` : `Not named yet, so it's titled by its first line:\n${docTitle}\nClick to name it`}
                 aria-label={draftName ? `Draft: ${docTitle}. Rename` : `Unnamed draft, titled by its first line: ${docTitle}. Name it`}
               >
@@ -1452,66 +1550,7 @@ export default function App() {
                 <Icon name="write" size={13} />
               </button>
             )}
-            <div className={`save-state save-${saveState.state}`}>
-              {saveText(saveState)}
-              {' · '}
-              <button
-                className="link versions-btn"
-                onClick={() => (setDraftsOpen(false), setVersionsOpen((o) => !o))}
-                aria-expanded={versionsOpen}
-                aria-haspopup="dialog"
-                title="Versions: save, compare and restore"
-              >
-                {latest ? `v${latest.number}` : 'Versions'} ▾
-              </button>
-              {change != null && latest && <span className="save-change"> · {change}% changed since v{latest.number}</span>}
-            </div>
           </div>
-          <button
-            className="drafts-btn"
-            onClick={() => (setVersionsOpen(false), setDraftsOpen((o) => !o))}
-            aria-expanded={draftsOpen}
-            aria-haspopup="dialog"
-            title="Your drafts: switch, start a new one, import a Word file, or delete one"
-          >
-            <Icon name="drafts" size={15} />
-            Drafts{drafts.length > 1 ? ` · ${drafts.length}` : ''}
-            <span className="doc-caret" aria-hidden="true">▾</span>
-          </button>
-          {versionsOpen && (
-            <div className="drafts-menu versions-menu" role="dialog" aria-label="Versions">
-              <HistoryPanel
-                key={draftId}
-                draftId={draftId}
-                list={versions}
-                onRefresh={refreshVersions}
-                getJSON={() => editor.current?.getJSON() ?? null}
-                getTitle={titleNow}
-                onRestore={(content) => editor.current?.setContent(content)}
-                onFlush={async () => {
-                  await editor.current?.flush()
-                }}
-                onError={onError}
-              />
-            </div>
-          )}
-          {draftsOpen && (
-            <div className="drafts-menu" role="dialog" aria-label="Drafts">
-              <DraftsPanel
-                drafts={drafts}
-                currentId={draftId}
-                busy={draftsBusy}
-                onSwitch={switchDraft}
-                onNew={newDraft}
-                onImport={() => {
-                  setDraftsOpen(false)
-                  pickWord()
-                }}
-                onDelete={deleteDraft}
-                onRename={renameDraft}
-              />
-            </div>
-          )}
         </div>
 
         {mode === 'write' || mode === 'home' ? (
@@ -1574,14 +1613,21 @@ export default function App() {
           <button className="icon-button" onClick={toggleFocus} title="Focus: only the page and its toolbar (Ctrl+Shift+F)" aria-label="Focus mode">
             <Icon name="focus" size={18} />
           </button>
-          <button className="icon-button" onClick={() => setShowSettings('appearance')} title="Settings" aria-label="Settings">
-            <Icon name="settings" size={18} />
-          </button>
+          <WindowButtons />
         </div>
       </header>
+      {/* Under the app bar: with the window's buttons drawn in that bar, the very top of the window is the bar */}
+      <NoticeBar notice={bar} onClose={() => setBar(null)} />
 
-      <div className="workspace">
-        <nav className={`rail${railWide ? ' wide' : ''}`} aria-label="Places">
+      <div className={`workspace${railPinned ? '' : ' rail-floating'}`}>
+        {/* Not pinned, the sidebar waits off the left edge: pointing at that edge brings it out over the
+            page, and clicking the edge keeps it open. */}
+        {!railPinned && <div className="edge-zone edge-left" {...railPeek.edge} onClick={() => setRailPinned(true)} aria-hidden="true" />}
+        <nav
+          className={`rail wide${railPinned ? ' pinned' : ' floating'}${!railPinned && railPeek.shown ? ' peek' : ''}`}
+          aria-label="Places"
+          {...(railPinned ? {} : railPeek.panel)}
+        >
           {/* Scrolls when the window is short; fades at the foot while more is below */}
           <div className={`rail-scroll${railMore ? ' more' : ''}`} ref={railScrollRef}>
           <div className="rail-modes">
@@ -1602,19 +1648,30 @@ export default function App() {
               </button>
             ))}
           </div>
+          {/* Every draft, under the places, as a chat app lists its conversations; not in the Library and the
+              Matrix, which list their own things there */}
+          {mode !== 'library' && mode !== 'matrix' && (
+            <SidebarDrafts
+              drafts={drafts}
+              currentId={draftId}
+              busy={draftsBusy}
+              onOpen={(id) => void switchDraft(id)}
+              onNew={() => newDraftRef.current()}
+              onRename={renameDraft}
+              onDelete={(id) => void confirmDeleteDraft(id)}
+            />
+          )}
           {/* The Library fills this with its smart views, and the Matrix with its matrices, while it is the place open */}
           <div className="rail-slot" ref={setRailSlot} />
           </div>
-          <button
-            className="rail-toggle"
-            onClick={() => setRailWide((w) => !w)}
-            title={railWide ? 'Collapse the sidebar to icons' : 'Expand the sidebar'}
-            aria-label={railWide ? 'Collapse the sidebar' : 'Expand the sidebar'}
-            aria-expanded={railWide}
-          >
-            <Icon name={railWide ? 'sidebarClose' : 'sidebarOpen'} size={19} />
-            <span>Collapse</span>
-          </button>
+          {/* The sidebar's foot, as in Claude desktop: Settings. It's kept open by the top bar's sidebar button,
+              a click on the window's left edge, or Ctrl K › Keep the sidebar open */}
+          <div className="rail-foot">
+            <button className="rail-btn" onClick={() => setShowSettings('appearance')} title="Settings">
+              <Icon name="settings" />
+              <span>Settings</span>
+            </button>
+          </div>
         </nav>
 
         <div className="view home-view" hidden={mode !== 'home'}>
@@ -1644,7 +1701,7 @@ export default function App() {
           />
         </div>
 
-        <div className={`view write-view${toolsOpen ? '' : ' tools-closed'}`} hidden={mode !== 'write'}>
+        <div className={`view write-view${toolsOpen ? '' : ' tools-floating'}`} hidden={mode !== 'write'}>
           <main className="writing">
             <WritingEditor
               ref={editor}
@@ -1678,20 +1735,36 @@ export default function App() {
             />
           </main>
 
-          <aside className="panel side-panel" aria-label="Writing tools">
-            {toolsOpen ? (
+          {/* Not pinned, the writing tools wait off the right edge: pointing at that edge brings them out over
+              the page, and clicking the edge (or Ctrl+\, or their pin) keeps them open beside the draft. */}
+          {!toolsOpen && <div className="edge-zone edge-right" {...toolsPeek.edge} onClick={() => setToolsOpen(true)} aria-hidden="true" />}
+          <aside
+            className={`panel side-panel${toolsOpen ? '' : ' floating'}${!toolsOpen && toolsPeek.shown ? ' peek' : ''}`}
+            aria-label="Writing tools"
+            {...(toolsOpen ? {} : toolsPeek.panel)}
+          >
+            {toolsShown && (
               <>
                 <header className="panel-title">
                   <h2>Writing tools</h2>
-                  <button className="panel-toggle" onClick={() => setToolsOpen(false)} title="Close the writing tools (Ctrl+\)" aria-label="Close the writing tools">
-                    <Icon name="collapse" size={18} />
-                  </button>
+                  {toolsOpen ? (
+                    <button className="panel-toggle" onClick={() => setToolsOpen(false)} title="Hide the writing tools (Ctrl+\): point at the window's right edge to see them" aria-label="Hide the writing tools">
+                      <Icon name="collapse" size={18} />
+                    </button>
+                  ) : (
+                    <button className="panel-toggle" onClick={() => setToolsOpen(true)} title="Keep the writing tools open beside the draft (Ctrl+\)" aria-label="Keep the writing tools open">
+                      <Icon name="pin" size={16} />
+                    </button>
+                  )}
                 </header>
-                <div className="tools" role="tablist" aria-label="Writing tools">
+                <div className="tools" role="tablist" aria-label="Writing tools" onKeyDown={arrowKeys}>
                   {TABS.map((t) => (
                     <button
                       key={t.tab}
                       role="tab"
+                      id={`tool-tab-${t.tab}`}
+                      aria-controls="tools-panel"
+                      tabIndex={tab === t.tab ? 0 : -1}
                       data-tab={t.tab}
                       aria-selected={tab === t.tab}
                       className={`tool${tab === t.tab ? ' on' : ''}`}
@@ -1706,25 +1779,13 @@ export default function App() {
                 </div>
                 <p className="tab-hint">{TAB[tab].hint}</p>
               </>
-            ) : (
-              <nav className="tool-strip" aria-label="Writing tools">
-                <button className="panel-toggle strip-toggle" onClick={() => setToolsOpen(true)} title="Open the writing tools (Ctrl+\)" aria-label="Open the writing tools">
-                  <Icon name="expand" size={18} />
-                </button>
-                {TABS.map((t) => (
-                  <button key={t.tab} className="strip-btn" data-tab={t.tab} onClick={() => pickTab(t.tab)} title={`${t.label}: ${t.hint}`} aria-label={t.label}>
-                    <Icon name={t.icon} size={20} />
-                    {tabBadge(t.tab)}
-                  </button>
-                ))}
-              </nav>
             )}
-            {/* Kept mounted while closed, so a draft from Muse or a cite search's results survive. */}
-            <div className="tab-body" hidden={!toolsOpen} ref={tabBody}>
+            {/* Kept mounted while hidden, so a draft from Muse or a cite search's results survive. */}
+            <div className="tab-body" hidden={!toolsShown} ref={tabBody} id="tools-panel" role="tabpanel" aria-labelledby={`tool-tab-${tab}`}>
               {/* Compose: your reading for this paragraph, then one Muse box that writes from your sources or chats. */}
               <div hidden={tab !== 'compose'} className="compose-tool">
                 <HighlightsPanel
-                  visible={toolsOpen && tab === 'compose' && mode === 'write' && !focusMode}
+                  visible={toolsShown && tab === 'compose' && mode === 'write' && !focusMode}
                   getContext={() => {
                     const f = editor.current?.getFocus()
                     return f?.selection || f?.paragraph || (editor.current?.getText() ?? '').slice(-1500)
@@ -1742,11 +1803,11 @@ export default function App() {
                 />
                 <section className="compose-muse" aria-label="Ask Muse">
                   <h4 className="eyebrow">Ask Muse</h4>
-                  <div className="seg-tabs" role="tablist" aria-label="What Muse should do">
-                    <button role="tab" data-compose="cite" aria-selected={compose === 'cite'} className={compose === 'cite' ? 'on' : ''} onClick={() => setCompose('cite')}>
+                  <div className="seg-tabs" role="tablist" aria-label="What Muse should do" onKeyDown={arrowKeys}>
+                    <button role="tab" id="compose-tab-cite" aria-controls="compose-panel-cite" tabIndex={compose === 'cite' ? 0 : -1} data-compose="cite" aria-selected={compose === 'cite'} className={compose === 'cite' ? 'on' : ''} onClick={() => setCompose('cite')}>
                       Cite my sources
                     </button>
-                    <button role="tab" data-compose="chat" aria-selected={compose === 'chat'} className={compose === 'chat' ? 'on' : ''} onClick={() => setCompose('chat')}>
+                    <button role="tab" id="compose-tab-chat" aria-controls="compose-panel-chat" tabIndex={compose === 'chat' ? 0 : -1} data-compose="chat" aria-selected={compose === 'chat'} className={compose === 'chat' ? 'on' : ''} onClick={() => setCompose('chat')}>
                       Just chat
                     </button>
                   </div>
@@ -1756,7 +1817,7 @@ export default function App() {
                       : 'Muse answers from its own knowledge, not your library; nothing it says is cited.'}
                   </p>
                   {/* Both kept mounted, so a draft or an answer on its way survives a switch. */}
-                  <div hidden={compose !== 'cite'}>
+                  <div hidden={compose !== 'cite'} id="compose-panel-cite" role="tabpanel" aria-labelledby="compose-tab-cite">
                     <AssistantPanel
                       passages={settings.assistant_passages}
                       scope={[...selected]}
@@ -1772,7 +1833,7 @@ export default function App() {
                       onError={onError}
                     />
                   </div>
-                  <div hidden={compose !== 'chat'}>
+                  <div hidden={compose !== 'chat'} id="compose-panel-chat" role="tabpanel" aria-labelledby="compose-tab-chat">
                     <AskPanel
                       draftId={draftId}
                       attach={askAttach}
@@ -1903,7 +1964,7 @@ export default function App() {
             </div>
           </aside>
 
-          <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={mode === 'write' && toolsOpen && !focusMode && showingSource} />
+          <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={mode === 'write' && toolsShown && !focusMode && showingSource} />
         </div>
 
         <div className="view library-view" hidden={mode !== 'library'}>
@@ -1993,13 +2054,44 @@ export default function App() {
       </div>
 
       <footer className="dock">
-        <div className="dock-stats" aria-label="Your draft">
-          {/* Outside Write, say whose numbers these are: the open draft's, not the library's or the graph's. */}
-          {mode !== 'write' && (
-            <span className="dock-label" title="These numbers are for the draft open in Write">
-              Draft
-            </span>
+        {/* Outside Write, say whose numbers these are: the open draft's, not the library's or the graph's. */}
+        {mode !== 'write' && (
+          <span className="dock-label" title="These numbers are for the draft open in Write">
+            Draft
+          </span>
+        )}
+        {/* Whether the draft is saved, its latest version (opens Versions, upwards) and how much changed since */}
+        <div className="dock-save" ref={versionsBox}>
+          <span className={`save-state save-${saveState.state}`}>{saveText(saveState)}</span>
+          <button
+            className="versions-btn"
+            onClick={() => setVersionsOpen((o) => !o)}
+            aria-expanded={versionsOpen}
+            aria-haspopup="dialog"
+            title="Versions: save, compare and restore"
+          >
+            {latest ? `v${latest.number}` : 'Versions'} ▾
+          </button>
+          {change != null && latest && <span className="save-change">{change}% changed since v{latest.number}</span>}
+          {versionsOpen && (
+            <div className="drafts-menu versions-menu" role="dialog" aria-label="Versions">
+              <HistoryPanel
+                key={draftId}
+                draftId={draftId}
+                list={versions}
+                onRefresh={refreshVersions}
+                getJSON={() => editor.current?.getJSON() ?? null}
+                getTitle={titleNow}
+                onRestore={(content) => editor.current?.setContent(content)}
+                onFlush={async () => {
+                  await editor.current?.flush()
+                }}
+                onError={onError}
+              />
+            </div>
           )}
+        </div>
+        <div className="dock-stats" aria-label="Your draft">
           <button
             className="stat"
             title="Words in the draft: details and a word goal"
@@ -2069,23 +2161,22 @@ export default function App() {
             </span>
           </button>
         )}
+        {/* Only what's wrong or not ready yet: which AI and which search are in use is in Settings */}
         {offline ? (
           <span className="offline status" title={logPath ? `Backend log: ${logPath}` : undefined}>
             Backend offline, reconnecting…
           </span>
-        ) : (
-          health?.provider === 'mock' ? (
-            <button className="status status-mock" onClick={() => setShowSettings('model')} title="The AI is offline: a stand-in that matches words instead of reading. Click to add a Muse key.">
-              <span className="dot" />
-              {`${docs.length} source${docs.length === 1 ? '' : 's'} · ${modelLine(health)}`}
-            </button>
-          ) : (
-            <span className="status" title={health ? `model: ${health.provider} · search: ${health.search}${health.dense ? ` · local search model: ${health.dense}` : ''}` : undefined}>
-              <span className={`dot${health ? ' live' : ''}`} />
-              {health ? `${docs.length} source${docs.length === 1 ? '' : 's'} · ${modelLine(health)}` : 'Starting backend…'}
-            </span>
-          )
-        )}
+        ) : !health ? (
+          <span className="status">
+            <span className="dot" />
+            Starting backend…
+          </span>
+        ) : health.provider === 'mock' ? (
+          <button className="status status-mock" onClick={() => setShowSettings('model')} title="The AI is offline: a stand-in that matches words instead of reading. Click to add a Muse key.">
+            <span className="dot" />
+            AI offline
+          </button>
+        ) : null}
       </footer>
 
       {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}

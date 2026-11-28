@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFocusTrap } from '../useFocusTrap'
+import { arrowKeys, stop } from '../arrowKeys'
 import type { PageSetup } from '../editor/docFormat'
 
 /** Esc closes, and goes no further (it would close what's behind too). */
@@ -44,11 +45,12 @@ export function PageSetupDialog({ value, onSave, onClose }: { value: PageSetup; 
         <p className="muted">For this draft's Word file, PDF and printing. On screen the draft stays one long page.</p>
         <div className="ps-grid">
           <span>Paper</span>
-          <div className="ps-papers" role="radiogroup" aria-label="Paper">
-            {PAPERS.map((x) => {
+          <div className="ps-papers" role="radiogroup" aria-label="Paper" onKeyDown={arrowKeys}>
+            {PAPERS.map((x, i) => {
               const on = p.size === x.size && p.orientation === x.orientation
+              const anyOn = PAPERS.some((y) => p.size === y.size && p.orientation === y.orientation)
               return (
-                <button key={x.label} role="radio" aria-checked={on} className={on ? 'on' : ''} onClick={() => setP((o) => ({ ...o, size: x.size, orientation: x.orientation }))}>
+                <button key={x.label} role="radio" aria-checked={on} tabIndex={stop(on, i, anyOn)} className={on ? 'on' : ''} onClick={() => setP((o) => ({ ...o, size: x.size, orientation: x.orientation }))}>
                   <i style={{ width: x.w, height: x.h }} />
                   {x.label}
                 </button>
@@ -56,9 +58,16 @@ export function PageSetupDialog({ value, onSave, onClose }: { value: PageSetup; 
             })}
           </div>
           <span>Margins</span>
-          <div className="segmented" role="radiogroup" aria-label="Margins">
-            {MARGIN_CHOICES.map((m) => (
-              <button key={m.value} role="radio" aria-checked={p.margins === m.value} className={p.margins === m.value ? 'active' : ''} onClick={() => setP((o) => ({ ...o, margins: m.value }))}>
+          <div className="segmented" role="radiogroup" aria-label="Margins" onKeyDown={arrowKeys}>
+            {MARGIN_CHOICES.map((m, i) => (
+              <button
+                key={m.value}
+                role="radio"
+                aria-checked={p.margins === m.value}
+                tabIndex={stop(p.margins === m.value, i, MARGIN_CHOICES.some((x) => x.value === p.margins))}
+                className={p.margins === m.value ? 'active' : ''}
+                onClick={() => setP((o) => ({ ...o, margins: m.value }))}
+              >
                 {m.label} <small>{m.note}</small>
               </button>
             ))}

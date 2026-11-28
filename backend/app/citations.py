@@ -10,7 +10,7 @@ import unicodedata
 from collections import Counter
 from difflib import SequenceMatcher
 
-from .text_utils import densest_run
+from .text_utils import EAST_ASIAN_CHAR, densest_run
 
 _CHAR_MAP = {
     "“": '"', "”": '"', "‘": "'", "’": "'",
@@ -22,11 +22,38 @@ _LINE_HYPHEN = re.compile(r"(?<=[^\W\d_])[-‐­][ \t]*\r?\n\s*(?=[^\W\d_])")
 # A range broken across a line break keeps its dash: "2004-\n12" reads as "2004-12".
 _RANGE_BREAK = re.compile(r"(?<=\d[-‐–])[ \t]*\r?\n\s*(?=\d)")
 
-# Words that reverse what a sentence says. Words ending in "n't" count too.
-_NEGATIONS = frozenset("not no never none neither nor without cannot nothing nobody nowhere non".split())
+# Words that reverse what a sentence says, in the languages papers are most often written in. Words
+# ending in "n't" (English) or starting with "n'" (French "n'a pas") count too. Left out because they
+# are also ordinary words in English papers: "sin" (Spanish), "sem" (Portuguese; the standard error).
+_NEGATIONS = frozenset((
+    "not no never none neither nor without cannot nothing nobody nowhere non "  # English
+    "nicht kein keine keinen keinem keiner keines nie niemals nichts niemand weder ohne "  # German
+    "ne pas jamais aucun aucune rien ni sans "  # French
+    "nunca jamás ningún ninguno ninguna nada nadie tampoco "  # Spanish
+    "não nenhum nenhuma ninguém nem "  # Portuguese
+    "mai nessuno nessuna niente nulla né senza "  # Italian
+    "niet geen nooit niets zonder "  # Dutch
+    "не нет ни никогда ничего никто без "  # Russian
+    "nigdy nic nikt żaden żadna żadne bez "  # Polish
+    "inte ej aldrig ingen inget utan ikke aldri uden uten "  # Swedish, Danish, Norwegian
+    "değil hiç yok asla "  # Turkish
+    "tidak bukan belum tanpa "  # Indonesian, Malay
+    "안 못"  # Korean, before the verb
+).split())
+# Chinese, Japanese and Korean negations sit inside a run of text with no spaces, so they're counted
+# where they occur: 不 没 无 未 非 (Chinese, and Japanese kanji), ない なかった ません (Japanese), 않 없
+# (Korean). Words that contain one but don't negate ("very", "future", "but", "not only") are taken off.
+_CJK_NEGATIONS = ("不", "没", "沒", "无", "無", "未", "非", "ない", "なかった", "ません", "않", "없")
+_CJK_NOT_NEGATIONS = ("非常", "未来", "未來", "不过", "不過", "不仅", "不僅")
+# The ones written right before what they negate, with no space: a quote that starts after one
+# leaves it out.
+_CJK_BEFORE = frozenset("不没沒无無未非")
+# Japanese negates at the end of the verb (下げ + なかった, "did not lower"): a quote that stops
+# just before one of these leaves it out. Longest first, so the whole ending is shown.
+_JA_AFTER = ("なかった", "ません", "ない", "なく")
 # Prefixes that make a word its opposite: significant / insignificant, likely / unlikely.
 _NEGATING_PREFIXES = ("non", "un", "in", "im", "ir", "il", "dis")
-_WORDS = re.compile(r"[a-z]+(?:'[a-z]+)?")
+_WORDS = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)?")  # letters, in any script
 _NUMBERS = re.compile(r"\d+(?:[.,]\d+)*")
 # How far a match that starts or ends inside a word is widened to take the whole word.
 _WORD_REACH = 24
@@ -63,8 +90,18 @@ def _normalize(text: str) -> tuple[str, list[int]]:
     return "".join(out), index
 
 
+def _negation_word(word: str) -> bool:
+    return word in _NEGATIONS or word.endswith("n't") or word.startswith("n'")
+
+
 def _negations(words: list[str]) -> int:
-    return sum(1 for w in words if w in _NEGATIONS or w.endswith("n't"))
+    n = 0
+    for w in words:
+        if _negation_word(w):
+            n += 1
+        elif not w.isascii():
+            n += sum(w.count(c) for c in _CJK_NEGATIONS) - sum(w.count(c) for c in _CJK_NOT_NEGATIONS)
+    return n
 
 
 def meaning_change(quote: str, source: str) -> str:
@@ -89,10 +126,16 @@ def meaning_change(quote: str, source: str) -> str:
     return ""
 
 
+def _in_word(ch: str) -> bool:
+    """A character that runs on into its neighbours as one word. A Chinese character or kana is a
+    word of its own: those scripts put no spaces between words, so a quote may start at any of them."""
+    return ch.isalnum() and not EAST_ASIAN_CHAR.match(ch)
+
+
 def _mid_word(text: str, start: int, end: int) -> bool:
     """Whether text[start:end] begins or ends inside a word ("significant" in "insignificant")."""
-    return (0 < start < len(text) and text[start].isalnum() and text[start - 1].isalnum()) or (
-        0 < end < len(text) and text[end - 1].isalnum() and text[end].isalnum())
+    return (0 < start < len(text) and _in_word(text[start]) and _in_word(text[start - 1])) or (
+        0 < end < len(text) and _in_word(text[end - 1]) and _in_word(text[end]))
 
 
 def _find_whole(text: str, needle: str) -> int:
@@ -108,16 +151,16 @@ def _widen(text: str, start: int, end: int) -> tuple[int, int]:
     `meaning_change` sees "insignificant" and not just its tail. A run of letters longer than
     `_WORD_REACH` is not a word, and the span is left as it was on that side."""
     lo = start
-    if 0 < start < len(text) and text[start].isalnum() and text[start - 1].isalnum():
-        while lo > 0 and text[lo - 1].isalnum() and start - lo < _WORD_REACH:
+    if 0 < start < len(text) and _in_word(text[start]) and _in_word(text[start - 1]):
+        while lo > 0 and _in_word(text[lo - 1]) and start - lo < _WORD_REACH:
             lo -= 1
-        if lo > 0 and text[lo - 1].isalnum():
+        if lo > 0 and _in_word(text[lo - 1]):
             lo = start
     hi = end
-    if 0 < end < len(text) and text[end - 1].isalnum() and text[end].isalnum():
-        while hi < len(text) and text[hi].isalnum() and hi - end < _WORD_REACH:
+    if 0 < end < len(text) and _in_word(text[end - 1]) and _in_word(text[end]):
+        while hi < len(text) and _in_word(text[hi]) and hi - end < _WORD_REACH:
             hi += 1
-        if hi < len(text) and text[hi].isalnum():
+        if hi < len(text) and _in_word(text[hi]):
             hi = end
     return lo, hi
 
@@ -126,21 +169,31 @@ def _negation_before(text: str, start: int) -> int | None:
     """Where a negation ends right before text[start] ("did not | reduce mortality",
     "non-|significant"): the negation's start, or None. A quote that begins there leaves out
     the word that reverses it, though every word it has is the source's."""
+    if start > 0 and text[start - 1] in _CJK_BEFORE:  # "睡眠不 | 影响记忆"
+        return start - 1
     m = _NEGATION_BEFORE.search(text, max(0, start - 40), start)
     if not m:
         return None
     word = m.group(1).lower().replace("’", "'")
-    return m.start(1) if word in _NEGATIONS or word.endswith("n't") else None
+    return m.start(1) if _negation_word(word) else None
 
 
-_NEGATION_BEFORE = re.compile(r"(?<![\w'’])([A-Za-z]+(?:['’][A-Za-z]+)?)(?:\s+|-)$")
+def _negation_after(text: str, end: int) -> int | None:
+    """Where a Japanese negative ending right after text[:end] ends ("下げ | なかった"), or None."""
+    for ending in _JA_AFTER:
+        if text.startswith(ending, end):
+            return end + len(ending)
+    return None
+
+
+_NEGATION_BEFORE = re.compile(r"(?<![\w'’])([^\W\d_]+(?:['’][^\W\d_]+)?)(?:\s+|-)$")
 
 
 def _match(quote: str, text: str, min_ratio: float, fuzzy: bool) -> tuple[int, int, float, str] | None:
     """(start, end, match_ratio, meaning change) of the source text `quote` best matches,
     or None when nothing matches closely enough. The meaning change is "" for a match the
-    quote can stand for; otherwise see `meaning_change` and `_negation_before`, and start is
-    then where the source's words begin, the negation included."""
+    quote can stand for; otherwise see `meaning_change`, `_negation_before` and `_negation_after`,
+    and the span then takes in the negation the quote left out."""
     found = _closest(quote, text, min_ratio, fuzzy)
     if found is None or found[3]:
         return found
@@ -148,6 +201,9 @@ def _match(quote: str, text: str, min_ratio: float, fuzzy: bool) -> tuple[int, i
     negation = _negation_before(text, start)
     if negation is not None:
         return negation, end, ratio, "a negation"
+    negation = _negation_after(text, end)
+    if negation is not None:
+        return start, negation, ratio, "a negation"
     return found
 
 
