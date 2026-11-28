@@ -101,7 +101,7 @@ const SHORTCUTS: [string, [string, string][]][] = [
   ['Paragraph', [['Normal text', 'Ctrl+Alt+0'], ['Heading 1 to 3', 'Ctrl+Alt+1 to 3'], ['Quote', 'Ctrl+Shift+B'], ['Align left / centre / right / justify', 'Ctrl+Shift+L E R J'], ['Bullets / numbers / checklist', 'Ctrl+Shift+8 7 9'], ['Indent a list item', 'Tab / Shift+Tab'], ['New line in the same paragraph', 'Shift+Enter']]],
   ['Insert', [['Link', 'Ctrl+Shift+K'], ['Page break', 'Ctrl+Enter'], ['Footnote', 'Ctrl+Alt+F'], ['Comment', 'Ctrl+Alt+M']]],
   ['Find', [['Find', 'Ctrl+F'], ['Replace', 'Ctrl+H'], ['Next / previous match', 'Enter / Shift+Enter']]],
-  ['Groundwork', [['Cite', 'Ctrl+Shift+C'], ['Ask Muse', 'Ctrl+J'], ['Search everything', 'Ctrl+K'], ['Writing tools', 'Ctrl+\\'], ['Focus mode', 'Ctrl+Shift+F'], ['This list', 'Ctrl+/']]],
+  ['Groundwork', [['Cite', 'Ctrl+Shift+C'], ['Ask Muse', 'Ctrl+J'], ['Search everything', 'Ctrl+K'], ['Writing tools', 'Ctrl+\\'], ['This list', 'Ctrl+/']]],
 ]
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {

@@ -1,32 +1,33 @@
 :root {
   /* Forest (Nov 20): neutral surfaces and a forest-green accent, as in the Library picture; --ember
      (kept by name) is now an ochre for marks and artwork */
-  --bg: #f4f6f5;
+  --bg: #f5f5f4;
   --panel: #ffffff;
-  --text: #17201c;
-  --muted: #56625c;
-  --border: #dce2df;
-  --line: rgb(23 32 28 / 0.09); /* hairlines: page guides, section dividers */
-  --accent: #1f5c46;
+  --text: #1c1917;
+  --muted: #57534e;
+  --border: #e7e5e4;
+  --line: rgb(28 25 23 / 0.09); /* hairlines: page guides, section dividers */
+  --accent: #047857; /* emerald for text and buttons: 5.5:1 on the panel */
+  --accent-bright: #34d399; /* the theme mint: dots and progress fills only, too pale for text in light */
   --accent-text: #ffffff;
-  --hover: rgba(31, 92, 70, 0.07);
+  --hover: rgba(4, 120, 87, 0.07);
   --lead: var(--text); /* the first sentence of a two-tone statement */
-  --follow: #74837c; /* the rest of it: large text only (4:1 on the page) */
-  --ice: #a5bbb0;
+  --follow: #78716c; /* the rest of it: large text only (4:1 on the page) */
+  --ice: #a8a29e;
   --ember: #c98a3e; /* marks things (underlines, the active tab, artwork); too pale to carry small text */
   --ember-ink: #8a5714; /* ember for words: 6.1:1 on the panel */
   --peach: #f3dcc0;
-  --ban1: #0f1a15; /* dark banners and the notice bar */
-  --ban2: #1f4a3a;
+  --ban1: #18181b; /* dark banners and the notice bar */
+  --ban2: #064e3b;
   /* Night surfaces (the notice bar, the night panel, the Network canvas): the same forest dark in both themes */
-  --night: #0f1a15;
-  --night-2: #16231d;
-  --night-chip: #1f3a30;
-  --night-edge: #2f5444;
-  --night-text: #e5ebe8;
-  --night-soft: #b5c4bc;
-  --night-muted: #9fb3a9;
-  --night-accent: #62c29a;
+  --night: #18181b;
+  --night-2: #202024;
+  --night-chip: #27272a;
+  --night-edge: #3f3f46;
+  --night-text: #e4e4e7;
+  --night-soft: #c4c4cc;
+  --night-muted: #a1a1aa;
+  --night-accent: #34d399;
   --night-ember: #e0ad66;
   --ok: #23703f; /* 5.9:1 on the panel, for text */
   --ok-bg: #dff3e6;
@@ -34,13 +35,13 @@
   --warn-bg: #fbefcf;
   --bad: #b5371f; /* 4.9:1 on its own tint */
   --bad-bg: #fbe3df;
-  --pending: #97a39d;
-  --pending-bg: #e7ece9;
+  --pending: #a8a29e;
+  --pending-bg: #ecebe9;
   --info: #2f6db5; /* the one blue: matrix citations, unread papers, Word and text files */
   --matrix: var(--info); /* citations written from a review matrix */
   --matrix-bg: #e1ecf9;
   --mark: #ffe27a;
-  --scrim: rgb(15 26 21 / 0.45); /* behind every dialog, the palette and Quick look */
+  --scrim: rgb(28 25 23 / 0.45); /* behind every dialog, the palette and Quick look */
   /* Small capitals over a group (SMART VIEWS, FOR THIS DRAFT, WRITING TOOLS): one size and spacing everywhere */
   --eyebrow: 700 var(--fs-xs)/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
   --eyebrow-track: 0.08em;
@@ -61,9 +62,9 @@
   --display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif; /* light, large headings */
   --ins: #d6f0dd;
   --del: #f9dcd6;
-  --rail: #eaeeec;
-  --shadow: 0 1px 2px rgb(23 32 28 / 0.06), 0 8px 24px -12px rgb(23 32 28 / 0.2);
-  --lift: 0 2px 4px rgb(23 32 28 / 0.05), 0 22px 40px -22px rgb(23 32 28 / 0.4);
+  --rail: #edecea;
+  --shadow: 0 1px 2px rgb(28 25 23 / 0.06), 0 8px 24px -12px rgb(28 25 23 / 0.2);
+  --lift: 0 2px 4px rgb(28 25 23 / 0.05), 0 22px 40px -22px rgb(28 25 23 / 0.4);
   --panel-w: 400px;
   /* The draft's page, set in Settings (App puts data-page-width etc. on <html>) */
   --page-w: 760px;
@@ -80,36 +81,37 @@
 
 /* theme.ts sets data-theme from Settings (System follows the OS). */
 :root[data-theme="dark"] {
-  --bg: #0d1210;
-  --panel: #141b18;
-  --text: #e5ebe8;
-  --muted: #8e9d96;
-  --border: #25302b;
-  --line: rgb(229 235 232 / 0.08);
-  --accent: #62c29a; /* a lighter green carries the accent in the dark */
-  --accent-text: #062418;
+  --bg: #121212;
+  --panel: #18181b;
+  --text: #e4e4e7;
+  --muted: #a1a1aa;
+  --border: #303034;
+  --line: rgb(228 228 231 / 0.08);
+  --accent: #34d399; /* the theme mint carries the accent in the dark */
+  --accent-bright: #34d399;
+  --accent-text: #022c22;
   --hover: rgba(255, 255, 255, 0.07);
-  --follow: #869a90;
-  --ice: #5a7a6c;
+  --follow: #85858d;
+  --ice: #52525b;
   --ember-ink: #e0ad66;
   --peach: #4d3a1f;
-  --ban1: #09100d;
-  --ban2: #24443a;
+  --ban1: #0c0c0d;
+  --ban2: #064e3b;
   --ok: #56d08a;
   --ok-bg: #12261a;
   --warn: #e3b341;
   --warn-bg: #2b2111;
   --bad: #ff8a78;
   --bad-bg: #2d1614;
-  --pending: #8e9d96;
-  --pending-bg: #202a26;
+  --pending: #a1a1aa;
+  --pending-bg: #232327;
   --info: #7fb2f0;
   --matrix-bg: #15233a;
   --mark: #6b5a14;
   --scrim: rgb(0 0 0 / 0.6);
   --ins: #183a24;
   --del: #45201b;
-  --rail: #0f1513;
+  --rail: #141416;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.6);
   --lift: 0 22px 40px -22px rgb(0 0 0 / 0.8);
   color-scheme: dark;
@@ -229,11 +231,11 @@ textarea { width: 100%; resize: vertical; }
 .doc-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .doc-name { font: 600 var(--fs-lg)/1.25 var(--doc-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .save-state { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* In the status bar: Saved, the version (a 24 px pill, a big enough target for WCAG 2.2's 2.5.8), what changed */
-.dock-save { position: relative; flex: none; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+/* In the status bar: Saved, the version (a 24 px target, as WCAG 2.2's 2.5.8 asks, plain like the other counts), what changed */
+.dock-save { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .dock-save .versions-btn {
-  display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-pill);
-  background: var(--panel); color: var(--accent); font-size: var(--fs-sm); font-weight: 600;
+  display: inline-flex; align-items: center; height: 24px; padding: 0 6px; border: none; border-radius: var(--r-md);
+  background: none; color: var(--accent); font-size: var(--fs-sm); font-weight: 600;
 }
 .dock-save .versions-btn:hover:not(:disabled) { background: var(--hover); }
 .save-change { color: var(--muted); }
@@ -294,24 +296,26 @@ textarea { width: 100%; resize: vertical; }
 /* The names: read out, and shown when the sidebar is wide */
 .rail-btn > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* Labelled rows (Nov 20, as in the Library picture); since Nov 28 always, pinned or floating */
-.rail.wide { width: 248px; align-items: stretch; padding: 16px 12px 12px; background: var(--bg); }
+/* Both side panels share one compact scale (Nov 28): 13px rows 32px tall, 16px icons, 10px inside a row, 12px at the edges */
+.rail.wide { width: 232px; align-items: stretch; padding: 12px 10px 10px; background: var(--bg); }
 .rail.wide .rail-scroll { align-items: stretch; gap: 2px; }
 .rail.wide .rail-modes { align-items: stretch; gap: 2px; }
-.rail.wide .rail-btn { justify-content: flex-start; width: 100%; padding: 0 12px; font-size: var(--fs-lg); line-height: 1; }
+.rail.wide .rail-btn { justify-content: flex-start; width: 100%; height: 32px; gap: 10px; padding: 0 10px; font-size: var(--fs-md); line-height: 1; }
+.rail.wide .rail-btn svg, .rail.wide .lib-side-item svg { width: 16px; height: 16px; }
 .rail.wide .rail-btn { color: var(--text); }
 .rail.wide .rail-btn > span { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
 .rail.wide .rail-btn svg { color: var(--muted); }
 .rail.wide .rail-btn.on, .rail.wide .rail-btn.on:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font-weight: 600; }
 .rail.wide .rail-btn.on svg { color: var(--text); }
-.rail.wide .rail-slot:not(:empty) { margin-top: 14px; padding-top: 18px; }
+.rail.wide .rail-slot:not(:empty) { margin-top: 12px; padding-top: 12px; }
 .rail.wide .lib-side-item { color: var(--text); }
 .rail.wide .lib-side-item svg { color: var(--muted); }
 .rail.wide .lib-side-item.on, .rail.wide .lib-side-item.on:hover:not(:disabled) { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .rail.wide .lib-side-item.on svg { color: var(--accent); }
 .rail.wide .lib-side-item.warn svg { color: var(--warn); }
 .rail.wide .mx-side .lib-side-item:has(.mx-side-dot) > svg { display: none; }
-.rail.wide .mx-side .mx-side-dot { display: block; flex: none; width: 7px; height: 7px; margin: 0 6px; border-radius: 50%; background: color-mix(in srgb, var(--muted) 45%, transparent); }
-.rail.wide .mx-side .lib-side-item.on .mx-side-dot { background: var(--accent); }
+.rail.wide .mx-side .mx-side-dot { display: block; flex: none; width: 7px; height: 7px; margin: 0 4px 0 5px; border-radius: 50%; background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.rail.wide .mx-side .lib-side-item.on .mx-side-dot { background: var(--accent-bright); }
 
 
 /* The panel beside the draft: a row of tabs, then the open tab */
@@ -330,12 +334,10 @@ textarea { width: 100%; resize: vertical; }
   position: absolute; top: 2px; right: 4px; min-width: 18px; padding: 1px 5px; border-radius: var(--r-pill); background: var(--accent);
   color: var(--accent-text); font: 700 var(--fs-xs)/1.4 system-ui, sans-serif; font-style: normal;
 }
-.tab-hint { margin: 0; padding: 8px 16px; font-size: var(--fs-sm); color: var(--muted); border-bottom: 1px solid var(--border); flex: none; }
-/* The panel's title row: at its top-right, the button that hides it (pinned) or pins it (floating) */
-.panel-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 8px 0 16px; flex: none; }
-.panel-title h2 { margin: 0; font: var(--eyebrow); letter-spacing: var(--eyebrow-track); text-transform: uppercase; color: var(--muted); }
+/* The writing tools' one top row: the tabs, then (at its right) the button that hides the panel (pinned) or pins it (floating) */
+.tools-row { display: flex; align-items: center; gap: 4px; margin: 12px 8px 0 12px; border-bottom: 1px solid var(--line); flex: none; }
 .panel-toggle {
-  display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: var(--r-md);
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 2px; padding: 0; border: 1px solid transparent; border-radius: var(--r-md);
   background: none; color: var(--muted);
 }
 .panel-toggle:hover:not(:disabled) { color: var(--accent); background: var(--hover); border-color: var(--border); }
@@ -358,64 +360,42 @@ textarea { width: 100%; resize: vertical; }
 .edge-right { right: 0; }
 /* The page's scrollbar keeps clear of the right edge's strip */
 .write-view.tools-floating .writing { margin-right: 8px; }
-.app.focus .edge-zone { display: none; }
 /* The sidebar's foot: Settings */
-.rail-foot { flex: none; width: 100%; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.rail-foot { flex: none; width: 100%; display: flex; flex-direction: column; gap: 2px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 /* Every draft, under the places (SidebarDrafts), as a chat app lists its conversations */
-.side-drafts { flex: none; width: 100%; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
-.side-drafts-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 6px 12px; }
+.side-drafts { flex: none; width: 100%; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.side-drafts-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 4px 10px; }
 .side-drafts-head h3 { margin: 0; font: var(--eyebrow); letter-spacing: var(--eyebrow-track); text-transform: uppercase; color: var(--muted); }
 .side-drafts-new { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--r-md); background: none; color: var(--muted); }
 .side-drafts-new:hover:not(:disabled) { color: var(--text); background: var(--hover); }
 .side-drafts ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
-.side-drafts-busy { margin: 0 0 4px; padding: 0 12px; font-size: var(--fs-sm); color: var(--accent); }
+.side-drafts-busy { margin: 0 0 4px; padding: 0 10px; font-size: var(--fs-sm); color: var(--accent); }
 .side-draft-row { display: flex; align-items: center; border-radius: var(--r-md); }
 .side-draft-row:hover, .side-draft.acting .side-draft-row { background: var(--hover); }
 .side-draft.on .side-draft-row { background: color-mix(in srgb, var(--text) 7%, transparent); }
 .side-draft-open {
-  flex: 1; min-width: 0; height: 32px; padding: 0 4px 0 12px; border: none; background: none; text-align: left; color: var(--text);
+  flex: 1; min-width: 0; height: 32px; padding: 0 4px 0 10px; border: none; background: none; text-align: left; color: var(--text);
   font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .side-draft.on .side-draft-open { font-weight: 600; }
 .side-draft-more { flex: none; width: 28px; height: 28px; margin-right: 2px; padding: 0; border: none; border-radius: var(--r-md); background: none; color: var(--muted); opacity: 0; }
 .side-draft-row:hover .side-draft-more, .side-draft-more:focus-visible, .side-draft-more[aria-expanded="true"] { opacity: 1; }
 .side-draft-more:hover:not(:disabled) { color: var(--text); background: var(--hover); }
-.side-draft-actions { display: flex; gap: 6px; padding: 4px 8px 6px 12px; }
+.side-draft-actions { display: flex; gap: 6px; padding: 4px 8px 6px 10px; }
 .side-draft-actions button { height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); font-size: var(--fs-sm); }
 .side-draft-actions .danger-text { color: var(--bad); }
 .side-draft-rename { width: 100%; height: 32px; padding: 0 10px; font-size: var(--fs-md); }
-.side-drafts-empty { padding: 4px 12px; font-size: var(--fs-sm); color: var(--muted); }
+.side-drafts-empty { padding: 4px 10px; font-size: var(--fs-sm); color: var(--muted); }
 
-/* Focus mode: the page and its toolbar only */
-.app.focus { grid-template-rows: minmax(0, 1fr); }
-.app.focus .app-bar, .app.focus .rail, .app.focus .dock, .app.focus .side-panel, .app.focus .notice-slot { display: none; }
-.app.focus .workspace, .app.focus .write-view { grid-template-columns: minmax(0, 1fr); }
-.focus-exit {
-  position: fixed; top: 10px; right: 16px; z-index: 60; display: flex; align-items: center; gap: 10px;
-  padding: 4px 4px 4px 12px; border-radius: var(--r-pill); background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow);
-}
-.focus-exit button { border: none; border-radius: var(--r-pill); font-size: var(--fs-sm); display: inline-flex; align-items: center; gap: 6px; }
-/* Windows and Linux (no title bar of the window's own), focus mode keeps a slim strip across the top to move
-   the window by, with Exit focus and the window's buttons at its right. */
-.frameless .app.focus { grid-template-rows: auto minmax(0, 1fr); }
-.frameless .focus-exit {
-  position: static; justify-content: flex-end; height: 40px; padding: 0 8px 0 16px;
-  border: none; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; background: var(--bg); color: var(--text);
-  -webkit-app-region: drag;
-}
-.frameless .focus-exit button { -webkit-app-region: no-drag; }
-.frameless .focus-exit .win-buttons { margin: 0 -8px 0 6px; }
-.focus-exit kbd { font: 600 var(--fs-xs) Consolas, monospace; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 4px; }
-
-/* Status dock */
+/* Status dock: one compact line (Nov 28), every item 24 px tall */
 .dock {
-  display: flex; align-items: center; gap: 12px; padding: 5px 14px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; padding: 2px 10px; border-top: 1px solid var(--border);
   background: var(--panel); font-size: var(--fs-sm); color: var(--muted); min-width: 0;
 }
-.dock-stats { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
+.dock-stats { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
 .dock-label { padding: 1px 7px; margin-right: 2px; border-radius: var(--r-pill); background: var(--hover); color: var(--muted); font: 700 var(--fs-xs)/1.5 system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
 .dock .stat {
-  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 3px 9px; border: none;
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; white-space: nowrap; padding: 0 8px; border: none;
   border-radius: var(--r-md); background: none; color: var(--muted); font-size: var(--fs-sm);
 }
 .dock button.stat:hover:not(:disabled) { color: var(--text); background: var(--hover); }
@@ -428,10 +408,10 @@ textarea { width: 100%; resize: vertical; }
 @media (prefers-reduced-motion: reduce) { .dot-busy, .cite-mark-searching { animation: none; } }
 .dot.live { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
 .dock .status { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dock-keys { margin-right: 14px; color: var(--muted); white-space: nowrap; }
+.dock-keys { margin-right: 10px; color: var(--muted); white-space: nowrap; }
 .dock-keys kbd { font: inherit; color: var(--muted); }
 @media (max-width: 980px) { .dock-keys { display: none; } }
-.dock .status-mock { border: none; background: var(--warn-bg); color: var(--text); padding: 3px 10px; border-radius: var(--r-pill); font: inherit; cursor: pointer; }
+.dock .status-mock { border: none; background: var(--warn-bg); color: var(--text); padding: 2px 8px; border-radius: var(--r-pill); font: inherit; cursor: pointer; }
 .dock .status-mock .dot { background: var(--warn); }
 .dock .status-mock:hover { filter: brightness(0.97); }
 
@@ -462,7 +442,7 @@ textarea { width: 100%; resize: vertical; }
 
 .ghost { background: transparent; color: var(--accent); border-color: var(--border); font-size: var(--fs-sm); }
 .lib-busy .bar { display: block; height: 3px; border-radius: var(--r-sm); margin-bottom: 5px; overflow: hidden; position: relative; background: var(--hover); }
-.lib-busy .bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 35%; background: var(--accent); border-radius: var(--r-sm); animation: lib-slide 1.1s ease-in-out infinite; }
+.lib-busy .bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 35%; background: var(--accent-bright); border-radius: var(--r-sm); animation: lib-slide 1.1s ease-in-out infinite; }
 @keyframes lib-slide { from { left: -35%; } to { left: 100%; } }
 .chipbtn { border-radius: var(--r-pill); padding: 2px 11px; font-size: var(--fs-sm); color: var(--muted); background: transparent; }
 .chipbtn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
@@ -656,15 +636,15 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .chip-card-retraction { margin: 0; padding: 6px 8px; border-radius: var(--r-md); background: var(--bad-bg); color: var(--bad); font-weight: 600; line-height: 1.4; }
 
 /* Sidebar */
-.tab-body { flex: 1; overflow-y: auto; padding: 14px 16px 24px; }
+.tab-body { flex: 1; overflow-y: auto; padding: 12px 12px 20px; }
 /* Scrolling panels show a soft shadow at an edge with more beyond it, and none at the very top or
    bottom (the "local" covers slide away with the content). */
 .tab-body, .network-side {
   background:
     linear-gradient(var(--panel) 30%, transparent) top / 100% 28px no-repeat local,
     linear-gradient(transparent, var(--panel) 70%) bottom / 100% 28px no-repeat local,
-    radial-gradient(farthest-side at 50% 0, rgb(23 32 28 / 0.16), transparent) top / 100% 10px no-repeat scroll,
-    radial-gradient(farthest-side at 50% 100%, rgb(23 32 28 / 0.16), transparent) bottom / 100% 10px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 0, rgb(28 25 23 / 0.16), transparent) top / 100% 10px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgb(28 25 23 / 0.16), transparent) bottom / 100% 10px no-repeat scroll,
     var(--panel);
 }
 .draft-preview { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
@@ -878,7 +858,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .tl-item::before { content: ""; position: absolute; left: 5px; top: 18px; bottom: -8px; width: 2px; background: var(--border); }
 .tl-item:last-child::before { display: none; }
 .tl-dot { flex: none; width: 12px; height: 12px; margin-top: 12px; border-radius: 50%; border: 2px solid var(--pending); background: var(--panel); z-index: 1; }
-.tl-milestone .tl-dot { border-color: var(--accent); background: var(--accent); }
+.tl-milestone .tl-dot { border-color: var(--accent-bright); background: var(--accent-bright); }
 .tl-body { flex: 1; min-width: 0; padding: 6px 8px; border-radius: var(--r-lg); }
 .tl-item.on .tl-body { background: var(--hover); }
 .tl-main { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; padding: 0; border: none; background: none; text-align: left; }
@@ -1217,7 +1197,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .prose .selectedCell { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 /* Status bar: in small windows keep the numbers, drop the words (the tooltip still has them) */
-@media (max-width: 980px) { .dock .lbl { display: none; } .dock .stat { padding: 3px 6px; } }
+@media (max-width: 980px) { .dock .lbl { display: none; } .dock .stat { padding: 0 6px; } }
 
 /* A long AI wait (WaitStatus): a timer, why it's slow (Muse retrying, switching route, which step), Cancel */
 .wait-status { display: flex; align-items: center; gap: 12px; margin: 12px 0; padding: 12px 14px; border-radius: var(--r-lg); background: var(--bg); border: 1px solid var(--border); }
@@ -1375,7 +1355,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .ij-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ij-title b { font-size: var(--fs-md); }
 .ij-bar { height: 4px; margin: 8px 0 4px; border-radius: var(--r-sm); background: var(--hover); overflow: hidden; position: relative; }
-.ij-bar span { display: block; height: 100%; background: var(--accent); border-radius: var(--r-sm); transition: width 0.4s ease; }
+.ij-bar span { display: block; height: 100%; background: var(--accent-bright); border-radius: var(--r-sm); transition: width 0.4s ease; }
 .ij-bar.busy span { position: absolute; width: 35% !important; animation: lib-slide 1.1s ease-in-out infinite; }
 .ij.finished .ij-bar span { background: var(--ok); }
 .ij-toggle { font-size: var(--fs-sm); padding: 0; }
@@ -1634,7 +1614,7 @@ a.link { text-decoration: none; }
 .tl-bin.on .tl-spread { opacity: 0.4; }
 .tl-bin:hover .tl-exact, .tl-bin:hover .tl-spread { fill: color-mix(in srgb, var(--accent) 70%, var(--text)); }
 .tl-track { position: absolute; left: 7px; right: 7px; bottom: 9px; height: 3px; border-radius: var(--r-sm); background: var(--border); }
-.tl-track-on { position: absolute; top: 0; bottom: 0; border-radius: var(--r-sm); background: var(--accent); }
+.tl-track-on { position: absolute; top: 0; bottom: 0; border-radius: var(--r-sm); background: var(--accent-bright); }
 /* Two range inputs on one track: only their thumbs take the pointer. */
 .tl-range { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 20px; margin: 0; background: transparent; pointer-events: none; -webkit-appearance: none; appearance: none; }
 .tl-range:focus { outline: none; }
@@ -1714,7 +1694,7 @@ a.link { text-decoration: none; }
 .mx-menu-wrap { position: relative; }
 .mx-progress { flex: 1 1 100%; display: flex; align-items: center; gap: 10px; font-size: var(--fs-sm); color: var(--accent); }
 .mx-progress .bar { width: 160px; height: 5px; border-radius: var(--r-sm); background: var(--pending-bg); overflow: hidden; flex: none; }
-.mx-progress .bar span { display: block; height: 100%; background: var(--accent); transition: width 0.4s ease; }
+.mx-progress .bar span { display: block; height: 100%; background: var(--accent-bright); transition: width 0.4s ease; }
 .mx-colform { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 20px; background: var(--bg); border-bottom: 1px solid var(--border); flex: none; }
 .mx-colform input { padding: 5px 9px; min-width: 200px; }
 .mx-colform input + input { flex: 1; }
@@ -1944,9 +1924,9 @@ tr:hover .mx-row-actions, .mx-row-actions:focus-within { opacity: 1; }
 
 /* ---------- Writing tools: three jobs (Compose, Check, Sources) ---------- */
 /* Underline tabs: plain words on a hairline, the current one marked with a short ember line */
-.tools { display: flex; gap: 2px; margin: 2px 12px 0; border-bottom: 1px solid var(--line); flex: none; }
+.tools { flex: 1; min-width: 0; display: flex; gap: 2px; }
 .tool {
-  position: relative; display: flex; align-items: center; gap: 7px; padding: 9px 12px 8px; margin-bottom: -1px;
+  position: relative; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; margin-bottom: -1px;
   border: none; border-bottom: 2px solid transparent; border-radius: var(--r-md) var(--r-md) 0 0; background: transparent;
   color: var(--muted); font-size: var(--fs-md); font-weight: 600;
 }
@@ -1956,7 +1936,6 @@ tr:hover .mx-row-actions, .mx-row-actions:focus-within { opacity: 1; }
 .tool .tab-badge { position: static; margin-left: -1px; }
 /* A badge is only ever "needs your attention": the same red as the words for it */
 .tab-badge { background: var(--bad); color: var(--panel); }
-.side-panel .tab-hint { margin-top: 8px; }
 
 /* Two-way switches inside a tool (Cite my sources | Just chat; Cited sources | Reference list) */
 .seg-tabs { display: flex; gap: 2px; padding: 3px; margin: 0 0 8px; border-radius: var(--r-lg); background: var(--rail); }
@@ -2182,10 +2161,10 @@ button.lib-use.on { font-weight: 600; }
 .lib-toast { position: absolute; z-index: 60; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: min(640px, calc(100% - 40px)); padding: 9px 10px 9px 16px; border-radius: var(--r-lg); background: var(--text); color: var(--panel); font-size: var(--fs-md); box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.4); }
 .lib-toast button { border: none; background: none; padding: 2px 6px; color: #8fd6b4; font-weight: 600; white-space: nowrap; }
 .lib-toast button:hover:not(:disabled) { background: rgb(255 255 255 / 0.12); }
-.lib-toast .lib-toast-x { color: #9fb3a9; font-size: var(--fs-xl); font-weight: 400; }
-:root[data-theme="dark"] .lib-toast button { color: #1f5c46; }
+.lib-toast .lib-toast-x { color: #a1a1aa; font-size: var(--fs-xl); font-weight: 400; }
+:root[data-theme="dark"] .lib-toast button { color: #047857; }
 :root[data-theme="dark"] .lib-toast button:hover:not(:disabled) { background: rgb(0 0 0 / 0.08); }
-:root[data-theme="dark"] .lib-toast .lib-toast-x { color: #56625c; }
+:root[data-theme="dark"] .lib-toast .lib-toast-x { color: #57534e; }
 
 /* Filter chips above the list, and saving them (with the search) as a view */
 .lib-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: none; min-height: 44px; padding: 7px 20px; border-bottom: 1px solid var(--border); }

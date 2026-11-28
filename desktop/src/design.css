@@ -26,7 +26,7 @@
 .btn-go:hover .ar { transform: translateX(3px); }
 .btn-go.quiet { background: var(--panel); color: var(--accent); border-color: var(--border); }
 .btn-go.quiet:hover:not(:disabled) { background: var(--panel); border-color: var(--accent); filter: none; }
-.btn-go.white { background: #fff; color: #0f1a15; border-color: #fff; }
+.btn-go.white { background: #fff; color: #18181b; border-color: #fff; }
 .btn-go.white:hover:not(:disabled) { background: #fff; }
 /* A text link that goes somewhere: semibold, ending in a chevron */
 .link-go { border: none; background: none; padding: 0; color: var(--accent); font-weight: 600; font-size: var(--fs-md); }
@@ -146,7 +146,7 @@ button.sq-btn:hover:not(:disabled) { background: var(--accent); color: var(--acc
 .night-steps { display: grid; gap: 6px; margin: 16px 0 0; padding: 0 0 0 18px; font-size: var(--fs-sm); line-height: 1.45; color: var(--night-soft); }
 .night-steps b { color: #fff; font-weight: 600; }
 .night-nums { display: flex; gap: 32px; flex-wrap: wrap; margin-top: 18px; }
-.night-nums strong { display: block; font: 300 32px/1.1 var(--display); letter-spacing: -0.02em; background: linear-gradient(90deg, #f3dcc0, #c98a3e 55%, #a5bbb0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.night-nums strong { display: block; font: 300 32px/1.1 var(--display); letter-spacing: -0.02em; background: linear-gradient(90deg, #f3dcc0, #c98a3e 55%, #a8a29e); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .night-nums span { font-size: var(--fs-sm); color: var(--night-muted); }
 .night-close { float: right; border: none; background: none; padding: 0 4px; color: var(--night-muted); font-size: var(--fs-xl); line-height: 1; }
 .night-close:hover:not(:disabled) { background: none; color: #fff; }
@@ -223,8 +223,8 @@ button.sq-btn:hover:not(:disabled) { background: var(--accent); color: var(--acc
 /* Network: the graph sits on a night panel in both themes, and the papers are its chips. The tokens are
    redefined here, so the legend, zoom buttons and notes inside the canvas follow without rules of their own. */
 .network-canvas {
-  --bg: var(--night); --panel: var(--night-2); --text: var(--night-text); --muted: var(--night-muted); --border: var(--night-edge); --line: rgb(229 235 232 / 0.1);
-  --accent: var(--night-accent); --accent-text: #062418; --hover: rgba(255, 255, 255, 0.08);
+  --bg: var(--night); --panel: var(--night-2); --text: var(--night-text); --muted: var(--night-muted); --border: var(--night-edge); --line: rgb(228 228 231 / 0.1);
+  --accent: var(--night-accent); --accent-text: #022c22; --hover: rgba(255, 255, 255, 0.08);
   --pending: #8ea59a; --pending-bg: var(--night-chip); --ok: #56d08a; --ok-bg: #12261a; --warn: #e3b341; --warn-bg: #2b2111; --bad: #ff8a78; --bad-bg: #2d1614;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.6);
   color: var(--text); color-scheme: dark;

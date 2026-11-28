@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
-/** The window's minimise, maximise (restore, once maximised) and close, at the right end of the app bar
- * (and of focus mode's strip), drawn by the app on Windows and Linux. Windows' own buttons drew a hover the
+/** The window's minimise, maximise (restore, once maximised) and close, at the right end of the app bar,
+ * drawn by the app on Windows and Linux. Windows' own buttons drew a hover the
  * app couldn't colour, too faint to see in the light theme; these hover in the theme's text colour, and
  * close in red, as Windows does. Nothing on the Mac, which keeps its own. */
 export function WindowButtons() {

@@ -4,7 +4,6 @@ import { Icon } from './Icon'
 interface Props {
   onNewDraft: () => void
   onImportWord: () => void
-  onFocus: () => void
   onTools: () => void
   onSettings: () => void
   onShortcuts: () => void
@@ -13,7 +12,7 @@ interface Props {
 /** ☰: the app's own menu, where the window's File / Edit / View bar was (main.cjs removes that bar). It
  * holds what has no button anywhere else (zoom with its size, the data folder, the version), and a few
  * things that do, each with its key, so the keys are easy to find. */
-export function AppMenu({ onNewDraft, onImportWord, onFocus, onTools, onSettings, onShortcuts }: Props) {
+export function AppMenu({ onNewDraft, onImportWord, onTools, onSettings, onShortcuts }: Props) {
   const [open, setOpen] = useState(false)
   const [zoom, setZoom] = useState<number | null>(null)
   const [version, setVersion] = useState<string | null>(null)
@@ -104,7 +103,6 @@ export function AppMenu({ onNewDraft, onImportWord, onFocus, onTools, onSettings
               </button>
             </div>
           )}
-          <Item onClick={run(onFocus)} keys="Ctrl+Shift+F">Focus mode</Item>
           <Item onClick={run(onTools)} keys="Ctrl+\">Writing tools</Item>
           <div role="separator" />
           <Item onClick={run(onSettings)}>Settings</Item>

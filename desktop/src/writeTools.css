@@ -8,12 +8,12 @@
   --tc-red: #b42318; --tc-orange: #b54708; --tc-green: #1f7a4d; --tc-blue: #175cd3; --tc-purple: #6941c6; --tc-grey: #667085;
   --hl-yellow: #fff0a0; --hl-green: #cdf3db; --hl-blue: #d4e6ff; --hl-pink: #ffd6e5; --hl-orange: #ffdfbd;
   --find: rgb(255 196 0 / 0.35); --find-cur: #ffb300;
-  --menu-shadow: 0 12px 36px -8px rgb(23 32 28 / 0.28), 0 0 0 1px var(--border);
+  --menu-shadow: 0 12px 36px -8px rgb(28 25 23 / 0.28), 0 0 0 1px var(--border);
   --tool-pick: var(--pick, color-mix(in srgb, var(--accent) 12%, transparent));
 }
 :root[data-theme="dark"] {
-  --tc-red: #ff8a78; --tc-orange: #f5a35c; --tc-green: #62c29a; --tc-blue: #84b4ff; --tc-purple: #c4a1ee; --tc-grey: #98a2b3;
-  --hl-yellow: rgb(240 200 60 / 0.32); --hl-green: rgb(98 194 154 / 0.28); --hl-blue: rgb(110 160 255 / 0.3); --hl-pink: rgb(255 120 170 / 0.28); --hl-orange: rgb(255 160 80 / 0.3);
+  --tc-red: #ff8a78; --tc-orange: #f5a35c; --tc-green: #34d399; --tc-blue: #84b4ff; --tc-purple: #c4a1ee; --tc-grey: #98a2b3;
+  --hl-yellow: rgb(240 200 60 / 0.32); --hl-green: rgb(52 211 153 / 0.28); --hl-blue: rgb(110 160 255 / 0.3); --hl-pink: rgb(255 120 170 / 0.28); --hl-orange: rgb(255 160 80 / 0.3);
   --find: rgb(255 196 0 / 0.28); --find-cur: rgb(255 179 0 / 0.75);
   --menu-shadow: 0 12px 36px -8px rgb(0 0 0 / 0.7), 0 0 0 1px var(--border);
 }
@@ -73,13 +73,13 @@
 /* Name and shortcut, to the right of the button */
 .vbar-tip {
   position: fixed; z-index: 80; transform: translateY(-50%); pointer-events: none; display: flex; align-items: center; gap: 8px;
-  padding: 5px 9px; border-radius: var(--r-md); background: #17201c; color: #fff; font-size: var(--fs-sm); white-space: nowrap;
+  padding: 5px 9px; border-radius: var(--r-md); background: #1c1917; color: #fff; font-size: var(--fs-sm); white-space: nowrap;
 }
 .vbar-tip kbd { font: 600 var(--fs-xs)/1 Consolas, monospace; padding: 2px 5px; border: 1px solid #3c4a44; border-radius: var(--r-sm); background: #222c28; color: #d3ddd8; }
 .vbar-tip small { color: #a9b6b0; font-size: var(--fs-xs); }
-:root[data-theme="dark"] .vbar-tip { background: #e5ebe8; color: #0f1a15; }
-:root[data-theme="dark"] .vbar-tip kbd { background: #fff; border-color: #c2ccc7; color: #0f1a15; }
-:root[data-theme="dark"] .vbar-tip small { color: #56625c; }
+:root[data-theme="dark"] .vbar-tip { background: #e4e4e7; color: #18181b; }
+:root[data-theme="dark"] .vbar-tip kbd { background: #fff; border-color: #d4d4d8; color: #18181b; }
+:root[data-theme="dark"] .vbar-tip small { color: #57534e; }
 
 /* ---------- the toolbar's menus ---------- */
 .tb-menu {
@@ -155,7 +155,7 @@
 .hl-pink { background: var(--hl-pink); } .hl-orange { background: var(--hl-orange); }
 .prose.painting { cursor: cell; }
 .prose .find-hit { background: var(--find); border-radius: 2px; }
-.prose .find-hit.find-current { background: var(--find-cur); color: #17201c; }
+.prose .find-hit.find-current { background: var(--find-cur); color: #1c1917; }
 
 /* Checklists */
 .prose ul[data-type="taskList"] { list-style: none; padding-left: 0.2em; }
@@ -326,4 +326,4 @@
 .wc-goal label { flex: 1; }
 .wc-goal input { width: 92px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); color: var(--text); }
 .dock .goal-bar { display: inline-block; width: 48px; height: 5px; margin-left: 6px; overflow: hidden; vertical-align: middle; border-radius: var(--r-pill); background: var(--border); }
-.dock .goal-bar i { display: block; height: 100%; background: var(--accent); }
+.dock .goal-bar i { display: block; height: 100%; background: var(--accent-bright); }

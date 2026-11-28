@@ -230,7 +230,7 @@ function createWindow() {
     icon: path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     // Hidden until the page has drawn (rc:painted below); the app's own background meanwhile (--bg in styles.css).
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0d1210' : '#f4f6f5',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#121212' : '#f5f5f4',
     // No title bar above the app's own, as in Claude desktop: the app bar is what moves the window, and the
     // page draws the window's buttons (− □ × in WindowButtons.tsx, through rc:window) at its right end.
     // Windows' own buttons (titleBarOverlay) drew a hover the app couldn't colour, too faint in the light
