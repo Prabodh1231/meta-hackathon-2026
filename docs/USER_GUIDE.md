@@ -30,10 +30,10 @@ The window has four parts:
 
 | Part | What it holds |
 |---|---|
-| **Top bar** | At its left, **☰** (the app's menu, below), the sidebar button, and **←** **→** to go back and forward between the places you've been, as in a browser (also **Alt ←** / **Alt →**, and a mouse's back and forward buttons). Then the draft's name (click it to rename). The search box sits in the middle of the window. At the right, Export and Focus mode; on Windows, the window's minimise, maximise and close buttons, the bar's full height at its right end: pointing at one shades it, and close turns red. You move the window by dragging any empty part of the bar (double-click it to maximise). The app draws those three buttons itself, so pointing at maximise doesn't bring up Windows 11's snap layouts; dragging the window to an edge or the top of the screen, or Win + the arrow keys, still snaps it. |
+| **Top bar** | At its left, **☰** (the app's menu, below), the sidebar button, and **←** **→** to go back and forward between the places you've been, as in a browser (also **Alt ←** / **Alt →**, and a mouse's back and forward buttons). Then the draft's name (click it to rename). The search box sits in the middle of the window. At the right, Export; on Windows, the window's minimise, maximise and close buttons, the bar's full height at its right end: pointing at one shades it, and close turns red. You move the window by dragging any empty part of the bar (double-click it to maximise). The app draws those three buttons itself, so pointing at maximise doesn't bring up Windows 11's snap layouts; dragging the window to an edge or the top of the screen, or Win + the arrow keys, still snaps it. |
 | **Sidebar** (left) | The places in the app: **Home**, **Write**, **Library**, **Network** and **Matrix**; under them, **Drafts**, every draft (see [Drafts](#drafts)), except in the Library and the Matrix, which list their own there instead: the Library its [smart views](#smart-folders), the Matrix its matrices. **Settings** is at its foot. One place fills the window at a time; the app opens on Home. The sidebar stays out of sight until you point at the window's left edge: then it slides out over the page, and it goes again when the pointer leaves it. A click on that edge, or the sidebar button at the top bar's left, pins it beside the page; the same button hides it again, and the app remembers. Tabbing into it brings it out too. On a short window it scrolls, and its foot fades while there is more below. |
 
-**☰ menu.** New draft and Open a Word file; **Zoom** with the app's size (− and + step it, the percentage goes back to 100%; Ctrl + / Ctrl − / Ctrl 0 do the same anywhere); Focus mode and the writing tools; Settings; Keyboard shortcuts; **Show the data folder**, which opens the folder that holds your library, its daily backups and the logs; and the app's version at the foot. ↑ ↓ move through it and Esc closes it.
+**☰ menu.** New draft and Open a Word file; **Zoom** with the app's size (− and + step it, the percentage goes back to 100%; Ctrl + / Ctrl − / Ctrl 0 do the same anywhere); the writing tools; Settings; Keyboard shortcuts; **Show the data folder**, which opens the folder that holds your library, its daily backups and the logs; and the app's version at the foot. ↑ ↓ move through it and Esc closes it.
 | **Main area** | The place you picked. In Write, the draft with the writing tools beside it. |
 | **Status bar** (bottom) | The open draft: whether it's saved (*Saving…*, *Saved*), its latest version (**v8 ▾** opens Versions) and how much changed since; then live counts: words, citations (*12 supported · 1 needs attention · 1 checking*, in the same words as Check) and duplication. Click a count to open Check. Outside Write they're marked **Draft**, since they're the open draft's numbers. At its right end, only what's wrong or not ready yet: *AI offline* (click it to add a Muse key), *Starting backend…*, *Backend offline, reconnecting…*. |
 
@@ -126,14 +126,6 @@ Versions aren't a tool: they open from **v8 ▾** in the status bar (see [Versio
 ### Show and hide the writing tools
 
 The writing tools stay out of sight until you want them, and the page has the window's width. Point at the window's right edge and they slide out over the page; they go again when the pointer leaves them (not while you're typing in them). The pin at the panel's top-right, a click on that edge, or `Ctrl+\` keeps them open beside the draft; then the **>|** button in the same corner, or `Ctrl+\` again, hides them. Anything that needs a tool opens and pins it by itself: clicking a citation or a cite marker, a count in the status bar, or an action from Ctrl K. The app remembers whether you left them pinned; Settings can make them always start pinned (*open*) or hidden (*closed*).
-
-### Focus mode
-
-The **⛶** button in the top bar, or Ctrl+Shift+F, hides everything but the page and its toolbar:
-
-![Focus mode: only the page and its toolbar](images/focus.png)
-
-The save state stays in the corner. Esc, or **Exit focus**, brings the rest back.
 
 ## Try the demo
 
@@ -560,9 +552,8 @@ The draft has a title and Background, The gap, Research questions, Hypotheses, V
 | Ctrl Enter | Page break |
 | Ctrl Alt F / Ctrl Alt M | Footnote / comment |
 | Ctrl \ | Open or close the writing tools |
-| Ctrl Shift F | Focus mode on or off |
 | Ctrl Z / Ctrl Y | Undo / redo in the draft |
-| Esc | Leave focus mode; close the PDF viewer or a menu; clear the search box; leave Home, the Library or the Network for the draft |
+| Esc | Close the PDF viewer or a menu; clear the search box; leave Home, the Library or the Network for the draft |
 | Arrows / Enter / Space | On the library's folders: move between folders / open one / peek inside it |
 | Backspace or Alt ← | Inside a library folder: back to the folders |
 | ↑ ↓ | Move between papers in the library list (when it has focus); with Shift, select several. With covers, ← → also move |

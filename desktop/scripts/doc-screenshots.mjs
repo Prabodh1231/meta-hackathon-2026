@@ -24,7 +24,6 @@ const SHOTS = {
   home: async (p) => {},
   write: async (p) => {},
   'tools-closed': async (p) => { await btn(p, 'Close the writing tools').click() },
-  focus: async (p) => { await btn(p, 'Focus mode').click() },
   'drafts-menu': async (p) => { await btn(p, /^Drafts/).click() },
   review: async (p) => { await p.getByRole('tab', { name: /Check/ }).or(btn(p, /^Check/)).first().click(); await wait(p, 6000) },
   'citation-source': async (p) => { await p.locator('.paper, .ProseMirror, [contenteditable]').getByText('Chen & Martinez 2021, p. 341').first().click(); await wait(p, 2500) },

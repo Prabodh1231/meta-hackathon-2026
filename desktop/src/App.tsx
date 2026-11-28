@@ -265,7 +265,6 @@ export default function App() {
     })
   }, [])
   const [toolsOpen, setToolsOpen] = useState(storedToolsOpen) // the writing tools beside the draft
-  const [focusMode, setFocusMode] = useState(false) // only the page and its toolbar
   const [stats, setStats] = useState<DraftStats>({ words: 0, citations: 0, verified: 0, flagged: 0, unconfirmed: 0, chips: [] })
   const [title, setTitle] = useState('Untitled') // the draft's first line
   const [renamingTitle, setRenamingTitle] = useState(false) // editing the name in the app bar
@@ -375,10 +374,9 @@ export default function App() {
     }
   }, [toolsOpen])
 
-  /** Bring the writing tools into view: back to the draft, out of focus mode, panel open. */
+  /** Bring the writing tools into view: back to the draft, panel open. */
   const revealTools = useCallback(() => {
     setMode('write')
-    setFocusMode(false)
     setToolsOpen(true)
   }, [])
 
@@ -411,13 +409,6 @@ export default function App() {
     setTab('check')
   }
 
-  const toggleFocus = useCallback(() => {
-    setFocusMode((f) => {
-      if (!f) setMode('write')
-      return !f
-    })
-  }, [])
-
   const pickWord = useCallback(() => wordInput.current?.click(), [])
 
   // Back and forward between the places you've been (Home, Write, Library…), as in a browser: the app
@@ -449,7 +440,7 @@ export default function App() {
   const stepRef = useRef(step)
   stepRef.current = step
   /** Ctrl+\ and the ☰ menu: the writing tools beside the draft, open or closed (opened from anywhere else). */
-  const toggleTools = () => (mode === 'write' && !focusMode ? setToolsOpen((o) => !o) : revealTools())
+  const toggleTools = () => (mode === 'write' ? setToolsOpen((o) => !o) : revealTools())
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       // Not while typing, and not when the page took the key (Alt+← inside a Library folder goes up to the folders)
@@ -498,24 +489,20 @@ export default function App() {
         newDraftRef.current()
       } else if (mod && !e.shiftKey && e.key === '\\') {
         e.preventDefault()
-        if (mode === 'write' && !focusMode) setToolsOpen((o) => !o)
+        if (mode === 'write') setToolsOpen((o) => !o)
         else revealTools()
       } else if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
         e.preventDefault()
         askRef.current()
-      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
-        e.preventDefault()
-        toggleFocus()
       } else if (e.key === 'Escape' && !paletteOpen && !importing && !pdfView) {
-        if (focusMode) setFocusMode(false)
-        else if (versionsOpen) setVersionsOpen(false)
+        if (versionsOpen) setVersionsOpen(false)
         // Esc on the page itself (not in a field or the library table) goes back to the draft.
         else if (mode !== 'write' && e.target === document.body) setMode('write')
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [paletteOpen, importing, pdfView, pickWord, versionsOpen, mode, focusMode, revealTools, toggleFocus])
+  }, [paletteOpen, importing, pdfView, pickWord, versionsOpen, mode, revealTools])
 
   // The versions menu closes on a click anywhere else.
   useEffect(() => {
@@ -1040,7 +1027,7 @@ export default function App() {
   }, [])
 
   // Check is in view: what the duplication check found is underlined in the draft.
-  const reviewing = mode === 'write' && tab === 'check' && toolsShown && !focusMode
+  const reviewing = mode === 'write' && tab === 'check' && toolsShown
 
   // Underline what the check found while Check is open.
   useEffect(() => {
@@ -1411,7 +1398,6 @@ export default function App() {
     ...(demo ? [{ group: 'DO', name: 'Open demo draft', hint: 'with its checklist', run: openDemoDraft }] : []),
     { group: 'DO', name: 'Show getting started', hint: 'connect the AI, add sources, write, cite', run: () => (setMode('write'), showTheGuide()) },
     { group: 'DO', name: toolsOpen ? 'Close the writing tools' : 'Open the writing tools', hint: 'Ctrl+\\', run: () => (toolsOpen ? setToolsOpen(false) : revealTools()) },
-    { group: 'DO', name: 'Focus mode', hint: 'only the page · Ctrl+Shift+F', run: toggleFocus },
     { group: 'DO', name: 'Settings', hint: 'appearance, writing, review, library, AI model', run: () => setShowSettings('appearance') },
   ]
 
@@ -1476,26 +1462,16 @@ export default function App() {
   const setQuery = mode === 'library' ? setLibQuery : mode === 'matrix' ? setMatQuery : setNetQuery
 
   return (
-    <div className={`app${focusMode ? ' focus' : ''}`} data-demo-next={demoNext}>
-      {focusMode && (
-        <div className="focus-exit">
-          <span className={`save-state save-${saveState.state}`}>{saveText(saveState)}</span>
-          <button onClick={() => setFocusMode(false)} title="Show the rail, the writing tools and the status bar again">
-            Exit focus <kbd>Esc</kbd>
-          </button>
-          <WindowButtons />
-        </div>
-      )}
+    <div className="app" data-demo-next={demoNext}>
       <header className="app-bar">
         {/* Three columns, the search box in the middle of the window: on its left the app's buttons and the
-            draft's name, on its right Export, focus and the window's own buttons */}
+            draft's name, on its right Export and the window's own buttons */}
         <div className="bar-start">
           {/* As in Claude desktop: the app's menu, the sidebar, and back and forward between places */}
           <nav className="bar-nav" aria-label="App">
             <AppMenu
               onNewDraft={() => newDraftRef.current()}
               onImportWord={pickWord}
-              onFocus={toggleFocus}
               onTools={toggleTools}
               onSettings={() => setShowSettings('appearance')}
               onShortcuts={() => setShortcutsOpen(true)}
@@ -1610,9 +1586,6 @@ export default function App() {
               if (f) importWord(f)
             }}
           />
-          <button className="icon-button" onClick={toggleFocus} title="Focus: only the page and its toolbar (Ctrl+Shift+F)" aria-label="Focus mode">
-            <Icon name="focus" size={18} />
-          </button>
           <WindowButtons />
         </div>
       </header>
@@ -1745,11 +1718,32 @@ export default function App() {
           >
             {toolsShown && (
               <>
-                <header className="panel-title">
-                  <h2>Writing tools</h2>
+                {/* One row (Nov 28, to match the sidebar): the three tools, then the button that hides the panel
+                    (pinned) or pins it (floating). No title or hint line: each tool's hint is its tooltip. */}
+                <header className="tools-row">
+                  <div className="tools" role="tablist" aria-label="Writing tools" onKeyDown={arrowKeys}>
+                    {TABS.map((t) => (
+                      <button
+                        key={t.tab}
+                        role="tab"
+                        id={`tool-tab-${t.tab}`}
+                        aria-controls="tools-panel"
+                        tabIndex={tab === t.tab ? 0 : -1}
+                        data-tab={t.tab}
+                        aria-selected={tab === t.tab}
+                        className={`tool${tab === t.tab ? ' on' : ''}`}
+                        onClick={() => pickTab(t.tab)}
+                        title={t.hint}
+                      >
+                        <Icon name={t.icon} size={16} />
+                        <span>{t.label}</span>
+                        {tabBadge(t.tab)}
+                      </button>
+                    ))}
+                  </div>
                   {toolsOpen ? (
                     <button className="panel-toggle" onClick={() => setToolsOpen(false)} title="Hide the writing tools (Ctrl+\): point at the window's right edge to see them" aria-label="Hide the writing tools">
-                      <Icon name="collapse" size={18} />
+                      <Icon name="collapse" size={16} />
                     </button>
                   ) : (
                     <button className="panel-toggle" onClick={() => setToolsOpen(true)} title="Keep the writing tools open beside the draft (Ctrl+\)" aria-label="Keep the writing tools open">
@@ -1757,27 +1751,6 @@ export default function App() {
                     </button>
                   )}
                 </header>
-                <div className="tools" role="tablist" aria-label="Writing tools" onKeyDown={arrowKeys}>
-                  {TABS.map((t) => (
-                    <button
-                      key={t.tab}
-                      role="tab"
-                      id={`tool-tab-${t.tab}`}
-                      aria-controls="tools-panel"
-                      tabIndex={tab === t.tab ? 0 : -1}
-                      data-tab={t.tab}
-                      aria-selected={tab === t.tab}
-                      className={`tool${tab === t.tab ? ' on' : ''}`}
-                      onClick={() => pickTab(t.tab)}
-                      title={t.hint}
-                    >
-                      <Icon name={t.icon} size={18} />
-                      <span>{t.label}</span>
-                      {tabBadge(t.tab)}
-                    </button>
-                  ))}
-                </div>
-                <p className="tab-hint">{TAB[tab].hint}</p>
               </>
             )}
             {/* Kept mounted while hidden, so a draft from Muse or a cite search's results survive. */}
@@ -1785,7 +1758,7 @@ export default function App() {
               {/* Compose: your reading for this paragraph, then one Muse box that writes from your sources or chats. */}
               <div hidden={tab !== 'compose'} className="compose-tool">
                 <HighlightsPanel
-                  visible={toolsShown && tab === 'compose' && mode === 'write' && !focusMode}
+                  visible={toolsShown && tab === 'compose' && mode === 'write'}
                   getContext={() => {
                     const f = editor.current?.getFocus()
                     return f?.selection || f?.paragraph || (editor.current?.getText() ?? '').slice(-1500)
@@ -1964,7 +1937,7 @@ export default function App() {
             </div>
           </aside>
 
-          <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={mode === 'write' && toolsShown && !focusMode && showingSource} />
+          <CitationWire cid={source?.cid} status={source?.status ?? 'pending'} active={mode === 'write' && toolsShown && showingSource} />
         </div>
 
         <div className="view library-view" hidden={mode !== 'library'}>
