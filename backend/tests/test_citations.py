@@ -60,6 +60,53 @@ def test_a_negation_added_to_the_quote_is_a_change():
     assert quote_conflict("Mobile money did not increase household savings by 12 percent", text)[0] == "a negation"
 
 
+@pytest.mark.parametrize("source, quote", [
+    ("Die Behandlung hat die Sterblichkeit bei älteren Patienten nicht gesenkt.",
+     "Die Behandlung hat die Sterblichkeit bei älteren Patienten gesenkt"),
+    ("Le traitement n'a pas réduit la mortalité chez les patients âgés.",
+     "Le traitement a réduit la mortalité chez les patients âgés"),
+    ("El tratamiento no redujo la mortalidad en los pacientes mayores.",
+     "El tratamiento redujo la mortalidad en los pacientes mayores"),
+    ("O tratamento não reduziu a mortalidade nos pacientes idosos.",
+     "O tratamento reduziu a mortalidade nos pacientes idosos"),
+    ("Лечение не снизило смертность у пожилых пациентов.",
+     "Лечение снизило смертность у пожилых пациентов"),
+    ("研究表明睡眠不影响记忆的巩固过程。", "研究表明睡眠影响记忆的巩固过程"),
+    ("この治療は高齢患者の死亡率を下げなかった。", "この治療は高齢患者の死亡率を下げた"),
+])
+def test_a_negation_left_out_is_caught_in_other_languages(source, quote):
+    assert locate_quote(quote, source) is None
+    assert quote_conflict(quote, source)[0] == "a negation"
+
+
+@pytest.mark.parametrize("source, quote, source_says", [
+    ("Die Behandlung hat nicht die Sterblichkeit gesenkt.", "die Sterblichkeit gesenkt", "nicht die Sterblichkeit gesenkt"),
+    ("Le traitement ne réduit pas la mortalité.", "la mortalité", "pas la mortalité"),
+    ("研究表明睡眠不影响记忆的巩固过程。", "影响记忆的巩固过程", "不影响记忆的巩固过程"),
+    # Japanese negates at the end of the verb: a quote that stops just before it leaves it out.
+    ("この治療は高齢患者の死亡率を下げなかった。", "高齢患者の死亡率を下げ", "高齢患者の死亡率を下げなかった"),
+])
+def test_a_quote_that_stops_next_to_a_negation_is_caught_in_other_languages(source, quote, source_says):
+    what, start, end = quote_conflict(quote, source)
+    assert what == "a negation" and source[start:end] == source_says
+
+
+def test_chinese_and_japanese_quotes_match_exactly_inside_a_run_of_text():
+    # No spaces between words: a quote may start and end at any character, not widened to the run.
+    chinese = "实验组的记忆效果非常显著，并且持续了三个月以上。"
+    start, end, ratio = locate_quote("记忆效果非常显著", chinese)
+    assert chinese[start:end] == "记忆效果非常显著" and ratio == 1.0
+    # "非常" (very) has 非 in it but isn't a negation: leaving it out isn't reported as one.
+    assert quote_conflict("实验组的记忆效果显著，并且持续了三个月以上", chinese) is None
+
+
+def test_honest_near_matches_in_other_languages_still_match():
+    german = "Die Behandlung hat die Sterblichkeit bei älteren Patienten nicht gesenkt."
+    assert locate_quote("Die Behandlung hat die Sterblichkiet bei älteren Patienten nicht gesenkt", german)
+    french = "Le traitement n'a pas réduit la mortalité chez les patients âgés."
+    assert quote_conflict("le traitement n’a pas réduit la mortalité", french) is None
+
+
 def test_honest_near_matches_still_match():
     # A footnote marker the quote leaves out, an OCR slip, case and spacing are no change of meaning.
     start, end, _ = locate_quote("it shortened stays by 30% (p < 0.05). The effect", TRIAL)
