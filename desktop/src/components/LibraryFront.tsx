@@ -237,8 +237,9 @@ const SORTS = [
   { value: 'size', label: 'Largest first' },
 ]
 
-/** The front page's controls, in the Library's header: the order of the topics, folders or rows,
- * and (for folders) their size. */
+/** The front page's controls, on the second row of the Library's header: the order of the topics and
+ * (for folders) their size on the left, folders or rows on the right. The slider is the one thing only
+ * one view has, so it sits on the side nothing follows it, and switching views moves nothing else. */
 export function FrontTools({ layout, size, sort, onLayout, onSize, onSort }: {
   layout: FrontLayout
   size: number
@@ -251,6 +252,7 @@ export function FrontTools({ layout, size, sort, onLayout, onSize, onSort }: {
     <>
       <Dropdown className="lf-sort" label="Order of the topics" value={sort} options={SORTS} onChange={(v) => onSort(v as FrontSort)} />
       {layout === 'grid' && <SizeSlider size={size} onSize={onSize} />}
+      <span className="spacer" />
       <div className="seg seg-icons" role="group" aria-label="Show the topics as">
         <button aria-pressed={layout === 'grid'} onClick={() => onLayout('grid')} title="Folders" aria-label="Folders">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">

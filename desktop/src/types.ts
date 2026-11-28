@@ -696,7 +696,21 @@ export interface FileDuplicateReport {
 declare global {
   interface Window {
     rc?: {
-      config: () => Promise<{ baseUrl: string; token: string; logPath?: string; samplesDir?: string }>
+      config: () => Promise<{ baseUrl: string; token: string; logPath?: string; samplesDir?: string; version?: string }>
+      /** Windows and Linux: the window's buttons, which the page draws itself (WindowButtons.tsx). */
+      windowControls?: {
+        minimize: () => void
+        toggleMaximize: () => void
+        close: () => void
+        isMaximized: () => Promise<boolean>
+        onMaximized: (callback: (maximized: boolean) => void) => () => void
+      }
+      /** Zoom the whole app; resolves to the new size in percent. */
+      zoom?: (step: 'in' | 'out' | 'reset') => number
+      zoomPercent?: () => number
+      /** The library's data folder (library, backups, logs) in the file explorer. */
+      showDataFolder?: () => Promise<string>
+
       pickFiles: () => Promise<string[]>
       pickFolder: () => Promise<string | null>
       /** Asks where to save; the dialog offers the type of `defaultName`'s extension (.docx, .xlsx, .csv). */

@@ -1,3 +1,5 @@
+import { arrowKeys, stop } from '../arrowKeys'
+
 /** Percentage displays shared by the History and Review panels. `tone` picks the colour:
  * "change" is neutral accent, "risk" turns amber then red as the share grows. */
 export type Tone = 'change' | 'risk' | 'ok'
@@ -53,9 +55,17 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
   label: string
 }) {
   return (
-    <div className="segmented small" role="tablist" aria-label={label}>
-      {options.map((o) => (
-        <button key={o.value} role="tab" aria-selected={value === o.value} className={value === o.value ? 'active' : ''} onClick={() => onChange(o.value)}>
+    // A choice of how to show what's below, so radio buttons (as Settings' segmented choices are).
+    <div className="segmented small" role="radiogroup" aria-label={label} onKeyDown={arrowKeys}>
+      {options.map((o, i) => (
+        <button
+          key={o.value}
+          role="radio"
+          aria-checked={value === o.value}
+          tabIndex={stop(value === o.value, i, options.some((x) => x.value === value))}
+          className={value === o.value ? 'active' : ''}
+          onClick={() => onChange(o.value)}
+        >
           {o.label}
         </button>
       ))}

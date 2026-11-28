@@ -2,7 +2,7 @@
 // token, then opens the window. Set RC_BACKEND_URL to use a backend you started yourself
 // (e.g. `uvicorn app.main:app --reload`), with the same RC_API_TOKEN in both environments
 // (or RC_ALLOW_NO_TOKEN=1 for the backend alone, which turns its token check off).
-const { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, shell } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, protocol, shell } = require('electron')
 const { spawn } = require('node:child_process')
 const crypto = require('node:crypto')
 const fs = require('node:fs')
@@ -231,6 +231,12 @@ function createWindow() {
     // Hidden until the page has drawn (rc:painted below); the app's own background meanwhile (--bg in styles.css).
     show: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0d1210' : '#f4f6f5',
+    // No title bar above the app's own, as in Claude desktop: the app bar is what moves the window, and the
+    // page draws the window's buttons (− □ × in WindowButtons.tsx, through rc:window) at its right end.
+    // Windows' own buttons (titleBarOverlay) drew a hover the app couldn't colour, too faint in the light
+    // theme. The window keeps its frame, so it still resizes, snaps and has its shadow. The Mac keeps its
+    // usual title bar.
+    ...(process.platform !== 'darwin' && { titleBarStyle: 'hidden' }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -239,6 +245,16 @@ function createWindow() {
     },
   })
   appWindow = win
+  // Running from source, Ctrl+Shift+I still opens the developer tools (the menu that had it is gone, see
+  // whenReady below).
+  if (!app.isPackaged) {
+    win.webContents.on('before-input-event', (e, input) => {
+      if (input.type === 'keyDown' && input.control && input.shift && input.key.toLowerCase() === 'i') {
+        e.preventDefault()
+        win.webContents.toggleDevTools()
+      }
+    })
+  }
   win.on('closed', () => {
     if (appWindow === win) appWindow = null
   })
@@ -276,6 +292,10 @@ function createWindow() {
     ipcMain.removeListener('rc:ready-to-close', onReady)
     ipcMain.removeListener('rc:painted', onPainted)
   })
+  // Maximised or not (by its button, a double-click on the bar, Win+↑): the page's □ shows maximise or restore.
+  const sendMaximized = () => !win.isDestroyed() && win.webContents.send('rc:window-maximized', win.isMaximized())
+  win.on('maximize', sendMaximized)
+  win.on('unmaximize', sendMaximized)
   // Back in front (from the reader window, say): the page is told, so the library can show what
   // was highlighted or opened meanwhile. The page's own focus event doesn't come reliably here.
   win.on('focus', () => !win.isDestroyed() && win.webContents.send('rc:window-focus'))
@@ -335,7 +355,24 @@ async function smokeTest(win) {
   app.quit()
 }
 
-ipcMain.handle('rc:config', () => ({ ...backendConfig, samplesDir: SAMPLES_DIR }))
+ipcMain.handle('rc:config', () => ({ ...backendConfig, samplesDir: SAMPLES_DIR, version: app.getVersion() }))
+
+// The page's own window buttons (WindowButtons.tsx): minimise, maximise or restore, close. Close goes the
+// usual way, so the last typing is saved first. Only for the main window.
+const fromAppWindow = (event) => !!appWindow && !appWindow.isDestroyed() && event.sender === appWindow.webContents
+ipcMain.on('rc:window', (event, action) => {
+  if (!fromAppWindow(event)) return
+  if (action === 'minimize') appWindow.minimize()
+  else if (action === 'toggle-maximize') appWindow.isMaximized() ? appWindow.unmaximize() : appWindow.maximize()
+  else if (action === 'close') appWindow.close()
+})
+ipcMain.handle('rc:window-maximized', (event) => fromAppWindow(event) && appWindow.isMaximized())
+
+// The ☰ menu's "Show the data folder": the library, its backups and the logs, in the file explorer.
+ipcMain.handle('rc:show-data-folder', (event) => {
+  if (!appWindow || event.sender !== appWindow.webContents) return
+  return shell.openPath(DATA_DIR)
+})
 
 // The sample library: copied into the data folder (files already there are kept), then read from there.
 ipcMain.handle('rc:copy-samples', async () => {
@@ -658,6 +695,11 @@ if (!process.env.RC_SMOKE_TEST && !app.requestSingleInstanceLock()) {
     appWindow.focus()
   })
   app.whenReady().then(async () => {
+    // No File / Edit / View / Window bar across the top of the windows: the app's own bar does that job,
+    // and the page gets the room. Copy, paste and undo work without it; Ctrl + / − / 0 (zoom the whole
+    // app) are the page's own (preload.cjs); Ctrl+R no longer reloads the page by accident. The Mac
+    // keeps its menu: it sits in the system's bar there, and copy and paste need it.
+    if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
     serveAppProtocol()
     const [config] = await Promise.all([startBackend(), moveStorageFromFileOrigin()])
     backendConfig = config

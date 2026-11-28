@@ -30,14 +30,16 @@ The window has four parts:
 
 | Part | What it holds |
 |---|---|
-| **Top bar** | The draft's name (click it to rename), whether it's saved, its version (**v8 ▾** opens Versions) and how much changed since; **Drafts** beside it; one search box; Export; Focus mode; Settings. |
-| **Sidebar** (left) | The places in the app: **Home**, **Write**, **Library**, **Network** and **Matrix**. One fills the window at a time. The app opens on Home. In the Library, its [smart views](#smart-folders) are listed under the places. **Collapse** at the foot shrinks the sidebar to icons, and the same button brings it back; the app remembers. A narrow window always shows the icons. On a short window the sidebar scrolls, and its foot fades while there is more below. |
+| **Top bar** | At its left, **☰** (the app's menu, below), the sidebar button, and **←** **→** to go back and forward between the places you've been, as in a browser (also **Alt ←** / **Alt →**, and a mouse's back and forward buttons). Then the draft's name (click it to rename). The search box sits in the middle of the window. At the right, Export and Focus mode; on Windows, the window's minimise, maximise and close buttons, the bar's full height at its right end: pointing at one shades it, and close turns red. You move the window by dragging any empty part of the bar (double-click it to maximise). The app draws those three buttons itself, so pointing at maximise doesn't bring up Windows 11's snap layouts; dragging the window to an edge or the top of the screen, or Win + the arrow keys, still snaps it. |
+| **Sidebar** (left) | The places in the app: **Home**, **Write**, **Library**, **Network** and **Matrix**; under them, **Drafts**, every draft (see [Drafts](#drafts)), except in the Library and the Matrix, which list their own there instead: the Library its [smart views](#smart-folders), the Matrix its matrices. **Settings** is at its foot. One place fills the window at a time; the app opens on Home. The sidebar stays out of sight until you point at the window's left edge: then it slides out over the page, and it goes again when the pointer leaves it. A click on that edge, or the sidebar button at the top bar's left, pins it beside the page; the same button hides it again, and the app remembers. Tabbing into it brings it out too. On a short window it scrolls, and its foot fades while there is more below. |
+
+**☰ menu.** New draft and Open a Word file; **Zoom** with the app's size (− and + step it, the percentage goes back to 100%; Ctrl + / Ctrl − / Ctrl 0 do the same anywhere); Focus mode and the writing tools; Settings; Keyboard shortcuts; **Show the data folder**, which opens the folder that holds your library, its daily backups and the logs; and the app's version at the foot. ↑ ↓ move through it and Esc closes it.
 | **Main area** | The place you picked. In Write, the draft with the writing tools beside it. |
-| **Status bar** (bottom) | Live counts for the draft: words, citations (*12 supported · 1 needs attention · 1 checking*, in the same words as Check) and duplication. Click one to open Check. Outside Write they're marked **Draft**, since they're the open draft's numbers. |
+| **Status bar** (bottom) | The open draft: whether it's saved (*Saving…*, *Saved*), its latest version (**v8 ▾** opens Versions) and how much changed since; then live counts: words, citations (*12 supported · 1 needs attention · 1 checking*, in the same words as Check) and duplication. Click a count to open Check. Outside Write they're marked **Draft**, since they're the open draft's numbers. At its right end, only what's wrong or not ready yet: *AI offline* (click it to add a Muse key), *Starting backend…*, *Backend offline, reconnecting…*. |
 
 **One search box.** On Home and in Write, the box searches everything (sources, drafts, topics) and runs any action; Ctrl K opens it from anywhere. In the Library it filters your sources and looks inside them, and in the Network it finds papers about a topic. The chip in the box says which one it's doing. Esc clears it, and Ctrl K still searches everything. Ctrl K lists **Actions** first, then **Go to**, **Drafts**, **Topics** (picking one opens it in the Library) and **Sources**, each with how many match; ↑ ↓ move, Enter runs or opens.
 
-**Notices at the top.** When something finishes while you're in another part of the app, a dark line across the top of the window says so, with a link to it: citations that finished checking while you were away from Write, a review matrix that Muse finished reading, files that were added while you weren't in the Library, or an update that needs a restart. One shows at a time and it stays until you follow its link or close it with **×**. Quick confirmations still appear at the bottom and close by themselves.
+**Notices at the top.** When something finishes while you're in another part of the app, a dark line just under the top bar says so, with a link to it: citations that finished checking while you were away from Write, a review matrix that Muse finished reading, files that were added while you weren't in the Library, or an update that needs a restart. One shows at a time and it stays until you follow its link or close it with **×**. Quick confirmations still appear at the bottom and close by themselves.
 
 **Messages** (files added, something that failed) show at the bottom right, above the status bar. A notice closes by itself after a few seconds, and a thin line shows how long it has left; an error stays until you close it with **×**, and **Copy the details** copies what it says. Anything that deletes asks first in the app's own dialog, which says what goes and what stays; **Cancel** is the default.
 
@@ -60,25 +62,26 @@ The window has four parts:
 
 ### The writing toolbar
 
-The toolbar is a slim column on the left of the page, so the page starts at the top of the window. Point at a button for its name and shortcut. A button with a small corner opens a menu to its right. From top to bottom:
+The toolbar is one slim card down the left of the page, as tall as the writing area less a small gap above and below, so the page starts at the top of the window. Every tool that fits is on it. On a short window the least used make way (Keyboard shortcuts first, then Outline, Format painter and the rest; the numbered list stays longest) and go under **⋮**, which shows only then and lists just those; it is lit while one of them is on at the cursor (a numbered list, a font, the format painter, the outline). Make the window taller and they come back. Point at a button for its name and shortcut. A button with a small corner opens a menu to its right. From top to bottom:
 
 | Button | What it does |
 |---|---|
 | **Undo / Redo** | Ctrl+Z / Ctrl+Y. |
 | **¶** (paragraph style) | Normal text, Heading 1 to 3, Quote. It shows the style at the cursor (H1, H2, ❝). |
-| **Aa** | Font, size (A− and A+ step it, Ctrl+[ and Ctrl+]), text colour and highlight colour. Colours keep their name, so they stay readable in the dark theme; Word and PDF get the printed colour. |
+| **Aa** (font, size and colour) | A− and A+ step the size (Ctrl+[ and Ctrl+]); text and highlight colours keep their name, so they stay readable in the dark theme, and Word and PDF get the printed colour. |
 | **B I U** | Bold, italic, underline. |
-| **Highlighter** | Highlights the selection in the colour shown under it (the last one picked under Aa); Ctrl+Shift+H. |
-| **⋯** | Strikethrough, superscript (Ctrl+.), subscript (Ctrl+,), change case (Sentence, lower, UPPER, Title) and **Clear formatting** (Ctrl+Space). |
-| **Alignment** | Left, centre, right, justify (Ctrl+Shift+L, E, R, J); indent; line spacing (Single, 1.15, 1.5, Double); and **Space between paragraphs** for the whole draft. |
-| **Lists** | Bullets, numbers and a checklist (Ctrl+Shift+8, 7, 9). Tab and Shift+Tab nest a list item. |
+| **Highlighter** | Highlights the selection in the colour shown under it (the last one picked under **Aa**); Ctrl+Shift+H. |
+| **More text formatting** | Strikethrough, superscript (Ctrl+.), subscript (Ctrl+,), change case, **Clear formatting** (Ctrl+Space). |
+| **Alignment and spacing** | Left, centre, right, justify (Ctrl+Shift+L, E, R, J); indent; line spacing; **Space between paragraphs** for the whole draft. |
+| **Bulleted list**, **Numbered list**, **Checklist** | Ctrl+Shift+8, 7 and 9. Tab and Shift+Tab nest a list item. |
 | **Insert** | **Link** (Ctrl+Shift+K; a DOI becomes a doi.org link), **Image** (or paste or drop a picture onto the page), **Table** (pick the size), **Horizontal line**, **Page break** (Ctrl+Enter), **Footnote** (Ctrl+Alt+F), **Table of contents**, **Symbol** (dashes, §, ±, ≤, Greek letters…). |
 | **Table** | Shows only while the cursor is in a table: insert rows and columns, the header row, merge or split cells, delete. |
 | **Comment** | A note to yourself on the selected text (Ctrl+Alt+M). See [Comments to self](#comments-to-self). |
-| **Format painter** | Copies the formatting at the cursor; the next text you select takes it. Esc puts it down. |
+| **Format painter** | Copies the formatting at the cursor, and the next text you select takes it; Esc puts it down. |
 | **Find and replace** | Ctrl+F, or Ctrl+H with the replace row open. See [Find and replace](#find-and-replace). |
-| **Outline** | The draft's headings beside the page. See [Outline](#outline). |
-| **?** | Every keyboard shortcut (Ctrl+/). |
+| **Outline** | The draft's headings beside the page; see [Outline](#outline). |
+| **?** | Keyboard shortcuts (Ctrl+/). |
+| **⋮** (more tools) | Only on a window too short for every tool: the ones there was no room for. One with a menu of its own opens it in the same place. |
 | **Cite** and **Ask** | At the foot: cite the sentence at the cursor (Ctrl+Shift+C), and ask Muse about the selection (Ctrl+J). |
 
 In a short window the column scrolls, with a fade at its foot while there's more below; Cite and Ask stay at the foot.
@@ -98,7 +101,7 @@ Ctrl+F (or the toolbar's magnifier) opens a box at the top of the page. Matches 
 
 ### Outline
 
-**Outline** in the toolbar lists the draft's headings beside the page, with the section on screen marked; click one to go there. When there's no room beside the page (the writing tools open in a small window), the outline opens over the page's edge instead and closes once you've picked a heading or clicked elsewhere.
+**Outline** (on the toolbar, or under its ⋮ on a short window) lists the draft's headings beside the page, with the section on screen marked; click one to go there. When there's no room beside the page (the writing tools open in a small window), the outline opens over the page's edge instead and closes once you've picked a heading or clicked elsewhere.
 
 ### Comments to self
 
@@ -118,15 +121,11 @@ The panel beside the draft has three tools, one for each job:
 | **Check** | Everything that needs you, worst first. A summary at the top gives the share of citations backed by a source, counts them in the same words as the draft's marks, with a legend, and gives the duplication share; **How a citation gets checked** under the legend opens a short explanation of the four steps; then **Needs your attention**, **Still checking** and **Supported** (folded); then **Duplication**. The red number on Check is how many need attention. See [Back up each claim](#4-back-up-each-claim). |
 | **Sources** | What the draft cites, one line per source that opens to its figures and its citations' marks; and the **Reference list**. See [Reference list](#reference-list). |
 
-Versions aren't a tool: they open from **v8 ▾** under the draft's name (see [Versions](#versions)).
+Versions aren't a tool: they open from **v8 ▾** in the status bar (see [Versions](#versions)).
 
-### Open and close the writing tools
+### Show and hide the writing tools
 
-The **>|** button at the top-right of the panel, beside its *Writing tools* title, or `Ctrl+\`, closes the writing tools and gives the page the room. A slim strip of their three icons stays on the right, with Check's count of what needs attention:
-
-![The writing tools closed to a strip of icons](images/tools-closed.png)
-
-Click an icon to open that tool, or the **|<** button at the top of the strip (the same corner) to open the panel as it was. Anything that needs a tool opens it by itself: clicking a citation or a cite marker, a count in the status bar, or an action from Ctrl K. The app remembers whether you left it open; Settings can make it always start open or closed.
+The writing tools stay out of sight until you want them, and the page has the window's width. Point at the window's right edge and they slide out over the page; they go again when the pointer leaves them (not while you're typing in them). The pin at the panel's top-right, a click on that edge, or `Ctrl+\` keeps them open beside the draft; then the **>|** button in the same corner, or `Ctrl+\` again, hides them. Anything that needs a tool opens and pins it by itself: clicking a citation or a cite marker, a count in the status bar, or an action from Ctrl K. The app remembers whether you left them pinned; Settings can make them always start pinned (*open*) or hidden (*closed*).
 
 ### Focus mode
 
@@ -138,7 +137,7 @@ The save state stays in the corner. Esc, or **Exit focus**, brings the rest back
 
 ## Try the demo
 
-With a new library, **Getting started** shows above the empty draft in Write. If its first step says *Connect the AI*, the app is running on the offline mock, which matches words instead of reading them; **Add a Muse key** opens Settings at **AI model**. The status bar says so too: *Offline mock* shows in amber, and clicking it opens the same place.
+With a new library, **Getting started** shows above the empty draft in Write. If its first step says *Connect the AI*, the app is running on the offline mock, which matches words instead of reading them; **Add a Muse key** opens Settings at **AI model**. The status bar says so too: *AI offline* shows in amber at its right end, and clicking it opens the same place.
 
 **Try the sample library** (under *Add your sources*, or **Load sample library** in Ctrl K) adds six small files on sleep and coral reefs: two papers, reading notes, a fieldwork log, lab slides and a chapter outline. When they're in, the demo draft opens: four sentences from those papers, each with a cite marker that starts checking it at once. One sentence is false on purpose: the sleep paper found that reactivation during REM sleep did nothing, so Muse marks the claim that it helped as unsupported. (On the mock it may only be marked partial, or even pass.)
 
@@ -188,13 +187,13 @@ The library opens on its **folders**, the way a desktop shows a directory: your 
 - **Right-click a topic** to open it, peek inside, give it a **colour** (five, or none), **rename** it in place, or **merge** it into another topic. The colour is kept with the topic in your library.
 - A **green dot** after a folder's count means the open draft cites papers in it; point at the dot for how many.
 - **Recently opened**, at the top, holds the last few papers and folders you opened, one chip each. Something removed or deleted since drops out of it. Click **Recently opened** to fold the row away; the library remembers.
-- At the top right, **A–Z** or **Largest first** orders the topics, the slider sizes the tiles, and the two buttons show them as **folders** or as **rows** (a table). The library remembers these choices. The status bar names the keys that work on the folders: **Space** to peek, **Enter** to open.
+- The row under the Library's title holds how the topics are shown, so switching never moves **+ Add sources** or **⋯** (they stay on the title's row). On its left, **A–Z** or **Largest first** orders the topics and the slider sizes the tiles; on its right, the two buttons show them as **folders** or as **rows** (a table), and the last button hides or shows the panel on the right. The library remembers these choices. The status bar names the keys that work on the folders: **Space** to peek, **Enter** to open.
 - **Search** from the box at the top: on the folders, it finds topics by name and by the titles of the papers in them. **Search every paper instead** opens All sources with the same search, including the passages inside the papers.
 - When two topics hold the same papers, or nearly, a note above the folders offers to **merge** them into the larger one. **Keep both** dismisses it for that pair.
 
 ### Inside a folder
 
-A folder's papers show one line each, newest first. **Rows** or **Covers** (at the top right) switches to a grid of each paper's first page; the slider sizes them. A PDF's cover is its real first page, drawn as it scrolls into view; anything else, or a PDF whose file can't be found, gets a plain page with its title and authors. Covers select, open, peek and drag just as rows do.
+A folder's papers show one line each, newest first. **Rows** or **Covers** (at the right of the row under the folder's name) switches to a grid of each paper's first page; the slider at the left of that row sizes them. A PDF's cover is its real first page, drawn as it scrolls into view; anything else, or a PDF whose file can't be found, gets a plain page with its title and authors. Covers select, open, peek and drag just as rows do.
 
 - **Select:** click a paper. Its details open on the right: summary (marked **Written by Muse**: it's Muse's reading, not the paper's words), topics, keywords and JEL codes, [related papers](#related-in-your-library), DOI, link and file location. **Ctrl-click** adds or drops a paper, **Shift-click** selects through to it, the box in front of a row does the same as Ctrl-click, and **Ctrl A** selects every paper shown. With the list selected, ↑ and ↓ move between papers (hold Shift to select several) and Esc clears the selection.
 - **Act on what's selected:** the bar above the list changes to **N selected** with **Open**, **Add to topic**, **Use for drafting**, **Copy citation** and **Remove**. **Right-click** a paper for the same actions, plus Mark as read or unread, Star, Edit details, Show in folder on disk, Cited papers and Citing papers.
@@ -293,21 +292,17 @@ Removing a source, yourself or from Find duplicate files, keeps a record of it u
 
 ## 3. Write a draft
 
-Click **Write** in the sidebar. The draft is saved as you type; the top bar says *Saving…* and then *Saved*.
+Click **Write** in the sidebar. The draft is saved as you type; the status bar says *Saving…* and then *Saved*.
 
 ### Drafts
 
-Click **Drafts** beside the draft's name in the top bar for your drafts:
+Every draft is listed in the sidebar under **Drafts**, below the places, the way a chat app lists its conversations; the one open is marked. Click one to write in it. **+** beside the heading starts a **New draft** (Ctrl+N); **☰ › Open a Word file** brings one in (Ctrl+O). Point at a draft for **⋯**: **Rename**, or **Delete…** (which asks first, and also deletes its saved versions).
 
-![The drafts menu](images/drafts-menu.png)
-
-From there you can start a **New draft** (Ctrl+N), **Import a Word file** (Ctrl+O), switch to another draft, rename one with its pencil, or delete one with its ×.
-
-**Name a draft:** click its name in the top bar (or use the pencil in the drafts menu), type a name and press Enter; Esc cancels. Until you name it, a draft is called after its first line, shown in grey italics so you can tell it isn't a name yet. A name you give stays when the text changes, and it's the file name when you export. Clear the name to go back to the first line. A draft opened from a Word file or written as a proposal starts with that file's or proposal's name.
+**Name a draft:** click its name in the top bar (or **⋯ › Rename** in the sidebar), type a name and press Enter; Esc cancels. Until you name it, a draft is called after its first line, shown in grey italics so you can tell it isn't a name yet. A name you give stays when the text changes, and it's the file name when you export. Clear the name to go back to the first line. A draft opened from a Word file or written as a proposal starts with that file's or proposal's name.
 
 ### Bring in a Word file
 
-Ctrl+O, the drafts menu, or dropping a .docx on the window opens a preview of what was read. Choose where it goes:
+Ctrl+O, **☰ › Open a Word file**, or dropping a .docx on the window opens a preview of what was read. Choose where it goes:
 
 - **A new draft**,
 - **into the open draft** (at the cursor, or at the end if you haven't clicked into it; Ctrl+Z takes it out again), or
@@ -322,7 +317,7 @@ Headings, lists, quotes, bold, italic, underline, strikethrough, links and line 
 - **Cite my sources** drafts from your library. Type what you want (or pick an example) and click **Draft with citations**. Every sentence comes with a quote from a source, and each quote is checked in the background.
 - **Just chat** is a plain chatbot (see [Just chat](#just-chat)).
 
-Every citation, here and everywhere else in the app, says what its check found with the same symbol and the same word:
+Every citation in a list or card, here and everywhere else in the app, says what its check found with the same symbol and the same word:
 
 | Mark | Meaning |
 |---|---|
@@ -332,7 +327,7 @@ Every citation, here and everywhere else in the app, says what its check found w
 | … **Checking…** (grey, dashed) | Not checked yet. |
 | blue, square mark | Written from a review matrix and checked against the whole matrix (see [Review matrix](#review-matrix)). |
 
-The chip in the draft says *partly supported* or *not supported* after its label, so the ones that need you stand out; supported ones stay quiet. The legend at the top of **Check** shows them all.
+In the draft itself a citation reads as in a printed paper, *(Chen & Martinez 2021)*, in the page's own font and greyed, so it doesn't pull the eye from your sentences, and a line can break inside it (justified text keeps even spaces). Supported ones, and ones still being checked, stay that quiet. One that needs you gets a wavy underline and its symbol and word after it: ◐ *partly* in amber, ✕ *not supported* or ⚠ *retracted* in red. Point at any citation for a card with its page, its quote and the verdict. The legend at the top of **Check** shows them all.
 
 While it drafts, Compose counts the seconds (it usually takes 10 to 30) and says why when it's slower: Muse is busy and retrying after a rate limit. **Cancel** stops waiting; nothing is added to your draft (Muse may still finish in the background, and that answer is dropped).
 
@@ -388,9 +383,9 @@ Two searches start at once: a quick keyword search for the sentence as written, 
 
 Click a marker to open **Check** with what was found. **Use this source** turns the marker into a citation (Ctrl+Z undoes it). You can also search again for a reworded sentence, or **Remove marker**.
 
-Citations carry the same symbols and words: ✓ Supported, ◐ Partly supported, ✕ Not supported, and … Checking… while one is being checked. Blue ones, with the ✓ in a square, were written from a review matrix.
+Citations carry the same symbols and words: ✓ Supported, ◐ Partly supported, ✕ Not supported, and … Checking… while one is being checked. In the draft only the ones that need you show theirs (see [Compose](#compose)); in Check and on a citation's card they all do. In lists, blue ones with the ✓ in a square were written from a review matrix; the card says so too.
 
-A citation of a **retracted** paper is red with a ⚠ and the word *retracted*, whatever its quote's check found. Pointing at it says the source has been retracted and who says so: OpenAlex, or the paper's own title or keywords. The app asks OpenAlex when it looks a paper up (see Settings), so a paper retracted after you cited it is flagged the next time it's looked up. A lookup that fails never clears the flag. You can still cite a retracted paper, for instance to write about the retraction; the warning just makes sure it isn't by accident.
+A citation of a **retracted** paper is marked ⚠ *retracted* in red, whatever its quote's check found. Pointing at it says the source has been retracted and who says so: OpenAlex, or the paper's own title or keywords. The app asks OpenAlex when it looks a paper up (see Settings), so a paper retracted after you cited it is flagged the next time it's looked up. A lookup that fails never clears the flag. You can still cite a retracted paper, for instance to write about the retraction; the warning just makes sure it isn't by accident.
 
 **Check** counts them all one way, the way the status bar and Check's badge do: a citation **needs attention** when it's partly or not supported or cites a retracted paper, and so does every marker whose search has finished (it found a source for you to confirm, or found nothing); one is **checking** while its check or search is still running. The summary at the top says how many need attention out of how many, with a bar (green supported, red flagged, amber a source found and waiting for you to confirm it, grey checking) and the legend. Then:
 
@@ -434,7 +429,7 @@ While Check is open, matching passages are underlined in the draft: red for an u
 
 ### Versions
 
-**v8 ▾** under the draft's name (or **Versions ▾** before the first one) opens the draft's versions; the number beside it says how much changed since the newest. Snapshots are taken automatically as you write; **Save a version** makes a named milestone (say, *Sent to advisor*). Pick a version to see what changed, by document, section or paragraph, each with a percentage. **Restore** brings an old version back and keeps a snapshot of the draft as it was first, so nothing is lost.
+**v8 ▾** in the status bar (or **Versions ▾** before the first one) opens the draft's versions, upwards; the percentage beside it says how much changed since the newest. Snapshots are taken automatically as you write; **Save a version** makes a named milestone (say, *Sent to advisor*). Pick a version to see what changed, by document, section or paragraph, each with a percentage. **Restore** brings an old version back and keeps a snapshot of the draft as it was first, so nothing is lost.
 
 ## 6. Export
 
@@ -579,7 +574,7 @@ On a Mac, use Cmd in place of Ctrl.
 
 ## Settings
 
-The gear in the top bar opens Settings. Changes apply as you make them and are kept in your library, so they follow it; the footer at the bottom says so (the AI model section is the exception: it saves with **Save and switch**). The section list and the open section scroll separately.
+**Settings**, at the foot of the sidebar (or in the ☰ menu), opens Settings. Changes apply as you make them and are kept in your library, so they follow it; the footer at the bottom says so (the AI model section is the exception: it saves with **Save and switch**). The section list and the open section scroll separately.
 
 ![Settings](images/settings.png)
 

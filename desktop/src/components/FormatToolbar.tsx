@@ -49,6 +49,7 @@ const ICONS = {
   redo: 'm15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
   highlight: 'm9 11-6 6v3h9l3-3M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
+  moreTools: 'M12 5h.01M12 12h.01M12 19h.01', // ⋮: the tools that aren't on the bar
   strike: 'M16 4H9a3 3 0 0 0-2.83 4M14 12a4 4 0 0 1 0 8H6M4 12h16',
   sup: 'm4 19 8-8M12 19l-8-8M20 12h-4c0-1.5.44-2 1.5-2.5S20 8.33 20 7c0-.47-.17-.93-.48-1.29a2.1 2.1 0 0 0-2.62-.44c-.42.24-.74.62-.9 1.06',
   sub: 'm4 5 8 8M12 5l-8 8M20 19h-4c0-1.5.44-2 1.5-2.5S20 15.33 20 14c0-.47-.17-.93-.48-1.29a2.1 2.1 0 0 0-2.62-.44c-.42.24-.74.62-.9 1.07',
@@ -104,7 +105,12 @@ export function stepFontSize(editor: Editor, dir: 1 | -1) {
   if (next) editor.chain().focus().setFontSize(`${next}pt`).run()
 }
 
-type Menu = 'style' | 'font' | 'more' | 'align' | 'insert' | 'link' | 'tableSize' | 'symbol' | 'table'
+type Menu = 'tools' | 'style' | 'font' | 'more' | 'align' | 'insert' | 'link' | 'tableSize' | 'symbol' | 'table'
+
+/** The tools that move under ⋮ when the strip hasn't room for every one, in the order they're kept: the
+ * first is the last to go. The rest (undo, styles, B I U, highlight, bullets, insert, comment, find) stay. */
+const SPARE = ['numbers', 'font', 'align', 'checklist', 'moreFormat', 'painter', 'outline', 'shortcuts'] as const
+type Spare = (typeof SPARE)[number]
 
 interface Props {
   editor: Editor | null
@@ -126,8 +132,8 @@ export function FormatToolbar({ editor, onCite, onAsk, onFind, outlineOpen, onTo
   const [tip, setTip] = useState<{ name: string; key?: string; hint?: string; rect: DOMRect } | null>(null)
   const [paint, setPaint] = useState<PaintedFormat | null>(null)
   const [more, setMore] = useState(false) // the column scrolls: more buttons below
-  const [two, setTwo] = useState(false) // two columns of buttons: one didn't fit
-  const oneColumn = useRef(0) // the height one column needs, measured when it stopped fitting
+  const [fit, setFit] = useState<number>(SPARE.length) // how many of SPARE are on the strip; the rest are under ⋮
+  const onStrip = (t: Spare) => SPARE.indexOf(t) < fit
   const scroller = useRef<HTMLDivElement>(null)
   const bar = useRef<HTMLElement>(null)
   const imageInput = useRef<HTMLInputElement>(null)
@@ -177,31 +183,47 @@ export function FormatToolbar({ editor, onCite, onAsk, onFind, outlineOpen, onTo
       },
   })
 
-  // A short window: when one column of buttons doesn't fit, the bar takes two, so every tool stays in
-  // sight; back to one once there's room for it again. Shorter still, it scrolls, its foot faded while
-  // there's more below.
+  // One column, the writing area's full height (Nov 28). Every tool that fits is on it; when the window is
+  // too short for all of them, the least used go under ⋮ (SPARE's order), which shows only then. Shorter
+  // still, the column scrolls, its foot faded while there's more below.
   useLayoutEffect(() => {
     const el = scroller.current
-    const host = bar.current?.parentElement
-    if (!el || !host) return
+    if (!el) return
     const check = () => {
-      const over = el.scrollHeight - el.clientHeight > 2
-      if (!two && over) {
-        oneColumn.current = el.scrollHeight + (bar.current!.offsetHeight - el.clientHeight)
-        setTwo(true)
-      } else if (two && oneColumn.current && host.clientHeight - 28 >= oneColumn.current) setTwo(false)
       setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 2)
+      // A menu whose button left the strip (⋮ once everything fits) goes with it
+      setMenu((m) => (m && !m.anchor.isConnected ? null : m))
+      const kids = [...el.children] as HTMLElement[]
+      const button = kids.find((k) => k.tagName === 'BUTTON')
+      if (!button || !el.clientHeight) return // Write is hidden: measured again when it shows
+      const cs = getComputedStyle(el)
+      const last = kids[kids.length - 1]
+      const content = last.offsetTop + last.offsetHeight - kids[0].offsetTop + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)
+      const step = button.offsetHeight + (parseFloat(cs.rowGap) || 0)
+      const slots = (k: number) => k + (k < SPARE.length ? 1 : 0) // ⋮ takes a slot while anything is under it
+      const fixed = content - slots(fit) * step // everything else: the other tools, separators, padding
+      let best = 0
+      for (let k = SPARE.length; k > 0; k--)
+        if (fixed + slots(k) * step <= el.clientHeight + 0.5) {
+          best = k
+          break
+        }
+      if (best !== fit) {
+        // The strip is rearranged: a name shown beside one of its buttons would be left pointing at nothing
+        window.clearTimeout(tipTimer.current)
+        setTip(null)
+        setFit(best)
+      }
     }
     check()
     const ro = new ResizeObserver(check)
     ro.observe(el)
-    ro.observe(host)
     el.addEventListener('scroll', check)
     return () => {
       ro.disconnect()
       el.removeEventListener('scroll', check)
     }
-  }, [s?.table, two])
+  }, [s?.table, fit])
 
   // Menus close on a click elsewhere and on Esc, and when the window resizes.
   useEffect(() => {
@@ -316,13 +338,13 @@ export function FormatToolbar({ editor, onCite, onAsk, onFind, outlineOpen, onTo
   const styleLabel = s.quote ? '❝' : s.heading ? `H${s.heading}` : '¶'
 
   return (
-    <nav className={`vbar${two ? ' two' : ''}`} ref={bar} role="toolbar" aria-orientation="vertical" aria-label="Writing toolbar" onKeyDown={onKeyDown}>
+    <nav className="vbar" ref={bar} role="toolbar" aria-orientation="vertical" aria-label="Writing toolbar" onKeyDown={onKeyDown}>
       <div className={`vbar-scroll${more ? ' more' : ''}`} ref={scroller}>
         {btn('Undo', <Glyph d={ICONS.undo} />, { key: 'Ctrl+Z', disabled: !s.canUndo, run: () => chain().undo().run() })}
         {btn('Redo', <Glyph d={ICONS.redo} />, { key: 'Ctrl+Y', disabled: !s.canRedo, run: () => chain().redo().run() })}
         <i className="vbar-sep" />
         {btn('Paragraph style', <span className="vbar-txt serif">{styleLabel}</span>, { hint: 'Normal, headings, quote', menuName: 'style' })}
-        {btn('Font, size and colour', <span className="vbar-txt">Aa</span>, { on: !!(s.fontFamily || s.fontSize || s.textColor), menuName: 'font' })}
+        {onStrip('font') && btn('Font, size and colour', <span className="vbar-txt">Aa</span>, { on: !!(s.fontFamily || s.fontSize || s.textColor), menuName: 'font' })}
         <i className="vbar-sep" />
         {btn('Bold', <b className="vbar-txt">B</b>, { key: 'Ctrl+B', on: s.bold, run: () => chain().toggleBold().run() })}
         {btn('Italic', <i className="vbar-txt serif">I</i>, { key: 'Ctrl+I', on: s.italic, run: () => chain().toggleItalic().run() })}
@@ -333,18 +355,19 @@ export function FormatToolbar({ editor, onCite, onAsk, onFind, outlineOpen, onTo
             <Glyph d={ICONS.highlight} />
             <i className="pen-colour" style={{ background: `var(--hl-${highlightPen.color})` }} />
           </>,
-          { key: 'Ctrl+Shift+H', hint: 'colours under Aa', on: s.highlight, run: () => chain().toggleHighlight({ color: highlightPen.color }).run() },
+          { key: 'Ctrl+Shift+H', hint: 'colours under Font, size and colour (Aa)', on: s.highlight, run: () => chain().toggleHighlight({ color: highlightPen.color }).run() },
         )}
-        {btn('More text formatting', <Glyph d={ICONS.more} size={20} />, {
-          hint: 'Strikethrough, super/subscript, case, clear',
-          on: s.strike || s.sup || s.sub,
-          menuName: 'more',
-        })}
+        {onStrip('moreFormat') &&
+          btn('More text formatting', <Glyph d={ICONS.more} size={20} />, {
+            hint: 'Strikethrough, super/subscript, case, clear',
+            on: s.strike || s.sup || s.sub,
+            menuName: 'more',
+          })}
         <i className="vbar-sep" />
-        {btn('Alignment and spacing', <Glyph d={ICONS[s.align]} />, { hint: 'Ctrl+Shift+L / E / R / J', menuName: 'align' })}
+        {onStrip('align') && btn('Alignment and spacing', <Glyph d={ICONS[s.align]} />, { hint: 'Ctrl+Shift+L / E / R / J', menuName: 'align' })}
         {btn('Bulleted list', <Glyph d={ICONS.bullets} />, { key: 'Ctrl+Shift+8', on: s.bullets, run: () => chain().toggleBulletList().run() })}
-        {btn('Numbered list', <Glyph d={ICONS.numbers} />, { key: 'Ctrl+Shift+7', on: s.numbers, run: () => chain().toggleOrderedList().run() })}
-        {btn('Checklist', <Glyph d={ICONS.checklist} />, { key: 'Ctrl+Shift+9', on: s.tasks, run: () => chain().toggleTaskList().run() })}
+        {onStrip('numbers') && btn('Numbered list', <Glyph d={ICONS.numbers} />, { key: 'Ctrl+Shift+7', on: s.numbers, run: () => chain().toggleOrderedList().run() })}
+        {onStrip('checklist') && btn('Checklist', <Glyph d={ICONS.checklist} />, { key: 'Ctrl+Shift+9', on: s.tasks, run: () => chain().toggleTaskList().run() })}
         <i className="vbar-sep" />
         {btn('Insert', <Glyph d={ICONS.insert} />, { hint: 'Link, image, table, footnote, page break…', menuName: 'insert' })}
         {s.table && btn('Table', <Glyph d={ICONS.table} />, { hint: "You're in a table: rows, columns, header", menuName: 'table', className: 'ctx' })}
@@ -357,15 +380,31 @@ export function FormatToolbar({ editor, onCite, onAsk, onFind, outlineOpen, onTo
             else onError('Select the text the comment is about first.')
           },
         })}
-        {btn('Format painter', <Glyph d={ICONS.painter} />, {
-          hint: paint ? 'Select the text to paint · Esc puts it down' : 'Copy this formatting onto other text',
-          on: !!paint,
-          run: () => setPaint(paint ? null : copyFormat(editor)),
-        })}
+        {onStrip('painter') &&
+          btn('Format painter', <Glyph d={ICONS.painter} />, {
+            hint: paint ? 'Select the text to paint · Esc puts it down' : 'Copy this formatting onto other text',
+            on: !!paint,
+            run: () => setPaint(paint ? null : copyFormat(editor)),
+          })}
         <i className="vbar-sep" />
         {btn('Find and replace', <Glyph d={ICONS.find} />, { key: 'Ctrl+F', hint: 'Ctrl+H to replace', run: onFind })}
-        {btn('Outline', <Glyph d={ICONS.outline} />, { hint: 'Headings beside the page', on: outlineOpen, run: onToggleOutline })}
-        {btn('Keyboard shortcuts', <span className="vbar-txt">?</span>, { key: 'Ctrl+/', run: onShortcuts })}
+        {onStrip('outline') && btn('Outline', <Glyph d={ICONS.outline} />, { hint: 'Headings beside the page', on: outlineOpen, run: onToggleOutline })}
+        {onStrip('shortcuts') && btn('Keyboard shortcuts', <span className="vbar-txt">?</span>, { key: 'Ctrl+/', run: onShortcuts })}
+        {/* Only when the window is too short for every tool: the ones that didn't fit. Lit while one of
+            them is on where the cursor is, so it isn't hidden. */}
+        {fit < SPARE.length &&
+          btn('More tools', <Glyph d={ICONS.moreTools} size={20} />, {
+            hint: 'The tools there was no room for',
+            on: !!(
+              (!onStrip('font') && (s.fontFamily || s.fontSize || s.textColor)) ||
+              (!onStrip('moreFormat') && (s.strike || s.sup || s.sub)) ||
+              (!onStrip('numbers') && s.numbers) ||
+              (!onStrip('checklist') && s.tasks) ||
+              (!onStrip('painter') && paint) ||
+              (!onStrip('outline') && outlineOpen)
+            ),
+            menuName: 'tools',
+          })}
       </div>
       <div className="vbar-foot">
         {btn(
@@ -414,6 +453,35 @@ export function FormatToolbar({ editor, onCite, onAsk, onFind, outlineOpen, onTo
       {menu &&
         createPortal(
           <MenuBox anchor={menu.anchor} name={menu.name}>
+            {/* ⋮: the tools there was no room for on the strip. One with a menu of its own opens it in the same place. */}
+            {menu.name === 'tools' && (
+              <>
+                <h4>More tools</h4>
+                {!onStrip('font') && <MenuRow glyph="Aa" label="Font, size and colour" more cur={!!(s.fontFamily || s.fontSize || s.textColor)} onClick={() => swap('font')} />}
+                {!onStrip('moreFormat') && (
+                  <MenuRow icon={ICONS.more} label="More text formatting" note="strikethrough, super/subscript, case, clear" more cur={s.strike || s.sup || s.sub} onClick={() => swap('more')} />
+                )}
+                {!onStrip('align') && <MenuRow icon={ICONS[s.align]} label="Alignment and spacing" more onClick={() => swap('align')} />}
+                {!onStrip('numbers') && (
+                  <MenuRow icon={ICONS.numbers} label="Numbered list" keys="Ctrl+Shift+7" cur={s.numbers} onClick={() => (chain().toggleOrderedList().run(), done())} />
+                )}
+                {!onStrip('checklist') && (
+                  <MenuRow icon={ICONS.checklist} label="Checklist" keys="Ctrl+Shift+9" cur={s.tasks} onClick={() => (chain().toggleTaskList().run(), done())} />
+                )}
+                {!onStrip('painter') && (
+                  <MenuRow
+                    icon={ICONS.painter}
+                    label={paint ? 'Put the format painter down' : 'Format painter'}
+                    note={paint ? undefined : 'copy this formatting onto other text'}
+                    cur={!!paint}
+                    onClick={() => (setPaint(paint ? null : copyFormat(editor)), done())}
+                  />
+                )}
+                {!onStrip('outline') && <MenuRow icon={ICONS.outline} label="Outline" note="headings beside the page" cur={outlineOpen} onClick={() => (onToggleOutline(), done())} />}
+                {!onStrip('shortcuts') && <MenuRow glyph="?" label="Keyboard shortcuts" keys="Ctrl+/" onClick={() => (done(), onShortcuts())} />}
+              </>
+            )}
+
             {menu.name === 'style' && (
               <>
                 <h4>Paragraph style</h4>

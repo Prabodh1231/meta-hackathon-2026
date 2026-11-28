@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Three fixes · citations, Library toolbar, small buttons</title>
+<style>
+/* Mock only (Nov 28), from the Apple-style review. Three things that change how the app looks, each
+   with today's version and the options side by side behind switches in the dark top strip:
+   1. Citations in the draft: today's chips can't break across lines, so justified text opens wide gaps.
+   2. The Library toolbar: its buttons jump when switching between Folders and Rows.
+   3. The four controls that miss WCAG's 24 px click size (measured on every screen of the app).
+   Real data: the open draft's paragraphs and citations, and the library's biggest topics (16-fixes-data.js).
+   Forest palette, the app's tokens. */
+:root {
+  --bg: #f4f6f5; --panel: #fff; --text: #17201c; --muted: #56625c; --border: #dce2df; --line: rgb(23 32 28 / .09);
+  --accent: #1f5c46; --accent-text: #fff; --hover: rgba(31, 92, 70, .07); --rail: #eaeeec;
+  --ok: #23703f; --ok-bg: #dff3e6; --warn: #8a5f00; --warn-bg: #fbefcf; --bad: #b5371f; --bad-bg: #fbe3df;
+  --pending: #97a39d; --pending-bg: #e7ece9; --info: #2f6db5; --matrix: var(--info);
+  --doc-font: Charter, "Bitstream Charter", Georgia, serif;
+  --ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 14px; --fs-xl: 16px;
+  --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-pill: 999px;
+  --shadow: 0 1px 2px rgb(23 32 28 / .06), 0 8px 24px -12px rgb(23 32 28 / .2);
+  --page-w: 760px;
+}
+[data-theme="dark"] {
+  --bg: #0d1210; --panel: #141b18; --text: #e5ebe8; --muted: #8e9d96; --border: #25302b; --line: rgb(229 235 232 / .08);
+  --accent: #62c29a; --accent-text: #062418; --hover: rgba(255, 255, 255, .07); --rail: #0f1513;
+  --ok: #56d08a; --ok-bg: #12261a; --warn: #e3b341; --warn-bg: #2b2111; --bad: #ff8a78; --bad-bg: #2d1614;
+  --pending: #8e9d96; --pending-bg: #202a26; --info: #7fb2f0;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -12px rgb(0 0 0 / .6);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--ui); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; padding: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- the switches ---- */
+.concept { position: sticky; top: 0; z-index: 50; display: flex; flex-direction: column; gap: 7px; padding: 9px 16px 10px; background: #0f1a15; color: #d3ddd8; font-size: 12.5px; }
+.concept .row { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.concept b { color: #fff; } .concept .sp { flex: 1; } .concept .lbl { color: #8fa39a; }
+.concept .seg { display: flex; }
+.concept .seg button { padding: 3px 10px; border: 1px solid #34483f; color: #c9d6cf; }
+.concept .seg button:first-child { border-radius: 7px 0 0 7px; } .concept .seg button:last-child { border-radius: 0 7px 7px 0; }
+.concept .seg button + button { border-left: 0; }
+.concept .seg button[aria-pressed="true"] { background: #e5ebe8; color: #0f1a15; font-weight: 600; }
+.concept .seg.main button[aria-pressed="true"] { background: #62c29a; border-color: #62c29a; color: #062418; }
+.concept .chip { padding: 3px 10px; border: 1px solid #34483f; border-radius: 7px; color: #c9d6cf; }
+.concept .chip[aria-pressed="true"] { background: #62c29a; border-color: #62c29a; color: #062418; font-weight: 600; }
+.concept .note { margin: 0; color: #8fa39a; font-size: 12px; max-width: 1100px; }
+.concept .note i { color: #d3ddd8; font-style: normal; }
+.concept .meter { margin-left: auto; padding: 2px 10px; border-radius: 7px; background: #1f3a30; color: #e5ebe8; font-variant-numeric: tabular-nums; }
+.concept .meter b { color: #e0ad66; }
+
+main { padding: 24px 24px 80px; }
+.cap { max-width: 1100px; margin: 0 auto 14px; color: var(--muted); font-size: var(--fs-md); }
+.cap b { color: var(--text); }
+
+/* =========================== 1. Citations =========================== */
+.sheet { width: min(var(--page-w), 100%); margin: 0 auto; padding: 64px 72px 72px; background: var(--panel); border-radius: 4px; box-shadow: 0 0 0 1px var(--border), var(--shadow); font: 18px/1.75 var(--doc-font); }
+@media (max-width: 900px) { .sheet { padding: 36px 28px; } }
+.sheet[data-align="justify"] p { text-align: justify; }
+.sheet p { margin: 0 0 1em; }
+.sheet h1 { margin: 0 0 18px; font: 600 26px/1.25 var(--doc-font); }
+
+/* Today: the app's chip, as in styles.css (.cite) */
+.cite {
+  display: inline-flex; align-items: center; gap: 5px; font: 500 var(--fs-sm)/1 var(--ui);
+  padding: 3px 8px 3px 6px; border-radius: var(--r-pill); cursor: pointer; vertical-align: 1px; user-select: none;
+  border: 1px solid var(--border); color: var(--text); background: transparent; white-space: nowrap;
+}
+.cite::before { content: "…"; flex: none; width: 1em; text-align: center; font: 700 var(--fs-xs)/1 var(--ui); color: var(--pending); }
+.cite:hover { border-color: var(--text); }
+.cite-pending { border-style: dashed; color: var(--muted); }
+.cite-verified::before { content: "✓"; color: var(--ok); }
+.cite-weak { border-color: var(--warn); background: var(--warn-bg); }
+.cite-weak::before { content: "◐"; color: var(--warn); }
+.cite-unsupported { border-color: var(--bad); background: var(--bad-bg); }
+.cite-unsupported::before { content: "✕"; color: var(--bad); }
+.cite-weak::after, .cite-unsupported::after { font-weight: 700; font-size: var(--fs-xs); }
+.cite-weak::after { content: "partly supported"; color: var(--warn); }
+.cite-unsupported::after { content: "not supported"; color: var(--bad); }
+.cite-matrix.cite-verified { border-color: var(--matrix); }
+.cite-matrix.cite-verified::before { content: "✓"; width: 12px; height: 12px; line-height: 12px; border-radius: 2px; font-size: 9px; background: var(--matrix); color: #fff; }
+.cite-retracted { border-color: var(--bad); background: var(--bad-bg); }
+.cite-retracted::before { content: "⚠"; color: var(--bad); }
+.cite-retracted::after { content: "retracted"; color: var(--bad); font-weight: 700; font-size: var(--fs-xs); }
+
+/* Options: the citation is inline text in the page's own font, so a line can break inside it */
+.qc { color: var(--muted); cursor: pointer; border-radius: 3px; text-decoration: none; }
+.qc:hover { background: var(--hover); color: var(--text); }
+.qc.flag { color: var(--text); text-decoration: underline wavy; text-decoration-thickness: 1px; text-underline-offset: 4px; text-decoration-skip-ink: none; }
+.qc.flag.s-weak { text-decoration-color: var(--warn); }
+.qc.flag.s-unsupported, .qc.flag.s-retracted { text-decoration-color: var(--bad); }
+.qm { font: 700 .62em/1 var(--ui); vertical-align: .55em; margin-left: 1px; }
+.qm.s-verified { color: var(--ok); } .qm.s-pending { color: var(--pending); }
+.qm.s-weak { color: var(--warn); } .qm.s-unsupported, .qm.s-retracted { color: var(--bad); }
+.qm.s-matrix { color: var(--matrix); }
+.qm .w { font-weight: 700; margin-left: 2px; letter-spacing: .01em; }
+/* Numbers: a superscript per source, the details on hover and in Sources */
+.qn { font: 600 .62em/1 var(--ui); vertical-align: .6em; color: var(--accent); cursor: pointer; padding: 0 1px; border-radius: 3px; }
+.qn:hover { background: var(--hover); }
+.qn.s-weak { color: var(--warn); } .qn.s-unsupported, .qn.s-retracted { color: var(--bad); } .qn.s-pending { color: var(--pending); } .qn.s-matrix { color: var(--matrix); }
+
+.legend { width: min(var(--page-w), 100%); margin: 14px auto 0; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: baseline; color: var(--muted); font-size: var(--fs-md); }
+.legend span.item { display: inline-flex; align-items: baseline; gap: 6px; }
+.legend .in-page { font: 16px/1.5 var(--doc-font); color: var(--text); }
+/* Nov 28, as picked: no coloured edge, a very faint wash of the accent */
+.card { position: fixed; z-index: 40; width: 340px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border)); border-radius: var(--r-lg); background: color-mix(in srgb, var(--accent) 5%, var(--panel)); box-shadow: var(--shadow); font-size: var(--fs-sm); pointer-events: none; }
+.card b { display: block; margin-bottom: 4px; }
+.card blockquote { margin: 0 0 6px; font: var(--fs-md)/1.5 var(--doc-font); }
+.card small { color: var(--muted); }
+
+/* =========================== 2. Library toolbar =========================== */
+.fitbox { max-width: 100%; overflow: hidden; margin: 0 auto; }
+.frame { transform-origin: 0 0; display: grid; grid-template-columns: 248px minmax(0, 1fr) 400px; height: 640px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.f-side { background: var(--bg); border-right: 1px solid var(--border); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.f-side .h { margin: 10px 8px 6px; font: 700 var(--fs-xs)/1.2 var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.f-side div.it { display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 8px; font-size: var(--fs-lg); }
+.f-side div.it.on { background: var(--hover); color: var(--accent); font-weight: 600; }
+.f-side div.it small { color: var(--muted); font-size: var(--fs-sm); }
+.f-main { min-width: 0; display: flex; flex-direction: column; }
+.f-panel { border-left: 1px solid var(--border); padding: 22px 22px; background: var(--panel); }
+.f-panel .h { font: 700 var(--fs-xs)/1.2 var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.f-panel h3 { margin: 6px 0 2px; font: 400 26px/1.2 var(--doc-font); }
+.f-panel p { margin: 0 0 14px; color: var(--muted); }
+.f-panel .open { display: inline-block; padding: 8px 18px; border-radius: 8px; background: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+/* The header as the app has it (styles.css .lib-head + libraryFolders.css) */
+.lib-head { display: flex; align-items: center; gap: 12px; padding: 22px 28px 14px; flex-wrap: wrap; position: relative; }
+.lib-title { display: flex; align-items: baseline; gap: 10px; }
+.lib-title h2 { margin: 0; font: 400 28px/1.15 var(--doc-font); letter-spacing: -.01em; }
+.lib-title .muted { color: var(--muted); font-size: var(--fs-lg); }
+.spacer { flex: 1; }
+.sortbtn { display: inline-flex; align-items: center; gap: 8px; height: 34px; width: 110px; justify-content: space-between; padding: 0 8px 0 10px; border-radius: 8px; color: var(--muted); font-size: var(--fs-lg); }
+.sortbtn:hover { background: var(--hover); color: var(--text); }
+.size { display: inline-flex; align-items: center; gap: 6px; }
+.size i { display: block; border: 1.5px solid var(--muted); border-radius: 2px; }
+.size i.s { width: 8px; height: 8px; } .size i.b { width: 13px; height: 13px; }
+.size input { width: 90px; accent-color: var(--accent); }
+.segicons { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--border); }
+.segicons button { display: grid; place-items: center; width: 34px; height: 30px; border-radius: 8px; color: var(--muted); }
+.segicons button[aria-pressed="true"] { background: var(--hover); color: var(--accent); }
+.addbtn { height: 38px; padding: 0 16px; border-radius: 8px; background: var(--accent); color: var(--accent-text); font-weight: 600; font-size: var(--fs-lg); width: 125px; }
+.iconbtn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; color: var(--muted); }
+.iconbtn:hover { background: var(--hover); }
+.more { width: 36px; height: 26px; }
+/* Option: two rows. Actions on top; how the topics are shown on a quiet row below, the view's own
+   control (the size) on the left beside the order, so nothing on the right moves. */
+.frame[data-lay="rows2"] .lib-head { display: grid; grid-template-columns: 1fr; gap: 10px; padding-bottom: 10px; }
+.lib-head .line { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lib-head .line.tools { padding-top: 10px; border-top: 1px solid var(--line); }
+/* Option: the slider keeps its place in Rows (hidden, so both views take the same room) */
+.size.keep-room { visibility: hidden; }
+/* Ghosts: where each control was in the other view */
+.ghost { position: absolute; border: 1.5px dashed #e0ad66; border-radius: 8px; pointer-events: none; }
+.f-body { flex: 1; overflow: auto; padding: 6px 28px 20px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.tile { padding: 12px 10px; border-radius: 10px; }
+.tile:hover { background: var(--hover); }
+.tile svg { display: block; width: 54px; height: 44px; margin-bottom: 8px; }
+.tile b { display: block; font-size: var(--fs-md); font-weight: 600; }
+.tile small { color: var(--muted); font-size: var(--fs-sm); }
+.tile .c { color: var(--ok); font-weight: 600; margin-left: 4px; }
+table.rows { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
+table.rows th { text-align: left; padding: 8px; color: var(--muted); font: 600 var(--fs-xs)/1 var(--ui); border-bottom: 1px solid var(--border); }
+table.rows td { padding: 7px 8px; border-bottom: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+table.rows td.n { color: var(--text); font-weight: 600; }
+table.rows td .c { margin-left: 6px; padding: 1px 6px; border-radius: 99px; background: var(--ok-bg); color: var(--ok); font: 600 var(--fs-xs)/1.4 var(--ui); }
+
+/* =========================== 3. Small buttons =========================== */
+.cards { display: grid; gap: 18px; max-width: 1000px; margin: 0 auto; }
+.place { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.place > header { display: flex; align-items: baseline; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.place > header b { font-size: var(--fs-lg); }
+.place > header span { color: var(--muted); font-size: var(--fs-sm); }
+.place > header .sz { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); font-size: var(--fs-sm); }
+.place .inner { position: relative; padding: 16px 16px 30px; }
+/* the app bar's title box */
+.appbar { display: flex; align-items: center; gap: 12px; }
+.logo { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: #1f5c46; color: #fff; font: 700 16px var(--doc-font); }
+.doc-name { font: 600 var(--fs-lg)/1.25 var(--doc-font); }
+.save { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
+.link { border: none; background: none; padding: 0 2px; color: var(--accent); font-size: var(--fs-sm); cursor: pointer; }
+.link:hover { text-decoration: underline; }
+.save .link.vers { font-size: var(--fs-xs); font-weight: 600; }
+/* a Check row (styles.css .cite-list-row / .cite-list-actions) */
+.crow { max-width: 380px; border-radius: 10px; }
+.crow .main { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--warn-bg) 55%, transparent); }
+.crow .main .cite { align-self: flex-start; }
+.crow .claim { font: var(--fs-md)/1.45 var(--doc-font); }
+.crow .why { font-size: var(--fs-sm); color: var(--muted); }
+.crow .acts { display: flex; gap: 14px; padding: 0 10px 6px; }
+.crow .acts .link { padding: 0; font-size: var(--fs-sm); }
+/* Option: a bigger click area, same look (padding inside, the same amount taken back outside) */
+.fixmode-hit .save .link.vers { display: inline-block; line-height: 16px; padding: 4px 6px; margin: -4px -4px; }
+.fixmode-hit .crow .acts .link { display: inline-block; line-height: 17px; padding: 4px 5px; margin: -4px -5px; }
+/* Option: bigger buttons you can see */
+.fixmode-big .save .link.vers { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; margin-left: 2px; border: 1px solid var(--border); border-radius: var(--r-pill); font-size: var(--fs-sm); }
+.fixmode-big .save .link.vers:hover { text-decoration: none; background: var(--hover); }
+.fixmode-big .crow .acts { gap: 6px; padding-top: 4px; }
+.fixmode-big .crow .acts .link { height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); }
+.fixmode-big .crow .acts .link:hover { text-decoration: none; background: var(--hover); }
+/* click areas */
+.hitbox { position: absolute; pointer-events: none; border: 1.5px solid #3ccf8e; border-radius: 3px; background: rgb(60 207 142 / .12); }
+.hitbox.bad { border-color: #ff6b57; background: rgb(255 107 87 / .16); }
+.hitbox span { position: absolute; left: -1px; top: 100%; margin-top: 3px; padding: 0 4px; border-radius: 3px; background: #0f1a15; color: #fff; font: 600 10px/16px var(--ui); white-space: nowrap; }
+.hitbox.bad span { background: #8a2a1a; }
+</style></head>
+<body>
+<div class="concept">
+  <div class="row">
+    <b>Three fixes</b>
+    <div class="seg main" id="sec">
+      <button data-v="cite" aria-pressed="true">1 · Citations in the draft</button>
+      <button data-v="lib">2 · Library toolbar</button>
+      <button data-v="btn">3 · Small buttons</button>
+    </div>
+    <span class="sp"></span>
+    <span class="lbl">Theme</span>
+    <div class="seg" data-set="theme"><button data-v="light">Light</button><button data-v="dark" aria-pressed="true">Dark</button></div>
+  </div>
+
+  <div class="row" data-for="cite">
+    <span class="lbl">Citations</span>
+    <div class="seg" data-set="style">
+      <button data-v="chips" aria-pressed="true">Today: chips</button>
+      <button data-v="quiet">A · In the text</button>
+      <button data-v="short">B · In the text, short</button>
+      <button data-v="num">C · Numbers</button>
+    </div>
+    <span class="lbl">Marks</span>
+    <div class="seg" data-set="marks"><button data-v="all" aria-pressed="true">On every citation</button><button data-v="need">Only what needs you</button></div>
+    <span class="lbl">Text</span>
+    <div class="seg" data-set="align"><button data-v="justify" aria-pressed="true">Justified</button><button data-v="left">Left</button></div>
+    <span class="lbl">Page</span>
+    <div class="seg" data-set="width"><button data-v="640">Narrow</button><button data-v="760" aria-pressed="true">Normal</button><button data-v="940">Wide</button></div>
+    <span class="meter" id="gaps"></span>
+  </div>
+  <p class="note" data-for="cite">Today a citation is a pill that can't break across a line, so in justified text the words before it spread out (Electron on Windows can't hyphenate to help). <i>A</i> writes it as text in the page's font, muted, with a small mark after it: a line can break inside it, like a printed paper. <i>B</i> leaves out the page number (it's in the card). <i>C</i> is a superscript number per source, as in Word's endnotes. In every option, pointing at a citation shows its quote, and a flagged one keeps its symbol and colour (and a wavy underline in A and B), so colour isn't the only signal.</p>
+
+  <div class="row" data-for="lib" hidden>
+    <span class="lbl">Layout</span>
+    <div class="seg" data-set="lay">
+      <button data-v="today" aria-pressed="true">Today</button>
+      <button data-v="rows2">A · Two rows</button>
+      <button data-v="keep">B · The slider keeps its room</button>
+    </div>
+    <span class="lbl">Window</span>
+    <div class="seg" data-set="win"><button data-v="1440" aria-pressed="true">1440</button><button data-v="1280">1280</button><button data-v="1100">1100</button></div>
+    <button class="chip" id="ghosts" aria-pressed="true">Show where they were</button>
+    <span class="meter" id="moved"></span>
+  </div>
+  <p class="note" data-for="lib" hidden>Click <i>Folders</i> and <i>Rows</i> in the header. Today the size slider only exists in Folders, which makes the row too long, so <i>Add sources</i>, the panel button and <i>⋯</i> drop to a second line; in Rows they fit and jump back up, and everything slides sideways. <i>A</i> puts the actions on the top row and the view controls on a quiet row below, with the slider beside the order on the left. <i>B</i> keeps today's single row but holds the slider's room in Rows, so both views lay out the same. The dashed outlines show where each control was in the other view.</p>
+
+  <div class="row" data-for="btn" hidden>
+    <span class="lbl">Fix</span>
+    <div class="seg" data-set="fix">
+      <button data-v="today" aria-pressed="true">Today</button>
+      <button data-v="hit">A · Bigger click area, same look</button>
+      <button data-v="big">B · Bigger buttons</button>
+    </div>
+    <button class="chip" id="areas" aria-pressed="true">Show click areas</button>
+    <span class="meter" id="fails"></span>
+  </div>
+  <p class="note" data-for="btn" hidden>Measured on every screen of the app (596 controls): only these four, in two places, miss WCAG 2.2's 24 × 24 px minimum <i>and</i> sit too close to another control. The other small ones are allowed because they have room around them (the Library's tick boxes and stars among them). <i>A</i> grows the area that takes the click without changing how anything looks: padding inside, the same amount taken back outside. <i>B</i> makes them visibly bigger. Red outlines fail, green pass.</p>
+</div>
+
+<main>
+  <!-- 1. Citations -->
+  <section id="s-cite">
+    <p class="cap"><b>Your draft</b>, as it is: three justified paragraphs with 14 citations (13 supported, 1 partly). Point at a citation for its quote.</p>
+    <article class="sheet" id="sheet" data-align="justify"></article>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <!-- 2. Library toolbar -->
+  <section id="s-lib" hidden>
+    <p class="cap"><b>The Library's front page</b>, your 18 biggest topics, with the folder panel open on the right as the app opens it. The frame is drawn at the window width you pick, scaled to fit.</p>
+    <div class="fitbox" id="fitbox"><div class="frame" id="frame" data-lay="today" data-view="folders"></div></div>
+  </section>
+
+  <!-- 3. Small buttons -->
+  <section id="s-btn" hidden>
+    <div class="cards fixmode-today" id="cards">
+      <div class="place">
+        <header><b>App bar</b><span>Versions, under the draft's name, on every screen</span><span class="sz" data-sz="vers"></span></header>
+        <div class="inner"><div class="appbar">
+          <span class="logo">G</span>
+          <div><div class="doc-name nb" title="In the app this is a button: click to rename the draft"></div>
+            <div class="save">Saved · <button class="link vers t" title="Versions: save, compare and restore">v9 ▾</button> · 5% changed since v9</div></div>
+        </div></div>
+      </div>
+      <div class="place">
+        <header><b>Write · Check</b><span>the three actions under a citation that needs you</span><span class="sz" data-sz="acts"></span></header>
+        <div class="inner"><div class="crow">
+          <div class="main nb"><span class="cite cite-weak" id="crow-chip"></span><span class="claim" id="crow-claim"></span><span class="why">The source says something close, but not quite what the sentence claims.</span></div>
+          <div class="acts"><button class="link t">See quote ›</button><button class="link t">Show in draft</button><button class="link t">Check again</button></div>
+        </div></div>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="card" id="card" hidden></div>
+
+<script src="16-fixes-data.js"></script>
+<script>
+const M = window.MOCK
+const $ = (s, el = document) => el.querySelector(s)
+const $$ = (s, el = document) => [...el.querySelectorAll(s)]
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const state = { sec: 'cite', theme: 'dark', style: 'chips', marks: 'all', align: 'justify', width: '760', lay: 'today', win: '1440', view: 'folders', fix: 'today', ghosts: true, areas: true }
+
+// ---------- switches ----------
+function press(group, v) { $$('button', group).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v))) }
+$('#sec').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.sec = b.dataset.v; press($('#sec'), state.sec); render() })
+$$('[data-set]').forEach((g) => g.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state[g.dataset.set] = b.dataset.v; press(g, b.dataset.v); render() }))
+$('#ghosts').addEventListener('click', (e) => { state.ghosts = !state.ghosts; e.currentTarget.setAttribute('aria-pressed', String(state.ghosts)); renderLib() })
+$('#areas').addEventListener('click', (e) => { state.areas = !state.areas; e.currentTarget.setAttribute('aria-pressed', String(state.areas)); renderBtn() })
+
+function render() {
+  document.documentElement.dataset.theme = state.theme
+  $$('[data-for]').forEach((el) => (el.hidden = el.dataset.for !== state.sec))
+  $('#s-cite').hidden = state.sec !== 'cite'; $('#s-lib').hidden = state.sec !== 'lib'; $('#s-btn').hidden = state.sec !== 'btn'
+  if (state.sec === 'cite') renderCite()
+  if (state.sec === 'lib') renderLib()
+  if (state.sec === 'btn') renderBtn()
+}
+
+// ---------- 1. citations ----------
+const WORD = { verified: 'Supported', weak: 'Partly supported', unsupported: 'Not supported', pending: 'Checking…', retracted: 'Cites a retracted paper', matrix: 'Supported, from your review matrix' }
+const SYM = { verified: '✓', weak: '◐', unsupported: '✕', pending: '…', retracted: '⚠', matrix: '✓' }
+const SHORTWORD = { weak: 'partly', unsupported: 'not supported', retracted: 'retracted' }
+const sourceOf = (label) => label.replace(/,\s*p\.\s*[\w–-]+$/, '')
+let numbers = new Map()
+function cite(r, i) {
+  const s = r.s, flagged = s === 'weak' || s === 'unsupported' || s === 'retracted'
+  const data = `data-i="${i}"`
+  if (state.style === 'chips') {
+    const cls = s === 'matrix' ? 'cite cite-verified cite-matrix' : `cite cite-${s}`
+    return `<span class="${cls}" ${data}>${esc(r.c)}</span>`
+  }
+  const showMark = state.marks === 'all' || flagged
+  const mark = showMark ? `<span class="qm s-${s}" aria-hidden="true">${SYM[s]}${flagged ? `<span class="w">${SHORTWORD[s]}</span>` : ''}</span>` : ''
+  if (state.style === 'num') {
+    const src = sourceOf(r.c)
+    if (!numbers.has(src)) numbers.set(src, numbers.size + 1)
+    const sym = showMark && s !== 'verified' && s !== 'matrix' ? SYM[s] : ''
+    return `<sup class="qn s-${s}" ${data}>${numbers.get(src)}${sym}</sup>`
+  }
+  const label = state.style === 'short' ? sourceOf(r.c) : r.c
+  return `<span class="qc s-${s}${flagged ? ' flag' : ''}" ${data}>(${esc(label)})${mark}</span>`
+}
+let runs = []
+function renderCite() {
+  document.documentElement.style.setProperty('--page-w', state.width + 'px')
+  const sheet = $('#sheet')
+  sheet.dataset.align = state.align
+  numbers = new Map(); runs = []
+  let html = ''
+  for (const p of M.paras) {
+    html += '<p>' + p.runs.map((r) => {
+      if (r.t !== undefined) return esc(r.t)
+      runs.push(r)
+      return cite(r, runs.length - 1)
+    }).join('') + '</p>'
+  }
+  sheet.innerHTML = html
+  // The legend: every state a citation can be in, drawn in this style
+  const demo = [
+    { c: 'Chen & Martinez 2021, p. 342', s: 'verified' }, { c: 'Caferra 2022, p. 6', s: 'weak' },
+    { c: 'Otinga et al. 2024, p. 18', s: 'unsupported' }, { c: 'Tang et al. 2025, p. 27', s: 'pending' },
+    { c: 'Kumari & Devi 2022, p. 4', s: 'matrix' }, { c: 'Arias-Oliva et al. 2019, p. 1', s: 'retracted' },
+  ]
+  const keep = numbers
+  numbers = new Map()
+  $('#legend').innerHTML = demo.map((d, k) => `<span class="item"><span class="in-page">${cite(d, 'L' + k)}</span>${WORD[d.s]}</span>`).join('')
+  numbers = keep
+  $('#gaps').innerHTML = gapReport(sheet)
+}
+/* Wide gaps: on each line, the space between neighbouring words (a chip counts as one word), against
+   an ordinary space. A line with a gap over 2.5 spaces is a "river" line. */
+function gapReport(root) {
+  const boxes = []
+  const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  for (let n; (n = tw.nextNode()); ) {
+    if (n.parentElement.closest('.cite')) continue
+    const re = /\S+/g
+    for (let m; (m = re.exec(n.data)); ) {
+      const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length)
+      for (const b of r.getClientRects()) boxes.push(b)
+    }
+  }
+  $$('.cite', root).forEach((c) => boxes.push(c.getBoundingClientRect()))
+  boxes.sort((a, b) => a.top + a.height / 2 - (b.top + b.height / 2) || a.left - b.left)
+  const lines = []
+  for (const b of boxes) {
+    const cy = b.top + b.height / 2, last = lines[lines.length - 1]
+    if (last && Math.abs(cy - last.cy) < 11) last.boxes.push(b); else lines.push({ cy, boxes: [b] })
+  }
+  const space = parseFloat(getComputedStyle(root).fontSize) * 0.25
+  let wide = 0, widest = 0
+  for (const l of lines) {
+    l.boxes.sort((a, b) => a.left - b.left)
+    let max = 0
+    for (let k = 1; k < l.boxes.length; k++) max = Math.max(max, l.boxes[k].left - l.boxes[k - 1].right)
+    widest = Math.max(widest, max)
+    if (max > space * 2.5) wide++
+  }
+  return `Lines with a wide gap: <b>${wide}</b> of ${lines.length} · widest ${Math.round(widest / space * 10) / 10} spaces`
+}
+// The card on hover
+document.addEventListener('mouseover', (e) => {
+  const el = e.target.closest('[data-i]'), card = $('#card')
+  if (!el || !String(el.dataset.i).match(/^\d+$/)) { card.hidden = true; return }
+  const r = runs[+el.dataset.i]
+  card.className = `card s-${r.s}`
+  card.innerHTML = `<b>${SYM[r.s]} ${WORD[r.s]} · ${esc(r.c)}</b><blockquote>“${esc(r.q)}”</blockquote><small>Click to see it on page ${r.p}</small>`
+  const b = el.getBoundingClientRect()
+  card.hidden = false
+  card.style.left = Math.min(window.innerWidth - 356, Math.max(8, b.left)) + 'px'
+  card.style.top = (b.bottom + 8 + card.offsetHeight > window.innerHeight ? b.top - card.offsetHeight - 8 : b.bottom + 8) + 'px'
+})
+
+// ---------- 2. Library toolbar ----------
+const FOLDER = '<svg viewBox="0 0 54 44" aria-hidden="true"><path d="M3 8a4 4 0 0 1 4-4h13l5 5h22a4 4 0 0 1 4 4v24a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z" fill="#5a7a9a"/><path d="M3 15h48v22a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z" fill="#6f8fb0"/></svg>'
+const ICON_GRID = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z"/></svg>'
+const ICON_ROWS = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>'
+const ICON_PANEL = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></svg>'
+let lastSpots = null
+function libHead() {
+  const v = state.view, lay = state.lay
+  const title = `<div class="lib-title" data-k="title"><h2>Library</h2><span class="muted">${M.total} sources · ${M.topics} topics</span></div>`
+  const sort = `<button class="sortbtn" data-k="Order">Largest first <span>▾</span></button>`
+  const size = v === 'folders' || lay === 'keep' ? `<label class="size${v !== 'folders' ? ' keep-room' : ''}" data-k="Size"><i class="s"></i><input type="range" value="60" aria-label="Size"${v !== 'folders' ? ' disabled' : ''}><i class="b"></i></label>` : ''
+  const seg = `<div class="segicons" data-k="Folders | Rows"><button data-view="folders" aria-pressed="${v === 'folders'}" title="Folders">${ICON_GRID}</button><button data-view="rows" aria-pressed="${v === 'rows'}" title="Rows">${ICON_ROWS}</button></div>`
+  const add = `<button class="addbtn" data-k="Add sources">+ Add sources</button>`
+  const panel = `<button class="iconbtn" data-k="Panel" title="Hide the folder panel">${ICON_PANEL}</button>`
+  const more = `<button class="iconbtn more" data-k="⋯" title="More library actions">⋯</button>`
+  if (lay === 'rows2') return `<div class="line">${title}<span class="spacer"></span>${add}${more}</div><div class="line tools">${sort}${size}<span class="spacer"></span>${seg}${panel}</div>`
+  return `${title}<span class="spacer"></span>${sort}${size}${seg}${add}${panel}${more}`
+}
+function libBody() {
+  if (state.view === 'folders') return `<div class="tiles">${M.folders.map((f) => `<div class="tile">${FOLDER}<b>${esc(f.name)}</b><small>${f.n} papers${f.cited ? `<span class="c">· ${f.cited} cited</span>` : ''}</small></div>`).join('')}</div>`
+  return `<table class="rows"><thead><tr><th>Name</th><th>What's in it</th><th>Papers</th><th>Years</th></tr></thead><tbody>${M.folders.map((f) => `<tr><td class="n">${esc(f.name)}${f.cited ? `<span class="c">${f.cited} cited</span>` : ''}</td><td>Last added: ${esc(f.last)}</td><td>${f.n} papers</td><td>${f.years}</td></tr>`).join('')}</tbody></table>`
+}
+function spots(frame) {
+  const fr = frame.getBoundingClientRect(), s = fr.width / frame.offsetWidth
+  const out = {}
+  $$('[data-k]', $('.lib-head', frame)).forEach((el) => { const r = el.getBoundingClientRect(); out[el.dataset.k] = { x: (r.left - fr.left) / s, y: (r.top - fr.top) / s, w: r.width / s, h: r.height / s } })
+  return out
+}
+function renderLib() {
+  const frame = $('#frame'), W = +state.win
+  frame.dataset.lay = state.lay; frame.dataset.view = state.view
+  frame.style.width = W + 'px'
+  frame.innerHTML = `
+    <aside class="f-side"><div class="h">Smart views</div>
+      <div class="it on">All sources <small>${M.total}</small></div><div class="it">Recently added <small>15</small></div><div class="it">Drafting from <small>${M.total}</small></div>
+      <div class="it">Cited in this draft <small>11</small></div><div class="it">Needs attention <small>12</small></div><div class="it">Unread <small>15</small></div></aside>
+    <div class="f-main"><header class="lib-head">${libHead()}</header><div class="f-body">${libBody()}</div></div>
+    <aside class="f-panel"><div class="h">Your library</div><h3>All sources</h3><p>${M.total} papers · ${M.topics} topics</p><span class="open">Open</span></aside>`
+  const box = $('#fitbox'), scale = Math.min(1, box.parentElement.clientWidth / W)
+  frame.style.transform = `scale(${scale})`
+  box.style.width = W * scale + 'px'; box.style.height = 642 * scale + 'px'
+  // Where each control is now, and where it was in the other view
+  const now = spots(frame)
+  const other = state.view === 'folders' ? 'rows' : 'folders'
+  const prevView = state.view
+  state.view = other; frame.dataset.view = other
+  $('.lib-head', frame).innerHTML = libHead()
+  const then = spots(frame)
+  state.view = prevView; frame.dataset.view = prevView
+  $('.lib-head', frame).innerHTML = libHead()
+  const head = $('.lib-head', frame), hr = head.getBoundingClientRect(), fr = frame.getBoundingClientRect(), s = fr.width / frame.offsetWidth
+  const ox = (hr.left - fr.left) / s, oy = (hr.top - fr.top) / s
+  let moved = 0, most = 0
+  for (const [k, p] of Object.entries(then)) {
+    const q = now[k]
+    if (!q || k === 'Size') continue
+    const d = Math.hypot(q.x - p.x, q.y - p.y)
+    if (d > 2) { moved++; most = Math.max(most, d) }
+    if (state.ghosts && d > 2) head.insertAdjacentHTML('beforeend', `<div class="ghost" title="${esc(k)}, in ${other === 'rows' ? 'Rows' : 'Folders'}" style="left:${p.x - ox}px;top:${p.y - oy}px;width:${p.w}px;height:${p.h}px"></div>`)
+  }
+  const there = other === 'rows' ? 'Rows' : 'Folders'
+  $('#moved').innerHTML = moved ? `Controls that move when you switch: <b>${moved}</b> · up to ${Math.round(most)} px${state.ghosts ? ` · dashed: where they are in ${there}` : ''}` : 'Controls that move when you switch: <b>none</b>'
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('#frame [data-view]')
+  if (b) { state.view = b.dataset.view; renderLib() }
+})
+window.addEventListener('resize', () => state.sec === 'lib' && renderLib())
+
+// ---------- 3. small buttons ----------
+function renderBtn() {
+  const cards = $('#cards')
+  cards.className = `cards fixmode-${state.fix}`
+  $('.doc-name', cards).textContent = M.draftTitle
+  const weak = M.paras.flatMap((p) => p.runs).find((r) => r.s === 'weak')
+  $('#crow-chip').textContent = weak.c
+  $('#crow-claim').textContent = 'If spindles gate memory reactivation, targeted memory reactivation may be less effective with age.'
+  drawAreas()
+}
+function drawAreas() {
+  $$('.hitbox').forEach((h) => h.remove())
+  // Targets, and the other clickable things beside them (the draft's name, the Check row itself).
+  const targets = $$('#cards .t').filter((e) => e.getClientRects().length)
+  const others = $$('#cards .t, #cards .nb').filter((e) => e.getClientRects().length)
+  let fails = 0
+  const sizes = { vers: [], acts: [] }
+  targets.forEach((el) => {
+    const r = el.getBoundingClientRect()
+    const small = Math.round(r.width) < 24 || Math.round(r.height) < 24
+    // WCAG 2.5.8: a small target passes if a 24 px circle on its centre touches no other target.
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2
+    const crowded = others.some((o) => {
+      if (o === el) return false
+      const b = o.getBoundingClientRect()
+      return Math.max(b.left - cx, 0, cx - b.right) ** 2 + Math.max(b.top - cy, 0, cy - b.bottom) ** 2 < 144
+    })
+    const bad = small && crowded
+    if (bad) fails++
+    const key = el.classList.contains('vers') ? 'vers' : 'acts'
+    sizes[key].push(`${Math.round(r.width)}×${Math.round(r.height)}`)
+    if (!state.areas) return
+    const host = el.closest('.inner'), hr = host.getBoundingClientRect()
+    host.insertAdjacentHTML('beforeend', `<div class="hitbox${bad ? ' bad' : ''}" style="left:${r.left - hr.left}px;top:${r.top - hr.top}px;width:${r.width}px;height:${r.height}px"><span>${Math.round(r.width)}×${Math.round(r.height)}</span></div>`)
+  })
+  $('[data-sz="vers"]').textContent = sizes.vers[0] ?? ''
+  $('[data-sz="acts"]').textContent = sizes.acts.join(', ')
+  $('#fails').innerHTML = `Too small and too close: <b>${fails}</b> of ${targets.length}`
+}
+
+render()
+</script>
+</body></html>

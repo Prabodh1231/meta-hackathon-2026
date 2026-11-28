@@ -3,6 +3,7 @@ import type { IconName } from './Icon'
 import { useEffect, useRef, useState } from 'react'
 import { useFocusTrap } from '../useFocusTrap'
 import { api } from '../api'
+import { arrowKeys, stop } from '../arrowKeys'
 import type { DocxStyle, ModelSettings, SearchSettings, Settings, SourceSettings, ThemePref } from '../types'
 
 const THEMES: { value: ThemePref; label: string }[] = [
@@ -87,9 +88,16 @@ function Choice<T extends string>({ label, value, options, onChange }: {
   onChange: (v: T) => void
 }) {
   return (
-    <div className="segmented" role="radiogroup" aria-label={label}>
-      {options.map((o) => (
-        <button key={o.value} role="radio" aria-checked={value === o.value} className={value === o.value ? 'active' : ''} onClick={() => onChange(o.value)}>
+    <div className="segmented" role="radiogroup" aria-label={label} onKeyDown={arrowKeys}>
+      {options.map((o, i) => (
+        <button
+          key={o.value}
+          role="radio"
+          aria-checked={value === o.value}
+          tabIndex={stop(value === o.value, i, options.some((x) => x.value === value))}
+          className={value === o.value ? 'active' : ''}
+          onClick={() => onChange(o.value)}
+        >
           {o.label}
         </button>
       ))}

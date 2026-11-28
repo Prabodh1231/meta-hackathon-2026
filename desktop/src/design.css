@@ -171,7 +171,7 @@ button.sq-btn:hover:not(:disabled) { background: var(--accent); color: var(--acc
 .xrow-body .src-marks { max-width: none; justify-content: flex-start; }
 
 /* ---------- Passage card: the source's own words, with the matched part marked ---------- */
-.passage-card { padding: 16px 18px; border: 1px solid var(--border); border-left: 3px solid var(--ember); border-radius: var(--r-lg); background: var(--panel); }
+.passage-card { padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); }
 .passage-card q, .passage-card blockquote { display: block; margin: 0; font: var(--fs-xl)/1.55 var(--doc-font); quotes: none; }
 .passage-card footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; font-size: var(--fs-sm); color: var(--muted); }
 .passage-card footer b { display: block; color: var(--text); }

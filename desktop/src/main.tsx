@@ -4,6 +4,7 @@ import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ReaderWindow } from './components/ReaderDialog'
 import { applyTheme, cachedTheme } from './theme'
+import { markFrameless } from './titleBar'
 import './styles.css'
 import './design.css'
 import './libraryFolders.css'
@@ -13,6 +14,8 @@ applyTheme(cachedTheme())
 
 const params = new URLSearchParams(window.location.search)
 const reader = params.get('reader')
+// Before the first frame: the app bar is the window's title bar (titleBar.ts); the reader keeps its frame
+if (!reader) markFrameless()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

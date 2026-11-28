@@ -1,7 +1,45 @@
-const { contextBridge, ipcRenderer, webUtils } = require('electron')
+const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron')
+
+/** Zoom the whole app one step in or out, or back to 100%; the new size in percent. */
+function zoom(step) {
+  const level = webFrame.getZoomLevel()
+  webFrame.setZoomLevel(step === 'reset' ? 0 : Math.max(-3, Math.min(5, level + (step === 'out' ? -0.5 : 0.5))))
+  return Math.round(webFrame.getZoomFactor() * 100)
+}
+
+// Ctrl + / − / 0 zoom the whole app, as the window menu's shortcuts did (main.cjs removes that menu on
+// Windows and Linux; the Mac's menu still does it). Looked at once the key has gone through the page, so
+// a part that zooms itself (the reader's pages) takes it instead by calling preventDefault.
+if (process.platform !== 'darwin') {
+  window.addEventListener('keydown', (e) => {
+    if (!e.ctrlKey || e.altKey || !['=', '+', '-', '_', '0'].includes(e.key)) return
+    setTimeout(() => {
+      if (!e.defaultPrevented) zoom(e.key === '0' ? 'reset' : e.key === '-' || e.key === '_' ? 'out' : 'in')
+    })
+  })
+}
 
 contextBridge.exposeInMainWorld('rc', {
   config: () => ipcRenderer.invoke('rc:config'),
+  // The window's minimise, maximise / restore and close, drawn by the page (WindowButtons.tsx) on Windows
+  // and Linux, where the window has no title bar of its own. The Mac keeps its own buttons.
+  windowControls: process.platform === 'darwin' ? undefined : {
+    minimize: () => ipcRenderer.send('rc:window', 'minimize'),
+    toggleMaximize: () => ipcRenderer.send('rc:window', 'toggle-maximize'),
+    close: () => ipcRenderer.send('rc:window', 'close'),
+    isMaximized: () => ipcRenderer.invoke('rc:window-maximized'),
+    // Told when the window is maximised or restored, however it happened. Returns an unsubscribe.
+    onMaximized: (callback) => {
+      const listener = (_event, maximized) => callback(!!maximized)
+      ipcRenderer.on('rc:window-maximized', listener)
+      return () => ipcRenderer.removeListener('rc:window-maximized', listener)
+    },
+  },
+  // The ☰ menu: zoom the whole app ('in', 'out', 'reset'; resolves to the new percent), and its current size.
+  zoom: (step) => zoom(step),
+  zoomPercent: () => Math.round(webFrame.getZoomFactor() * 100),
+  // The library's data folder (library, backups, logs) in the file explorer.
+  showDataFolder: () => ipcRenderer.invoke('rc:show-data-folder'),
   pickFiles: () => ipcRenderer.invoke('rc:pick-files'),
   pickFolder: () => ipcRenderer.invoke('rc:pick-folder'),
   saveFile: (defaultName, data) => ipcRenderer.invoke('rc:save-file', defaultName, data),

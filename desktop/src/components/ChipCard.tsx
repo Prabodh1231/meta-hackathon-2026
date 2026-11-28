@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Editor } from '@tiptap/core'
-import { CITATION_WORD, isFlagged } from '../editor/citeStatus'
+import { CITATION_SYMBOL, CITATION_WORD, isFlagged } from '../editor/citeStatus'
 import type { ChipAttrs } from './WritingEditor'
 import { RETRACTED_SAYS, type RetractedWhy } from './TrustBadges'
 
@@ -56,11 +56,13 @@ export function ChipCard({ editor, retracted }: { editor: Editor | null; retract
   const why = retracted?.get(a.docId)
   return (
     <div className={`chip-card chip-card-${a.status}${why ? ' chip-card-retracted' : ''}`} style={{ left: card.x, top: card.y }} role="tooltip">
+      {/* The source and the verdict as words, in the verdict's colour (the card is tinted with it too) */}
       <div className="chip-card-head">
-        <span className={`cite cite-${a.status}${a.finding != null ? ' cite-matrix' : ''}${why ? ' cite-retracted' : ''}`} aria-hidden="true">
-          {a.label}
+        <b className="chip-card-label">{a.label}</b>
+        <span className="chip-card-verdict">
+          <span aria-hidden="true">{CITATION_SYMBOL[a.status]} </span>
+          {CITATION_WORD[a.status]}
         </span>
-        <b className="chip-card-verdict">{CITATION_WORD[a.status]}</b>
       </div>
       {why && <p className="chip-card-retraction">This source has been retracted. {RETRACTED_SAYS[why]}</p>}
       {a.quote ? (

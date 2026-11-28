@@ -14,6 +14,15 @@ export const CITATION_WORD: Record<CitationStatus, string> = {
   quote_not_found: 'Not supported',
 }
 
+/** The symbol beside the word, so a verdict reads without its colour. */
+export const CITATION_SYMBOL: Record<CitationStatus, string> = {
+  pending: '…',
+  verified: '✓',
+  weak: '◐',
+  unsupported: '✕',
+  quote_not_found: '✕',
+}
+
 /** A cite marker is a citation still being found, in the same words plus the two only it has. */
 export const MARK_WORD: Record<CiteMarkState, string> = {
   searching: 'Finding a source…',
@@ -34,6 +43,10 @@ export const CITATION_RANK: Record<CitationStatus, number> = {
 }
 
 export const isFlagged = (s: CitationStatus) => s !== 'verified' && s !== 'pending'
+
+/** A citation's source without its place in it: "Chen & Martinez 2021, p. 342" is "Chen & Martinez
+ * 2021". The draft shows this short form (the page is on the card), and Sources names a source by it. */
+export const sourceLabel = (label: string) => label.replace(/,\s*(?:PDF\s+)?(?:pp?\.|page|slide|para\.?)\s*\S+$/i, '')
 
 /** The draft's citations counted one way everywhere (status bar, Check's badge and summary).
  * Needs attention: chips that aren't fully supported or cite a retracted paper, and every marker

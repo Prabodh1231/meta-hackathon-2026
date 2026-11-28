@@ -1,4 +1,5 @@
-import { CITATION_WORD } from '../editor/citeStatus'
+import { arrowKeys } from '../arrowKeys'
+import { CITATION_WORD, sourceLabel } from '../editor/citeStatus'
 import type { CiteMarkAttrs } from '../editor/citeMark'
 import type { Doc, DocxStyle } from '../types'
 import { ReferencesPanel } from './ReferencesPanel'
@@ -20,9 +21,6 @@ interface Props {
   onOpenMark: (cid: string) => void
   onError: (msg: string) => void
 }
-
-/** "Chen & Martinez 2021, p. 342" → "Chen & Martinez 2021" */
-const sourceLabel = (label: string) => label.replace(/,\s*(pp?\.|page|slide|para\.?)\s*\S+$/i, '')
 
 /** “2 supported · 1 partly supported”, in the same words as the citation chips. */
 function statusCounts(cs: ChipAttrs[]): string {
@@ -62,15 +60,16 @@ export function SourcesPanel({ view, onView: setView, chips, marks, docs, style,
 
   return (
     <div className="sources-panel">
-      <div className="seg-tabs" role="tablist" aria-label="Sources view">
-        <button role="tab" aria-selected={view === 'cited'} className={view === 'cited' ? 'on' : ''} onClick={() => setView('cited')}>
+      <div className="seg-tabs" role="tablist" aria-label="Sources view" onKeyDown={arrowKeys}>
+        <button role="tab" id="sources-tab-cited" aria-controls="sources-view" tabIndex={view === 'cited' ? 0 : -1} aria-selected={view === 'cited'} className={view === 'cited' ? 'on' : ''} onClick={() => setView('cited')}>
           Cited sources · {groups.size}
         </button>
-        <button role="tab" aria-selected={view === 'refs'} className={view === 'refs' ? 'on' : ''} onClick={() => setView('refs')}>
+        <button role="tab" id="sources-tab-refs" aria-controls="sources-view" tabIndex={view === 'refs' ? 0 : -1} aria-selected={view === 'refs'} className={view === 'refs' ? 'on' : ''} onClick={() => setView('refs')}>
           Reference list
         </button>
       </div>
 
+      <div id="sources-view" role="tabpanel" aria-labelledby={`sources-tab-${view}`}>
       {view === 'refs' ? (
         <ReferencesPanel style={style} citedDocIds={citedDocIds} docs={docs} onError={onError} />
       ) : groups.size + unsourced.length === 0 ? (
@@ -143,6 +142,7 @@ export function SourcesPanel({ view, onView: setView, chips, marks, docs, style,
           )}
         </>
       )}
+      </div>
     </div>
   )
 }

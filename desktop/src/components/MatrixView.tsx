@@ -13,6 +13,7 @@ import { StatusBadge } from './StatusBadge'
 import { WaitStatus } from './WaitStatus'
 import { notifyDone, timeLeft } from '../notify'
 import { useConfirm } from './ConfirmDialog'
+import { arrowKeys } from '../arrowKeys'
 
 const LAST_KEY = 'gw.matrix.last' // the matrix open last time: Matrix opens on it
 
@@ -180,7 +181,7 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
 
       <section className="mx-step">
         <h3>1. Papers</h3>
-        <div className="segmented" role="radiogroup" aria-label="Papers from">
+        <div className="segmented" role="radiogroup" aria-label="Papers from" onKeyDown={arrowKeys}>
           {(
             [
               ['topic', 'About a subject'],
@@ -188,7 +189,7 @@ function NewMatrix({ folders, docs, selected, onCreated, onCancel, onError }: {
               ['ticked', `Drafting from (${selected.size})`],
             ] as const
           ).map(([v, label]) => (
-            <button key={v} role="radio" aria-checked={source === v} className={source === v ? 'active' : ''} onClick={() => (setSource(v), setPapers(null))}>
+            <button key={v} role="radio" aria-checked={source === v} tabIndex={source === v ? 0 : -1} className={source === v ? 'active' : ''} onClick={() => (setSource(v), setPapers(null))}>
               {label}
             </button>
           ))}

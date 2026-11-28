@@ -2040,133 +2040,142 @@ export const LibraryPanel = memo(function LibraryPanel({
           sideSlot,
         )}
       <header className="lib-head">
-        {opened === null ? (
-          <div className="lib-title">
-            <h2>Library</h2>
-            <span className="muted">
-              {docs.length} source{docs.length === 1 ? '' : 's'}
-              {folders.length > 0 && ` · ${plural(folders.length, 'topic')}`}
-            </span>
-          </div>
-        ) : (
-          <div className="lib-trail">
-            <button className="lib-up" onClick={goBack} title="Back to the folders (Backspace)" aria-label="Back to the folders">
-              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </button>
-            <nav className="lib-crumbs" aria-label="Where you are">
-              <button className="lib-crumb" onClick={goBack}>Library</button>
-              <span className="lib-crumb-sep" aria-hidden="true">›</span>
-              <h2 className="lib-crumb-here" title={openedName}>{openedName}</h2>
-            </nav>
-            <span className="muted lib-trail-count">
-              {openedItem ? (openedItem.countText ?? plural(openedItem.count, openedItem.view === 'removed' ? 'removed source' : 'paper')) : ''}
-              {(citedBy.get(opened) ?? 0) > 0 && openedItem?.view !== 'cited' && ` · ${citedBy.get(opened)} cited in this draft`}
-            </span>
-          </div>
-        )}
-        {busy && (
-          <div className="lib-busy" role="status">
-            <span className="bar" />
-            {busy}
-          </div>
-        )}
-        <span className="spacer" />
-        {atFront && (
-          <FrontTools layout={frontLayout} size={size} sort={frontSort} onLayout={setFrontLayout} onSize={setSize} onSort={setFrontSort} />
-        )}
-        {opened !== null && !showingRemoved && docs.length > 0 && (
-          <>
-            {paperLayout === 'covers' && <SizeSlider size={size} onSize={setSize} />}
-            {/* The same icon pair as the front page's folders / rows, in the same order */}
-            <div className="seg seg-icons" role="group" aria-label="Show the papers as">
-              <button aria-pressed={paperLayout === 'covers'} onClick={() => setPaperLayout('covers')} title="Covers: each paper's first page" aria-label="Covers">
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z" />
-                </svg>
-              </button>
-              <button aria-pressed={paperLayout === 'rows'} onClick={() => setPaperLayout('rows')} title="Rows" aria-label="Rows">
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-                  <path d="M5 7h14M5 12h14M5 17h14" />
-                </svg>
-              </button>
+        {/* Two rows: what you do (Add sources, More) on top, how the topics or papers are shown on a
+            quiet row below. The size slider, which only one view has, sits at the left of that row, so
+            switching views moves nothing else (it used to wrap the whole header onto a second line). */}
+        <div className="lib-head-line">
+          {opened === null ? (
+            <div className="lib-title">
+              <h2>Library</h2>
+              <span className="muted">
+                {docs.length} source{docs.length === 1 ? '' : 's'}
+                {folders.length > 0 && ` · ${plural(folders.length, 'topic')}`}
+              </span>
             </div>
-          </>
-        )}
-        <AddSources
-          disabled={!!busy}
-          onFiles={addFiles}
-          onFolder={addDiskFolder}
-          onLink={addLink}
-          onAdded={async (id) => {
-            await onChanged()
-            showDoc(id)
-          }}
-          onShow={showDoc}
-        />
-        {atFront && (
-          <button
-            className={`ghost lib-icon-btn lib-sum-toggle${summaryOpen ? ' on' : ''}`}
-            onClick={() => setSummaryOpen(!summaryOpen)}
-            aria-pressed={summaryOpen}
-            aria-label={summaryOpen ? 'Hide the folder panel' : 'Show the folder panel'}
-            title={summaryOpen ? 'Hide the panel that sums up the selected folder' : 'Show the panel that sums up the selected folder'}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
-              <path d="M4 5h16v14H4zM14 5v14" />
-            </svg>
-          </button>
-        )}
-        {docs.length > 0 && (
-          <div className="lib-more" ref={moreRef}>
-            <button className="ghost lib-icon-btn" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More library actions" title="More" onClick={() => setMoreOpen((o) => !o)}>
-              ⋯
-            </button>
-            {moreOpen && (
-              <div className="lib-menu" role="menu">
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setMoreOpen(false)
-                    onFindDuplicates()
-                  }}
-                  disabled={docs.length < 2}
-                >
-                  <b>Find duplicate files</b>
-                  <span>Copies of the same paper, with what you could free up</span>
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setMoreOpen(false)
-                    onFindMissing()
-                  }}
-                >
-                  <b>Most-cited papers you don't have</b>
-                  <span>What your papers on a subject cite most, with free copies to download</span>
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setMoreOpen(false)
-                    run('Re-filing papers…', api.classifyFolders)
-                  }}
-                  disabled={!!busy || folders.length === 0}
-                >
-                  <b>Re-file papers into topics</b>
-                  <span>{folders.length ? 'Score every paper against your topics again. Your own changes are kept.' : 'Make a topic first'}</span>
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setMoreOpen(false)
-                    lookUp(notLookedUp === 0)
-                  }}
-                  disabled={!!busy}
-                >
-                  <b>{notLookedUp ? `Look up ${notLookedUp} paper${notLookedUp === 1 ? '' : 's'} in scholarly indexes` : 'Refresh details from scholarly indexes'}</b>
-                  <span>Journal, volume, issue and pages, abstracts, reference lists and citation counts from OpenAlex and Crossref</span>
-                </button>
-              </div>
+          ) : (
+            <div className="lib-trail">
+              <button className="lib-up" onClick={goBack} title="Back to the folders (Backspace)" aria-label="Back to the folders">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
+              <nav className="lib-crumbs" aria-label="Where you are">
+                <button className="lib-crumb" onClick={goBack}>Library</button>
+                <span className="lib-crumb-sep" aria-hidden="true">›</span>
+                <h2 className="lib-crumb-here" title={openedName}>{openedName}</h2>
+              </nav>
+              <span className="muted lib-trail-count">
+                {openedItem ? (openedItem.countText ?? plural(openedItem.count, openedItem.view === 'removed' ? 'removed source' : 'paper')) : ''}
+                {(citedBy.get(opened) ?? 0) > 0 && openedItem?.view !== 'cited' && ` · ${citedBy.get(opened)} cited in this draft`}
+              </span>
+            </div>
+          )}
+          {busy && (
+            <div className="lib-busy" role="status">
+              <span className="bar" />
+              {busy}
+            </div>
+          )}
+          <span className="spacer" />
+          <AddSources
+            disabled={!!busy}
+            onFiles={addFiles}
+            onFolder={addDiskFolder}
+            onLink={addLink}
+            onAdded={async (id) => {
+              await onChanged()
+              showDoc(id)
+            }}
+            onShow={showDoc}
+          />
+          {docs.length > 0 && (
+            <div className="lib-more" ref={moreRef}>
+              <button className="ghost lib-icon-btn" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More library actions" title="More" onClick={() => setMoreOpen((o) => !o)}>
+                ⋯
+              </button>
+              {moreOpen && (
+                <div className="lib-menu" role="menu">
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false)
+                      onFindDuplicates()
+                    }}
+                    disabled={docs.length < 2}
+                  >
+                    <b>Find duplicate files</b>
+                    <span>Copies of the same paper, with what you could free up</span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false)
+                      onFindMissing()
+                    }}
+                  >
+                    <b>Most-cited papers you don't have</b>
+                    <span>What your papers on a subject cite most, with free copies to download</span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false)
+                      run('Re-filing papers…', api.classifyFolders)
+                    }}
+                    disabled={!!busy || folders.length === 0}
+                  >
+                    <b>Re-file papers into topics</b>
+                    <span>{folders.length ? 'Score every paper against your topics again. Your own changes are kept.' : 'Make a topic first'}</span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false)
+                      lookUp(notLookedUp === 0)
+                    }}
+                    disabled={!!busy}
+                  >
+                    <b>{notLookedUp ? `Look up ${notLookedUp} paper${notLookedUp === 1 ? '' : 's'} in scholarly indexes` : 'Refresh details from scholarly indexes'}</b>
+                    <span>Journal, volume, issue and pages, abstracts, reference lists and citation counts from OpenAlex and Crossref</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {(atFront || (opened !== null && !showingRemoved && docs.length > 0)) && (
+          <div className="lib-head-line lib-head-tools">
+            {atFront ? (
+              <FrontTools layout={frontLayout} size={size} sort={frontSort} onLayout={setFrontLayout} onSize={setSize} onSort={setFrontSort} />
+            ) : (
+              <>
+                {paperLayout === 'covers' && <SizeSlider size={size} onSize={setSize} />}
+                <span className="spacer" />
+                {/* The same icon pair as the front page's folders / rows, in the same order */}
+                <div className="seg seg-icons" role="group" aria-label="Show the papers as">
+                  <button aria-pressed={paperLayout === 'covers'} onClick={() => setPaperLayout('covers')} title="Covers: each paper's first page" aria-label="Covers">
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z" />
+                    </svg>
+                  </button>
+                  <button aria-pressed={paperLayout === 'rows'} onClick={() => setPaperLayout('rows')} title="Rows" aria-label="Rows">
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                      <path d="M5 7h14M5 12h14M5 17h14" />
+                    </svg>
+                  </button>
+                </div>
+              </>
+            )}
+            {atFront && (
+              <button
+                className={`ghost lib-icon-btn lib-sum-toggle${summaryOpen ? ' on' : ''}`}
+                onClick={() => setSummaryOpen(!summaryOpen)}
+                aria-pressed={summaryOpen}
+                aria-label={summaryOpen ? 'Hide the folder panel' : 'Show the folder panel'}
+                title={summaryOpen ? 'Hide the panel that sums up the selected folder' : 'Show the panel that sums up the selected folder'}
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4 5h16v14H4zM14 5v14" />
+                </svg>
+              </button>
             )}
           </div>
         )}

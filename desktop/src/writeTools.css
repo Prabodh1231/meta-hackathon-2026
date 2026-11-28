@@ -32,12 +32,15 @@
 @media (max-width: 760px) { .editor-wrap { padding: 10px 10px 80px 8px; } }
 
 /* ---------- the toolbar ---------- */
+/* A card down the writing area's left, its full height less a gap above, below and at the window's edge (Nov
+   28; flush strip tried and dropped): the tools from the top, Cite and Ask at the foot. As many tools as fit
+   are on it; the rest go under ⋮ (FormatToolbar decides). */
 .vbar {
-  display: flex; flex-direction: column; align-self: start; width: 46px; max-height: calc(100% - 28px); margin: 14px 0 0 12px; z-index: 6;
+  display: flex; flex-direction: column; align-self: stretch; width: 46px; min-height: 0; margin: 14px 0 14px 12px; z-index: 6;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow);
 }
-@media (max-width: 760px) { .vbar { margin: 10px 0 0 6px; } }
-.vbar-scroll { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+@media (max-width: 760px) { .vbar { margin: 10px 0 10px 6px; } }
+.vbar-scroll { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 .vbar-scroll::-webkit-scrollbar { display: none; }
 .vbar-scroll.more { mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
 .vbar-foot { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 0 6px; border-top: 1px solid var(--line); }
@@ -66,11 +69,6 @@
 .vbar .app-act { height: 42px; grid-template-rows: auto auto; align-content: center; gap: 2px; color: var(--accent); }
 .vbar .app-act small { font: 600 10px/1 system-ui, "Segoe UI", sans-serif; }
 .vbar .app-act:hover:not(:disabled) { background: var(--tool-pick); }
-/* Two columns when one doesn't fit the window's height (FormatToolbar decides) */
-.vbar.two { width: 82px; }
-.vbar.two .vbar-scroll { display: grid; grid-template-columns: repeat(2, 34px); justify-content: center; align-content: start; gap: 1px 4px; }
-.vbar.two .vbar-sep { grid-column: 1 / -1; width: auto; margin: 4px 8px; }
-.vbar.two .vbar-foot { flex-direction: row; justify-content: center; gap: 4px; }
 
 /* Name and shortcut, to the right of the button */
 .vbar-tip {

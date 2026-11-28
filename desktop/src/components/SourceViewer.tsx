@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from '../api'
+import { arrowKeys } from '../arrowKeys'
 import { type Box, pdfDocument, placeQuote } from '../pdf'
 import type { CitationStatus, Doc, PageText } from '../types'
 import { StatusBadge } from './StatusBadge'
@@ -209,11 +210,11 @@ export function SourceViewer({ target, doc, onOpenPdf }: {
           <button disabled={page >= doc.page_count} onClick={() => setPage(page + 1)} aria-label="Next page">›</button>
           <span className="spacer" />
           {isPdf && (
-            <div className="segmented small view-switch" role="radiogroup" aria-label="Show">
-              <button role="radio" aria-checked={view === 'page'} className={view === 'page' ? 'active' : ''} onClick={() => pick('page')} title="The page as printed">
+            <div className="segmented small view-switch" role="radiogroup" aria-label="Show" onKeyDown={arrowKeys}>
+              <button role="radio" aria-checked={view === 'page'} tabIndex={view === 'page' ? 0 : -1} className={view === 'page' ? 'active' : ''} onClick={() => pick('page')} title="The page as printed">
                 Page
               </button>
-              <button role="radio" aria-checked={view === 'text'} className={view === 'text' ? 'active' : ''} onClick={() => pick('text')} title="The text read from the page">
+              <button role="radio" aria-checked={view === 'text'} tabIndex={view === 'text' ? 0 : -1} className={view === 'text' ? 'active' : ''} onClick={() => pick('text')} title="The text read from the page">
                 Text
               </button>
             </div>

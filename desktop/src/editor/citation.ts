@@ -1,9 +1,15 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import type { CitationStatus } from '../types'
-import { CITATION_WORD } from './citeStatus'
+import { CITATION_WORD, sourceLabel } from './citeStatus'
 
-/** Inline, non-editable citation chip. All the data needed to open and re-verify the
- * source lives in its attributes, so drafts saved as JSON keep working citations. */
+/** Inline, non-editable citation. All the data needed to open and re-verify the source lives in
+ * its attributes, so drafts saved as JSON keep working citations.
+ *
+ * On the page it reads as a printed paper's citation, "(Chen & Martinez 2021)", in the page's own
+ * font: plain text, so a line can break inside it and justified text keeps even spaces (a pill that
+ * couldn't break spread the words around it). Supported ones stay quiet; one that needs the writer is
+ * marked (styles.css .cite-text). The full label, page included, is in its aria-label and on the card
+ * that pointing at it shows. Word and PDF export are made from the saved attributes, not from this. */
 export const CitationNode = Node.create({
   name: 'citation',
   group: 'inline',
@@ -41,11 +47,13 @@ export const CitationNode = Node.create({
       mergeAttributes(HTMLAttributes, {
         'data-citation': '',
         'data-cid': cid ?? '',
-        class: `cite cite-${status}${finding ? ' cite-matrix' : ''}`,
+        class: `cite-text ct-${status}${finding ? ' ct-matrix' : ''}`,
         role: 'button',
         'aria-label': `${label}, ${CITATION_WORD[status as CitationStatus] ?? status}${finding ? ', from your review matrix' : ''}`,
       }),
-      label,
+      ['span', { class: 'ct-label' }, `(${sourceLabel(label)})`],
+      // Filled in by CSS for a citation that needs the writer ("◐ partly"), kept with the bracket before it
+      ['span', { class: 'ct-mark', 'aria-hidden': 'true' }],
     ]
   },
 })

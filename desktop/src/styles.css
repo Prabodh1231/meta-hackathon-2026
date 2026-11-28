@@ -152,7 +152,7 @@ textarea { width: 100%; resize: vertical; }
 .empty { color: var(--muted); padding: 12px; }
 .row { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 6px 0; }
 
-/* Rows: the notice bar (empty most of the time), the app bar, the place, the status bar */
+/* Rows: the app bar, the notice bar (empty most of the time), the place, the status bar */
 .app { display: grid; grid-template-rows: auto auto 1fr auto; height: 100%; }
 /* The rail picks the place (Write, Library, Network); each fills the rest of the window */
 .workspace { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 0; }
@@ -173,30 +173,82 @@ textarea { width: 100%; resize: vertical; }
 .panel-head h2 { font-size: var(--fs-lg); margin: 0; }
 
 
-/* App bar: the document's name and save state, search, export */
-/* The draft's name takes the free space; the search box sits right, beside Export. Centring the search
-   box left the name about 150 px at 1100 px wide ("Macro-Financial Co…"). */
+/* App bar: one compact row (Nov 28: 44 px, was 62) in three columns, the search box in the middle of the
+   window: on its left ☰ and the rest, then the draft's name (taking what's left of that side); on its right
+   Export, focus and, on Windows and Linux, the window's own buttons. The two sides are equal, so the middle
+   is the window's middle. Whether the draft is saved and its version are in the status bar; Settings at
+   the sidebar's foot. */
 .app-bar {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 460px) auto; align-items: center; gap: 16px;
-  padding: 8px 14px 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
-  position: relative; z-index: 50; /* the drafts menu opens over the page */
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px;
+  min-height: 44px; padding: 4px 8px; background: var(--panel); color: var(--text); border-bottom: 1px solid var(--border);
+  position: relative; z-index: 50; /* its menus open over the page */
 }
+.bar-start { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.app-bar > .search-pill { width: clamp(220px, 34vw, 440px); }
+/* Windows and Linux: the window has no title bar of its own (main.cjs), so the app bar is what moves it;
+   its buttons, fields and menus stay clickable. A backdrop laid over it (a dialog's, the palette's) must
+   not move the window either. */
+.frameless .app-bar { -webkit-app-region: drag; }
+.frameless .app-bar :is(button, input, select, textarea, a, label, kbd, [role="menu"], [role="dialog"], [role="listbox"], .search-pill) { -webkit-app-region: no-drag; }
+.frameless :is(.modal-backdrop, .palette-backdrop, .drop-overlay, [aria-modal="true"]) { -webkit-app-region: no-drag; }
+/* The window's minimise, maximise and close (WindowButtons.tsx), the bar's full height at its right end,
+   as Windows draws them: a hover in the text colour that shows in either theme, close in red */
+.win-buttons { display: flex; align-self: stretch; margin: -4px -8px -4px 6px; -webkit-app-region: no-drag; }
+.win-btn {
+  display: grid; place-items: center; width: 46px; padding: 0; border: none; border-radius: 0;
+  background: none; color: var(--text); transition: background-color 0.1s;
+}
+.win-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; shape-rendering: crispEdges; }
+.win-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 16%, transparent); }
+.win-btn:active { background: color-mix(in srgb, var(--text) 24%, transparent); }
+.win-close:hover:not(:disabled) { background: #c42b1c; color: #fff; }
+.win-close:active { background: #b22a1a; color: #fff; }
+.win-close svg { shape-rendering: geometricPrecision; }
+/* Its left end, as in Claude desktop: ☰, the sidebar, back and forward */
+.bar-nav { display: flex; align-items: center; gap: 2px; }
+.bar-nav-btn { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: none; border-radius: var(--r-md); background: none; color: var(--muted); }
+.bar-nav-btn:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.bar-nav-btn[aria-expanded="true"] { color: var(--text); background: var(--hover); }
+.bar-nav-btn:disabled { opacity: 0.35; cursor: default; }
+/* ☰: the app's menu */
+.app-menu-box { position: relative; }
+.app-menu {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 70; width: 270px; padding: 5px; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); font-size: var(--fs-md);
+}
+.app-menu [role="separator"] { height: 1px; margin: 5px 6px; background: var(--line); }
+.app-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; border: none; border-radius: var(--r-md); background: none; color: var(--text); text-align: left; }
+.app-menu-item:hover:not(:disabled), .app-menu-item:focus-visible { background: var(--hover); }
+.app-menu kbd { font: 600 var(--fs-xs) Consolas, monospace; color: var(--muted); }
+.app-menu-zoom { display: flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; }
+.app-menu-zoom > span { flex: 1; color: var(--text); }
+.app-menu-zoom button { min-width: 30px; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-variant-numeric: tabular-nums; }
+.app-menu-zoom button:hover:not(:disabled) { background: var(--hover); }
+.app-menu-zoom .app-menu-pct { min-width: 54px; }
+.app-menu-foot { margin: 4px 0 2px; padding: 6px 10px 2px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--fs-xs); }
 .doc-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.logo { flex: none; display: block; width: 32px; height: 32px; }
-.doc-id-text { flex: 1; min-width: 0; }
 .doc-name { font: 600 var(--fs-lg)/1.25 var(--doc-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Cut with an ellipsis when the bar is narrow: left to overflow, "5% changed since v9" ran under the Drafts button */
 .save-state { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.save-state .link { font-size: var(--fs-xs); font-weight: 600; }
+/* In the status bar: Saved, the version (a 24 px pill, a big enough target for WCAG 2.2's 2.5.8), what changed */
+.dock-save { position: relative; flex: none; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.dock-save .versions-btn {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-pill);
+  background: var(--panel); color: var(--accent); font-size: var(--fs-sm); font-weight: 600;
+}
+.dock-save .versions-btn:hover:not(:disabled) { background: var(--hover); }
+.save-change { color: var(--muted); }
+@media (max-width: 1100px) { .save-change { display: none; } }
+/* Versions opens upwards from the status bar */
+.dock .versions-menu { top: auto; bottom: calc(100% + 10px); left: 0; }
 .save-saving { color: var(--warn); }
 .save-error { color: var(--bad); font-weight: 600; }
 .search-pill {
-  display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px 7px 14px; border-radius: var(--r-pill);
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 10px 5px 14px; border-radius: var(--r-pill);
   color: var(--muted); font-size: var(--fs-md); background: var(--bg); border-color: var(--border);
 }
 .search-pill span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-pill kbd { font: 600 var(--fs-xs) Consolas, monospace; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 1px 6px; background: var(--panel); color: var(--text); }
-.bar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.bar-actions { display: flex; align-items: center; justify-content: flex-end; align-self: stretch; justify-self: end; gap: 6px; min-width: 0; }
 /* In the library and network the same box filters what's shown */
 .search-field { cursor: text; padding: 4px 6px 4px 14px; }
 .search-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--hover); }
@@ -208,12 +260,12 @@ textarea { width: 100%; resize: vertical; }
 
 /* The sidebar collapsed (and on a narrow window): one column of icon buttons, all one size and one
    highlight, the places first, then whatever the open place adds (the Library's smart views). Each
-   name shows on hover; the button at the foot widens the sidebar again. */
+   name shows on hover; the app bar's sidebar button (top left) widens it again. */
 .rail {
   display: flex; flex-direction: column; align-items: center; width: 60px; min-height: 0; padding: 10px 8px;
   background: var(--rail); overflow: hidden; border-right: 1px solid var(--border);
 }
-/* The places and smart views scroll on a short window; Collapse stays put under them. No scrollbar,
+/* The places and smart views scroll on a short window. No scrollbar,
    since one would narrow every row when the Library adds its views (it still scrolls by wheel,
    trackpad and keys); instead the foot fades while more is below. */
 .rail-scroll {
@@ -228,42 +280,38 @@ textarea { width: 100%; resize: vertical; }
 .rail-modes { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
 .rail-slot { flex: none; width: 100%; }
 .rail-slot:not(:empty) { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
-.rail-btn, .rail .lib-side-item, .rail-toggle {
+.rail-btn, .rail .lib-side-item {
   position: relative; flex: none; display: flex; align-items: center; justify-content: center; gap: 12px;
   width: 44px; height: 40px; padding: 0; border: none; border-radius: var(--r-md); background: transparent; color: var(--muted);
 }
-.rail-btn svg, .rail .lib-side-item svg, .rail-toggle svg { flex: none; width: 19px; height: 19px; color: inherit; }
-.rail-btn:hover:not(:disabled), .rail .lib-side-item:hover:not(:disabled), .rail-toggle:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.rail-btn svg, .rail .lib-side-item svg { flex: none; width: 19px; height: 19px; color: inherit; }
+.rail-btn:hover:not(:disabled), .rail .lib-side-item:hover:not(:disabled) { color: var(--text); background: var(--hover); }
 .rail-btn.on, .rail-btn.on:hover:not(:disabled), .rail .lib-side-item.on, .rail .lib-side-item.on:hover:not(:disabled) {
   color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .rail .lib-side-item.on svg { color: inherit; }
 .rail .lib-side-item.warn:not(.on) svg { color: var(--warn); }
 /* The names: read out, and shown when the sidebar is wide */
-.rail-btn > span, .rail-toggle > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.rail-toggle { margin-top: 10px; }
-@media (max-width: 900px) { .rail-toggle { display: none; } }
-/* Wide (Nov 20): labelled rows, as in the Library picture */
-@media (min-width: 901px) {
-  .rail.wide { width: 248px; align-items: stretch; padding: 16px 12px 12px; background: var(--bg); }
-  .rail.wide .rail-scroll { align-items: stretch; gap: 2px; }
-  .rail.wide .rail-modes { align-items: stretch; gap: 2px; }
-  .rail.wide .rail-btn, .rail.wide .rail-toggle { justify-content: flex-start; width: 100%; padding: 0 12px; font-size: var(--fs-lg); line-height: 1; }
-  .rail.wide .rail-btn { color: var(--text); }
-  .rail.wide .rail-btn > span, .rail.wide .rail-toggle > span { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
-  .rail.wide .rail-btn svg { color: var(--muted); }
-  .rail.wide .rail-btn.on, .rail.wide .rail-btn.on:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font-weight: 600; }
-  .rail.wide .rail-btn.on svg { color: var(--text); }
-  .rail.wide .rail-slot:not(:empty) { margin-top: 14px; padding-top: 18px; }
-  .rail.wide .lib-side-item { color: var(--text); }
-  .rail.wide .lib-side-item svg { color: var(--muted); }
-  .rail.wide .lib-side-item.on, .rail.wide .lib-side-item.on:hover:not(:disabled) { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-  .rail.wide .lib-side-item.on svg { color: var(--accent); }
-  .rail.wide .lib-side-item.warn svg { color: var(--warn); }
-  .rail.wide .mx-side .lib-side-item:has(.mx-side-dot) > svg { display: none; }
-  .rail.wide .mx-side .mx-side-dot { display: block; flex: none; width: 7px; height: 7px; margin: 0 6px; border-radius: 50%; background: color-mix(in srgb, var(--muted) 45%, transparent); }
-  .rail.wide .mx-side .lib-side-item.on .mx-side-dot { background: var(--accent); }
-}
+.rail-btn > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Labelled rows (Nov 20, as in the Library picture); since Nov 28 always, pinned or floating */
+.rail.wide { width: 248px; align-items: stretch; padding: 16px 12px 12px; background: var(--bg); }
+.rail.wide .rail-scroll { align-items: stretch; gap: 2px; }
+.rail.wide .rail-modes { align-items: stretch; gap: 2px; }
+.rail.wide .rail-btn { justify-content: flex-start; width: 100%; padding: 0 12px; font-size: var(--fs-lg); line-height: 1; }
+.rail.wide .rail-btn { color: var(--text); }
+.rail.wide .rail-btn > span { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+.rail.wide .rail-btn svg { color: var(--muted); }
+.rail.wide .rail-btn.on, .rail.wide .rail-btn.on:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font-weight: 600; }
+.rail.wide .rail-btn.on svg { color: var(--text); }
+.rail.wide .rail-slot:not(:empty) { margin-top: 14px; padding-top: 18px; }
+.rail.wide .lib-side-item { color: var(--text); }
+.rail.wide .lib-side-item svg { color: var(--muted); }
+.rail.wide .lib-side-item.on, .rail.wide .lib-side-item.on:hover:not(:disabled) { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.rail.wide .lib-side-item.on svg { color: var(--accent); }
+.rail.wide .lib-side-item.warn svg { color: var(--warn); }
+.rail.wide .mx-side .lib-side-item:has(.mx-side-dot) > svg { display: none; }
+.rail.wide .mx-side .mx-side-dot { display: block; flex: none; width: 7px; height: 7px; margin: 0 6px; border-radius: 50%; background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.rail.wide .mx-side .lib-side-item.on .mx-side-dot { background: var(--accent); }
 
 
 /* The panel beside the draft: a row of tabs, then the open tab */
@@ -283,8 +331,7 @@ textarea { width: 100%; resize: vertical; }
   color: var(--accent-text); font: 700 var(--fs-xs)/1.4 system-ui, sans-serif; font-style: normal;
 }
 .tab-hint { margin: 0; padding: 8px 16px; font-size: var(--fs-sm); color: var(--muted); border-bottom: 1px solid var(--border); flex: none; }
-/* The panel's title row, with the button that closes it at the top-right; closed, the same button
-   tops the icon strip, in the same corner */
+/* The panel's title row: at its top-right, the button that hides it (pinned) or pins it (floating) */
 .panel-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 8px 0 16px; flex: none; }
 .panel-title h2 { margin: 0; font: var(--eyebrow); letter-spacing: var(--eyebrow-track); text-transform: uppercase; color: var(--muted); }
 .panel-toggle {
@@ -292,18 +339,52 @@ textarea { width: 100%; resize: vertical; }
   background: none; color: var(--muted);
 }
 .panel-toggle:hover:not(:disabled) { color: var(--accent); background: var(--hover); border-color: var(--border); }
-.strip-toggle { margin-bottom: 6px; }
-.tool-strip .strip-toggle + .strip-btn { margin-top: 2px; }
-.tool-strip .strip-toggle { box-shadow: 0 8px 0 -7px var(--border); }
-/* Closed: a slim strip of the tabs' icons, with their badges */
-.write-view.tools-closed { grid-template-columns: minmax(0, 1fr) 52px; }
-.tool-strip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
-.strip-btn {
-  position: relative; display: grid; place-items: center; width: 40px; height: 40px; padding: 0;
-  border: none; border-radius: var(--r-lg); background: none; color: var(--muted);
+
+/* Side panels that wait off the window's edge (Nov 28): not pinned, the sidebar and the writing tools are
+   out of sight; pointing at the window's edge (a thin strip there) brings one out over the page, with a
+   shadow, and it goes again once the pointer leaves it (peek.ts). Pinned, they sit beside the page. */
+.workspace { position: relative; }
+.workspace.rail-floating { grid-template-columns: minmax(0, 1fr); }
+.write-view.tools-floating { grid-template-columns: minmax(0, 1fr); }
+.rail.floating, .side-panel.floating {
+  position: absolute; z-index: 45; top: 0; bottom: 0; transition: transform 0.18s ease-out, box-shadow 0.18s;
 }
-.strip-btn:hover:not(:disabled) { color: var(--accent); background: var(--hover); }
-.strip-btn .tab-badge { top: -2px; right: -4px; }
+.rail.floating { left: 0; transform: translateX(-101%); }
+.side-panel.floating { right: 0; width: var(--panel-w); transform: translateX(101%); }
+.rail.floating.peek, .side-panel.floating.peek { transform: none; box-shadow: var(--lift); }
+@media (prefers-reduced-motion: reduce) { .rail.floating, .side-panel.floating { transition: none; } }
+.edge-zone { position: absolute; z-index: 44; top: 0; bottom: 0; width: 8px; }
+.edge-left { left: 0; }
+.edge-right { right: 0; }
+/* The page's scrollbar keeps clear of the right edge's strip */
+.write-view.tools-floating .writing { margin-right: 8px; }
+.app.focus .edge-zone { display: none; }
+/* The sidebar's foot: Settings */
+.rail-foot { flex: none; width: 100%; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+/* Every draft, under the places (SidebarDrafts), as a chat app lists its conversations */
+.side-drafts { flex: none; width: 100%; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.side-drafts-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 6px 12px; }
+.side-drafts-head h3 { margin: 0; font: var(--eyebrow); letter-spacing: var(--eyebrow-track); text-transform: uppercase; color: var(--muted); }
+.side-drafts-new { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--r-md); background: none; color: var(--muted); }
+.side-drafts-new:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.side-drafts ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.side-drafts-busy { margin: 0 0 4px; padding: 0 12px; font-size: var(--fs-sm); color: var(--accent); }
+.side-draft-row { display: flex; align-items: center; border-radius: var(--r-md); }
+.side-draft-row:hover, .side-draft.acting .side-draft-row { background: var(--hover); }
+.side-draft.on .side-draft-row { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.side-draft-open {
+  flex: 1; min-width: 0; height: 32px; padding: 0 4px 0 12px; border: none; background: none; text-align: left; color: var(--text);
+  font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.side-draft.on .side-draft-open { font-weight: 600; }
+.side-draft-more { flex: none; width: 28px; height: 28px; margin-right: 2px; padding: 0; border: none; border-radius: var(--r-md); background: none; color: var(--muted); opacity: 0; }
+.side-draft-row:hover .side-draft-more, .side-draft-more:focus-visible, .side-draft-more[aria-expanded="true"] { opacity: 1; }
+.side-draft-more:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.side-draft-actions { display: flex; gap: 6px; padding: 4px 8px 6px 12px; }
+.side-draft-actions button { height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); font-size: var(--fs-sm); }
+.side-draft-actions .danger-text { color: var(--bad); }
+.side-draft-rename { width: 100%; height: 32px; padding: 0 10px; font-size: var(--fs-md); }
+.side-drafts-empty { padding: 4px 12px; font-size: var(--fs-sm); color: var(--muted); }
 
 /* Focus mode: the page and its toolbar only */
 .app.focus { grid-template-rows: minmax(0, 1fr); }
@@ -314,6 +395,16 @@ textarea { width: 100%; resize: vertical; }
   padding: 4px 4px 4px 12px; border-radius: var(--r-pill); background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow);
 }
 .focus-exit button { border: none; border-radius: var(--r-pill); font-size: var(--fs-sm); display: inline-flex; align-items: center; gap: 6px; }
+/* Windows and Linux (no title bar of the window's own), focus mode keeps a slim strip across the top to move
+   the window by, with Exit focus and the window's buttons at its right. */
+.frameless .app.focus { grid-template-rows: auto minmax(0, 1fr); }
+.frameless .focus-exit {
+  position: static; justify-content: flex-end; height: 40px; padding: 0 8px 0 16px;
+  border: none; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; background: var(--bg); color: var(--text);
+  -webkit-app-region: drag;
+}
+.frameless .focus-exit button { -webkit-app-region: no-drag; }
+.frameless .focus-exit .win-buttons { margin: 0 -8px 0 6px; }
 .focus-exit kbd { font: 600 var(--fs-xs) Consolas, monospace; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 4px; }
 
 /* Status dock */
@@ -513,18 +604,43 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 /* A legend shows the word as its text instead */
 .cite.legend-chip::after { content: none; }
 .cite.legend-chip { cursor: default; }
-.ProseMirror-selectednode.cite { outline: 2px solid var(--accent); }
-/* Pointing at a citation: what backs it */
+/* A citation in the draft (Nov 28): "(Chen & Martinez 2021)" in the page's own font, muted, so the page
+   reads like a printed paper and a line can break inside it. A pill couldn't break, and justified text
+   spread its words out around one (Electron can't hyphenate to help). Supported and checking ones stay
+   quiet; one that needs the writer gets a wavy underline, and its symbol and word after it, so colour
+   isn't the only sign. (Decorative: the aria-label says it in words.) Lists and cards keep the pill.
+   Pointed at, selected or shown in the side panel, it takes its verdict's colour (--v), as its card does. */
+.cite-text { --v: var(--accent); --v-bg: var(--hover); color: var(--muted); cursor: pointer; border-radius: var(--r-sm); }
+.ct-weak { --v: var(--warn); --v-bg: var(--warn-bg); }
+.ct-unsupported, .ct-quote_not_found, .cite-text.cite-retracted { --v: var(--bad); --v-bg: var(--bad-bg); }
+.cite-text:hover, .cite-text.cite-active { color: var(--text); background: var(--v-bg); }
+.cite-text.cite-active { box-shadow: 0 0 0 2px var(--v-bg); }
+.ProseMirror-selectednode.cite-text { outline: 2px solid var(--v); outline-offset: 1px; }
+/* The underline is on the words only, so it stops before the mark */
+.ct-weak .ct-label, .ct-unsupported .ct-label, .ct-quote_not_found .ct-label, .cite-text.cite-retracted .ct-label {
+  color: var(--text); text-decoration: underline wavy 1px var(--v); text-underline-offset: 4px; text-decoration-skip-ink: none;
+}
+/* The mark: inline text right after the closing bracket, joined to it (U+2060) and inside (a no-break
+   space), so a line never breaks before it or within it. Its line height is 0, so it doesn't push lines apart. */
+.ct-mark::before { font: 700 0.62em/0 system-ui, "Segoe UI Symbol", sans-serif; letter-spacing: 0.01em; vertical-align: 0.55em; color: var(--v); }
+.ct-weak .ct-mark::before { content: "\2060\00a0◐\00a0partly" / ""; }
+.ct-unsupported .ct-mark::before, .ct-quote_not_found .ct-mark::before { content: "\2060\00a0✕\00a0not\00a0supported" / ""; }
+.cite-text.cite-retracted .ct-mark::before { content: "\2060\00a0⚠\00a0retracted" / ""; }
+/* Pointing at a citation: what backs it. No coloured edge: a very faint wash of the verdict's own colour
+   (green supported, amber partly, red not supported or retracted), and the verdict in words at the top. */
 .chip-card {
+  --v: var(--pending); --v-bg: var(--pending-bg);
   position: fixed; z-index: 70; width: 360px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
-  border: 1px solid var(--border); border-left: 3px solid var(--pending); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow);
+  border: 1px solid color-mix(in srgb, var(--v) 28%, var(--border)); border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--v-bg) 55%, var(--panel)); box-shadow: var(--shadow);
   font-size: var(--fs-sm); pointer-events: none;
 }
-.chip-card-verified { border-left-color: var(--ok); }
-.chip-card-weak { border-left-color: var(--warn); }
-.chip-card-unsupported, .chip-card-quote_not_found { border-left-color: var(--bad); }
-.chip-card-head { display: flex; align-items: center; gap: 8px; }
-.chip-card-verdict { font-size: var(--fs-sm); }
+.chip-card-verified { --v: var(--ok); --v-bg: var(--ok-bg); }
+.chip-card-weak { --v: var(--warn); --v-bg: var(--warn-bg); }
+.chip-card-unsupported, .chip-card-quote_not_found, .chip-card.chip-card-retracted { --v: var(--bad); --v-bg: var(--bad-bg); }
+.chip-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.chip-card-label { font-weight: 600; color: var(--text); }
+.chip-card-verdict { flex: none; font-weight: 700; color: var(--v); }
 .chip-card blockquote { margin: 0; font: var(--fs-md)/1.5 var(--doc-font); color: var(--text); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
 .chip-card-reason { margin: 0; color: var(--muted); line-height: 1.45; }
 .chip-card-foot { margin: 0; color: var(--muted); font-size: var(--fs-xs); }
@@ -537,7 +653,6 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .cite.cite-retracted { border-color: var(--bad); background: var(--bad-bg); border-style: solid; }
 .cite.cite-retracted::before { content: "⚠" / ""; color: var(--bad); width: auto; height: auto; background: none; font-size: var(--fs-sm); }
 .cite.cite-retracted::after { content: "retracted" / ""; color: var(--bad); font-weight: 700; font-size: var(--fs-xs); }
-.chip-card.chip-card-retracted { border-left-color: var(--bad); }
 .chip-card-retraction { margin: 0; padding: 6px 8px; border-radius: var(--r-md); background: var(--bad-bg); color: var(--bad); font-weight: 600; line-height: 1.4; }
 
 /* Sidebar */
@@ -814,7 +929,10 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 /* Library: folders | a sortable table | the open source's details */
 .library { padding: 0; flex: 1; min-height: 0; }
 .library [hidden] { display: none !important; }
-.lib-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px 12px; flex-wrap: wrap; }
+/* Two rows: the title with Add sources and More, then how the topics or papers are shown */
+.lib-head { display: flex; flex-direction: column; gap: 10px; padding: 14px 20px 12px; }
+.lib-head-line { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lib-head-tools { padding-top: 10px; border-top: 1px solid var(--line); }
 .lib-head h2 { margin: 0; font-size: var(--fs-xl); font-family: var(--doc-font); }
 .ghost { background: transparent; color: var(--accent); border-color: var(--border); font-size: var(--fs-sm); white-space: nowrap; }
 
@@ -1074,66 +1192,18 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 
 /* Drafts: the title in the app bar opens a menu of drafts */
 .doc-id { position: relative; }
-.doc-switch {
-  display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 1px 6px 1px 4px; margin-left: -4px;
-  border: 1px solid transparent; border-radius: var(--r-md); background: none; text-align: left;
-}
-.doc-switch:hover:not(:disabled), .doc-switch[aria-expanded="true"] { background: var(--hover); border-color: var(--border); }
-.doc-switch .doc-name { min-width: 0; }
-.doc-caret { color: var(--muted); font-size: var(--fs-xs); }
-.doc-count { font-size: var(--fs-xs); font-weight: 700; padding: 0 6px; border-radius: var(--r-pill); background: var(--hover); color: var(--accent); white-space: nowrap; flex: none; }
-/* Drafts menu under the title: start something new at the top, then every draft */
+/* A menu card that drops from a button: Versions (from the status bar it opens upwards) */
 .drafts-menu {
   position: absolute; top: calc(100% + 10px); left: 0; z-index: 85; width: min(400px, calc(100vw - 32px));
   max-height: min(72vh, 600px); display: flex; flex-direction: column; overflow: hidden;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: 0 24px 60px -12px rgb(0 0 0 / 0.35);
 }
-.drafts-menu .lb-head { padding-right: 18px; }
-.dp-start { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 18px 14px; border-bottom: 1px solid var(--border); }
-.dp-tile {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px; border-radius: var(--r-lg);
-  text-align: left; background: var(--bg);
-}
-.dp-tile b { font-size: var(--fs-md); }
-.dp-tile > span:last-child { font-size: var(--fs-xs); color: var(--muted); }
-.dp-tile-ico {
-  display: grid; place-items: center; width: 32px; height: 32px; margin-bottom: 6px; border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--accent); font-size: var(--fs-2xl); line-height: 1;
-}
-.dp-tile-new { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
-.dp-tile-new .dp-tile-ico { background: var(--accent); color: var(--accent-text); }
-.dp-tile:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg)); }
-.dp-busy { margin: 10px 18px 0; }
-.dp-label { padding: 16px 18px 8px; }
-.dp-list { list-style: none; margin: 0; padding: 0 10px 16px; overflow-y: auto; flex: 1; min-height: 0; }
-.dp-item { display: flex; align-items: center; gap: 2px; border-radius: var(--r-lg); }
-.dp-item:hover { background: var(--hover); }
-.dp-item.on { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.dp-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 9px 8px; border: none; background: none; text-align: left; }
-.dp-main:hover:not(:disabled) { background: none; }
-.dp-page {
-  flex: none; width: 26px; height: 32px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--panel);
-  background-image: repeating-linear-gradient(180deg, transparent 0 7px, var(--border) 7px 8px); background-size: 16px 100%;
-  background-position: 4px 6px; background-repeat: no-repeat;
-}
-.dp-item.on .dp-page { border-color: var(--accent); }
-.dp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.dp-title { font: 600 var(--fs-lg)/1.3 var(--doc-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dp-item.on .dp-title { color: var(--accent); }
-.dp-open { flex: none; font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); }
-.dp-delete, .dp-rename { opacity: 0.45; transition: opacity 0.15s; font-size: var(--fs-xl); }
-.dp-item:hover .dp-delete, .dp-delete:focus-visible, .dp-item:hover .dp-rename, .dp-rename:focus-visible { opacity: 1; }
-.dp-rename { display: inline-grid; place-items: center; color: var(--muted); }
-/* Renaming a draft, in the app bar or the drafts menu */
+/* Renaming a draft, in the app bar or the sidebar's list */
 .draft-name-field {
   min-width: 0; width: 100%; padding: 1px 6px; border: 1px solid var(--accent); border-radius: var(--r-md);
   background: var(--panel); color: var(--text); font: 600 var(--fs-lg)/1.3 var(--doc-font);
 }
-.doc-id-text .draft-name-field { width: min(340px, 40vw); margin-left: -4px; font-size: var(--fs-lg); line-height: 1.25; }
-.dp-renaming { padding-right: 10px; }
-.dp-confirm { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px; font-size: var(--fs-sm); background: var(--bad-bg); border-radius: var(--r-lg); }
-.dp-confirm div { display: flex; justify-content: flex-end; gap: 6px; }
-.dp-empty { padding: 10px; }
+.doc-id .draft-name-field { width: min(340px, 40vw); margin-left: -4px; font-size: var(--fs-lg); line-height: 1.25; }
 
 .prose blockquote { margin: 0 0 1em; padding: 0 0 0 18px; border-left: 3px solid var(--border); color: var(--muted); }
 .prose ul, .prose ol { padding-left: 1.4em; }
@@ -1142,7 +1212,6 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .prose table { border-collapse: collapse; min-width: 100%; font-size: 0.7em; line-height: 1.45; }
 .prose th, .prose td { min-width: 170px; border: 1px solid color-mix(in srgb, var(--muted) 40%, transparent); padding: 6px 8px; vertical-align: top; text-align: left; }
 .prose th:first-child, .prose td:first-child { min-width: 110px; }
-.prose td .cite { font-size: var(--fs-xs); white-space: nowrap; }
 .prose th { background: var(--hover); font-family: system-ui, "Segoe UI", sans-serif; font-weight: 600; }
 .prose td p, .prose th p { margin: 0; }
 .prose .selectedCell { background: color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -1188,7 +1257,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 
 /* The demo's next step: its button, tab or marker pulses (App sets data-demo-next) */
 .app[data-demo-next="confirm"] .writing .cite-mark-verified,
-.app[data-demo-next="quote"] .writing .cite,
+.app[data-demo-next="quote"] .writing .cite-text,
 .app[data-demo-next="assistant"] [data-tab="compose"]:not(.on), .app[data-demo-next="assistant"] [data-compose="cite"]:not(.on),
 .app[data-demo-next="review"] [data-tab="check"]:not(.on),
 .app[data-demo-next="export"] .export .bar-btn { animation: demo-pulse 1.8s ease-out infinite; }
@@ -1198,7 +1267,7 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 }
 @media (prefers-reduced-motion: reduce) {
   .app[data-demo-next="confirm"] .writing .cite-mark-verified,
-  .app[data-demo-next="quote"] .writing .cite,
+  .app[data-demo-next="quote"] .writing .cite-text,
   .app[data-demo-next="assistant"] [data-tab="compose"]:not(.on), .app[data-demo-next="assistant"] [data-compose="cite"]:not(.on),
   .app[data-demo-next="review"] [data-tab="check"]:not(.on),
   .app[data-demo-next="export"] .export .bar-btn { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1406,8 +1475,14 @@ button.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(
 .cite-list-claim { font: var(--fs-md)/1.45 var(--doc-font); color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cite-list-reason { font-size: var(--fs-sm); line-height: 1.45; color: var(--muted); }
 .cite-list-retracted { align-self: flex-start; font-size: var(--fs-xs); font-weight: 700; color: var(--bad); }
-.cite-list-actions { display: flex; gap: 14px; padding: 0 10px 6px; }
-.cite-list-actions .link { padding: 0; font-size: var(--fs-sm); }
+/* Small outlined buttons, 26 px tall: as 18 px links right under the row they were too small a target
+   for WCAG 2.2 (2.5.8) */
+.cite-list-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 10px 6px; }
+.cite-list-actions .link {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); font-size: var(--fs-sm);
+}
+.cite-list-actions .link:hover:not(:disabled) { text-decoration: none; background: var(--hover); }
 .cite-focus-actions { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--border)); border-left: 3px solid var(--bad); border-radius: var(--r-lg); background: var(--bad-bg); }
 .cite-focus-text { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); }
 .cite-focus-text span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font: var(--fs-sm)/1.45 var(--doc-font); }
@@ -1940,8 +2015,7 @@ button.src-name:hover { background: var(--hover); }
 .cite.src-mark { padding: 2px 5px; gap: 0; }
 .src-marks .cite-mark { width: auto; padding: 1px 6px; font-size: var(--fs-xs); }
 
-/* App bar: the draft's own name (click to rename), its versions, and the drafts menu beside it */
-.doc-id-text { flex: 0 1 auto; }
+/* App bar: the draft's own name (click to rename) */
 .doc-title {
   display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 1px 6px 1px 4px; margin-left: -4px;
   border: 1px solid transparent; border-radius: var(--r-md); background: none; text-align: left; color: var(--text);
@@ -1952,12 +2026,6 @@ button.src-name:hover { background: var(--hover); }
 .doc-title:hover svg { opacity: 1; }
 /* Not named yet: it's the first line standing in, so it reads as provisional */
 .doc-title.unnamed .doc-name { font-style: italic; color: var(--muted); }
-.drafts-btn {
-  flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border);
-  border-radius: var(--r-md); background: none; color: var(--muted); font-size: var(--fs-sm); white-space: nowrap;
-}
-.drafts-btn:hover:not(:disabled), .drafts-btn[aria-expanded="true"] { background: var(--hover); color: var(--text); }
-.save-change { color: var(--muted); }
 .versions-menu { display: block; width: min(460px, calc(100vw - 32px)); max-height: min(78vh, 680px); padding: 14px 16px; overflow-y: auto; }
 .dock .stat b.ok-word { color: var(--ok); }
 
